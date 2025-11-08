@@ -115,7 +115,7 @@ class Category(InitCategory):
                 clipboard_text = f'{cref_text}{cref}'
 
             if clip:
-                r = self.cm.utils.common.copy_text_to_clipboard(clipboard_text)
+                r = self.cm.utils.common.copy_text_to_clipboard(clipboard_text, do_not_fail = True)
                 if r['return']>0: return r
 
         return result

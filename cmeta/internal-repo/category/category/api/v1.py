@@ -72,9 +72,33 @@ class Category(InitCategory):
         @base.move_
         """
 
-        input('xyz1')
+        params_copy = params.copy()
+
+        con = params.get('state',{}).get('control',{}).get('con', False)
+
+        # Check that move and not rename!
+        arg1 = params.get('arg1', None)
+        arg2 = params.get('arg2', None)
+
+        arg1_obj_parts = {}
+        if arg1 is not None:
+            r = names.parse_cmeta_obj(arg1, fail_on_error = self.fail_on_error)
+            if r['return'] >0: return r
+            arg1_obj_parts = r['obj_parts']
+
+        arg2_obj_parts = {}
+        if arg2 is not None:
+            r = names.parse_cmeta_obj(arg2, fail_on_error = self.fail_on_error)
+            if r['return'] >0: return r
+            arg2_obj_parts = r['obj_parts']
+
+        arg1_alias = arg1_obj_parts.get('alias')
+        arg2_alias = arg2_obj_parts.get('alias')
+
+        if arg1_alias is not None and arg2_alias is not None and arg1_alias != arg2_alias:
+            return {'return':1, 'error':'renaming a category is not allowed for backward compatibility reasons. Please create a new category instead.'}
 
         p = self._prepare_input_from_params(params, base = True)
+        result = self.cm.access(p)
 
-        return self.cm.access(p)
-
+        return result

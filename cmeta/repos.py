@@ -56,6 +56,10 @@ class Repos:
         self.logger = logging.getLogger(__name__) if logger is None else logger.getChild("repos")
         self.logger.debug("Initializing Repos class ...")
 
+        self.KEY_INDEX_UIDS = 'uids'
+        self.KEY_INDEX_LOWERCASE_ALIASES = 'lowercase_aliases'
+        self.KEY_INDEX_ORDERED_UIDS = 'ordered_uids'
+
     ###################################################################################################
     def init(self):
         """
@@ -135,8 +139,8 @@ class Repos:
             index_data = r['data']
             index_file_lock = r['file_lock']
 
-        uids = index_data.setdefault('uids', {})
-        lowercase_aliases = index_data.setdefault('lowercase_aliases', {})
+        uids = index_data.setdefault(self.KEY_INDEX_UIDS, {})
+        lowercase_aliases = index_data.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
 
         # If need to delete the original one before adding the new/updated one
         if original_alias is not None:
@@ -190,17 +194,20 @@ class Repos:
             index_file_lock = r['file_lock']
 
         if lowercase_artifact_alias is not None:
-            lowercase_aliases = index_data.setdefault('lowercase_aliases', {})
+            lowercase_aliases = index_data.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
             lowercase_alias_uids = lowercase_aliases.get(lowercase_artifact_alias, [])
             if artifact_uid in lowercase_alias_uids:
                 lowercase_alias_uids.remove(artifact_uid)
                 if len(lowercase_alias_uids) == 0:
                     del(lowercase_aliases[lowercase_artifact_alias])
 
-        uids = index_data.setdefault('uids', {})
+        uids = index_data.setdefault(self.KEY_INDEX_UIDS, {})
 
         if artifact_uid in uids:
             del(uids[artifact_uid])
+
+        if self.KEY_INDEX_ORDERED_UIDS in index_data and artifact_uid in index_data[self.KEY_INDEX_ORDERED_UIDS]:
+            index_data[self.KEY_INDEX_ORDERED_UIDS].remove(artifact_uid)
 
         r = utils.files.safe_write_file(index_file, index_data, file_lock=index_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
         if r['return']>0: return r
@@ -230,7 +237,7 @@ class Repos:
         artifact_uids = []
 
         if artifact_uid is not None and artifact_uid != "":
-            if artifact_uid not in index.get('uids', {}):
+            if artifact_uid not in index.get(self.KEY_INDEX_UIDS, {}):
                 x = f'"{artifact_alias}" ({artifact_uid})' if artifact_alias is not None and artifact_alias != '' else f'{artifact_uid}'
                 err = f'{category_alias} artifact {x} not found in the cMeta index'
                 return _error(err, 16, None, self.fail_on_error)
@@ -240,16 +247,16 @@ class Repos:
         elif artifact_alias is not None and artifact_alias != "":
             lowercase_artifact_alias = artifact_alias.lower()
             if '*' in artifact_alias or '?' in artifact_alias:
-                if 'ordered_uids' in index and len(index['ordered_uids'])>0:
-                    check_artifact_uids = index['ordered_uids']
+                if self.KEY_INDEX_ORDERED_UIDS in index and len(index[self.KEY_INDEX_ORDERED_UIDS])>0:
+                    check_artifact_uids = index[self.KEY_INDEX_ORDERED_UIDS]
                 else:
-                    check_artifact_uids = list(index.get('uids', {}).keys())
+                    check_artifact_uids = list(index.get(self.KEY_INDEX_UIDS, {}).keys())
 
                 for artifact_uid in check_artifact_uids:
-                    if artifact_uid not in index['uids']:
+                    if artifact_uid not in index[self.KEY_INDEX_UIDS]:
                         return _error(f'corrupted {category_alias} UID "{artifact_uid}" not found in the index"', 1, None, self.fail_on_error)
 
-                    record = index['uids'][artifact_uid]
+                    record = index[self.KEY_INDEX_UIDS][artifact_uid]
 
                     lowercase_alias = record['cmeta_ref_parts'].get('artifact_alias_lowercase', None)
                     if lowercase_alias is None:
@@ -260,18 +267,18 @@ class Repos:
                     if fnmatch.fnmatch(lowercase_alias, lowercase_artifact_alias):
                         artifact_uids.append(artifact_uid)
             else:
-                if lowercase_artifact_alias not in index.get('lowercase_aliases', {}):
+                if lowercase_artifact_alias not in index.get(self.KEY_INDEX_LOWERCASE_ALIASES, {}):
                     # We should not be failing below even on debug to handle multiple-search - we need to handle aggregated search results
                     x_artifact_alias = "artifacts" if artifact_alias == '' or artifact_alias == None or artifact_alias == '*' else f'"{artifact_alias}"'
                     return _error(f'{category_alias} {x_artifact_alias} not found in the cMeta index', 16, None, False) #self.fail_on_error)
 
-                artifact_uids.extend(index['lowercase_aliases'][lowercase_artifact_alias])
+                artifact_uids.extend(index[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_artifact_alias])
 
         else:
-            if 'ordered_uids' in index and len(index['ordered_uids'])>0:
-                artifact_uids = index['ordered_uids']
+            if self.KEY_INDEX_ORDERED_UIDS in index and len(index[self.KEY_INDEX_ORDERED_UIDS])>0:
+                artifact_uids = index[self.KEY_INDEX_ORDERED_UIDS]
             else:
-                artifact_uids = list(index.get('uids', {}).keys())
+                artifact_uids = list(index.get(self.KEY_INDEX_UIDS, {}).keys())
 
         result = {'return':0, 'index_file': index_file, 'index': index}
 
@@ -280,10 +287,10 @@ class Repos:
             pruned_artifact_uids = []
 
             for artifact_uid in artifact_uids:
-                if artifact_uid not in index['uids']:
+                if artifact_uid not in index[self.KEY_INDEX_UIDS]:
                     return _error(f'corrupted index for {category_alias} UID "{artifact_uid}"', 1, None, self.fail_on_error)
 
-                artifact_cmeta_ref_parts = index['uids'][artifact_uid]['cmeta_ref_parts']
+                artifact_cmeta_ref_parts = index[self.KEY_INDEX_UIDS][artifact_uid]['cmeta_ref_parts']
 
                 if repos and artifact_cmeta_ref_parts['repo_uid'] not in repos:
                     continue
@@ -301,10 +308,10 @@ class Repos:
             artifacts = []
 
             for artifact_uid in artifact_uids:
-                if artifact_uid not in index['uids']:
+                if artifact_uid not in index[self.KEY_INDEX_UIDS]:
                     return _error(f'corrupted index for {category_alias} UID "{artifact_uid}"', 1, None, self.fail_on_error)
 
-                artifact = index['uids'][artifact_uid].copy()
+                artifact = index[self.KEY_INDEX_UIDS][artifact_uid].copy()
 
                 if add_index_file:
                     artifact['index_file'] = index_file
@@ -429,10 +436,6 @@ class Repos:
         import time
         time_start = time.time()
 
-        key_uids = 'uids'
-        key_ouids = 'ordered_uids'
-        key_lalias = 'lowercase_aliases'
-
         index_path = self.index_path
 
         if con:
@@ -440,7 +443,7 @@ class Repos:
 
 
         # Recreating all repos
-        index_repos = {key_uids:{}, key_ouids:[], key_lalias:{}}
+        index_repos = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_ORDERED_UIDS:[], self.KEY_INDEX_LOWERCASE_ALIASES:{}}
         repos_meta = {}
         repo_uids_to_use = []
         repos_config_path = self.repos_config_path
@@ -540,15 +543,15 @@ class Repos:
 
                 repo_uids_to_use.append(uid.lower())
 
-                if lowercase_alias in index_repos[key_lalias]:
+                if lowercase_alias in index_repos[self.KEY_INDEX_LOWERCASE_ALIASES]:
                     print (f'      Warning: repo "{alias}" is already in index!')
 
-                    if uid is not None and uid in index_repos[key_lalias][lowercase_alias]:
+                    if uid is not None and uid in index_repos[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_alias]:
                         return {'return':1, 'error': f'ambiguity - repo "{alias}" with the same UID "{uid}" alredy exists in the index - please fix it!'}
 
-                index_repos[key_lalias][alias] = [uid]
+                index_repos[self.KEY_INDEX_LOWERCASE_ALIASES][alias] = [uid]
 
-                index_repos[key_ouids].append(uid)
+                index_repos[self.KEY_INDEX_ORDERED_UIDS].append(uid)
 
                 entry = {'path': path}
 
@@ -561,7 +564,7 @@ class Repos:
 
                 entry['cmeta'] = repo_meta
 
-                index_repos[key_uids][uid] = entry
+                index_repos[self.KEY_INDEX_UIDS][uid] = entry
 
 
             index_repo_file = os.path.join(index_path, 'repo' + self.index_extension)
@@ -574,7 +577,7 @@ class Repos:
             if r['return']>0: return r
 
         # Indexing categories
-        index_categories = {key_uids:{}, key_ouids:[], key_lalias:{}}
+        index_categories = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_ORDERED_UIDS:[], self.KEY_INDEX_LOWERCASE_ALIASES:{}}
 
         if con:
             print ('')
@@ -595,7 +598,7 @@ class Repos:
 
                 category_dirs = os.listdir(category_path_with_prefix)
 
-                for category in category_dirs:
+                for category in sorted(category_dirs):
                     category_meta_desc_file_json = os.path.join(category_path_with_prefix, category, self.cfg['meta_filename_base'] + '.json')
                     category_meta_desc_file_yaml = os.path.join(category_path_with_prefix, category, self.cfg['meta_filename_base'] + '.yaml')
 
@@ -658,19 +661,19 @@ class Repos:
                         if alias != None:
                             lowercase_alias = alias.lower()
 
-                        if alias is not None and lowercase_alias in index_categories[key_lalias]:
+                        if alias is not None and lowercase_alias in index_categories[self.KEY_INDEX_LOWERCASE_ALIASES]:
                             print (f'      Warning: category "{alias}" already exists in the index!')
 
-                            if uid is not None and uid in index_categories[key_lalias][lowercase_alias]:
-                                xpath = index_categories[key_uids][uid]['path']
+                            if uid is not None and uid in index_categories[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_alias]:
+                                xpath = index_categories[self.KEY_INDEX_UIDS][uid]['path']
                                 return {'return':1, 'error': f'ambiguity - category "{alias}" with the same UID "{uid}" and path "{xpath}" alredy exists in the index - please fix it!'}
 
                         cmeta_ref_parts = {'category_alias':'category', 'category_uid':'dd9ea50e7f76467f', 'artifact_uid':uid}
 
                         if alias is not None and alias != '':
-                            uids = index_categories[key_lalias].get(lowercase_alias, [])
+                            uids = index_categories[self.KEY_INDEX_LOWERCASE_ALIASES].get(lowercase_alias, [])
                             uids.append(uid)
-                            index_categories[key_lalias][lowercase_alias] = uids
+                            index_categories[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_alias] = uids
 
                             if len(uids)>1:
                                 print (f'      Warning: AMBIGUITY for category "{alias}": more than 1 UID found !')
@@ -693,7 +696,7 @@ class Repos:
                         if repo_uid is not None and repo_uid != '':
                             cmeta_ref_parts['repo_uid'] = repo_uid
 
-                        index_categories[key_ouids].append(uid)
+                        index_categories[self.KEY_INDEX_ORDERED_UIDS].append(uid)
 
                         entry = {'path': os.path.join(category_path_with_prefix, category)}
 
@@ -701,9 +704,9 @@ class Repos:
 
                         entry['cmeta'] = category_meta
 
-                        index_categories[key_uids][uid] = entry
+                        index_categories[self.KEY_INDEX_UIDS][uid] = entry
 
-        if index_categories[key_uids]:
+        if index_categories[self.KEY_INDEX_UIDS]:
             index_category_file = os.path.join(index_path, 'category' + self.index_extension)
             if con:
                 print('')
@@ -873,10 +876,10 @@ class Repos:
                             lowercase_alias = alias.lower()
 
                             if category not in index_artifacts:
-                                index_artifacts[category] = {key_uids:{}, key_lalias:{}}
+                                index_artifacts[category] = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
 
-                            uids = index_artifacts[category][key_uids]
-                            aliases_lower_case = index_artifacts[category][key_lalias]
+                            uids = index_artifacts[category][self.KEY_INDEX_UIDS]
+                            aliases_lower_case = index_artifacts[category][self.KEY_INDEX_LOWERCASE_ALIASES]
 
                             if uid in uids:
                                 xpath = uids[uid]['path']
