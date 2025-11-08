@@ -37,6 +37,7 @@ cfg = {
         "env_cmeta_log": "CMETA_LOG",
         "env_cmeta_log_file": "CMETA_LOG_FILE",
         "env_var_cmeta_debug": "CMETA_DEBUG",
+        "env_var_internal_repo_path": "CMETA_INTERNAL_REPO_PATH",
         
         "repos_config_filename": "repos.json",
         "repos_dir": "repos",

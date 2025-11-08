@@ -446,9 +446,15 @@ class Repos:
         repos_config_path = self.repos_config_path
         existing_paths_to_repos = []
 
-        # Then internal repo
+        # Then checking internal repo path
         this_module_path = os.path.dirname(os.path.abspath(__file__))
-        this_internal_repo_path = os.path.join(this_module_path, 'internal-repo')
+
+        force_internal_repo_path = os.environ.get(self.cfg['env_var_internal_repo_path'], '').strip()
+        if force_internal_repo_path != '':
+            this_internal_repo_path = force_internal_repo_path
+        else:
+            this_internal_repo_path = os.path.join(this_module_path, 'internal-repo')
+
         existing_internal_repo_path = None
 
         if con:
