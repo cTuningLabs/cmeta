@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmeta"
+dynamic = ["version"]
+description = "Common Meta"
+readme = "README.md"
+requires-python = ">=3.8"
+license-files = ["LICENSE", "COPYRIGHT"]
+authors = [
+    {name = "Grigori Fursin"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+     "pyyaml",
+     "requests",
+     "setuptools",
+     "wheel",
+     "tabulate",
+     "filelock",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+cmeta = "cmeta.cli:main_cmeta"
+meta = "cmeta.cli:main_meta"
+cx = "cmeta.cli:main_cx"
+
+[tool.setuptools.dynamic]
+version = {attr = "cmeta.version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cmeta*"]
+
+[tool.setuptools]
+
+[tool.setuptools.package-data]
+"cmeta" = [
+    "internal-repo/**/*.json",
+    "internal-repo/**/*.yaml",
+    "internal-repo/**/*.yml",
+    "internal-repo/**/*.md",
+    "internal-repo/**/*.py"
+]
+
+[tool.setuptools.exclude-package-data]
+"*" = [
+    "__pycache__",
+    "*.pyc",
+    "*.pyo",
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/*.pyo"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["cmeta"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+
