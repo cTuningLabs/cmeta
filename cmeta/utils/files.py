@@ -331,6 +331,8 @@ def safe_write_file(filepath, data, timeout=3, file_lock=None, atomic=False, enc
     r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format)
     if r['return']>0: return r
 
+    release_error = None
+
     try:
         if atomic:
             try:
@@ -360,7 +362,10 @@ def safe_write_file(filepath, data, timeout=3, file_lock=None, atomic=False, enc
         try:
             _release_lock(filepath, file_lock, logger)
         except Exception as e:
-            return _error(None, 1, e, fail_on_error)
+            release_error = e
+
+    if release_error:
+        return _error(None, 1, release_error, fail_on_error)
 
     return {'return': 0}
 

@@ -16,8 +16,8 @@ class Category(InitCategory):
     Various Utils
     """
 
-    def __init__(self, cm = None, logger = None):
-        super().__init__(cm, __file__, logger)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, module_file_path = __file__, **kwargs)
 
     ############################################################
     def uid_(self, state):

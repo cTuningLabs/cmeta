@@ -67,7 +67,7 @@ def load_module(module_path, module_cache, fail_on_error=False, category=False, 
         }
 
         if category:
-            cache['initialized_class'] = module.Category(cmeta)
+            cache['initialized_class'] = module.Category(cm=cmeta)
 
         # Update cache
         module_cache[module_path] = cache

@@ -18,7 +18,7 @@ class InitCategory:
     Initialize Category without artifact management functions
     """
 
-    def __init__(self, 
+    def __init__(self,
                  cm = None,
                  module_file_path = None,
                  logger: logging.Logger = None):

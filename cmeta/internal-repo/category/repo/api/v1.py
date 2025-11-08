@@ -16,9 +16,8 @@ class Category(InitCategory):
     Various Utils
     """
 
-    def __init__(self, *kwargs):
-        self.module_file_path = __file__
-        super().__init__(*kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     def find_(self, state, arg1=None):

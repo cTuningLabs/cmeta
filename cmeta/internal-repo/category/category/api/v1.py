@@ -16,10 +16,8 @@ class Category(InitCategory):
     Various Utils
     """
 
-    def __init__(self, *kwargs):
-        self.module_file_path = __file__
-        super().__init__(*kwargs)
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, module_file_path = __file__, **kwargs)
 
     def create(self, params):
         """
@@ -28,12 +26,12 @@ class Category(InitCategory):
         @base.create_
         """
 
-        input('xyz2')
-
         params_copy = params.copy()
 
         if 'yaml' not in params_copy:
             params_copy['yaml'] = True
+
+        con = params.get('state',{}).get('control',{}).get('con', False)
 
         meta = params_copy.setdefault('meta', {})
             
@@ -41,17 +39,28 @@ class Category(InitCategory):
 
         p = self._prepare_input_from_params(params_copy, base = True)
 
-        print (p)
+        result = self.cm.access(p)
+        if result['return']>0: return result
 
-        r = self.cm.access(p)
-        if r['return']>0: return r
+        path = result['path']
 
-        path = r['path']
+        api_path = os.path.join(path, 'api')
+        if not os.path.isdir(api_path):
+            os.makedirs(api_path)
 
-        print (self.path)
-        print (path)
+        api_filepath = os.path.join(api_path, 'v1.py')
+        if os.path.exists(api_filepath):
+            return {'return':1, 'error':f'API file "{api_filepath}" already exists'}
 
-        return r
+        api_template_filepath=os.path.join(self.path, 'v1-template.py')
+
+        import shutil
+
+        shutil.copyfile(api_template_filepath, api_filepath)
+
+        print (f'API code was created in "{api_filepath}"')
+
+        return result
 
 
 

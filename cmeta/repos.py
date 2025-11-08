@@ -579,7 +579,6 @@ class Repos:
         if con:
             print ('')
             print ('Indexing categories ...')
-            print ('')
 
         categories = []
 
@@ -591,6 +590,7 @@ class Repos:
 
             if os.path.isdir(category_path_with_prefix):
                 if con:
+                    print ('')
                     print (f'  Analyzing categories in {category_path_with_prefix} ...')
 
                 category_dirs = os.listdir(category_path_with_prefix)
@@ -718,6 +718,7 @@ class Repos:
 
         # Clean index files besides repo and category
         if con:
+            print('')
             print(f'Cleaning existing index files in {index_path} ...')
         
         try:
