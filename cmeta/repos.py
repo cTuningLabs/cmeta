@@ -29,7 +29,7 @@ class Repos:
                  index_path: Path,
                  repos_config_path: Path,
                  logger: logging.Logger = None,
-                 index_extension: str = '.pickle',
+                 index_extension: str = '.pkl',
                  fail_on_error = False):
         """
         Initialize Repos manager.
@@ -167,6 +167,10 @@ class Repos:
             if artifact_uid not in lowercase_alias_uids:
                 lowercase_alias_uids.append(artifact_uid)
                 lowercase_aliases[lowercase_artifact_alias] = lowercase_alias_uids
+
+        # Check if need different/other/better sorting (by repo, etc)
+        if self.KEY_INDEX_ORDERED_UIDS in index_data and artifact_uid not in index_data[self.KEY_INDEX_ORDERED_UIDS]:
+            index_data[self.KEY_INDEX_ORDERED_UIDS].append(artifact_uid)
 
         # Use atomic write to avoid corrupting large index files
         r = utils.files.safe_write_file(index_file, index_data, file_lock=index_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)

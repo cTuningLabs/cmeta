@@ -127,7 +127,7 @@ class Category(InitCategory):
             state:          dict,                       # cMeta state.
             arg1:           str | None = None,          # Artifact alias or UID.
             tags:           str | list | None = None,   # Comma-separated string or iterable of tags to match.
-            sort:           bool = True,                # Sort by path.
+            sort:           bool | None = None,         # Sort by path.
             add_index_file: bool = False,               # Add index file information.
             skip_uids:      bool = False                # Skip UIDs when using wildcards.
     ):
@@ -159,6 +159,7 @@ class Category(InitCategory):
             artifact_ref_parts.update(r['obj_parts'])
 
         category_cmeta_ref_parts = state['category_artifact']['cmeta_ref_parts']
+        category_cmeta = state['category_artifact']['cmeta']
 
         artifact_ref_parts['category_alias'] = category_cmeta_ref_parts['artifact_alias']
         artifact_ref_parts['category_uid'] = category_cmeta_ref_parts['artifact_uid']
@@ -170,6 +171,9 @@ class Category(InitCategory):
         if r['return']>0: return r
 
         artifacts = r['artifacts']
+
+        if sort is None:
+            sort = category_cmeta.get('find_sort', False)
 
         if sort:
             r['artifacts'].sort(key=lambda x: x['cmeta_ref_parts'].get('artifact_alias_lower', 
@@ -312,7 +316,7 @@ class Category(InitCategory):
             state:     dict,                       # cMeta state.
             arg1:      str | None = None,          # Artifact alias or UID.
             tags:      str | list | None = None,   # Optional tag filter.
-            sort:      bool = True,                # Sort by alias or UID.
+            sort:      bool | None = None,         # Sort by alias or UID.
             skip_uids: bool = False                # Skip UIDs when using wildcards.
     ):
         """

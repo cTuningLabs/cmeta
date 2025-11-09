@@ -43,6 +43,9 @@ cfg = {
         "repos_dir": "repos",
         "repo_meta_desc": "_cmr.yaml",
 
+        "default_git_with_repo": "https://github.com/ctuninglabs",
+        "default_git": "https://github.com",
+
         "index_dir": "index",
         "index_db_filename": "index.db",
 

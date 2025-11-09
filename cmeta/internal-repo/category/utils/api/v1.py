@@ -241,6 +241,49 @@ class Category(InitCategory):
 
         return {'return':0, 'json_file': arg2}
 
+    ############################################################
+    def json2pickle_(self, state, arg1, arg2=None):
+        """
+        Convert JSON file to pickle file
+        Args:
+           arg1 (str): json file
+           arg2 (str, optional): pickle file. If not specified, use base of json file with .pkl
+        """
+
+        import os
+        import pickle
+        import json
+
+        con = state['control'].get('con', False)
+
+        # Check if json file exists
+        if not os.path.isfile(arg1):
+            return {'return':1, 'error':f'JSON file not found: {arg1}'}
+
+        # Set default pickle filename if not provided
+        if arg2 is None:
+            base = os.path.splitext(arg1)[0]
+            arg2 = f"{base}.pkl"
+
+        # Load json file
+        try:
+            with open(arg1, 'r') as f:
+                data = json.load(f)
+        except Exception as e:
+            return {'return':1, 'error':f'Failed to load JSON file: {e}'}
+
+        # Save to pickle file
+        try:
+            with open(arg2, 'wb') as f:
+                pickle.dump(data, f)
+        except Exception as e:
+            return {'return':1, 'error':f'Failed to save pickle file: {e}'}
+
+        if con:
+            print (f'Successfully converted {arg1} to {arg2}')
+
+        return {'return':0, 'pickle_file': arg2}
+
 
 ###################################################################################################
 def _extract_category_artifact(s: str) -> str:

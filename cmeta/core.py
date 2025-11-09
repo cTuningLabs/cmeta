@@ -282,7 +282,6 @@ class CMeta:
                 else:
                     err = f'Ambiguity for category "{category_obj}" - please specify the full name:'
                     for c in category_artifacts:
-                        print (c)
                         r = utils.names.restore_cmeta_obj(c['cmeta_ref_parts'], key='artifact', fail_on_error = self.fail_on_error)
                         if r['return']>0: return r
                         category_str = r['obj']
