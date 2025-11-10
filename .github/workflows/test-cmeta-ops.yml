@@ -74,6 +74,6 @@ jobs:
           GH_USER: gfursin
           GH_TOKEN: ${{ secrets.PRIVATE_GH_TOKEN_CMETA_OPS }}
         run: |
-          cx repo get --url=git+https://${GH_USER}:${GH_TOKEN}@github.com/cTuningLabs/cmeta-ops
+          cx repo get --url=https://${GH_USER}:${GH_TOKEN}@github.com/cTuningLabs/cmeta-ops
           cx --reindex
           cx category list
