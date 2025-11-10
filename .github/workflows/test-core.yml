@@ -9,7 +9,10 @@ name: Test cMeta core
 on:
   push:
     paths:
-      - "./cMeta/*.py"
+      - "./**/*.py"
+      - "./**/*.yaml"
+      - "./**/*.json"
+      - "./**/*.toml"
   pull_request:
     branches:
       - main
