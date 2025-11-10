@@ -507,7 +507,6 @@ class Category(InitCategory):
 
         con = state.get('control',{}).get('con', False)
 
-        input('xyz')
 
         return {'return':0}
     
