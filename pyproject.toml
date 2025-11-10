@@ -29,6 +29,7 @@ dependencies = [
      "setuptools",
      "wheel",
      "tabulate",
+     "tqdm",
      "filelock",
 ]
 

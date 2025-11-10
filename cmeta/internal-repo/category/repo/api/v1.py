@@ -31,7 +31,7 @@ class Category(InitCategory):
             path:                   str | None = None,
             folder:                 str | None = None,          # Force this folder to store repository
             method:                 str | None = None,          # Method (git, zip) - will be detected automatically if not specified
-
+            meta:                   dict | None = None,         # Repo meta data 
 
             desc:                   str | None = None,
             prefix:                 str | None = None,
@@ -77,11 +77,14 @@ class Category(InitCategory):
         con = state.get('control',{}).get('con', False)
 
         repos_path = self.cm.repos_path
+        repos_config_path = self.cm.repos_config_path
 
         cur_dir = os.getcwd()
 
         # Process arg1 and URL to extract repo name and understand what to do with repositories ...
         repo_name = None
+        repo_alias = None
+        repo_uid = None
         folder = None
 
         if (url is not None and url != ''):
@@ -99,13 +102,7 @@ class Category(InitCategory):
 
         if (repo_name is not None and repo_name != '') or (path is None and url is None):
             # Call base find function to find an artifact with a website
-
-
-
-
-# Check if can get self category name with UID
-
-            p = {'category':'repo', 
+            p = {'category':state['category'], 
                  'command':'find',
                  'sort':False,
                  'base':True}
@@ -139,17 +136,13 @@ class Category(InitCategory):
                     repo_alias = r.get('name',{}).get('alias')
                     repo_uid = r.get('name',{}).get('uid')
 
-                    folder = repo_alias if repo_alias is not None else repo_uid
-
                     if url is None or url == '':
-                        repo_split = repo_alias.split('@')
+                        if '@' not in repo_alias:
+                            repo_alias = self.cm.cfg['default_git_repo'] + '@' + repo_alias
 
-                        if len(repo_split)==1:
-                            url = self.cm.cfg['default_git_with_repo']
-                            url += '/' + repo_split[0]
-                        else:
-                            url = self.cm.cfg['default_git']
-                            url += '/' + '/'.join(repo_split)
+                        url = self.cm.cfg['default_git'] + '/' + repo_alias.replace('@','/')
+
+                    folder = repo_alias if repo_alias is not None else repo_uid
 
                 else:
                     r = self.get_alias_from_url_(state, url)
@@ -177,18 +170,86 @@ class Category(InitCategory):
             if not os.path.isdir(path):
                 if method == 'git':
                     cmd = f'git clone "{url}" "{path}"'
-                    c = os.system(cmd)
-                    print (c)
+                    if con:
+                        print ('')
+                        print ('cd ' + os.getcwd())
+                        print (cmd)
+                        print ('')
+                    ec = os.system(cmd)
+                    if ec != 0:
+                        return {'return':1, 'error':f'"System command {cmd}" failed with exit code {ec}'}
 
-                    if c == 0:
-                        p = {'category':'repo', 
-                             'command':'create',
-                             'arg1':repo_alias,
-                             'con':True,
-                             'base':True}
 
-                        r = self.cm.access(p)
+                # Check if repository was created
+                if os.path.isdir(path):
+                    # Append to the list of repos
+                    r = utils.files.safe_read_file(repos_config_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
+                    if r['return']>0: return r
+
+                    repos_paths = r['data']
+                    repos_paths_file_lock = r['file_lock']
+                    
+                    if path not in repos_paths:
+                        repos_paths.append(path)
+
+                    r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+                    if r['return']>0: return r
+
+                    # Try to read _cmr.yaml or create it (if already exists, to get correct artifact name and UID)
+                    repo_meta_desc_path = os.path.join(path, self.cm.cfg['repo_meta_desc'])
+
+                    repo_meta = {}
+                    repo_meta_file_lock = None
+                    repo_updated = False
+
+                    if os.path.isfile(repo_meta_desc_path):
+                        r = utils.files.safe_read_file(repo_meta_desc_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
                         if r['return']>0: return r
+
+                        repo_meta = r['data']
+                        repo_meta_file_lock = r['file_lock']
+
+                    if meta is not None and len(meta)>0:
+                        repo_meta = utils.common.deep_merge(repo_meta, meta, append_lists=True)
+                        repo_updated = True
+
+                    if 'category' not in repo_meta:
+                        r = utils.names.restore_cmeta_name(state['category'], key='artifact')
+                        if r['return']>0: return r
+                        repo_meta['category'] = r['name']
+                        repo_updated = True
+
+                    final_repo_name = repo_meta.get('artifact')
+                    if final_repo_name is None or final_repo_name == '':
+                        final_repo_name = ''
+                        if repo_alias != '': 
+                            final_repo_name = repo_alias + ','
+                        if repo_uid == None or repo_uid == '':
+                            repo_uid = utils.names.generate_cmeta_uid()
+                        final_repo_name += repo_uid
+
+                        repo_meta['artifact'] = final_repo_name
+
+                        repo_update = True
+
+                    if repo_updated:
+                        r = utils.files.safe_write_file(repo_meta_desc_path, repo_meta, file_lock=repo_meta_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+                        if r['return']>0: return r
+                    elif repo_meta_file_lock is not None:
+                        r = utils.files.unlock_path(repo_meta_desc_path, file_lock=repo_meta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
+                        if r['return']>0: return r
+
+                    # Add to index
+                    p = {'category': state['category'], 
+                         'command': 'create',
+                         'arg1': final_repo_name,
+                         'meta': {'method':method, '_cmr':repo_meta},
+                         'virtual': True,
+                         'path': path,
+                         'con': con}
+
+                    r = self.cm.access(p)
+                    if r['return']>0: return r
 
 
             else:

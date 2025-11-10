@@ -43,15 +43,19 @@ cfg = {
         "repos_dir": "repos",
         "repo_meta_desc": "_cmr.yaml",
 
-        "default_git_with_repo": "https://github.com/ctuninglabs",
+        "repo_local_meta": {
+           'artifact':'local,9a3280b14a4285c9',
+        },
+
+        "category_repo_uid": "f4f792ab40c7498f",
+
         "default_git": "https://github.com",
+        "default_git_repo": "ctuninglabs",
 
         "index_dir": "index",
         "index_db_filename": "index.db",
 
         "meta_filename_base": "_cmeta",
-
-        "category_repo_uid": "f4f792ab40c7498f",
 
         "base_category_default_api_version": 1,
 

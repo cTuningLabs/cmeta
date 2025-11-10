@@ -238,7 +238,7 @@ class CMeta:
         category_obj = control_params.get('category')
 
         # Check if runs for the first time (there is no repos.json and index)
-        r = self.repos.init()
+        r = self.repos.init(con=con)
         if r['return'] >0: return r
 
         if category_obj is None:

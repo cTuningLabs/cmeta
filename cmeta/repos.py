@@ -61,7 +61,7 @@ class Repos:
         self.KEY_INDEX_ORDERED_UIDS = 'ordered_uids'
 
     ###################################################################################################
-    def init(self):
+    def init(self, con=False):
         """
         Check if runs for the first time (there is no repos.json and index)
         """
@@ -85,7 +85,8 @@ class Repos:
         repo_local_meta_file = os.path.join(home_path_local, self.cfg['repo_meta_desc'])
 
         if not os.path.isfile(repo_local_meta_file):
-            repo_local_meta = {'artifact':'local,9a3280b14a4285c9'}
+            repo_local_meta = self.cfg['repo_local_meta'].copy()
+            repo_local_meta['category'] = 'repo,' + self.cfg['category_repo_uid']
 
             r = utils.files.safe_write_file(repo_local_meta_file, repo_local_meta, fail_on_error=self.fail_on_error, logger=self.logger)
             if r['return']>0: return r
@@ -111,7 +112,7 @@ class Repos:
             print ('Reindexing all repos - it can take some time ...')
             print ('')
 
-            r = self.reindex(con=False)
+            r = self.reindex(con=con)
             if r['return'] >0: return r
 
         return {'return':0}
@@ -437,6 +438,8 @@ class Repos:
         Index repos
         """
 
+        from tqdm import tqdm
+
         import time
         time_start = time.time()
 
@@ -451,7 +454,6 @@ class Repos:
         repos_meta = {}
         repo_uids_to_use = []
         repos_config_path = self.repos_config_path
-        existing_paths_to_repos = []
 
         # Then checking internal repo path
         this_module_path = os.path.dirname(os.path.abspath(__file__))
@@ -482,35 +484,34 @@ class Repos:
             r = utils.files.safe_read_file(repos_config_path, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
             if r['return']>0: return r 
 
-            paths_to_repos = r['data']
+            paths_to_repos = []
+            original_paths_to_repos = r['data']
 
-            update_repos_config_path = False
+            to_update = False
 
-            paths_to_repos_with_updated_internal_repo = []
-
-            for path in paths_to_repos:
-                path_to_repo_desc = os.path.join(path, self.cfg['repo_meta_desc'])
-
+            for path in original_paths_to_repos:
                 if path.endswith('internal-repo') and os.path.normpath(path) != this_internal_repo_path:
                     path = this_internal_repo_path
+                    to_update = True
 
-                    update_repos_config_path = True
+                path_to_repo_desc = os.path.join(path, self.cfg['repo_meta_desc'])
 
-                paths_to_repos_with_updated_internal_repo.append(path)
-
-                if os.path.isfile(path_to_repo_desc):
+                if not os.path.isfile(path_to_repo_desc):
+                    to_update = True
+                else:
                     r = utils.files.safe_read_file(path_to_repo_desc, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
                     if r['return']==0: 
                         repo_meta = r['data']
 
                         repos_meta[path] = repo_meta
-                        existing_paths_to_repos.append(path)
 
-            if paths_to_repos_with_updated_internal_repo:
-                r = utils.files.safe_write_file(repos_config_path, paths_to_repos_with_updated_internal_repo, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+                        paths_to_repos.append(path)
+
+            if to_update:
+                r = utils.files.safe_write_file(repos_config_path, paths_to_repos, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
                 if r['return']>0: return r
 
-            if len(existing_paths_to_repos) == 0:
+            if len(paths_to_repos) == 0:
                 return {'return':1, 'error':f'could not find any repository in {repos_config_path}'}
 
             if con:
@@ -518,7 +519,7 @@ class Repos:
                 print ('Indexing repositories ...')
                 print ('')
 
-            for path in existing_paths_to_repos:
+            for path in paths_to_repos:
                 repo_meta = repos_meta[path]
 
                 path_with_prefix = _get_path_with_prefix(path, repo_meta)
@@ -566,7 +567,12 @@ class Repos:
 
                 entry['cmeta_ref_parts'] = cmeta_ref_parts
 
-                entry['cmeta'] = repo_meta
+                method = ''
+                path_git = os.path.join(path, '.git')
+                if os.path.isdir(path_git):
+                    method = 'git'
+
+                entry['cmeta'] = {'method':method, '_cmr':repo_meta}
 
                 index_repos[self.KEY_INDEX_UIDS][uid] = entry
 
@@ -589,7 +595,7 @@ class Repos:
 
         categories = []
 
-        for path in existing_paths_to_repos:
+        for path in paths_to_repos:
             repo_meta = repos_meta[path]
 
             repo_path_with_prefix = _get_path_with_prefix(path, repo_meta)
@@ -757,7 +763,7 @@ class Repos:
             print ('Indexing artifacts in all repos for all categories ...')
             print ('')
 
-        for path in existing_paths_to_repos:
+        for path in paths_to_repos:
             repo_meta = repos_meta[path]
 
             repo_name = repo_meta['artifact']
@@ -798,11 +804,12 @@ class Repos:
                 path_to_category = os.path.join(repo_path_with_prefix, category)
 
                 if os.path.isdir(path_to_category):
-                    print (f'    Analyzing category {category} ...')
+                    if con:
+                        print (f'    Analyzing category {category} ...', flush=True)
                     
                     artifact_dirs = os.listdir(path_to_category)
 
-                    for artifact in artifact_dirs:
+                    for artifact in tqdm(artifact_dirs, disable = not con):
                         path_to_artifact = os.path.join(path_to_category, artifact)
 
                         artifact_meta_desc_file_json = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.json')
@@ -863,8 +870,8 @@ class Repos:
                         if artifact_meta:
                             artifact_name = artifact_meta['artifact']
                             artifact_num += 1
-                            if con:
-                                print (f'      Found artifact {artifact_num}: "{category}::{artifact}"')
+#                            if con:
+#                                print (f'\r      Found artifact {artifact_num}: "{category}::{artifact}"', end='', flush=True)
 
                             r = utils.names.parse_cmeta_name(artifact_name)
                             if r['return']>0: return r
@@ -872,6 +879,7 @@ class Repos:
 
                             uid = cmeta_name_parts.get('uid')
                             if uid is None or not utils.names.is_valid_cmeta_uid(uid):
+                                print ('', flush=True)
                                 print (f"           Warning: {artifact} doesn't have proper {uid}")
                                 input ('                Press Enter to continue ...')
 
@@ -914,6 +922,7 @@ class Repos:
                                     name_uids.append(uid)
 
                                 if len(name_uids)>1:
+                                    print ('', flush=True)
                                     print (f'      Warning: Conflict for {category_alias}:{alias} - multiple UIDs: "{name_uids} ..."')
 
         if index_artifacts:

@@ -518,11 +518,14 @@ class Category(InitCategory):
     ############################################################
     def create_(
             self, 
-            state: dict,                       # cMeta state.
-            arg1:  str | None = None,          # Artifact alias or UID.
-            tags:  str | list | None = None,   # Tags to add to the artifact.
-            meta:  dict = {},                  # Initial metadata dictionary.
-            yaml:  bool = False                # Save metadata as YAML instead of JSON.
+            state:   dict,                       # cMeta state.
+            arg1:    str | None = None,          # Artifact alias or UID.
+            tags:    str | list | None = None,   # Tags to add to the artifact.
+            meta:    dict = {},                  # Initial metadata dictionary.
+            yaml:    bool = False,               # Save metadata as YAML instead of JSON.
+            virtual: bool = False,               # Virtual artfiact created only in index (such as repo)
+            path:    str | None = None,          # Use this path for artifact (useful for virtual artifacts such as repo)
+            
     ):
         """
         Create and index an artifact.
@@ -613,7 +616,8 @@ class Category(InitCategory):
         artifact_repo_alias = repo_cmeta_ref_parts.get('artifact_alias')
         artifact_repo_uid = repo_cmeta_ref_parts['artifact_uid']
 
-        os.makedirs(repo_path, exist_ok=True)
+        if not virtual:
+            os.makedirs(repo_path, exist_ok=True)
 
         # Check category path
         category = state['category']
@@ -621,7 +625,9 @@ class Category(InitCategory):
         category_uid = category['artifact_uid']
 
         category_path = os.path.join(repo_path, category_alias)
-        os.makedirs(category_path, exist_ok=True)
+
+        if not virtual:
+            os.makedirs(category_path, exist_ok=True)
 
         # Check artifact path
         if artifact_uid == None:
@@ -634,11 +640,12 @@ class Category(InitCategory):
         cmeta_filename_json = os.path.join(artifact_path, self.cm.cfg['meta_filename_base'] + '.json')
         cmeta_filename_yaml = os.path.join(artifact_path, self.cm.cfg['meta_filename_base'] + '.yaml')
 
-        if os.path.isdir(artifact_path):
-            if os.path.isfile(cmeta_filename_json) or os.path.isfile(cmeta_filename_yaml):
-                return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
+        if not virtual:
+            if os.path.isdir(artifact_path):
+                if os.path.isfile(cmeta_filename_json) or os.path.isfile(cmeta_filename_yaml):
+                    return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
 
-        os.makedirs(artifact_path, exist_ok=True)
+            os.makedirs(artifact_path, exist_ok=True)
 
         # Prepare meta
         cmeta = copy.deepcopy(meta)
@@ -665,12 +672,11 @@ class Category(InitCategory):
             cmeta['tags'] = meta_tags
 
         # Save meta
-        if yaml:
-            r = utils.files.safe_write_file(cmeta_filename_yaml, data=cmeta, fail_on_error = self.fail_on_error)
-        else:
-            r = utils.files.safe_write_file(cmeta_filename_json, data=cmeta, fail_on_error = self.fail_on_error)
+        if not virtual:
+            tmp_cmeta_filename = cmeta_filename_yaml if yaml else cmeta_filename_json
 
-        if r['return']>0: return r
+            r = utils.files.safe_write_file(tmp_cmeta_filename, data=cmeta, fail_on_error = self.fail_on_error)
+            if r['return']>0: return r
 
         # Update index
         cmeta_ref_parts = {}
@@ -689,12 +695,16 @@ class Category(InitCategory):
         cmeta_ref_parts['repo_alias'] = artifact_repo_alias
         cmeta_ref_parts['repo_uid'] = artifact_repo_uid
 
+        if path is not None:
+            artifact_path = path 
+
         r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, artifact_path)
         if r['return']>0: return r
 
         # Print artifact path
         if con:
-            print (f'Artifact was created in "{artifact_path}"')
+            x = 'Virtual a' if virtual else 'A'
+            print (f'{x}rtifact was created in "{artifact_path}"')
 
         return {'return':0, 'path':artifact_path, 'meta':cmeta}
 
