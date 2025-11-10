@@ -459,14 +459,22 @@ class Category(InitCategory):
         force = force or f
     
         for artifact in artifacts:
+            artifact_path = artifact['path']
+            artifact_cmeta = artifact['cmeta']
+
+            if artifact_cmeta.get('permanent', False):
+                if con:
+                    print (f'Skipping permanent artifact located at "{artifact_path}" ...')
+
+                continue
+
             if print_time:
                 import time
                 start_time = time.perf_counter()                
 
-            artifact_path = artifact['path']
 
             if con:
-                print (f'Deleting artifact in "{artifact_path}" ...')
+                print (f'Deleting artifact located at "{artifact_path}" ...')
                 if not force:
                     x = input('  Proceed (y/N)? ')
                     x = x.strip().lower()

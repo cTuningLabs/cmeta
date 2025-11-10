@@ -572,7 +572,10 @@ class Repos:
                 if os.path.isdir(path_git):
                     method = 'git'
 
-                entry['cmeta'] = {'method':method, '_cmr':repo_meta}
+                entry['cmeta'] = repo_meta.copy()
+                entry['cmeta']['method'] = method
+                # Keep clean copy just in case
+                entry['_cmr'] = repo_meta
 
                 index_repos[self.KEY_INDEX_UIDS][uid] = entry
 
