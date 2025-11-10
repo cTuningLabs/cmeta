@@ -1,0 +1,72 @@
+#
+# cMeta tests
+#
+# Copyright (C) 2025 Grigori Fursin and cTuning Labs. All rights reserved.
+#
+
+name: Test cMeta core
+
+on:
+  push:
+    paths:
+      - "./cMeta/*.py"
+      - "./cMeta/*.py"
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.14"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+
+      # Linux & macOS
+      - name: Dummy (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+            echo "======================="
+            echo "Running on Linux/macOS)"
+            echo "======================="
+
+
+      # Windows
+      - name: Run pytest (Windows)
+        if: runner.os == 'Windows'
+        run: |
+            echo =======================
+            echo Running on Windows
+            echo =======================
+        shell: cmd
+
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+
+      - name: Print python version
+        run: |
+           python --version
+
+
+      - name: Install package
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install flake8 pytest
+        cd cmeta
+        python -m  pip install cmeta
+
+
+      - name: Test cMeta
+      run: |
+        cx --version
