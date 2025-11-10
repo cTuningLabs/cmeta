@@ -261,201 +261,8 @@ class Category(InitCategory):
                     os.chdir(cur_dir)
 
 
-            input('xyz')
-
 
         return {'return':0}
-
-
-        skip_zip_parent_dir = skip_parent_dir_in_zip
-
-        dir2 = i.get('dir2', '')
-        if dir2 != '':
-            i['dir'] = dir2 + '/' + dir2
-            del (i['dir2'])
-
-        # Check alias is URL
-        if url == '' and (alias.startswith('https://') or alias.startswith('git@')):
-            url = alias
-            alias = ''
-
-        # Process URL and alias
-        if url == '':
-            if alias != '':
-                url = self.cmind.cfg['repo_url_prefix']
-
-                if '@' not in alias:
-                    alias = self.cmind.cfg['repo_url_org'] + '@' + alias
-
-                url += alias.replace('@', '/')
-
-        else:
-            if alias == '':
-                # Get alias from URL
-                alias = url
-
-                # Check if zip file
-                j = alias.find('.zip')
-                if j > 0:
-                    j1 = alias.rfind('/')
-                    alias = alias[j1+1:j+4]
-                else:
-                    if alias.endswith('.git'):
-                        alias = alias[:-4]
-
-                    if alias.startswith('git@'):
-                        j = alias.find(':')
-                        if j >= 0:
-                            alias = alias[j+1:].replace('/', '@')
-                    else:
-                        j = alias.find('//')
-                        if j >= 0:
-                            j1 = alias.find('/', j+2)
-                            if j1 >= 0:
-                                alias = alias[j1+1:].replace('/', '@')
-
-        if pat != '' and url != '' and url.startswith('https://'):
-            patx = pat
-            urlx = url[8:]
-
-            j = urlx.find('@')
-            if j > 0:
-                username = urlx[:j]
-                patx = username + ':' + pat
-                urlx = urlx[j+1:]
-
-            url = url[:8] + patx + '@' + urlx
-
-        if url == '':
-            pull_repos = []
-
-            for repo in sorted(self.cmind.repos.lst, key=lambda x: x.meta.get('alias', '')):
-                meta = repo.meta
-
-                if meta.get('git', False):
-                    # Note that internal repo alias may not be the same as the real pulled alias since it can be a fork
-                    # Pick it up from the path
-
-                    repo_path = repo.path
-
-                    pull_repos.append({'alias': os.path.basename(repo_path),
-                                       'path_to_repo': repo_path})
-        else:
-            # Migration has been completed
-            branch = i.get('branch', '')
-            new_branch = i.get('new_branch', '')
-            checkout = i.get('checkout', '')
-            _dir = i.get('dir', '')
-
-            if alias == 'mlcommons@ck' and branch == '' and checkout == '' and _dir == '':
-                print(
-                    '=========================================================================')
-                print(
-                    'Warning: mlcommons@ck was automatically changed to mlcommons@cm4mlops.')
-                print(
-                    'If you want to use older mlcommons@ck repository, use branch or checkout.')
-                print(
-                    '=========================================================================')
-
-                alias = 'mlcommons@cm4mlops'
-                url = url.replace('mlcommons/ck', 'mlcommons/cm4mlops')
-
-            pull_repos = [{'alias': alias,
-                           'url': url,
-                           'branch': branch,
-                           'new_branch': new_branch,
-                           'checkout': checkout,
-                           'dir': _dir,
-                           'depth': i.get('depth', '')}]
-
-        # Go through repositories and pull
-        repo_meta = {}
-        repo_metas = {}
-
-        warnings = []
-
-#        if not self.cmind.xlogger == None:
-#            self.cmind.log(f"x repo log: {pull_repos}", "debug")
-
-        for repo in pull_repos:
-            alias = repo['alias']
-            url = repo.get('url', '')
-            branch = repo.get('branch', '')
-            new_branch = repo.get('new_branch', '')
-            checkout = repo.get('checkout', '')
-            depth = repo.get('depth', '')
-            path_to_repo = repo.get('path_to_repo', None)
-            _dir = repo.get('dir', '')
-
-            if con:
-                print(self.cmind.cfg['line'])
-                print('Alias:      {}'.format(alias))
-                if url != '':
-                    print('URL:        {}'.format(url))
-                if branch != '':
-                    print('Branch:     {}'.format(branch))
-                if new_branch != '':
-                    print('New branch: {}'.format(new_branch))
-                if checkout != '':
-                    print('Checkout:   {}'.format(checkout))
-                if _dir != '':
-                    print('Directory:  {}'.format(_dir))
-                if depth != '' and depth != None:
-                    print('Depth:      {}'.format(str(depth)))
-                print('')
-
-            # Prepare path to repo
-            repos = self.cmind.repos
-
-            r = repos.pull(alias=alias,
-                           url=url,
-                           branch=branch,
-                           new_branch=new_branch,
-                           checkout=checkout,
-                           _dir=_dir,
-                           con=con,
-                           desc=desc,
-                           prefix=prefix,
-                           depth=depth,
-                           path_to_repo=path_to_repo,
-                           checkout_only=checkout_only,
-                           skip_zip_parent_dir=skip_zip_parent_dir,
-                           extra_cmd_git=extra_cmd_git,
-                           extra_cmd_pip=extra_cmd_pip)
-            if r['return'] > 0:
-                return r
-
-            repo_meta = r['meta']
-
-            repo_metas[alias] = repo_meta
-
-            if len(r.get('warnings', [])) > 0:
-                warnings += r['warnings']
-
-        if len(pull_repos) > 0 and self.cmind.use_index:
-            if con:
-                print(self.cmind.cfg['line'])
-
-            ii = {'out': 'con'} if con else {}
-            rx = self.reindex(ii)
-
-        print_warnings(warnings)
-
-        return {'return': 0, 'meta': repo_meta, 'metas': repo_metas}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     def list__(self, params):
@@ -490,6 +297,22 @@ class Category(InitCategory):
         result = self.cm.access(p)
 
         return result
+
+    def delete(self, params):
+        """
+        Delete cMeta repositories
+
+        @base.delete_
+        """
+
+        params_copy = params.copy()
+
+        p = self._prepare_input_from_params(params_copy, base = True)
+
+        result = self.cm.access(p)
+
+        return result
+
 
     def reindex(self, params):
         """

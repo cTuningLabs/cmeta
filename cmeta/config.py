@@ -45,6 +45,7 @@ cfg = {
 
         "repo_local_meta": {
            'artifact':'local,9a3280b14a4285c9',
+           'permanent':True
         },
 
         "category_repo_uid": "f4f792ab40c7498f",
