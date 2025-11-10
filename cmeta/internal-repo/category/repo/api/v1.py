@@ -491,3 +491,23 @@ class Category(InitCategory):
             return {'return':1, 'error':f'Couldn\'t detect repo name in "{url}"'}
 
         return {'return':0, 'alias':alias}
+
+
+    ############################################################
+    def status_(
+            self, 
+            state:                  dict,                       # cMeta state.
+            arg1:                   str | None = None,          # Repo name (alias and/or UID).
+    ):
+
+        """
+        Print status of repositories.
+
+        """
+
+        con = state.get('control',{}).get('con', False)
+
+        input('xyz')
+
+        return {'return':0}
+    
