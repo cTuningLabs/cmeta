@@ -2,6 +2,8 @@
 
 **cMeta – a common meta-framework for unifying and interconnecting code, data, and knowledge.**
 
+[![Test cMeta core](https://github.com/cTuningLabs/cmeta/actions/workflows/test-core.yml/badge.svg)](https://github.com/cTuningLabs/cmeta/actions/workflows/test-core.yml)
+
 ## 🧩 Overview
 
 **cMeta** is a universal, extensible meta-framework designed to connect and manage diverse components of modern computing — including software, datasets, models, and knowledge representations.
