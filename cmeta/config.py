@@ -38,6 +38,7 @@ cfg = {
         "env_cmeta_log_file": "CMETA_LOG_FILE",
         "env_var_cmeta_debug": "CMETA_DEBUG",
         "env_var_internal_repo_path": "CMETA_INTERNAL_REPO_PATH",
+        "env_var_cmeta_verbose": "CMETA_VERBOSE",
         
         "repos_config_filename": "repos.json",
         "repos_dir": "repos",
@@ -80,6 +81,7 @@ params_desc = [
   {'key':'help', 'aliases':['h'], 'type': bool, 'desc': 'Show help' },
   {'key':'version', 'aliases':['v'], 'type': bool, 'desc': 'Show version'},
   {'key':'reindex', 'type': bool, 'desc': 'Reindex all artifacts'},
+  {'key':'verbose', 'aliases':['v'], 'type': bool, 'desc': 'Use verbose output'},
 ]
 
 params_command_desc = [

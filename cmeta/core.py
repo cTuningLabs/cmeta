@@ -238,7 +238,11 @@ class CMeta:
         category_obj = control_params.get('category')
 
         # Check if runs for the first time (there is no repos.json and index)
-        r = self.repos.init(con=con)
+        if 'verbose' not in control_params and config.is_on(os.environ.get(self.cfg['env_var_cmeta_verbose'])):
+            control_params['verbose'] = True
+        verbose = control_params.get('verbose', False)
+
+        r = self.repos.init(con=con, verbose=verbose)
         if r['return'] >0: return r
 
         if category_obj is None:
@@ -256,7 +260,7 @@ class CMeta:
                         print (log_path)
 
             elif control_params.get('reindex', False):
-                r = self.repos.reindex(con=con)
+                r = self.repos.reindex(con=con, verbose=verbose)
                 if r['return']>0: return r
 
             else:

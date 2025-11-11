@@ -75,6 +75,7 @@ class Category(InitCategory):
         """
 
         con = state.get('control',{}).get('con', False)
+        verbose = state.get('control',{}).get('verbose', False)
 
         repos_path = self.cm.repos_path
         repos_config_path = self.cm.repos_config_path
@@ -239,17 +240,21 @@ class Category(InitCategory):
                         r = utils.files.unlock_path(repo_meta_desc_path, file_lock=repo_meta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
                         if r['return']>0: return r
 
-                    # Add to index
-                    p = {'category': state['category'], 
-                         'command': 'create',
-                         'arg1': final_repo_name,
-                         'meta': {'method':method, '_cmr':repo_meta},
-                         'virtual': True,
-                         'path': path,
-                         'con': con}
-
-                    r = self.cm.access(p)
+                    # Reindex
+                    r = self.cm.repos.reindex(con=con, verbose=verbose)
                     if r['return']>0: return r
+
+#                    # Add to index
+#                    p = {'category': state['category'], 
+#                         'command': 'create',
+#                         'arg1': final_repo_name,
+#                         'meta': {'method':method, '_cmr':repo_meta},
+#                         'virtual': True,
+#                         'path': path,
+#                         'con': con}
+#
+#                    r = self.cm.access(p)
+#                    if r['return']>0: return r
 
 
             else:
@@ -314,28 +319,14 @@ class Category(InitCategory):
         return result
 
 
-    def reindex(self, params):
+    def move(self, params):
         """
-        ReIndex repos
+        Move cMeta repositories - not supported
 
-        @base.index_
-        """
-
-        p = self._prepare_input_from_params(params)
-
-        p['command'] = 'index'
-        p['clean'] = True
-
-        return self.cm.access(p)
-
-    def index_(self, state, arg1=None, clean=False):
-        """
-        Index repos
+        @base.delete_
         """
 
-        con = state['control'].get('con', False)
-
-        return self.cm.repos.reindex(con=con)
+        return {'return':1, 'error':'moving/renaming repositories is not supported'}
 
 
     def get_alias_from_url_(self, state, arg1):
@@ -377,7 +368,6 @@ class Category(InitCategory):
         return {'return':0, 'alias':alias}
 
 
-    ############################################################
     def status_(
             self, 
             state:                  dict,                       # cMeta state.
