@@ -444,11 +444,14 @@ class Repos:
 
         conx = True if verbose else False
 
-        if con:
+        if conx:
             print ('='*40)
-            print ('Reindexing all repos - it can take some time ...')
+        if con and not conx:
             print ('')
-
+        if con:
+            print ('Reindexing all repos - it can take some time ...')
+        if conx:
+            print ('')
             print (f'Index path:     {index_path}')
 
 
@@ -469,7 +472,7 @@ class Repos:
 
         existing_internal_repo_path = None
 
-        if con:
+        if conx:
             print (f'Repo file path: {repos_config_path}')
 
 
@@ -939,15 +942,16 @@ class Repos:
                 if r['return']>0: return r
                 
         
-        if con:
-            time_end = time.time()
-            elapsed = time_end - time_start
+        time_end = time.time()
+        elapsed = time_end - time_start
+
+        if conx:
             print ('')
             print (f'Indexing time: {elapsed:.2f} sec.')
             print (f'Found artifacts: {artifact_num}')
             print ('='*40)
 
-        r = {'return':0}
+        r = {'return':0, 'elapsed_time':elapsed}
         return r
 
 

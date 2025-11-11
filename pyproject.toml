@@ -37,7 +37,15 @@ dependencies = [
 dev = [
     "pytest>=6.0",
     "pytest-cov",
+    "flake8",
 ]
+
+async = [
+    "asyncio",
+]
+
+all = ["cmeta[dev,async]"]
+
 
 [project.scripts]
 cmeta = "cmeta.cli:main_cmeta"

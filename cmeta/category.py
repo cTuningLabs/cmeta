@@ -81,9 +81,11 @@ class InitCategory:
         """
         """
 
+        import copy
+
         state = params['state']
 
-        p = params.copy()
+        p = copy.deepcopy(params)
 
         p['category'] = state['category']
         p['command'] = state['command']

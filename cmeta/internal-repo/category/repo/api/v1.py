@@ -1,4 +1,4 @@
-"""
+"""                d
 CMeta repo functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
@@ -161,12 +161,6 @@ class Category(InitCategory):
                 else:
                     method = 'git'
 
-            print (method)
-            print (repo_alias)
-            print (url)
-            print (path)
-
-
             # Check what to do depending on whether the path exists or not
             if not os.path.isdir(path):
                 if method == 'git':
@@ -293,7 +287,6 @@ class Category(InitCategory):
         @base.find_
         """
 
-
         params_copy = params.copy()
         params_copy['sort'] = False
 
@@ -310,11 +303,51 @@ class Category(InitCategory):
         @base.delete_
         """
 
-        params_copy = params.copy()
+        state = params['state']
+        con = state.get('control',{}).get('con', False)
+        verbose = state.get('control',{}).get('verbose', False)
 
-        p = self._prepare_input_from_params(params_copy, base = True)
+        # Check if some repos exists
+        p = self._prepare_input_from_state(state, base = True)
+
+        p['command'] = 'find'
+        p['con'] = False
+
+        if 'arg1' in params:
+            p['arg1'] = params['arg1']
+
+        r = self.cm.access(p)
+        if r['return']>0: return r
+
+        # Attempt to delete allowed ones
+        p = self._prepare_input_from_params(params, base = True)
 
         result = self.cm.access(p)
+        if result['return']>0: return result
+
+        deleted_artifacts = result.get('deleted_artifacts', [])
+
+        if len(deleted_artifacts)>0:
+            # Delete from the list of repos
+            repos_config_path = self.cm.repos_config_path
+
+            r = utils.files.safe_read_file(repos_config_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
+            if r['return']>0: return r
+
+            repos_paths = r['data']
+            repos_paths_file_lock = r['file_lock']
+            
+            for deleted_artifact in deleted_artifacts:
+                path = deleted_artifact['path']
+                if path in repos_paths:
+                    repos_paths.remove(path)
+
+            r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+            if r['return']>0: return r
+
+            # Reindex
+            r = self.cm.repos.reindex(con=con, verbose=verbose)
+            if r['return']>0: return r
 
         return result
 
