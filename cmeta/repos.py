@@ -446,8 +446,6 @@ class Repos:
 
         if conx:
             print ('='*40)
-        if con and not conx:
-            print ('')
         if con:
             print ('Reindexing all repos - it can take some time ...')
         if conx:
