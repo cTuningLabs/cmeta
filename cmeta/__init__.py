@@ -1,5 +1,5 @@
 """
-cMeta – a common meta-framework for unifying and interconnecting code, data, and knowledge.
+cMeta – a Common Meta Framework for unifying and interconnecting code, data, and knowledge.
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 

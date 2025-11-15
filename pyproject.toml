@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cmeta"
 dynamic = ["version"]
-description = "Common Meta"
+description = "Common Meta Framework (cMeta)"
 readme = "README.md"
 requires-python = ">=3.10"
 license-files = ["LICENSE", "COPYRIGHT"]

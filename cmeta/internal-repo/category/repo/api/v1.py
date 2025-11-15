@@ -1,4 +1,4 @@
-"""                d
+"""
 CMeta repo functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
@@ -20,25 +20,25 @@ class Category(InitCategory):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
-
-
     ############################################################
     def get_(
             self, 
             state:                  dict,                       # cMeta state.
             arg1:                   str | None = None,          # Repo name (alias and/or UID).
-            url:                    str | None = None,
-            path:                   str | None = None,
+            url:                    str | None = None,          # Repo URL (optional)
+            path:                   str | None = None,          # Repo path (optional. $HOME/CMETA/{repo alias} by default)
             folder:                 str | None = None,          # Force this folder to store repository
-            method:                 str | None = None,          # Method (git, zip) - will be detected automatically if not specified
+            method:                 str | None = None,          # Method (git, zip, local) - will be detected automatically if not specified
+            local:                  bool = False,               # If True, set method to 'local'
             meta:                   dict | None = None,         # Repo meta data 
+            update:                 bool = False,               # Force update git repos
+            status:                 bool = False,               # Check status of git repos
+            checkout:               str | None = None,          # git checkout to this branch or commit
 
-            desc:                   str | None = None,
-            prefix:                 str | None = None,
-            pat:                    str | None = None,
-            extra_cmd_git:          str | None = None,
-            extra_cmd_pip:          str | None = None,
-            checkout_only:          bool = False,
+            pre:                    str = '',
+            post:                   str = '',
+            skip_clone_print:       bool = False,               # skip clone command print (if PAT/secret is present) 
+
             skip_parent_dir_in_zip: bool = False,
     ):
         """
@@ -117,13 +117,99 @@ class Category(InitCategory):
             repo_artifacts = r.get('artifacts',[])
 
         if len(repo_artifacts)>0:
-            # If some repos are already registered
+            # If some rep   os are already registered
             # try to update them (pull/checkout/branch if git)
+
+            r = utils.files.safe_read_file(repos_config_path, lock=False, fail_on_error=self.fail_on_error, logger=self.logger)
+            if r['return']>0: return r
+
+            repos_paths = r['data']
+
+            reindex = False
+
             for repo in repo_artifacts:
-                print (repo['path'])
-            
+                repo_path = repo['path']
+                repo_meta = repo['cmeta']
+
+                repo_cmeta_ref_parts = repo['cmeta_ref_parts']
+                repo_alias = repo_cmeta_ref_parts.get('artifact_alias')
+                repo_uid= repo_cmeta_ref_parts['artifact_uid']
+
+                xmethod = repo_meta.get('method')
+
+                if repo_path not in repos_paths:
+                    caller = state.get('origin',{}).get('cli',{}).get('caller','')
+                    return {'return':1, 'error':f'File {repos_config_path} may be corrupted - it doesn\'t contain {repo_path}! Try "{caller} --reindex"'}
+
+                if os.path.isdir(repo_path):
+                    if con:
+                        print ('='*80)
+                        print (f'{repo_alias} ({repo_uid}): {repo_path}')
+
+                    if xmethod == 'git':
+
+                        if status:
+                            print ('')
+                            print ('Checking repository status ...')
+
+                            cmds = ['git remote get-url origin', 'git status']
+
+                            for cmd in cmds:
+
+                                r = utils.sys.run(cmd, work_dir=repo_path, con=con, verbose=True)
+                                if r['return']>0: return r
+
+                                rc = r['returncode']
+                                if rc != 0:
+                                    return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
 
 
+                        else:
+                            if checkout is not None and checkout != '':
+                                cmd = f'git checkout {checkout}'
+
+                                if con:
+                                    print ('')
+                                    print (f'Check out repository in {repo_path}:')
+
+                                r = utils.sys.run(cmd, work_dir=repo_path, con=con)
+                                if r['return']>0: return r
+
+                                rc = r['returncode']
+                                if rc != 0:
+                                    return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+
+                            else:
+                                print ('')
+                                print ('Updating git repository ...')
+
+                                cmd = 'git pull'
+
+                                r = utils.sys.run(cmd, work_dir=repo_path, con=con)
+                                if r['return']>0: return r
+
+                                rc = r['returncode']
+                                if rc != 0:
+                                    print (f'Warning: system command {cmd}" failed with exit code {rc}')
+#                                    return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+
+
+                            reindex= True
+
+            if reindex:
+                # Reindex
+                if con:
+                    print('*'*80)
+                r = self.cm.repos.reindex(con=con, verbose=verbose)
+                if r['return']>0: return r
+
+
+
+        elif update or status:
+            if conx:
+                print ('No repositories found ...')
+
+            return {'return':0}
         else:
             # It's a new repo
             if path is None or path == '':
@@ -164,15 +250,40 @@ class Category(InitCategory):
             # Check what to do depending on whether the path exists or not
             if not os.path.isdir(path):
                 if method == 'git':
-                    cmd = f'git clone "{url}" "{path}"'
+                    xpre = '' if pre == '' else ' ' + pre
+                    xpost = '' if post == '' else ' ' + post
+
+                    cmd = f'git clone{xpre} "{url}" "{path}"{xpost}'
+
                     if con:
                         print ('')
-                        print ('cd ' + os.getcwd())
-                        print (cmd)
-                        print ('')
-                    ec = os.system(cmd)
-                    if ec != 0:
-                        return {'return':1, 'error':f'"System command {cmd}" failed with exit code {ec}'}
+                        print (f'Cloning repository in {path}:')
+
+                    r = utils.sys.run(cmd, con=con)
+                    if r['return']>0: return r
+
+                    rc = r['returncode']
+                    if rc != 0:
+                        return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+
+                    if checkout is not None and checkout != '':
+                        cmd = f'git checkout {checkout}'
+
+                        if con:
+                            print ('')
+                            print (f'Check out repository in {path}:')
+
+
+
+#skip_clone_print
+
+                        r = utils.sys.run(cmd, work_dir=path, con=con)
+                        if r['return']>0: return r
+
+                        rc = r['returncode']
+                        if rc != 0:
+                            return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+                    
 
 
                 # Check if repository was created
@@ -185,9 +296,12 @@ class Category(InitCategory):
                     repos_paths_file_lock = r['file_lock']
                     
                     if path not in repos_paths:
-                        repos_paths.append(path)
+                        repos_paths[path] = {'meta':{'method':method}}
+                        # I decided not to add params to avoid exposing sensitite info such as PAT in URL, 'params':state['origin']['params']}}
 
-                    r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+                    # Do not sort keys - preserve order!
+                    r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, 
+                                                    fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
                     if r['return']>0: return r
 
                     # Try to read _cmr.yaml or create it (if already exists, to get correct artifact name and UID)
@@ -235,6 +349,8 @@ class Category(InitCategory):
                         if r['return']>0: return r
 
                     # Reindex
+                    if con:
+                        print('')
                     r = self.cm.repos.reindex(con=con, verbose=verbose)
                     if r['return']>0: return r
 
@@ -253,11 +369,10 @@ class Category(InitCategory):
 
             else:
                 if method == 'git':
-                    os.chdir(path)
-                    cmd = f'git pull'
-                    c = os.system(cmd)
-                    print (c)
-                    os.chdir(cur_dir)
+                    return {'return':1, 'error':f'directory {path} already exists'}
+
+
+
 
 
 
@@ -271,14 +386,25 @@ class Category(InitCategory):
         @base.list_
         """
 
-        params_copy = params.copy()
-        params_copy['sort'] = False
+        # p will be deep copied from params
+        p = self._prepare_input_from_params(params, base = True)
 
-        p = self._prepare_input_from_params(params_copy, base = True)
+        p['sort'] = False
 
         result = self.cm.access(p)
 
         return result
+
+
+    def update__(self, params):
+        """
+        Update cMeta Git repositories
+
+        @self.get_
+        """
+
+        return self.get_(**params, update=True)
+
 
     def find(self, params):
         """
@@ -287,10 +413,10 @@ class Category(InitCategory):
         @base.find_
         """
 
-        params_copy = params.copy()
-        params_copy['sort'] = False
+        # p will be deep copied from params
+        p = self._prepare_input_from_params(params, base = True)
 
-        p = self._prepare_input_from_params(params_copy, base = True)
+        p['sort'] = False
 
         result = self.cm.access(p)
 
@@ -340,12 +466,16 @@ class Category(InitCategory):
             for deleted_artifact in deleted_artifacts:
                 path = deleted_artifact['path']
                 if path in repos_paths:
-                    repos_paths.remove(path)
+                    del(repos_paths[path])
 
-            r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+            # Do not sort keys - preserve order
+            r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, 
+                                            fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
             if r['return']>0: return r
 
             # Reindex
+            if con:
+                print('')
             r = self.cm.repos.reindex(con=con, verbose=verbose)
             if r['return']>0: return r
 
@@ -355,8 +485,6 @@ class Category(InitCategory):
     def move(self, params):
         """
         Move cMeta repositories - not supported
-
-        @base.delete_
         """
 
         return {'return':1, 'error':'moving/renaming repositories is not supported'}
@@ -401,19 +529,30 @@ class Category(InitCategory):
         return {'return':0, 'alias':alias}
 
 
-    def status_(
-            self, 
-            state:                  dict,                       # cMeta state.
-            arg1:                   str | None = None,          # Repo name (alias and/or UID).
-    ):
-
+    def status(self, params):
         """
-        Print status of repositories.
+        Update cMeta Git repositories
 
+        @self.get_
         """
 
-        con = state.get('control',{}).get('con', False)
+        return self.get_(**params, status=True)
 
+    def pull(self, params):
+        """
+        Get cMeta Git repositories
 
-        return {'return':0}
+        @self.get_
+        """
+
+        return self.get_(**params, update=True)
+
+    def clone(self, params):
+        """
+        Clone cMeta Git repositories
+
+        @self.get_
+        """
+
+        return self.get_(**params, method='git')
     

@@ -77,7 +77,7 @@ class InitCategory:
 
             self.logger.debug(f"Initializing {extra_text}category class from: {caller_frame.filename}:{caller_frame.lineno}")
 
-    def _prepare_input_from_params(self, params, base=False):
+    def _prepare_input_from_params(self, params, extra={}, base=False):
         """
         """
 
@@ -86,6 +86,8 @@ class InitCategory:
         state = params['state']
 
         p = copy.deepcopy(params)
+
+        p.update(extra)
 
         p['category'] = state['category']
         p['command'] = state['command']

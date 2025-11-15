@@ -86,7 +86,7 @@ def process(cmd):
 
     # If positional arguments are not present, check first level params
     if len(args) == 0 and (params.get('help', False) or params.get('h', False) or len(params)==0):
-        print ('Common Meta System Usage:')
+        print ('Common Meta Framework Usage:')
         print('')
         print(f'   {caller} [<category>] [<command>] [<args>] [<flags>]')
         print(f'   {caller} category list')
@@ -100,7 +100,7 @@ def process(cmd):
         if r['return'] >0: return r
         print (r['params_info'])
 
-        print ('Global initalization flags for the system:')
+        print ('Global initalization flags for the framework:')
         r = utils.print_params_help(cli_init_params_desc)
         if r['return'] >0: return r
         print (r['params_info'])

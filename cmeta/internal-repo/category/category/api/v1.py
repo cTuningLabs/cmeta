@@ -26,18 +26,16 @@ class Category(InitCategory):
         @base.create_
         """
 
-        params_copy = params.copy()
-
-        if 'yaml' not in params_copy:
-            params_copy['yaml'] = True
-
         con = params.get('state',{}).get('control',{}).get('con', False)
 
-        meta = params_copy.setdefault('meta', {})
-            
+        # Will create deep copy of params
+        p = self._prepare_input_from_params(params, base = True)
+
+        meta = p.setdefault('meta', {})
         if 'default_api_version' not in meta: meta['default_api_version']=1
 
-        p = self._prepare_input_from_params(params_copy, base = True)
+        if 'yaml' not in p:
+            p['yaml'] = True
 
         result = self.cm.access(p)
         if result['return']>0: return result
@@ -72,8 +70,6 @@ class Category(InitCategory):
         @base.move_
         """
 
-        params_copy = params.copy()
-
         con = params.get('state',{}).get('control',{}).get('con', False)
 
         # Check that move and not rename!
@@ -98,7 +94,9 @@ class Category(InitCategory):
         if arg1_alias is not None and arg2_alias is not None and arg1_alias != arg2_alias:
             return {'return':1, 'error':'renaming a category is not allowed for backward compatibility reasons. Please create a new category instead.'}
 
+        # p will be deep copied from params
         p = self._prepare_input_from_params(params, base = True)
+
         result = self.cm.access(p)
 
         return result

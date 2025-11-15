@@ -1,0 +1,5 @@
+﻿cmeta (0.1.0)
+
+  * Removed explicit UID ordering from the index. 
+    Dictionary key insertion order (Python 3.10+) 
+    now defines the ordering.

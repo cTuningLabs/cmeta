@@ -58,7 +58,6 @@ class Repos:
 
         self.KEY_INDEX_UIDS = 'uids'
         self.KEY_INDEX_LOWERCASE_ALIASES = 'lowercase_aliases'
-        self.KEY_INDEX_ORDERED_UIDS = 'ordered_uids'
 
     ###################################################################################################
     def init(self, con=False, verbose=False):
@@ -95,17 +94,19 @@ class Repos:
         if not os.path.isfile(self.repos_config_path):
             trigger_reindex = True
 
-            repos_paths = []
+            # Need ordered dict (Python >= 3.7)
+            repos_paths = {}
 
             # First local
-            repos_paths.append(home_path_local)
+            repos_paths[home_path_local]={}
 
             # Then internal repo
             this_module_path = os.path.dirname(os.path.abspath(__file__))
             internal_repo_path = os.path.join(this_module_path, 'internal-repo')
-            repos_paths.append(internal_repo_path)
+            repos_paths[internal_repo_path]={}
 
-            r = utils.files.safe_write_file(self.repos_config_path, repos_paths, fail_on_error=self.fail_on_error, logger=self.logger)
+            # Do not sort keys!
+            r = utils.files.safe_write_file(self.repos_config_path, repos_paths, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
             if r['return']>0: return r
 
         if trigger_reindex or not os.path.isdir(self.index_path):
@@ -140,7 +141,7 @@ class Repos:
         uids = index_data.setdefault(self.KEY_INDEX_UIDS, {})
         lowercase_aliases = index_data.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
 
-        # If need to delete the original one before adding the new/updated one
+        # If needed, delete the original one before adding the new/updated one
         if original_alias is not None:
             lowercase_artifact_alias = original_alias.lower()
             lowercase_alias_uids = lowercase_aliases.get(lowercase_artifact_alias, [])
@@ -166,12 +167,8 @@ class Repos:
                 lowercase_alias_uids.append(artifact_uid)
                 lowercase_aliases[lowercase_artifact_alias] = lowercase_alias_uids
 
-        # Check if need different/other/better sorting (by repo, etc)
-        if self.KEY_INDEX_ORDERED_UIDS in index_data and artifact_uid not in index_data[self.KEY_INDEX_ORDERED_UIDS]:
-            index_data[self.KEY_INDEX_ORDERED_UIDS].append(artifact_uid)
-
         # Use atomic write to avoid corrupting large index files
-        r = utils.files.safe_write_file(index_file, index_data, file_lock=index_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+        r = utils.files.safe_write_file(index_file, index_data, file_lock=index_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
         if r['return']>0: return r
 
 #        r = utils.files.safe_write_file(os.path.splitext(index_file)[0] + ".json", index_data, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
@@ -207,9 +204,6 @@ class Repos:
 
         if artifact_uid in uids:
             del(uids[artifact_uid])
-
-        if self.KEY_INDEX_ORDERED_UIDS in index_data and artifact_uid in index_data[self.KEY_INDEX_ORDERED_UIDS]:
-            index_data[self.KEY_INDEX_ORDERED_UIDS].remove(artifact_uid)
 
         r = utils.files.safe_write_file(index_file, index_data, file_lock=index_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
         if r['return']>0: return r
@@ -249,10 +243,7 @@ class Repos:
         elif artifact_alias is not None and artifact_alias != "":
             lowercase_artifact_alias = artifact_alias.lower()
             if '*' in artifact_alias or '?' in artifact_alias:
-                if self.KEY_INDEX_ORDERED_UIDS in index and len(index[self.KEY_INDEX_ORDERED_UIDS])>0:
-                    check_artifact_uids = index[self.KEY_INDEX_ORDERED_UIDS]
-                else:
-                    check_artifact_uids = list(index.get(self.KEY_INDEX_UIDS, {}).keys())
+                check_artifact_uids = list(index.get(self.KEY_INDEX_UIDS, {}).keys())
 
                 for artifact_uid in check_artifact_uids:
                     if artifact_uid not in index[self.KEY_INDEX_UIDS]:
@@ -277,10 +268,7 @@ class Repos:
                 artifact_uids.extend(index[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_artifact_alias])
 
         else:
-            if self.KEY_INDEX_ORDERED_UIDS in index and len(index[self.KEY_INDEX_ORDERED_UIDS])>0:
-                artifact_uids = index[self.KEY_INDEX_ORDERED_UIDS]
-            else:
-                artifact_uids = list(index.get(self.KEY_INDEX_UIDS, {}).keys())
+            artifact_uids = list(index.get(self.KEY_INDEX_UIDS, {}).keys())
 
         result = {'return':0, 'index_file': index_file, 'index': index}
 
@@ -453,8 +441,9 @@ class Repos:
             print (f'Index path:     {index_path}')
 
 
+        ######################################################################################################################
         # Recreating all repos
-        index_repos = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_ORDERED_UIDS:[], self.KEY_INDEX_LOWERCASE_ALIASES:{}}
+        index_repos = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
         repos_meta = {}
         repo_uids_to_use = []
         repos_config_path = self.repos_config_path
@@ -474,12 +463,10 @@ class Repos:
             print (f'Repo file path: {repos_config_path}')
 
 
-
-
         r = utils.files.safe_read_file(repos_config_path, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
         if r['return']>0: return r 
 
-        paths_to_repos = []
+        paths_to_repos = {}
         original_paths_to_repos = r['data']
 
         to_update = False
@@ -488,6 +475,8 @@ class Repos:
             if path.endswith('internal-repo') and os.path.normpath(path) != this_internal_repo_path:
                 path = this_internal_repo_path
                 to_update = True
+
+            extra_meta = original_paths_to_repos[path].get('meta',{})
 
             path_to_repo_desc = os.path.join(path, self.cfg['repo_meta_desc'])
 
@@ -498,12 +487,16 @@ class Repos:
                 if r['return']==0: 
                     repo_meta = r['data']
 
+                    if len(extra_meta)>0:
+                        repo_meta.update(extra_meta)
+
                     repos_meta[path] = repo_meta
 
-                    paths_to_repos.append(path)
+                    paths_to_repos[path] = {}
 
         if to_update:
-            r = utils.files.safe_write_file(repos_config_path, paths_to_repos, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+            # Do not sort keys - preserve order!
+            r = utils.files.safe_write_file(repos_config_path, paths_to_repos, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
             if r['return']>0: return r
 
         if len(paths_to_repos) == 0:
@@ -514,7 +507,8 @@ class Repos:
             print ('Indexing repositories ...')
             print ('')
 
-        for path in paths_to_repos:
+        ######################################################################################################################
+        for path in paths_to_repos.keys():
             repo_meta = repos_meta[path]
 
             path_with_prefix = _get_path_with_prefix(path, repo_meta)
@@ -551,8 +545,6 @@ class Repos:
 
             index_repos[self.KEY_INDEX_LOWERCASE_ALIASES][alias] = [uid]
 
-            index_repos[self.KEY_INDEX_ORDERED_UIDS].append(uid)
-
             entry = {'path': path}
 
             cmeta_ref_parts = {'category_alias':'repo', 'category_uid':self.cfg['category_repo_uid'], 'artifact_alias':alias, 'artifact_uid':uid}
@@ -574,18 +566,18 @@ class Repos:
 
             index_repos[self.KEY_INDEX_UIDS][uid] = entry
 
-
         index_repo_file = os.path.join(index_path, 'repo' + self.index_extension)
         if conx:
             print('')
             print(f'  Recording repo index file: {index_repo_file}')
 
         # Use atomic write to avoid corrupting large index files
-        r = utils.files.safe_write_file(index_repo_file, index_repos, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+        r = utils.files.safe_write_file(index_repo_file, index_repos, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
         if r['return']>0: return r
-
+    
+        ######################################################################################################################
         # Indexing categories
-        index_categories = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_ORDERED_UIDS:[], self.KEY_INDEX_LOWERCASE_ALIASES:{}}
+        index_categories = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
 
         if conx:
             print ('')
@@ -652,6 +644,8 @@ class Repos:
                             if r['return']>0: return r
 
                     if category_meta:
+                        category_path = os.path.join(category_path_with_prefix, category)
+
                         categories.append({'category':category, 'meta':category_meta})
 
                         category_name = category_meta['artifact']
@@ -684,7 +678,13 @@ class Repos:
                             index_categories[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_alias] = uids
 
                             if len(uids)>1:
-                                print (f'      Warning: AMBIGUITY for category "{alias}": more than 1 UID found !')
+                                print (f'      Warning: AMBIGUITY for category "{alias}": more than 1 UID found in paths:')
+                                for uid in uids:
+                                     if uid in index_categories[self.KEY_INDEX_UIDS]:
+                                         print ('               * ' + index_categories[self.KEY_INDEX_UIDS][uid]['path'])
+                                print ('               * ' + category_path)
+                                if con:
+                                    input ('               Fix it or press Enter to continue!')
 
                             cmeta_ref_parts['artifact_alias'] = alias
                             if alias != alias.lower():
@@ -704,9 +704,7 @@ class Repos:
                         if repo_uid is not None and repo_uid != '':
                             cmeta_ref_parts['repo_uid'] = repo_uid
 
-                        index_categories[self.KEY_INDEX_ORDERED_UIDS].append(uid)
-
-                        entry = {'path': os.path.join(category_path_with_prefix, category)}
+                        entry = {'path': category_path}
 
                         entry['cmeta_ref_parts'] = cmeta_ref_parts
 
@@ -721,7 +719,7 @@ class Repos:
                 print(f'  Recording category index file: {index_category_file}')
 
             # Use atomic write to avoid corrupting large index files
-            r = utils.files.safe_write_file(index_category_file, index_categories, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+            r = utils.files.safe_write_file(index_category_file, index_categories, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
             if r['return']>0: return r
 
 
@@ -893,7 +891,8 @@ class Repos:
 
                             if uid in uids:
                                 xpath = uids[uid]['path']
-                                return {'return':1, 'error': f'ambiguity -  artifact "{category_alias}" with the same "{uid}" and path "{xpath} " alredy exists in the index - please fix it!'}
+                                if xpath != path_to_artifact:
+                                    return {'return':1, 'error': f'ambiguity -  artifact "{artifact}" with the same UID "{uid}" and path "{path_to_artifact}" alredy exists in the index in path "{xpath}"- please fix it!'}
 
                             else:
                                 entry = {'path':path_to_artifact, 'cmeta':artifact_meta}

@@ -134,7 +134,7 @@ class Category(InitCategory):
 
 
     ############################################################
-    def json2yaml_(self, state, arg1, arg2=None, force=False, f=False):
+    def json2yaml_(self, state, arg1, arg2=None, force=False, f=False, sort_keys=False):
         """
         Copy text to clipboard and add quotes if needed
         Args:
@@ -159,14 +159,14 @@ class Category(InitCategory):
         if os.path.isfile(arg2) and not (force or f):
             return {'return':1, 'error':f'Output file already exists (use --force or --f option to overwrite): {arg2}'} 
 
-        r = self.cm.utils.files.safe_write_file(arg2, data)
+        r = self.cm.utils.files.safe_write_file(arg2, data, sort_keys=sort_keys)
         if r['return'] > 0: return r
 
         return {'return':0}
 
 
     ############################################################
-    def yaml2json_(self, state, arg1, arg2=None, force=False, f=False):
+    def yaml2json_(self, state, arg1, arg2=None, force=False, f=False, sort_keys=False):
         """
         Convert YAML file to JSON file
         Args:
@@ -191,14 +191,23 @@ class Category(InitCategory):
         if os.path.isfile(arg2) and not (force or f):
             return {'return':1, 'error':f'Output file already exists (use --force or --f option to overwrite): {arg2}'} 
 
-        r = self.cm.utils.files.safe_write_file(arg2, data)
+        r = self.cm.utils.files.safe_write_file(arg2, data, sort_keys=sorty_keys)
         if r['return'] > 0: return r
 
         return {'return':0}
 
 
     ############################################################
-    def pickle2json_(self, state, arg1, arg2=None):
+    def pkl2json(self, params):
+        """
+        @self.pickle2json_
+        """
+
+        return self.pickle2json_(**params)
+
+
+    ############################################################
+    def pickle2json_(self, state, arg1, arg2=None, sort_keys=False):
         """
         Change date and time in files
         Args:
@@ -231,7 +240,7 @@ class Category(InitCategory):
         # Save to json file
         try:
             with open(arg2, 'w') as f:
-                json.dump(data, f, sort_keys=True, indent=2)
+                json.dump(data, f, sort_keys=sort_keys, indent=2)
                 f.write('\n')
         except Exception as e:
             return {'return':1, 'error':f'Failed to save JSON file: {e}'}
