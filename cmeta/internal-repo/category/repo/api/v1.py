@@ -211,17 +211,20 @@ class Category(InitCategory):
         ######################################################################################################################
         else:
             # It's a new repo
+            if repo_name is not None and repo_name != '':
+                # Spread into alias and UID
+                r = utils.names.parse_cmeta_name(repo_name)
+                if r['return']>0: return r
+
+                repo_alias = r.get('name',{}).get('alias')
+                repo_uid = r.get('name',{}).get('uid')
+
+
+
             if path is None or path == '':
                 # Need to figure out path
 
                 if repo_name is not None and repo_name != '':
-                    # Spread into alias and UID
-                    r = utils.names.parse_cmeta_name(repo_name)
-                    if r['return']>0: return r
-
-                    repo_alias = r.get('name',{}).get('alias')
-                    repo_uid = r.get('name',{}).get('uid')
-
                     if method != 'local':
                         if url is None or url == '':
                             if '@' not in repo_alias:
@@ -337,6 +340,8 @@ class Category(InitCategory):
                     if r['return']>0: return r
                     repo_meta['category'] = r['name']
                     repo_updated = True
+
+                print (repo_alias)
 
                 final_repo_name = repo_meta.get('artifact')
                 if final_repo_name is None or final_repo_name == '':

@@ -9,7 +9,10 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
     """
     """
-    if fail_on_error:
+
+    # Return code 16 is a special one - it's more a warning to handle files that are not found
+    # but it's not critical for the system
+    if return_code != 16 and fail_on_error:
         if exception:
             raise exception
         else:
