@@ -37,7 +37,7 @@ class Category(InitCategory):
 
             pre:                    str = '',
             post:                   str = '',
-            skip_clone_print:       bool = False,               # skip clone command print (if PAT/secret is present) 
+            hide:                   bool = False,               # hide git clone command print (if PAT/secret is present) 
 
             skip_parent_dir_in_zip: bool = False,
     ):
@@ -96,11 +96,17 @@ class Category(InitCategory):
             else:
                 url = arg1
 
+        if local:
+            method = 'local'
+
         # Search for an artifact
         repo_artifacts = []
 
         search = False
 
+        reindex = False
+
+        ######################################################################################################################
         if (repo_name is not None and repo_name != '') or (path is None and url is None):
             # Call base find function to find an artifact with a website
             p = {'category':state['category'], 
@@ -116,6 +122,7 @@ class Category(InitCategory):
 
             repo_artifacts = r.get('artifacts',[])
 
+        ######################################################################################################################
         if len(repo_artifacts)>0:
             # If some rep   os are already registered
             # try to update them (pull/checkout/branch if git)
@@ -124,8 +131,6 @@ class Category(InitCategory):
             if r['return']>0: return r
 
             repos_paths = r['data']
-
-            reindex = False
 
             for repo in repo_artifacts:
                 repo_path = repo['path']
@@ -170,7 +175,7 @@ class Category(InitCategory):
 
                                 if con:
                                     print ('')
-                                    print (f'Check out repository in {repo_path}:')
+                                    print (f'Checking out repository in {repo_path} ...')
 
                                 r = utils.sys.run(cmd, work_dir=repo_path, con=con)
                                 if r['return']>0: return r
@@ -196,20 +201,14 @@ class Category(InitCategory):
 
                             reindex= True
 
-            if reindex:
-                # Reindex
-                if con:
-                    print('*'*80)
-                r = self.cm.repos.reindex(con=con, verbose=verbose)
-                if r['return']>0: return r
-
-
-
+        ######################################################################################################################
         elif update or status:
-            if conx:
+            if con:
                 print ('No repositories found ...')
 
             return {'return':0}
+
+        ######################################################################################################################
         else:
             # It's a new repo
             if path is None or path == '':
@@ -223,11 +222,12 @@ class Category(InitCategory):
                     repo_alias = r.get('name',{}).get('alias')
                     repo_uid = r.get('name',{}).get('uid')
 
-                    if url is None or url == '':
-                        if '@' not in repo_alias:
-                            repo_alias = self.cm.cfg['default_git_repo'] + '@' + repo_alias
+                    if method != 'local':
+                        if url is None or url == '':
+                            if '@' not in repo_alias:
+                                repo_alias = self.cm.cfg['default_git_repo'] + '@' + repo_alias
 
-                        url = self.cm.cfg['default_git'] + '/' + repo_alias.replace('@','/')
+                            url = self.cm.cfg['default_git'] + '/' + repo_alias.replace('@','/')
 
                     folder = repo_alias if repo_alias is not None else repo_uid
 
@@ -247,7 +247,13 @@ class Category(InitCategory):
                 else:
                     method = 'git'
 
+
+            ######################################################################################################################
             # Check what to do depending on whether the path exists or not
+            if os.path.isdir(path):
+                if method != 'local':
+                    return {'return':1, 'error':f'directory {path} already exists'}
+
             if not os.path.isdir(path):
                 if method == 'git':
                     xpre = '' if pre == '' else ' ' + pre
@@ -257,9 +263,10 @@ class Category(InitCategory):
 
                     if con:
                         print ('')
-                        print (f'Cloning repository in {path}:')
+                        print (f'Cloning repository in {path} ...')
 
-                    r = utils.sys.run(cmd, con=con)
+                    xcon = False if hide else con
+                    r = utils.sys.run(cmd, con=xcon)
                     if r['return']>0: return r
 
                     rc = r['returncode']
@@ -271,11 +278,7 @@ class Category(InitCategory):
 
                         if con:
                             print ('')
-                            print (f'Check out repository in {path}:')
-
-
-
-#skip_clone_print
+                            print (f'Checking out repository in {path} ...')
 
                         r = utils.sys.run(cmd, work_dir=path, con=con)
                         if r['return']>0: return r
@@ -286,73 +289,111 @@ class Category(InitCategory):
                     
 
 
-                # Check if repository was created
-                if os.path.isdir(path):
-                    # Append to the list of repos
-                    r = utils.files.safe_read_file(repos_config_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
-                    if r['return']>0: return r
 
-                    repos_paths = r['data']
-                    repos_paths_file_lock = r['file_lock']
-                    
-                    if path not in repos_paths:
-                        repos_paths[path] = {'meta':{'method':method}}
-                        # I decided not to add params to avoid exposing sensitite info such as PAT in URL, 'params':state['origin']['params']}}
+                elif method == 'zip':
+                    return {'return':1, 'error':'TBD: support cMeta zip repo download'}
 
-                    # Do not sort keys - preserve order!
-                    r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, 
-                                                    fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
-                    if r['return']>0: return r
 
-                    # Try to read _cmr.yaml or create it (if already exists, to get correct artifact name and UID)
-                    repo_meta_desc_path = os.path.join(path, self.cm.cfg['repo_meta_desc'])
 
-                    repo_meta = {}
-                    repo_meta_file_lock = None
-                    repo_updated = False
 
-                    if os.path.isfile(repo_meta_desc_path):
-                        r = utils.files.safe_read_file(repo_meta_desc_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
-                        if r['return']>0: return r
 
-                        repo_meta = r['data']
-                        repo_meta_file_lock = r['file_lock']
-
-                    if meta is not None and len(meta)>0:
-                        repo_meta = utils.common.deep_merge(repo_meta, meta, append_lists=True)
-                        repo_updated = True
-
-                    if 'category' not in repo_meta:
-                        r = utils.names.restore_cmeta_name(state['category'], key='artifact')
-                        if r['return']>0: return r
-                        repo_meta['category'] = r['name']
-                        repo_updated = True
-
-                    final_repo_name = repo_meta.get('artifact')
-                    if final_repo_name is None or final_repo_name == '':
-                        final_repo_name = ''
-                        if repo_alias != '': 
-                            final_repo_name = repo_alias + ','
-                        if repo_uid == None or repo_uid == '':
-                            repo_uid = utils.names.generate_cmeta_uid()
-                        final_repo_name += repo_uid
-
-                        repo_meta['artifact'] = final_repo_name
-
-                        repo_update = True
-
-                    if repo_updated:
-                        r = utils.files.safe_write_file(repo_meta_desc_path, repo_meta, file_lock=repo_meta_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
-                        if r['return']>0: return r
-                    elif repo_meta_file_lock is not None:
-                        r = utils.files.unlock_path(repo_meta_desc_path, file_lock=repo_meta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
-                        if r['return']>0: return r
-
-                    # Reindex
+                elif method == 'local':
                     if con:
-                        print('')
-                    r = self.cm.repos.reindex(con=con, verbose=verbose)
+                        print ('')
+                        print (f'Creating local repository in {path} ...')
+
+                    try:
+                        os.makedirs(path)
+                    except Exception as e:
+                        return {'return':1, 'error':f'Failed to create directory: {e}'}
+
+                else:
+                    return {'return':1, 'error':f'unsupported method {method}'}
+
+
+            ######################################################################################################################
+            # Check if repository was created
+            if os.path.isdir(path):
+                # Try to read _cmr.yaml or create it (if already exists, to get correct artifact name and UID)
+                repo_meta_desc_path = os.path.join(path, self.cm.cfg['repo_meta_desc'])
+
+                repo_meta = {}
+                repo_meta_file_lock = None
+                repo_updated = False
+
+                if os.path.isfile(repo_meta_desc_path):
+                    r = utils.files.safe_read_file(repo_meta_desc_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
                     if r['return']>0: return r
+
+                    repo_meta = r['data']
+                    repo_meta_file_lock = r['file_lock']
+
+                if meta is not None and len(meta)>0:
+                    repo_meta = utils.common.deep_merge(repo_meta, meta, append_lists=True)
+                    repo_updated = True
+
+                if 'category' not in repo_meta:
+                    r = utils.names.restore_cmeta_name(state['category'], key='artifact')
+                    if r['return']>0: return r
+                    repo_meta['category'] = r['name']
+                    repo_updated = True
+
+                final_repo_name = repo_meta.get('artifact')
+                if final_repo_name is None or final_repo_name == '':
+                    final_repo_name = ''
+                    if repo_alias != '': 
+                        final_repo_name = repo_alias + ','
+                    if repo_uid == None or repo_uid == '':
+                        repo_uid = utils.names.generate_cmeta_uid()
+                    final_repo_name += repo_uid
+
+                    repo_meta['artifact'] = final_repo_name
+
+                    repo_update = True
+
+                if repo_updated:
+                    r = utils.files.safe_write_file(repo_meta_desc_path, repo_meta, file_lock=repo_meta_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
+                    if r['return']>0: return r
+                elif repo_meta_file_lock is not None:
+                    r = utils.files.unlock_path(repo_meta_desc_path, file_lock=repo_meta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
+                    if r['return']>0: return r
+
+                # Check if repo already registered
+                repo_name2 = repo_meta.get('artifact')
+
+                if repo_name2 is not None and repo_name2 != '':
+                    # Call base find function to find an artifact with a website
+                    p = {'category':state['category'], 
+                         'command':'find',
+                         'arg1':repo_name2,
+                         'sort':False,
+                         'base':True}
+                    r = self.cm.access(p)
+                    if r['return']>0 and r['return']!=16: return r
+
+                    if len(r.get('artifacts',[]))>0:
+                        return {'return':1, 'error':f'repository {repo_name2} already registered'}
+
+
+                # Append to the list of repos
+                r = utils.files.safe_read_file(repos_config_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
+                if r['return']>0: return r
+
+                repos_paths = r['data']
+                repos_paths_file_lock = r['file_lock']
+                
+                if path not in repos_paths:
+                    repos_paths[path] = {'meta':{'method':method}}
+                    # I decided not to add params to avoid exposing sensitite info such as PAT in URL, 'params':state['origin']['params']}}
+
+                # Do not sort keys - preserve order!
+                r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, 
+                                                fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+                if r['return']>0: return r
+
+
+                # Reindex
+                reindex = True
 
 #                    # Add to index
 #                    p = {'category': state['category'], 
@@ -367,12 +408,15 @@ class Category(InitCategory):
 #                    if r['return']>0: return r
 
 
-            else:
-                if method == 'git':
-                    return {'return':1, 'error':f'directory {path} already exists'}
 
 
-
+        ######################################################################################################################
+        if reindex:
+            # Reindex
+            if con:
+                print('')
+            r = self.cm.repos.reindex(con=con, verbose=verbose)
+            if r['return']>0: return r
 
 
 
@@ -555,4 +599,13 @@ class Category(InitCategory):
         """
 
         return self.get_(**params, method='git')
+
+    def init(self, params):
+        """
+        Init local cMeta repository
+
+        @self.get_
+        """
+
+        return self.get_(**params, method='local')
     
