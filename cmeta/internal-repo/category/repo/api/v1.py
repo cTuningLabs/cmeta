@@ -243,13 +243,16 @@ class Category(InitCategory):
                     if folder is None or folder == '':
                         folder = repo_alias if repo_alias is not None else repo_uid
 
-                elif folder is not None and folder != '':
+                elif folder is None or folder == '':
                     r = self.get_alias_from_url_(state, url)
                     if r['return']>0: return r
 
                     repo_alias = r['alias']
                     folder = repo_alias
-                    
+                else:
+                    if repo_alias is None or repo_alias == '':
+                        repo_alias = folder
+
                 path = os.path.join(repos_path, folder)
 
             # Check method
