@@ -410,6 +410,10 @@ class Repos:
 
         return {'return':0, 'artifacts':artifacts}
 
+
+
+
+    ######################################################################################################################
     def reindex(self, con=False, verbose=False):
         """
         Clean index and reindex all repos
@@ -418,7 +422,7 @@ class Repos:
         return self.index(clean=True, con=con, verbose=verbose)
     
 
-    def index(self, clean=False, con=False, verbose=False):
+    def index(self, clean=False, con=False, verbose=False, add_repo_paths=[], delete_repo_paths=[]):
         """
         Index repos
         """
@@ -442,10 +446,32 @@ class Repos:
 
 
         ######################################################################################################################
-        # Recreating all repos
-        index_repos = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
+        # Clean index files besides repo and category
+        if clean:
+            if conx:
+                print('')
+                print(f'Cleaning existing index files in {index_path} ...')
+            
+            try:
+                for filename in os.listdir(index_path):
+                    if filename.endswith(self.index_extension):
+                        file_path = os.path.join(index_path, filename)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+#                            if conx:
+#                                print(f'  Removed: {filename}')
+
+            except Exception as e:
+                if self.fail_on_error:
+                    return {'return': 1, 'error': f'Failed to clean index files: {str(e)}'}
+                else:
+                    self.logger.warning(f'Failed to clean some index files: {str(e)}')
+
+
+        ######################################################################################################################
+        # Re-reading repo paths file and checking paths
+
         repos_meta = {}
-        repo_uids_to_use = []
         repos_config_path = self.repos_config_path
 
         # Then checking internal repo path
@@ -502,19 +528,25 @@ class Repos:
         if len(paths_to_repos) == 0:
             return {'return':1, 'error':f'could not find any repository in {repos_config_path}'}
 
+        ######################################################################################################################
+        # Indexing repos ...
+        index_repo_file = os.path.join(index_path, 'repo' + self.index_extension)
+
+        index_repos = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
+        repo_uids_to_use = []
+
         if conx:
             print ('')
             print ('Indexing repositories ...')
             print ('')
 
-        ######################################################################################################################
         for path in paths_to_repos.keys():
             repo_meta = repos_meta[path]
 
-            path_with_prefix = _get_path_with_prefix(path, repo_meta)
+            full_path = _get_full_path(path, repo_meta)
                   
             if conx:
-                print (f'  Analyzing repository in {path_with_prefix} ...')
+                print (f'  Analyzing repository in {full_path} ...')
                 
             artifact_name = repo_meta['artifact']
 
@@ -545,7 +577,7 @@ class Repos:
 
             index_repos[self.KEY_INDEX_LOWERCASE_ALIASES][alias] = [uid]
 
-            entry = {'path': path}
+            entry = {'path': path, 'full_path':full_path}
 
             cmeta_ref_parts = {'category_alias':'repo', 'category_uid':self.cfg['category_repo_uid'], 'artifact_alias':alias, 'artifact_uid':uid}
 
@@ -566,7 +598,6 @@ class Repos:
 
             index_repos[self.KEY_INDEX_UIDS][uid] = entry
 
-        index_repo_file = os.path.join(index_path, 'repo' + self.index_extension)
         if conx:
             print('')
             print(f'  Recording repo index file: {index_repo_file}')
@@ -582,25 +613,26 @@ class Repos:
         if conx:
             print ('')
             print ('Indexing categories ...')
+            print ('')
 
         categories = []
+        categories_to_index = []
 
         for path in paths_to_repos:
             repo_meta = repos_meta[path]
 
-            repo_path_with_prefix = _get_path_with_prefix(path, repo_meta)
-            category_path_with_prefix = os.path.join(repo_path_with_prefix, 'category')
+            repo_full_path = _get_full_path(path, repo_meta)
+            category_full_path = os.path.join(repo_full_path, 'category')
 
-            if os.path.isdir(category_path_with_prefix):
+            if os.path.isdir(category_full_path):
                 if conx:
-                    print ('')
-                    print (f'  Analyzing categories in {category_path_with_prefix} ...')
+                    print (f'  Processing categories in {category_full_path} ...')
 
-                category_dirs = os.listdir(category_path_with_prefix)
+                category_dirs = os.listdir(category_full_path)
 
                 for category in sorted(category_dirs):
-                    category_meta_desc_file_json = os.path.join(category_path_with_prefix, category, self.cfg['meta_filename_base'] + '.json')
-                    category_meta_desc_file_yaml = os.path.join(category_path_with_prefix, category, self.cfg['meta_filename_base'] + '.yaml')
+                    category_meta_desc_file_json = os.path.join(category_full_path, category, self.cfg['meta_filename_base'] + '.json')
+                    category_meta_desc_file_yaml = os.path.join(category_full_path, category, self.cfg['meta_filename_base'] + '.yaml')
 
                     category_meta = {}
                     
@@ -614,8 +646,8 @@ class Repos:
                             category_meta = r['data']
                     else:
                         # Checking older format
-                        category_meta_desc_file_json = os.path.join(category_path_with_prefix, category, '_cm.json')
-                        category_meta_desc_file_yaml = os.path.join(category_path_with_prefix, category, '_cm.yaml')
+                        category_meta_desc_file_json = os.path.join(category_full_path, category, '_cm.json')
+                        category_meta_desc_file_yaml = os.path.join(category_full_path, category, '_cm.yaml')
 
                         if os.path.isfile(category_meta_desc_file_yaml):
                             r = utils.files.safe_read_file(category_meta_desc_file_yaml, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
@@ -638,19 +670,25 @@ class Repos:
                                 if key in category_meta:
                                     del(category_meta[key])
 
-                            category_meta_desc_file_yaml = os.path.join(category_path_with_prefix, category, self.cfg['meta_filename_base'] + '.yaml')
+                            category_meta_desc_file_yaml = os.path.join(category_full_path, category, self.cfg['meta_filename_base'] + '.yaml')
 
                             r = utils.files.safe_write_file(category_meta_desc_file_yaml, category_meta, fail_on_error=self.fail_on_error, logger=self.logger)
                             if r['return']>0: return r
 
                     if category_meta:
-                        category_path = os.path.join(category_path_with_prefix, category)
+                        category_path = os.path.join(category_full_path, category)
 
-                        categories.append({'category':category, 'meta':category_meta})
+                        category_entry = {'category':category, 'meta':category_meta}
+
+                        categories.append(category_entry)
+
+                        if path in add_repo_paths:
+                            categories_to_index.append(category_entry)
+
 
                         category_name = category_meta['artifact']
-                        if conx:
-                            print (f'    Found category "{category}"')
+#                        if conx:
+#                            print (f'    Found category "{category}"')
 
                         r = utils.names.parse_cmeta_name(category_name)
                         if r['return']>0: return r
@@ -716,32 +754,30 @@ class Repos:
             index_category_file = os.path.join(index_path, 'category' + self.index_extension)
             if conx:
                 print('')
-                print(f'  Recording category index file: {index_category_file}')
+                print(f'  Recording category index file ({len(index_categories[self.KEY_INDEX_UIDS])} categories found): {index_category_file}')
 
             # Use atomic write to avoid corrupting large index files
             r = utils.files.safe_write_file(index_category_file, index_categories, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
             if r['return']>0: return r
 
 
-
-
-        # Clean index files besides repo and category
+        # Clean removed category indexes
         if conx:
             print('')
-            print(f'Cleaning existing index files in {index_path} ...')
+            print(f'Cleaning unused category files in {index_path} ...')
+
+        all_category_filenames = ['category' + self.index_extension, 
+                                  'repo' + self.index_extension]
+        for category_mix in categories:
+            all_category_filenames.append(category_mix['category'] + self.index_extension)
         
         try:
             for filename in os.listdir(index_path):
                 if filename.endswith(self.index_extension):
-                    # Skip repo and category index files
-                    if filename == f'repo{self.index_extension}' or filename == f'category{self.index_extension}':
-                        continue
-                    
-                    file_path = os.path.join(index_path, filename)
-                    if os.path.isfile(file_path):
-                        os.remove(file_path)
-                        if conx:
-                            print(f'  Removed: {filename}')
+                    if filename not in all_category_filenames:
+                        file_path = os.path.join(index_path, filename)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
 
         except Exception as e:
             if self.fail_on_error:
@@ -749,90 +785,77 @@ class Repos:
             else:
                 self.logger.warning(f'Failed to clean some index files: {str(e)}')
 
+        ######################################################################################################################
         # Indexing artifacts
         index_artifacts = {}
 
         artifact_num = 0
-
-        if conx:
-            print ('')
-            print ('Indexing artifacts in all repos for all categories ...')
-            print ('')
-
-        for path in paths_to_repos:
-            repo_meta = repos_meta[path]
-
-            repo_name = repo_meta['artifact']
-
-            r = utils.names.parse_cmeta_name(repo_name)
-            if r['return']>0: return r
-            cmeta_name_parts = r['name']
-
-            repo_uid = cmeta_name_parts.get('uid')
-            repo_alias = cmeta_name_parts.get('alias')
-
-            repo_path_with_prefix = _get_path_with_prefix(path, repo_meta)
+        if clean or len(add_repo_paths)>0:
 
             if conx:
-                print (f'  Analyzing repo in {repo_path_with_prefix} ...')
+                print ('')
+                print ('Indexing artifacts ...')
+                print ('')
 
-            for category_mix in categories:
+#            selected_paths_to_repos = add_repo_paths if len(add_repo_paths)>0 else paths_to_repos
+            # We go through all repos but check all or selected categories only
+            selected_paths_to_repos = paths_to_repos
 
-                category = category_mix['category']
+            for path in selected_paths_to_repos:
+                repo_meta = repos_meta[path]
 
-                # Skip already index categories (repo and category)
-                if category in ['category', 'repo']:
-                    continue
+                repo_name = repo_meta['artifact']
 
-                category_meta = category_mix['meta']
-
-                category_name = category_meta['artifact']
-
-                r = utils.names.parse_cmeta_name(category_name)
+                r = utils.names.parse_cmeta_name(repo_name)
                 if r['return']>0: return r
                 cmeta_name_parts = r['name']
 
-                category_uid = cmeta_name_parts.get('uid')
-                category_alias = category
+                repo_uid = cmeta_name_parts.get('uid')
+                repo_alias = cmeta_name_parts.get('alias')
 
-                full_category_name = f'{category},' + category_uid
+                repo_full_path = _get_full_path(path, repo_meta)
 
-                path_to_category = os.path.join(repo_path_with_prefix, category)
+                if conx:
+                    print (f'  Processing repo in {repo_full_path} ...')
 
-                if os.path.isdir(path_to_category):
-                    if conx:
-                        print (f'    Analyzing category {category} ...', flush=True)
-                    
-                    artifact_dirs = os.listdir(path_to_category)
+                selected_categories = categories_to_index if len(categories_to_index)>0 else categories
 
-                    for artifact in tqdm(artifact_dirs, disable = not (con and conx)):
-                        path_to_artifact = os.path.join(path_to_category, artifact)
+                for category_mix in selected_categories:
 
-                        artifact_meta_desc_file_json = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.json')
-                        artifact_meta_desc_file_yaml = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.yaml')
+                    category = category_mix['category']
 
-                        artifact_meta = {}
+                    # Skip already index categories (repo and category)
+                    if category in ['category', 'repo']:
+                        continue
 
-# Convertion from older CK/CM/CMX versions
-#                        xartifact_meta_desc_file1 = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.yaml')
-#                        xartifact_meta_desc_file2 = os.path.join(path_to_artifact, '_cm.json')
-#                        xartifact_meta_desc_file3 = os.path.join(path_to_artifact, '_cm.yaml')
-#                        if os.path.isfile(xartifact_meta_desc_file1): os.remove(xartifact_meta_desc_file1)
-#                        if os.path.isfile(xartifact_meta_desc_file2): os.remove(xartifact_meta_desc_file2)
-#                        if os.path.isfile(xartifact_meta_desc_file3): os.remove(xartifact_meta_desc_file3)
+                    category_meta = category_mix['meta']
 
-                        if os.path.isfile(artifact_meta_desc_file_yaml):
-                            r = utils.files.safe_read_file(artifact_meta_desc_file_yaml, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
-                            if r['return']==0: 
-                                artifact_meta = r['data']
-                        elif os.path.isfile(artifact_meta_desc_file_json):
-                            r = utils.files.safe_read_file(artifact_meta_desc_file_json, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
-                            if r['return']==0: 
-                                artifact_meta = r['data']
-                        else:
-                            # Checking older format
-                            artifact_meta_desc_file_json = os.path.join(path_to_artifact, '_cm.json')
-                            artifact_meta_desc_file_yaml = os.path.join(path_to_artifact, '_cm.yaml')
+                    category_name = category_meta['artifact']
+
+                    r = utils.names.parse_cmeta_name(category_name)
+                    if r['return']>0: return r
+                    cmeta_name_parts = r['name']
+
+                    category_uid = cmeta_name_parts.get('uid')
+                    category_alias = category
+
+                    full_category_name = f'{category},' + category_uid
+
+                    path_to_category = os.path.join(repo_full_path, category)
+
+                    if os.path.isdir(path_to_category):
+                        if conx:
+                            print (f'    Processing category {category} ...', flush=True)
+                        
+                        artifact_dirs = os.listdir(path_to_category)
+
+                        for artifact in tqdm(artifact_dirs, disable = not (con and conx), desc="      Processing artifacts: "):
+                            path_to_artifact = os.path.join(path_to_category, artifact)
+
+                            artifact_meta_desc_file_json = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.json')
+                            artifact_meta_desc_file_yaml = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.yaml')
+
+                            artifact_meta = {}
 
                             if os.path.isfile(artifact_meta_desc_file_yaml):
                                 r = utils.files.safe_read_file(artifact_meta_desc_file_yaml, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
@@ -842,110 +865,180 @@ class Repos:
                                 r = utils.files.safe_read_file(artifact_meta_desc_file_json, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
                                 if r['return']==0: 
                                     artifact_meta = r['data']
+                            else:
+                                # Checking older format
+                                artifact_meta_desc_file_json = os.path.join(path_to_artifact, '_cm.json')
+                                artifact_meta_desc_file_yaml = os.path.join(path_to_artifact, '_cm.yaml')
+
+                                if os.path.isfile(artifact_meta_desc_file_yaml):
+                                    r = utils.files.safe_read_file(artifact_meta_desc_file_yaml, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
+                                    if r['return']==0: 
+                                        artifact_meta = r['data']
+                                elif os.path.isfile(artifact_meta_desc_file_json):
+                                    r = utils.files.safe_read_file(artifact_meta_desc_file_json, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
+                                    if r['return']==0: 
+                                        artifact_meta = r['data']
+
+                                if artifact_meta:
+                                    # Update to new format
+                                    uid = artifact_meta['uid']
+                                    alias = artifact_meta.get('alias')
+
+                                    if uid is None or not utils.names.is_valid_cmeta_uid(uid):
+                                        uid = utils.names.generate_cmeta_uid()
+
+                                    artifact_meta['artifact'] = uid
+                                    artifact_meta['category'] = full_category_name
+
+                                    for key in ['uid', 'alias', 'automation_uid', 'automation_alias']:
+                                        if key in artifact_meta:
+                                            del(artifact_meta[key])
+
+                                    artifact_meta_desc_file_yaml = os.path.join(path_to_category, artifact, self.cfg['meta_filename_base'] + '.json')
+
+                                    r = utils.files.safe_write_file(artifact_meta_desc_file_yaml, artifact_meta, fail_on_error=self.fail_on_error, logger=self.logger)
+                                    if r['return']>0: return r
 
                             if artifact_meta:
-                                # Update to new format
-                                uid = artifact_meta['uid']
-                                alias = artifact_meta.get('alias')
+                                artifact_name = artifact_meta['artifact']
+                                artifact_num += 1
 
-                                if uid is None or not utils.names.is_valid_cmeta_uid(uid):
-                                    uid = utils.names.generate_cmeta_uid()
-
-                                artifact_meta['artifact'] = uid
-                                artifact_meta['category'] = full_category_name
-
-                                for key in ['uid', 'alias', 'automation_uid', 'automation_alias']:
-                                    if key in artifact_meta:
-                                        del(artifact_meta[key])
-
-                                artifact_meta_desc_file_yaml = os.path.join(path_to_category, artifact, self.cfg['meta_filename_base'] + '.json')
-
-                                r = utils.files.safe_write_file(artifact_meta_desc_file_yaml, artifact_meta, fail_on_error=self.fail_on_error, logger=self.logger)
+                                r = utils.names.parse_cmeta_name(artifact_name)
                                 if r['return']>0: return r
+                                cmeta_name_parts = r['name']
 
-                        if artifact_meta:
-                            artifact_name = artifact_meta['artifact']
-                            artifact_num += 1
-#                            if conx:
-#                                print (f'\r      Found artifact {artifact_num}: "{category}::{artifact}"', end='', flush=True)
-
-                            r = utils.names.parse_cmeta_name(artifact_name)
-                            if r['return']>0: return r
-                            cmeta_name_parts = r['name']
-
-                            uid = cmeta_name_parts.get('uid')
-                            if uid is None or not utils.names.is_valid_cmeta_uid(uid):
-                                print ('', flush=True)
-                                print (f"           Warning: {artifact} doesn't have proper {uid}")
-                                input ('                Press Enter to continue ...')
-
-
-                            alias = artifact
-                            lowercase_alias = alias.lower()
-
-                            if category not in index_artifacts:
-                                index_artifacts[category] = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
-
-                            uids = index_artifacts[category][self.KEY_INDEX_UIDS]
-                            aliases_lower_case = index_artifacts[category][self.KEY_INDEX_LOWERCASE_ALIASES]
-
-                            if uid in uids:
-                                xpath = uids[uid]['path']
-                                if xpath != path_to_artifact:
-                                    return {'return':1, 'error': f'ambiguity -  artifact "{artifact}" with the same UID "{uid}" and path "{path_to_artifact}" alredy exists in the index in path "{xpath}"- please fix it!'}
-
-                            else:
-                                entry = {'path':path_to_artifact, 'cmeta':artifact_meta}
-
-                                cmeta_ref_parts = {'artifact_uid':uid, 'category_uid':category_uid, 'repo_uid':repo_uid}
-                                if alias is not None and alias != "": 
-                                    cmeta_ref_parts['artifact_alias'] = alias
-                                    if alias != alias.lower():
-                                        cmeta_ref_parts['artifact_alias_lowercase'] = alias.lower()
-                                if category_alias is not None and category_alias!="": 
-                                    cmeta_ref_parts['category_alias'] = category_alias
-                                if repo_alias is not None and repo_alias!="": 
-                                    cmeta_ref_parts['repo_alias'] = repo_alias
-                                entry['cmeta_ref_parts'] = cmeta_ref_parts
-
-                                uids[uid] = entry
-
-                            if alias is not None and alias != '':
-                                alias_lower_case = alias.lower()
-                                if alias_lower_case not in aliases_lower_case:
-                                    aliases_lower_case[alias_lower_case] = []
-                                name_uids = aliases_lower_case[alias_lower_case]
-                                if uid not in name_uids:
-                                    name_uids.append(uid)
-
-                                if len(name_uids)>1:
+                                uid = cmeta_name_parts.get('uid')
+                                if uid is None or not utils.names.is_valid_cmeta_uid(uid):
                                     print ('', flush=True)
-                                    print (f'      Warning: Conflict for {category_alias}:{alias} - multiple UIDs: "{name_uids} ..."')
+                                    print (f"           Warning: {artifact} doesn't have proper {uid}")
+                                    input ('                Press Enter to continue ...')
+
+
+                                alias = artifact
+                                lowercase_alias = alias.lower()
+
+                                if category not in index_artifacts:
+                                    index_artifacts[category] = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
+
+                                uids = index_artifacts[category][self.KEY_INDEX_UIDS]
+                                aliases_lower_case = index_artifacts[category][self.KEY_INDEX_LOWERCASE_ALIASES]
+
+                                if uid in uids:
+                                    xpath = uids[uid]['path']
+                                    if xpath != path_to_artifact:
+                                        return {'return':1, 'error': f'ambiguity -  artifact "{artifact}" with the same UID "{uid}" and path "{path_to_artifact}" alredy exists in the index in path "{xpath}"- please fix it!'}
+
+                                else:
+                                    entry = {'path':path_to_artifact, 'cmeta':artifact_meta}
+
+                                    cmeta_ref_parts = {'artifact_uid':uid, 'category_uid':category_uid, 'repo_uid':repo_uid}
+                                    if alias is not None and alias != "": 
+                                        cmeta_ref_parts['artifact_alias'] = alias
+                                        if alias != alias.lower():
+                                            cmeta_ref_parts['artifact_alias_lowercase'] = alias.lower()
+                                    if category_alias is not None and category_alias!="": 
+                                        cmeta_ref_parts['category_alias'] = category_alias
+                                    if repo_alias is not None and repo_alias!="": 
+                                        cmeta_ref_parts['repo_alias'] = repo_alias
+                                    entry['cmeta_ref_parts'] = cmeta_ref_parts
+
+                                    uids[uid] = entry
+
+                                if alias is not None and alias != '':
+                                    alias_lower_case = alias.lower()
+                                    if alias_lower_case not in aliases_lower_case:
+                                        aliases_lower_case[alias_lower_case] = []
+                                    name_uids = aliases_lower_case[alias_lower_case]
+                                    if uid not in name_uids:
+                                        name_uids.append(uid)
+
+                                    if len(name_uids)>1:
+                                        print ('', flush=True)
+                                        print (f'      Warning: Conflict for {category_alias}:{alias} - multiple UIDs: "{name_uids} ..."')
+
+        else:
+            for category_mix in categories:
+                index_artifacts[category_mix['category']] = {}
 
         if index_artifacts:
             if conx:
                 print ('')
-                print ('Recording index files for artifacts ...')
-                print ('')
+                print (f'Recording index files for artifacts in {index_path} ...')
 
-            for category in sorted(index_artifacts):
+            for category in tqdm(sorted(index_artifacts), disable = not (con and conx), desc="  Recording index file: "): 
                 category_index = index_artifacts[category]
 
                 index_artifact_file = os.path.join(index_path, category + self.index_extension)
-                if conx:
-                    print(f'  Recording {category} index file: {index_artifact_file}')
 
-                r = utils.files.safe_write_file(index_artifact_file, category_index, atomic=False, fail_on_error=self.fail_on_error, logger=self.logger)
+#                if conx:
+#                    print(f'  Recording {category} index file: {index_artifact_file}')
+
+                existing_category_index = {}
+                index_file_lock = None
+                atomic_flag = False
+
+                if clean:
+                    existing_category_index = category_index
+
+                else:
+                    if os.path.isfile(index_artifact_file):
+                        atomic_flag = True
+
+                        r = utils.files.safe_read_file(index_artifact_file, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
+                        if r['return']>0: return r
+
+                        existing_category_index = r['data']
+                        index_file_lock = r['file_lock']
+
+                    if len(add_repo_paths)>0 or len(delete_repo_paths)>0:
+                        uids = existing_category_index.setdefault(self.KEY_INDEX_UIDS, {})
+                        lowercase_aliases = existing_category_index.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
+
+                        # Remove UIDs of old/updated repos
+                        for uid in list(uids.keys()):
+                            artifact = uids[uid]
+                            path = artifact['path']
+
+                            for remove_path in add_repo_paths + delete_repo_paths:
+                                if utils.files.is_path_within(remove_path, path):
+                                    del(uids[uid])
+                                    break
+
+                        # Remove aliases
+                        updated_uids_keys = list(uids.keys())
+                        for lowercase_alias in list(lowercase_aliases.keys()):
+                            for uid in lowercase_aliases[lowercase_alias]:
+                                if uid not in updated_uids_keys:
+                                    del(lowercase_aliases[lowercase_alias])
+                                    break
+
+                        if len(add_repo_paths)>0:
+                            # Merge new ones
+                            new_uids = category_index.get(self.KEY_INDEX_UIDS, {})
+                            new_lowercase_aliases = category_index.get(self.KEY_INDEX_LOWERCASE_ALIASES, {})
+
+                            for uid in new_uids:
+                                uids[uid] = new_uids[uid]
+
+                            for lowercase_alias in new_lowercase_aliases:
+                                if lowercase_alias not in lowercase_aliases:
+                                    lowercase_aliases[lowercase_alias] = []
+                                lowercase_aliases[lowercase_alias] += new_lowercase_aliases[lowercase_alias]
+
+                    artifact_num += len(existing_category_index.get(self.KEY_INDEX_UIDS, {}))
+
+                r = utils.files.safe_write_file(index_artifact_file, existing_category_index, file_lock=index_file_lock, 
+                                                atomic=atomic_flag, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
                 if r['return']>0: return r
-                
+
         
         time_end = time.time()
         elapsed = time_end - time_start
 
         if conx:
             print ('')
+            print (f'Number of index artifacts: {artifact_num}')
             print (f'Indexing time: {elapsed:.2f} sec.')
-            print (f'Found artifacts: {artifact_num}')
             print ('='*40)
 
         r = {'return':0, 'elapsed_time':elapsed}
@@ -953,7 +1046,7 @@ class Repos:
 
 
 ################################################################################
-def _get_path_with_prefix(path, repo_meta):
+def _get_full_path(path, repo_meta):
     """
     Get path with prefix if specified in repo metadata
     
@@ -964,13 +1057,13 @@ def _get_path_with_prefix(path, repo_meta):
     Returns:
         str: Path with prefix applied if exists, otherwise original path
     """
-    path_with_prefix = path
+    full_path = path
     
-    prefix = repo_meta.get('prefix')
+    subdir = repo_meta.get('subdir')
     
-    if prefix is not None:
-        prefix = prefix.strip()
-        if prefix != '':
-            path_with_prefix = os.path.join(path, prefix)
+    if subdir is not None:
+        subdir = subdir.strip()
+        if subdir != '':
+            full_path = os.path.join(path, subdir)
     
-    return path_with_prefix
+    return full_path

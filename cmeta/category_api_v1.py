@@ -617,7 +617,7 @@ class Category(InitCategory):
             return {'return':1, 'error': f'more than one target repo found during artifact creation in "{paths}"'} 
 
         repo_artifact = repo_artifacts[0]
-        repo_path = repo_artifact['path']
+        repo_path = repo_artifact['full_path']
 
         repo_cmeta_ref_parts = repo_artifact['cmeta_ref_parts']
 
@@ -810,7 +810,7 @@ class Category(InitCategory):
                 return {'return':1, 'error': f'more than one target repo found when moving or renaming artifacts'} 
 
             target_repo_artifact = repo_artifacts[0]
-            target_repo_path = target_repo_artifact['path']
+            target_repo_path = target_repo_artifact['full_path']
 
             repo_cmeta_ref_parts = target_repo_artifact['cmeta_ref_parts']
 
@@ -952,6 +952,11 @@ class Category(InitCategory):
 
                    r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
                    if r['return']>0: return r
+
+            # Delete root if empty
+            root_artifact_path = os.path.dirname(path)
+            r = self.cm.utils.files.safe_delete_directory_if_empty(root_artifact_path)
+            # Skip
 
             # Update index
             kwargs = {}

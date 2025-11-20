@@ -27,7 +27,8 @@ class Category(InitCategory):
             arg1:                   str | None = None,          # Repo name (alias and/or UID).
             url:                    str | None = None,          # Repo URL (optional)
             path:                   str | None = None,          # Repo path (optional. $HOME/CMETA/{repo alias} by default)
-            folder:                 str | None = None,          # Force this folder to store repository
+            folder:                 str | None = None,          # Force this folder to store repository inside $HOME/CMETA (skiped if path is set)
+            subdir:                 str | None = None,          # Repository is stored in this 
             method:                 str | None = None,          # Method (git, zip, local) - will be detected automatically if not specified
             local:                  bool = False,               # If True, set method to 'local'
             meta:                   dict | None = None,         # Repo meta data 
@@ -80,13 +81,14 @@ class Category(InitCategory):
         repos_path = self.cm.repos_path
         repos_config_path = self.cm.repos_config_path
 
+        command = state['command']
+
         cur_dir = os.getcwd()
 
         # Process arg1 and URL to extract repo name and understand what to do with repositories ...
         repo_name = None
         repo_alias = None
         repo_uid = None
-        folder = None
 
         if (url is not None and url != ''):
             repo_name = arg1
@@ -105,6 +107,8 @@ class Category(InitCategory):
         search = False
 
         reindex = False
+
+        add_repo_paths_to_index = []
 
         ######################################################################################################################
         if (repo_name is not None and repo_name != '') or (path is None and url is None):
@@ -126,6 +130,9 @@ class Category(InitCategory):
         if len(repo_artifacts)>0:
             # If some rep   os are already registered
             # try to update them (pull/checkout/branch if git)
+
+            if command in ['init']:
+                return {'return':1, 'error':f'repository {arg1} already exists'}
 
             r = utils.files.safe_read_file(repos_config_path, lock=False, fail_on_error=self.fail_on_error, logger=self.logger)
             if r['return']>0: return r
@@ -199,6 +206,8 @@ class Category(InitCategory):
 #                                    return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
 
 
+                            add_repo_paths_to_index.append(repo_path)
+
                             reindex= True
 
         ######################################################################################################################
@@ -220,7 +229,6 @@ class Category(InitCategory):
                 repo_uid = r.get('name',{}).get('uid')
 
 
-
             if path is None or path == '':
                 # Need to figure out path
 
@@ -232,9 +240,10 @@ class Category(InitCategory):
 
                             url = self.cm.cfg['default_git'] + '/' + repo_alias.replace('@','/')
 
-                    folder = repo_alias if repo_alias is not None else repo_uid
+                    if folder is None or folder == '':
+                        folder = repo_alias if repo_alias is not None else repo_uid
 
-                else:
+                elif folder is not None and folder != '':
                     r = self.get_alias_from_url_(state, url)
                     if r['return']>0: return r
 
@@ -253,9 +262,8 @@ class Category(InitCategory):
 
             ######################################################################################################################
             # Check what to do depending on whether the path exists or not
-            if os.path.isdir(path):
-                if method != 'local':
-                    return {'return':1, 'error':f'directory {path} already exists'}
+            if os.path.isdir(path) and method != 'local':
+                return {'return':1, 'error':f'directory {path} already exists'}
 
             if not os.path.isdir(path):
                 if method == 'git':
@@ -294,9 +302,15 @@ class Category(InitCategory):
 
 
                 elif method == 'zip':
+
+
+
+
+
+
+
+
                     return {'return':1, 'error':'TBD: support cMeta zip repo download'}
-
-
 
 
 
@@ -313,7 +327,6 @@ class Category(InitCategory):
                 else:
                     return {'return':1, 'error':f'unsupported method {method}'}
 
-
             ######################################################################################################################
             # Check if repository was created
             if os.path.isdir(path):
@@ -323,6 +336,8 @@ class Category(InitCategory):
                 repo_meta = {}
                 repo_meta_file_lock = None
                 repo_updated = False
+
+                repo_meta_to_index = {'method':method}
 
                 if os.path.isfile(repo_meta_desc_path):
                     r = utils.files.safe_read_file(repo_meta_desc_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
@@ -341,8 +356,6 @@ class Category(InitCategory):
                     repo_meta['category'] = r['name']
                     repo_updated = True
 
-                print (repo_alias)
-
                 final_repo_name = repo_meta.get('artifact')
                 if final_repo_name is None or final_repo_name == '':
                     final_repo_name = ''
@@ -353,6 +366,11 @@ class Category(InitCategory):
                     final_repo_name += repo_uid
 
                     repo_meta['artifact'] = final_repo_name
+
+                    if subdir is not None:
+                        repo_meta_to_index['subdir'] = subdir
+                        repo_meta['subdir'] = subdir
+#                    repo_meta.update(repo_meta_to_index)
 
                     repo_update = True
 
@@ -388,7 +406,8 @@ class Category(InitCategory):
                 repos_paths_file_lock = r['file_lock']
                 
                 if path not in repos_paths:
-                    repos_paths[path] = {'meta':{'method':method}}
+                    repos_paths[path] = {'meta':repo_meta_to_index}
+
                     # I decided not to add params to avoid exposing sensitite info such as PAT in URL, 'params':state['origin']['params']}}
 
                 # Do not sort keys - preserve order!
@@ -396,8 +415,18 @@ class Category(InitCategory):
                                                 fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
                 if r['return']>0: return r
 
+                # Check subdir
+                if repo_meta_to_index.get('subdir','') != '':
+                    full_path = os.path.join(path, repo_meta_to_index['subdir'])
+                    if not os.path.isdir(full_path):
+                        try:
+                            os.makedirs(full_path)
+                        except Exception as e:
+                            return {'return':1, 'error':f'Failed to create directory: {e}'}
 
                 # Reindex
+                add_repo_paths_to_index.append(path)
+
                 reindex = True
 
 #                    # Add to index
@@ -420,10 +449,9 @@ class Category(InitCategory):
             # Reindex
             if con:
                 print('')
-            r = self.cm.repos.reindex(con=con, verbose=verbose)
+
+            r = self.cm.repos.index(clean=False, con=con, verbose=verbose, add_repo_paths = add_repo_paths_to_index)
             if r['return']>0: return r
-
-
 
         return {'return':0}
 
@@ -506,6 +534,8 @@ class Category(InitCategory):
             # Delete from the list of repos
             repos_config_path = self.cm.repos_config_path
 
+            delete_repo_paths_from_index = []
+
             r = utils.files.safe_read_file(repos_config_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
             if r['return']>0: return r
 
@@ -517,6 +547,8 @@ class Category(InitCategory):
                 if path in repos_paths:
                     del(repos_paths[path])
 
+                delete_repo_paths_from_index.append(path)
+
             # Do not sort keys - preserve order
             r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, 
                                             fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
@@ -525,7 +557,8 @@ class Category(InitCategory):
             # Reindex
             if con:
                 print('')
-            r = self.cm.repos.reindex(con=con, verbose=verbose)
+
+            r = self.cm.repos.index(clean=False, con=con, verbose=verbose, delete_repo_paths = delete_repo_paths_from_index)
             if r['return']>0: return r
 
         return result
@@ -613,4 +646,5 @@ class Category(InitCategory):
         """
 
         return self.get_(**params, method='local')
-    
+#TBD
+# add cx repo checkout xyz abc

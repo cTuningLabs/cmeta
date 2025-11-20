@@ -135,7 +135,7 @@ def detect_cid_in_the_current_directory(cmeta, path = None, debug = False, logge
 
     found = False
     for repo in repo_artifacts:
-        repo_path = os.path.normpath(os.path.abspath(repo['path']))
+        repo_path = os.path.normpath(os.path.abspath(repo['full_path']))
         if files.is_path_within(repo_path, cur_dir):
             found = True
             break
