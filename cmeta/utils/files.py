@@ -12,6 +12,7 @@ import json
 import pickle
 import shutil
 import stat
+import zipfile
 from pathlib import Path
 import uuid
 
@@ -277,7 +278,7 @@ def safe_read_file(filepath, encoding=None, lock=False, keep_locked=False, timeo
 
     return r
 
-def write_file(filepath, data, encoding=None, fail_on_error=False, logger=None, sort_keys=True, file_format=None):
+def write_file(filepath, data, encoding=None, fail_on_error=False, logger=None, sort_keys=True, file_format=None, newline='\n'):
 
     if file_format is None:
         file_format = _detect_file_format(filepath)
@@ -285,9 +286,10 @@ def write_file(filepath, data, encoding=None, fail_on_error=False, logger=None, 
     encoding = _get_encoding(encoding, file_format)
 
     mode = "wb" if encoding is None else "w"
+    set_newline = None if encoding is None else newline
 
     try:
-        with open(filepath, mode, encoding=encoding) as f:
+        with open(filepath, mode, encoding=encoding, newline=set_newline) as f:
             if file_format == "json":
                 json.dump(data, f, indent=2, sort_keys=sort_keys)
             elif file_format == "yaml":
@@ -556,12 +558,6 @@ def safe_read_file_via_cache(filepath, cache, timeout=10, fail_on_error=False, l
         if path.exists():
             break
 
-        # TBD: recreate index if file is missing
-
-
-
-
-
         return _error(f"'{filepath}' does not exist", ERROR_CODE_FILE_NOT_FOUND, None, fail_on_error)
     
     try:
@@ -653,14 +649,146 @@ def safe_read_yaml_or_json(filepath, lock=False, keep_locked=False, timeout=3, f
     return _error(f"'{base_path}(.yaml or .json)' do not exist", ERROR_CODE_FILE_NOT_FOUND, None, fail_on_error)
 
 def _get_encoding(encoding, file_format):
-        """
-        Helper function to determine the appropriate encoding for file operations.
-        """
-        if encoding == '': 
-            encoding = None
-        
-        elif encoding is None:
-            if file_format in ['json', 'yaml', 'txt', 'text', 'md', 'html', 'htm']:
-                encoding = 'utf-8'
-        
-        return encoding
+    """
+    Helper function to determine the appropriate encoding for file operations.
+    """
+    if encoding == '': 
+        encoding = None
+    
+    elif encoding is None:
+        if file_format in ['json', 'yaml', 'txt', 'text', 'md', 'html', 'htm']:
+            encoding = 'utf-8'
+    
+    return encoding
+
+
+def download(url, filename=None, path=None, chunk_size=65536, show_progress=False, fail_on_error=False, text="Downloading "):
+    """
+    Download a file from URL into path/filename, auto-detecting missing pieces.
+    """
+    import os
+    from urllib.parse import urlparse
+    from urllib.request import Request, urlopen
+    from urllib.error import URLError, HTTPError
+
+    if not url:
+        return _error('url is required', fail_on_error=fail_on_error)
+
+    tqdm_cls = None
+    if show_progress:
+        try:
+            from tqdm import tqdm as tqdm_cls
+        except ImportError as e:
+            return _error('tqdm package is required when show_progress is True', exception=e, fail_on_error=fail_on_error)
+
+    try:
+        path = os.path.abspath(path) if path else os.getcwd()
+        os.makedirs(path, exist_ok=True)
+
+        if not filename:
+            path_part = urlparse(url).path.rstrip('/')
+            filename = os.path.basename(path_part) or 'downloaded-file'
+
+        target_path = os.path.join(path, filename)
+        request = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+
+        with urlopen(request) as response, open(target_path, 'wb') as out_file:
+            total_size = response.getheader('Content-Length')
+            total_size = int(total_size) if total_size is not None else None
+            downloaded = 0
+            progress = tqdm_cls(total=total_size, unit='B', unit_scale=True, unit_divisor=1024, desc=text+filename) if tqdm_cls else None
+
+            try:
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    out_file.write(chunk)
+                    downloaded += len(chunk)
+                    if progress:
+                        progress.update(len(chunk))
+            finally:
+                if progress:
+                    progress.close()
+
+    except (URLError, HTTPError, OSError) as e:
+        return _error(f'Failed to download {url}', exception=e, fail_on_error=fail_on_error)
+
+    return {'return': 0, 'filename': filename, 'path': target_path, 'size': downloaded}
+
+def unzip(filename, path=None, remove_directories=0, skip_directories=None, overwrite=True, clean=False, fail_on_error=False):
+    """
+    Unzip file to the current directory or 'path'.
+    """
+    
+    if skip_directories is None:
+        skip_directories = []
+
+    if not path:
+        path = os.getcwd()
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    try:
+        with zipfile.ZipFile(filename, 'r') as zip_ref:
+            for member in zip_ref.infolist():
+                # Get original path
+                orig_path = member.filename
+
+                print (orig_path)
+                
+                # Split path
+                parts = orig_path.split('/')
+                # Remove empty parts
+                parts = [p for p in parts if p]
+                
+                if not parts:
+                    continue
+
+                # Check if we need to skip directories
+                skip = False
+                for s in skip_directories:
+                    if s in parts:
+                        skip = True
+                        break
+                if skip:
+                    continue
+
+                # Check if we need to remove starting directories
+                if len(parts) <= remove_directories:
+                    continue
+                
+                print (len(parts))
+
+                new_parts = parts[remove_directories:]
+                
+                target_path = os.path.join(path, *new_parts)
+                
+                # Check if directory
+                if member.is_dir() or orig_path.endswith('/'):
+                    if not os.path.exists(target_path):
+                        os.makedirs(target_path)
+                    continue
+
+                # It's a file
+                target_dir = os.path.dirname(target_path)
+                if not os.path.exists(target_dir):
+                    os.makedirs(target_dir)
+
+                if os.path.exists(target_path) and not overwrite:
+                    continue
+
+                with zip_ref.open(member) as source, open(target_path, "wb") as target:
+                    shutil.copyfileobj(source, target)
+
+    except Exception as e:
+        return _error(f"Failed to unzip {filename}: {e}", 1, e, fail_on_error)
+
+    if clean:
+        try:
+            os.remove(filename)
+        except Exception as e:
+            return _error(f"Failed to remove zip file {filename}: {e}", 1, e, fail_on_error)
+
+    return {'return': 0}

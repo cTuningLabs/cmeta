@@ -818,7 +818,7 @@ class Repos:
                 if conx:
                     print (f'  Processing repo in {repo_full_path} ...')
 
-                selected_categories = categories_to_index if len(categories_to_index)>0 else categories
+                selected_categories = categories_to_index if len(add_repo_paths)>0 else categories
 
                 for category_mix in selected_categories:
 

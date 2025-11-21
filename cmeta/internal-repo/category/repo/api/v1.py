@@ -302,20 +302,16 @@ class Category(InitCategory):
                             return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
                     
 
-
-
                 elif method == 'zip':
+                    # Download zip
+                    r = utils.files.download(url, path=path, show_progress=con, fail_on_error = self.fail_on_error)
+                    if r['return'] >0: return r
 
+                    full_path_to_zip_file = r['path']
 
-
-
-
-
-
-
-                    return {'return':1, 'error':'TBD: support cMeta zip repo download'}
-
-
+                    # Unzip with cleaning
+                    r = utils.files.unzip(full_path_to_zip_file, path=path, overwrite=False, clean=True, fail_on_error = self.fail_on_error)
+                    if r['return'] >0: return r
 
                 elif method == 'local':
                     if con:
