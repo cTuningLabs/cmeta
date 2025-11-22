@@ -498,11 +498,11 @@ class Repos:
         to_update = False
 
         for path in original_paths_to_repos:
+            extra_meta = original_paths_to_repos[path].get('meta',{})
+
             if path.endswith('internal-repo') and os.path.normpath(path) != this_internal_repo_path:
                 path = this_internal_repo_path
                 to_update = True
-
-            extra_meta = original_paths_to_repos[path].get('meta',{})
 
             path_to_repo_desc = os.path.join(path, self.cfg['repo_meta_desc'])
 
