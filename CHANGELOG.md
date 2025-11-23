@@ -1,6 +1,9 @@
-﻿cMeta (0.2.0): 
+﻿cMeta (0.3.0):
+  * Fixed a major bug in the category module loader.
 
-  * Added async support for FastAPI
+cMeta (0.2.0): 
+
+  * Added async support for FastAPI.
 
 cMeta (0.1.0):
 

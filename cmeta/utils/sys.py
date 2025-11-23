@@ -25,6 +25,7 @@ def load_module(module_path, module_cache, fail_on_error=False, category=False, 
         dict: {'return': 0, 'module': module} on success
               {'return': 1, 'error': error_message} on failure (if fail_on_error=False)
     """
+
     import os
     import sys
     import importlib
@@ -53,34 +54,39 @@ def load_module(module_path, module_cache, fail_on_error=False, category=False, 
             return {'return':0, 'cache': cached_data}
 
     # Load using importlib
-    must_remove = False
     try:
-        parent_dir = os.path.dirname(module_dir)
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-            must_remove = True
+        from importlib.util import spec_from_file_location, module_from_spec
 
-        module = importlib.import_module(full_module_name)
+        if full_module_name.startswith('api.v'):
+            cmeta_category_name = os.path.dirname(package_root).replace('.','_')
+            unique_name = cmeta_category_name + '.' + full_module_name
+        else:
+            unique_name = full_module_name
+
+        spec = spec_from_file_location(unique_name, module_path)
+        module = module_from_spec(spec)
+        spec.loader.exec_module(module)
 
         cache = {
             'python_module': module,
-            'timestamp': current_timestamp
+            'timestamp': current_timestamp,
+            'full_module_name': unique_name,
         }
 
         if category:
             cache['initialized_class'] = module.Category(cm=cmeta)
 
-        # Update cache
-        module_cache[module_path] = cache
-
-        return {'return':0, 'cache':module_cache[module_path]}
-
     except Exception as e:
         return _error(f'Failed to import module {full_module_name} from {module_path}', 1, e, fail_on_error)
 
     finally:
-        if must_remove and parent_dir in sys.path:
-            sys.path.remove(parent_dir)
+        sys.path.pop(0)
+
+    # Update cache
+    module_cache[module_path] = cache
+
+    return {'return':0, 'cache':module_cache[module_path]}
+
 
 ###################################################################################################
 def find_command_func(category_api, command):

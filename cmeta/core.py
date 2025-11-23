@@ -360,6 +360,7 @@ class CMeta:
                 if r['return'] >0: return r
 
                 category_api['code'] = r['cache']['initialized_class']
+                category_api['full_module_name'] = r['cache']['full_module_name']
 
             ###################################################################################################
             # If empty command, print help
@@ -446,8 +447,6 @@ class CMeta:
                     if tmp_command_alias != None and tmp_command_alias != '':
                         command_alias = tmp_command_alias
                         break
-
-
 
                 for category_api in category_apis:
                     category_api_code = category_api['code']
