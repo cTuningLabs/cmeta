@@ -22,26 +22,7 @@ _cmeta_instance = None
 _cmeta_index = 0
 
 
-def _configure_worker_logging(logger_override=None):
-    """
-    Ensure that worker processes log using the provided external logger.
-    On Windows + multiprocessing, logging config does NOT carry over automatically.
-    """
-    if logger_override is None:
-        return  # fallback to default logging behavior
-
-    # Clear default handler to avoid duplicated logs
-    logging.root.handlers = []
-
-    # Copy handlers from provided logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logger_override.level)
-
-    for handler in logger_override.handlers:
-        root_logger.addHandler(handler)
-
-
-def _get_cmeta(logger_override=None, **kwargs):
+def _get_cmeta(**kwargs):
     """
     Lazy initialization of CMeta per multiprocessing worker.
     Mirrors FastAPI logic where the instance is created once per process.
@@ -50,11 +31,10 @@ def _get_cmeta(logger_override=None, **kwargs):
 
     if _cmeta_instance is None:
         # Initialize CMeta normally
+        print ('xxx')
+        print (kwargs)
+        print ('xxx')
         cmeta = CMeta(**kwargs)
-
-        # Override logger if external logger was passed
-        if logger_override is not None:
-            cmeta.logger = logger_override
 
         _cmeta_instance = cmeta
         _cmeta_index += 1
@@ -67,13 +47,12 @@ def _get_cmeta(logger_override=None, **kwargs):
     return _cmeta_instance
 
 
-def _access_worker(params, kwargs, logger_override):
+def _access_worker(params, kwargs):
     """
     Standalone function executed inside the ProcessPool.
     Must NOT reference `self`, or use bound methods → prevents pickling errors.
     """
-    _configure_worker_logging(logger_override)
-    cmeta = _get_cmeta(logger_override=logger_override, **kwargs)
+    cmeta = _get_cmeta(**kwargs)
     return cmeta.access(params)
 
 
@@ -93,7 +72,6 @@ class CMetaAsync:
 
         # Store constructor args for CMeta
         self._cmeta_kwargs = kwargs
-        self._logger_override = logger
 
         self._logger.info(
             f"[PID {os.getpid()}] CMetaAsync initialized | max_workers={max_workers}"
@@ -103,7 +81,7 @@ class CMetaAsync:
         """
         Asynchronous non-blocking wrapper that runs CMeta.access() in a worker process.
         """
-        func = partial(_access_worker, params, self._cmeta_kwargs, self._logger_override)
+        func = partial(_access_worker, params, self._cmeta_kwargs)
 
         try:
             return await self._loop.run_in_executor(self._executor, func)
