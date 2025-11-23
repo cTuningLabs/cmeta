@@ -31,9 +31,6 @@ def _get_cmeta(**kwargs):
 
     if _cmeta_instance is None:
         # Initialize CMeta normally
-        print ('xxx')
-        print (kwargs)
-        print ('xxx')
         cmeta = CMeta(**kwargs)
 
         _cmeta_instance = cmeta
