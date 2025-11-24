@@ -39,6 +39,27 @@ class Category(InitCategory):
         return {'return':0, 'uid':uid}
 
     ############################################################
+    def uuid_(self, state):
+        """
+        Generate UUID
+
+        Args: None
+        """
+
+        import uuid
+
+        self.logger.debug("running utils.uuid")
+
+        con = state['control'].get('con', False)
+
+        uuid = str(uuid.uuid4())
+
+        if con:
+            print (uuid)
+
+        return {'return':0, 'uuid':uuid}
+
+    ############################################################
     def find_by_cid_(self, state, arg1, ask=False):
         """
         Find artifacts by standard CID
@@ -292,6 +313,57 @@ class Category(InitCategory):
             print (f'Successfully converted {arg1} to {arg2}')
 
         return {'return':0, 'pickle_file': arg2}
+
+    ############################################################
+    def utf8sig_to_utf8_(self, state, arg1, arg2=None):
+        """
+        Convert UTF-8 with BOM (utf-8-sig) file to standard UTF-8
+        Args:
+           arg1 (str): input file (UTF-8 with BOM)
+           arg2 (str, optional): output file. If None, overwrites input file and creates .bak backup
+        """
+
+        import os
+        import shutil
+
+        con = state['control'].get('con', False)
+
+        # Check if input file exists
+        if not os.path.isfile(arg1):
+            return {'return':1, 'error':f'Input file not found: {arg1}'}
+
+        # Read file with utf-8-sig encoding (strips BOM automatically)
+        try:
+            with open(arg1, 'r', encoding='utf-8-sig') as f:
+                content = f.read()
+        except Exception as e:
+            return {'return':1, 'error':f'Failed to read file: {e}'}
+
+        # Determine output file
+        if arg2 is None:
+            # Create backup of original file
+            backup_file = f"{arg1}.bak"
+            try:
+                shutil.copy2(arg1, backup_file)
+                if con:
+                    print(f'Created backup: {backup_file}')
+            except Exception as e:
+                return {'return':1, 'error':f'Failed to create backup: {e}'}
+            arg2 = arg1
+
+        # Write file with standard utf-8 encoding (without BOM)
+        try:
+            with open(arg2, 'w', encoding='utf-8') as f:
+                f.write(content)
+        except Exception as e:
+            return {'return':1, 'error':f'Failed to write file: {e}'}
+
+        if con:
+            print(f'Successfully converted {arg1} to UTF-8 (without BOM)')
+            if arg2 != arg1:
+                print(f'Output saved to: {arg2}')
+
+        return {'return':0, 'output_file': arg2}
 
 
 ###################################################################################################
