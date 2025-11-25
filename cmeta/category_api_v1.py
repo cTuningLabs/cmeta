@@ -270,7 +270,14 @@ class Category(InitCategory):
 
                # Replace or merge
                if replace:
+                   orig_artifact = cmeta.get('artifact')
+                   orig_category = cmeta.get('category')
+
                    cmeta = meta
+
+                   if 'artifact' not in cmeta: cmeta['artifact'] = orig_artifact
+                   if 'category' not in cmeta: cmeta['category'] = orig_category
+
                else:                                     
                    cmeta = utils.common.deep_merge(cmeta, meta, append_lists=not replace_lists, ignore_root_keys=['artifact','category'])
 

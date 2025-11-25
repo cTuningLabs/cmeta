@@ -248,3 +248,68 @@ def copy_text_to_clipboard(text = '', add_quotes = False, do_not_fail = False):
     pc.copy(text)
 
     return {'return':0}
+
+def compare_versions(version1, version2):
+    """
+    Compare two version strings.
+    
+    Parameters:
+        version1 (str): First version string (e.g., "0.3.1", "1.2", "3.2.0-dev")
+        version2 (str): Second version string
+        
+    Returns:
+        dict: {'return': 0, 'comparison': '<' | '=' | '>'}
+              where '<' means version1 < version2
+                    '=' means version1 == version2
+                    '>' means version1 > version2
+              or {'return': 1, 'error': str} on error
+    """
+    import re
+    
+    try:
+        # Split version into numeric parts and suffix (e.g., "3.2.0-dev" -> ["3", "2", "0"], "dev")
+        def parse_version(version):
+            # Match numeric parts and optional suffix
+            match = re.match(r'^([\d.]+)(-.*)?$', version.strip())
+            if not match:
+                raise ValueError(f"Invalid version format: {version}")
+            
+            numeric_part = match.group(1)
+            suffix = match.group(2) or ""
+            
+            # Convert numeric parts to integers
+            parts = [int(x) for x in numeric_part.split('.')]
+            return parts, suffix
+        
+        parts1, suffix1 = parse_version(version1)
+        parts2, suffix2 = parse_version(version2)
+        
+        # Pad shorter version with zeros
+        max_len = max(len(parts1), len(parts2))
+        parts1.extend([0] * (max_len - len(parts1)))
+        parts2.extend([0] * (max_len - len(parts2)))
+        
+        # Compare numeric parts
+        if parts1 > parts2:
+            return {'return': 0, 'comparison': '>'}
+        elif parts1 < parts2:
+            return {'return': 0, 'comparison': '<'}
+        else:
+            # Numeric parts are equal, compare suffixes
+            # Version without suffix is considered higher than with suffix
+            # e.g., "3.2.0" > "3.2.0-dev"
+            if suffix1 == suffix2:
+                return {'return': 0, 'comparison': '='}
+            elif suffix1 == "":
+                return {'return': 0, 'comparison': '>'}
+            elif suffix2 == "":
+                return {'return': 0, 'comparison': '<'}
+            else:
+                # Both have suffixes, compare lexicographically
+                if suffix1 > suffix2:
+                    return {'return': 0, 'comparison': '>'}
+                else:
+                    return {'return': 0, 'comparison': '<'}
+    
+    except Exception as e:
+        return {'return': 1, 'error': f'Error comparing versions: {str(e)}'}
