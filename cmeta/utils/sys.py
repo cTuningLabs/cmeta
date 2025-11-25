@@ -10,83 +10,81 @@ import os
 from .common import _error
 from .cli import print_params_help
 
-###################################################################################################
 def load_module(module_path, module_cache, fail_on_error=False, category=False, cmeta=None):
-    """
-    Load a Python module as part of a package, with caching and timestamp checking.
+    import os, sys, importlib.util, importlib.machinery, re, hashlib
 
-    Parameters:
-        module_path (str): Full path to the Python module file (e.g., .../mypackage/module1.py)
-        module_cache (dict): Cache dictionary with module paths as keys
-        fail_on_error (bool): If True, raises exceptions instead of returning error dict
-        category (bool): If True, initialize category
+    def sanitize(name):
+        cleaned = re.sub(r'[^0-9a-zA-Z_]', '_', name)
+        if re.match(r'^\d', cleaned):
+            cleaned = "_" + cleaned
+        if cleaned != name or cleaned.strip("_") == "":
+            suffix = hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
+            cleaned = f"{cleaned}_{suffix}"
+        return cleaned
 
-    Returns:
-        dict: {'return': 0, 'module': module} on success
-              {'return': 1, 'error': error_message} on failure (if fail_on_error=False)
-    """
-
-    import os
-    import sys
-    import importlib
-    import traceback
-
-    # Check if file exists
     if not os.path.isfile(module_path):
         return _error(f'Module file not found: {module_path}', 16, None, fail_on_error)
 
-    # Determine paths
     module_path = os.path.abspath(module_path)
-    module_dir = os.path.dirname(module_path)
-    package_name = os.path.basename(module_dir)
-    package_root = os.path.dirname(module_dir)
+    module_dir = os.path.dirname(module_path)            # .../api
     module_name = os.path.splitext(os.path.basename(module_path))[0]
 
-    full_module_name = f"{package_name}.{module_name}"
+    category_dir = os.path.dirname(module_dir)           # .../java.1
+    raw_cat = os.path.basename(category_dir)
+    raw_pkg = os.path.basename(module_dir)
 
-    # Get api modification timestamp
-    current_timestamp = os.path.getmtime(module_path)
+    cat_name = sanitize(raw_cat)
+    pkg_name = sanitize(raw_pkg)
 
-    # Check cache
+    full_package_name = f"{cat_name}.{pkg_name}"
+    full_module_name = f"{full_package_name}.{module_name}"
+
+    timestamp = os.path.getmtime(module_path)
+
     if module_path in module_cache:
-        cached_data = module_cache[module_path]
-        if cached_data.get('timestamp') == current_timestamp:
-            return {'return':0, 'cache': cached_data}
+        cached = module_cache[module_path]
+        if cached.get("timestamp") == timestamp:
+            return {"return": 0, "cache": cached}
 
-    # Load using importlib
     try:
-        from importlib.util import spec_from_file_location, module_from_spec
+        # Ensure category package exists
+        if cat_name not in sys.modules:
+            spec = importlib.machinery.ModuleSpec(cat_name, loader=None, is_package=True)
+            pkg = importlib.util.module_from_spec(spec)
+            pkg.__path__ = [category_dir]
+            sys.modules[cat_name] = pkg
 
-        if full_module_name.startswith('api.v'):
-            cmeta_category_name = os.path.dirname(package_root).replace('.','_')
-            unique_name = cmeta_category_name + '.' + full_module_name
-        else:
-            unique_name = full_module_name
+        # Ensure api subpackage exists
+        if full_package_name not in sys.modules:
+            spec = importlib.machinery.ModuleSpec(full_package_name, loader=None, is_package=True)
+            pkg = importlib.util.module_from_spec(spec)
+            pkg.__path__ = [module_dir]
+            sys.modules[full_package_name] = pkg
 
-        spec = spec_from_file_location(unique_name, module_path)
-        module = module_from_spec(spec)
+        # Load the plugin module
+        spec = importlib.util.spec_from_file_location(full_module_name, module_path)
+        module = importlib.util.module_from_spec(spec)
+
+        module.__package__ = full_package_name
+        module.__file__ = module_path
+
+        sys.modules[full_module_name] = module
         spec.loader.exec_module(module)
 
-        cache = {
-            'python_module': module,
-            'timestamp': current_timestamp,
-            'full_module_name': unique_name,
+        cache_data = {
+            "python_module": module,
+            "timestamp": timestamp,
+            "full_module_name": full_module_name,
         }
 
         if category:
-            cache['initialized_class'] = module.Category(cm=cmeta)
+            cache_data["initialized_class"] = module.Category(cm=cmeta)
+
+        module_cache[module_path] = cache_data
+        return {"return": 0, "cache": cache_data}
 
     except Exception as e:
-        return _error(f'Failed to import module {full_module_name} from {module_path}', 1, e, fail_on_error)
-
-    finally:
-        sys.path.pop(0)
-
-    # Update cache
-    module_cache[module_path] = cache
-
-    return {'return':0, 'cache':module_cache[module_path]}
-
+        return _error(f"Failed to import module {full_module_name}", 1, e, fail_on_error)
 
 ###################################################################################################
 def find_command_func(category_api, command):

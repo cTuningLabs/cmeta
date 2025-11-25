@@ -1,4 +1,7 @@
-﻿cMeta (0.3.0):
+﻿cMeta (0.4.0):
+  * Fixed another major bug in the category module loader.
+
+cMeta (0.3.0):
   * Fixed a major bug in the category module loader.
 
 cMeta (0.2.0): 
