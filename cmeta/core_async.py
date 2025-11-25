@@ -53,21 +53,26 @@ def _access_worker(params, kwargs):
     return cmeta.access(params)
 
 
-class CMetaAsync:
+class CMetaAsync(CMeta):
     """
     Async wrapper around CMeta using multiprocessing to avoid blocking
     event loop in FastAPI or asyncio-based services.
+
+    Inherits all CMeta methods while providing async wrappers for blocking operations.
     """
 
     def __init__(self, max_workers=None, logger=None, loop=None, **kwargs):
-        # Store external logger
-        self._logger = logger or logging.getLogger(__name__)
+        # Initialize parent CMeta
+        super().__init__(**kwargs)
+
+        # Store external logger (use parent's logger if not provided)
+        self._logger = logger or self.logger
 
         # Event loop + executor
         self._loop = loop or asyncio.get_event_loop()
         self._executor = ProcessPoolExecutor(max_workers=max_workers)
 
-        # Store constructor args for CMeta
+        # Store constructor args for CMeta workers
         self._cmeta_kwargs = kwargs
 
         self._logger.info(
@@ -86,6 +91,13 @@ class CMetaAsync:
         except Exception as e:
             self._logger.exception("Error executing CMetaAsync access")
             return {"return": 99, "error": f"CMetaAsync internal error: {e}"}
+
+    def access_sync(self, params):
+        """
+        Synchronous access using the inherited CMeta.access() method.
+        Use this when you're already in a worker thread/process.
+        """
+        return super().access(params)
 
     def shutdown(self):
         """
