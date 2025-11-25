@@ -332,6 +332,18 @@ class CMeta:
                         base_category_api_module_ver = category_meta.get('base_category_default_api_versions', {}).get(category_api_module_ver)
                     if base_category_api_module_ver is None:
                         base_category_api_module_ver = self.cfg['base_category_default_api_version']
+           
+            # Check min cMeta versions
+            category_min_cmeta_version = category_meta.get('min_cmeta_version_api')
+            if category_min_cmeta_version is None and category_api_module_ver is not None:
+                category_min_cmeta_version = category_meta.get('min_cmeta_version',{}).get(str(category_api_module_ver))
+            if category_min_cmeta_version is not None:
+                from .version import __version__
+                r = utils.common.compare_versions(category_min_cmeta_version, __version__)
+                if r['return']>0: return r
+                if r['comparison'] == '>':
+                    return {'return':1, 'error': f'this category requires min cMeta version "{category_min_cmeta_version}" but "{__version__}" is installed'}
+
 
             # Prepare paths to APIs
             category_apis = []
@@ -354,7 +366,6 @@ class CMeta:
 
             # Load categories
             for category_api in category_apis:
-
                 # category api path should be resolved by now
                 r = utils.sys.load_module(category_api['path'], self.category_cache, fail_on_error = self.fail_on_error, category=True, cmeta=self)
                 if r['return'] >0: return r
