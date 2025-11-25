@@ -302,7 +302,7 @@ def write_file(filepath, data, encoding=None, fail_on_error=False, logger=None, 
     except Exception as e:
         return _error(None, 1, e, fail_on_error)
 
-    return {'return':0}
+    return {'return':0, 'encoding':encoding, 'mode':mode}
 
 
 
