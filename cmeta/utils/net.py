@@ -1,99 +1,10 @@
 """
-Common reusable functions
+Network functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
-
-def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
-    """
-    """
-
-    # Return code 16 is a special one - it's more a warning to handle files that are not found
-    # but it's not critical for the system
-    if return_code != 16 and fail_on_error:
-        if exception:
-            raise exception
-        else:
-            raise RuntimeError(error_msg)
-
-    if error_msg is None:
-        err = str(exception)
-    else:
-        err2 = f" ({exception})" if exception is not None else ""
-        err = error_msg + err2
-
-    return {'return': return_code, 'error': err}
-
-def deep_merge(target, source, append_lists=False, ignore_root_keys=[]):
-    """
-    Recursively updates the target dictionary with values from the source dictionary.
-    
-    Parameters:
-        target (dict): The original dictionary to be updated.
-        source (dict): The new dictionary with updates.
-        append_lists (bool): If True, lists will be appended instead of overwritten.
-        ignore_root_keys (list): List of keys to ignore from source at the root level.
-    """
-    from collections.abc import Mapping
-
-    for key, value in source.items():
-        if key in ignore_root_keys:
-            continue
-            
-        if isinstance(value, Mapping):
-            target[key] = deep_merge(target.get(key, {}), value, append_lists=append_lists)
-        elif isinstance(value, list):
-            if append_lists and isinstance(target.get(key), list):
-                target[key] += value
-            else:
-                target[key] = value[:]
-        else:
-            target[key] = value
-
-    return target
-
-def safe_serialize_json(obj, non_serializable_text = None):
-    """
-    """
-    import json
-
-    if non_serializable_text is None:
-        non_serializable_text = "#NON-SERIALIZABLE#"
-
-    try:
-        json.dumps(obj)
-        return obj
-    except (TypeError, OverflowError):
-        if isinstance(obj, dict):
-            return {k: safe_serialize_json(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [safe_serialize_json(item) for item in obj]
-        elif isinstance(obj, tuple):
-            return tuple(safe_serialize_json(item) for item in obj)
-        elif isinstance(obj, set):
-            return [safe_serialize_json(item) for item in obj]  # Convert sets to lists
-        else:
-            return non_serializable_text
-
-def safe_print_json(obj, indent=2, non_serializable_text=None, ignore_keys=[], sort=True):
-    """
-    """
-    print(safe_print_json_to_str(obj, indent=indent, non_serializable_text=non_serializable_text, ignore_keys=ignore_keys, sort=sort))
-
-    return {'return':0}
-
-def safe_print_json_to_str(obj, indent=None, non_serializable_text=None, ignore_keys=[], sort=True):
-    """
-    """
-    import json
-
-    # Only filter top-level dict keys if obj is a dict and ignore_keys is not empty
-    if isinstance(obj, dict) and ignore_keys:
-        obj = {k: v for k, v in obj.items() if k not in ignore_keys}
-
-    return json.dumps(safe_serialize_json(obj, non_serializable_text=non_serializable_text), indent=indent, sort_keys=sort)
 
 def normalize_tags(tags, fail_on_error = False):
     """
@@ -318,3 +229,31 @@ def compare_versions(version1, version2):
 
     return {'return':0, 'comparison': comparison}
 
+def access_api(url, params, headers = {}):
+    """
+    Send POST request to FastAPI endpoint with params and return JSON response.
+    
+    Parameters:
+        url (str): The API endpoint URL
+        params (dict): Dictionary of parameters to send as JSON
+        
+    Returns:
+        dict: {'return': 0, 'output': dict} on success
+              {'return': 1, 'error': str} on error
+    """
+    import requests
+
+    try:
+        response = requests.post(url, json=params, headers=headers)
+        response.raise_for_status()
+        
+        output = response.json()
+       
+    except requests.exceptions.RequestException as e:
+        return {'return': 1, 'error': f'API request to {url} failed: {str(e)}'}
+    except ValueError as e:
+        return {'return': 1, 'error': f'Failed to parse JSON response from {url}: {str(e)}'}
+    except Exception as e:
+        return {'return': 1, 'error': f'Unexpected error when accessing {url}: {str(e)}'}
+
+    return {'return': 0, 'response': output}

@@ -202,7 +202,9 @@ class Category(InitCategory):
             new_tags:      str | list | None = None,    # Add more tags.
             replace_lists: bool = False,                # Replace lists during merging.
             replace:       bool = False,                # Replace existing meta dictionary entirely.
-            ignore_errors: bool = False                 # Ignore errors when updating multiple artifacts.
+            ignore_errors: bool = False,                # Ignore errors when updating multiple artifacts.
+            create:        bool = False,                # If artifact doesn't exist attempt to create
+            create_params: dict = {},                   # Pass params to create function
     ):
         """
         Update artifact(s).
@@ -233,12 +235,20 @@ class Category(InitCategory):
         state['control']['con'] = False
 
         r = self.find_(state, arg1, tags, sort, add_index_file=True, skip_uids=skip_uids)
-        if r['return']>0: return r
+        if r['return']>0:
+            if r['return']!=16 or not create: 
+                return r
+
+            r = self.create_(state, arg1, **create_params)
+            if r['return']>0: return r
+
+            r = self.find_(state, arg1, tags, sort, add_index_file=True, skip_uids=skip_uids)
+            if r['return']>0: return r
 
         artifacts = r['artifacts']
         updated_artifacts = []
 
-        for artifact in r['artifacts']:
+        for artifact in artifacts:
             updated = False
 
             artifact_path = artifact['path']

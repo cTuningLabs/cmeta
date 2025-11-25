@@ -91,18 +91,21 @@ def parse_cmd(cmd, fail_on_error = False):
             if flag_content.startswith('no-') and '=' not in flag_content and not flag_content.endswith('-'):
                 actual_key = flag_content[3:]  # Remove 'no-' prefix
                 if actual_key:  # Make sure there's actually a key after 'no-'
-                    _split_flag(actual_key, params, False, fix_keys=True)
+                    r = split_flag(actual_key, params, False, fix_keys=True)
+                    if r['return']>0: return r
                 else:
                     return _error(f'Invalid flag format: "{argument}" - missing key after "no-"', 1, None, fail_on_error)
             else:
                 # This will handle --key-, --key, --key=value formats
-                _split_flag(flag_content, params, fix_keys=True)
+                r = split_flag(flag_content, params, fix_keys=True)
+                if r['return']>0: return r
 
         # Handle non-flag arguments
         else:
             # Check if it's a key=value pair without dashes
             if '=' in argument:
-                _split_flag(argument, params, fix_keys=True)
+                r = split_flag(argument, params, fix_keys=True)
+                if r['return']>0: return r
             else:
                 # It's a positional argument
                 if params.get('args') is None:
@@ -115,6 +118,13 @@ def parse_cmd(cmd, fail_on_error = False):
     }
 
 
+def split_flag(*args, **params):
+    try:
+        key, value, updated_array = _split_flag(*args,**params)
+    except Exception as e:
+        return {'return': 1, 'error': f"Error parsing flags: {e}"}
+
+    return {'return': 0, 'split_flag': (key, value, updated_array)}
 
 
 def _split_flag(flag: str, array: dict, value: Optional[str] = None, fix_keys = False) -> tuple[str, any, dict]:
@@ -181,6 +191,9 @@ def _split_flag(flag: str, array: dict, value: Optional[str] = None, fix_keys = 
             root_key = False
         
         # Set the final value
+        if not isinstance(current_dict, dict):
+            raise TypeError(f"{current_dict} must be a dict, not {type(current_dict).__name__}")
+
         current_dict[key_parts[-1]] = parsed_value
     else:
         # Simple key-value assignment
