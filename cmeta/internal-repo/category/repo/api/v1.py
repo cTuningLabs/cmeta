@@ -12,6 +12,8 @@ from cmeta.category import InitCategory
 from cmeta import utils
 from datetime import datetime
 
+from . import common
+
 class Category(InitCategory):
     """
     Various Utils
