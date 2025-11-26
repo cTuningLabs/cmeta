@@ -712,7 +712,7 @@ class Category(InitCategory):
         else:
             now = datetime.now()
             date_str = now.strftime('%Y%m%d')
-            time_str = now.strftime('%H%M')
+            time_str = now.strftime('%H%M%S')
             zip_filename = f'cmr-{repo_name}-{date_str}-{time_str}.zip'
 
         # Determine output path
