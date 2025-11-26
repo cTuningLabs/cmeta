@@ -708,12 +708,12 @@ class Category(InitCategory):
 
         # Generate filename
         if skip_date:
-            zip_filename = f'cmeta-repo-{repo_name}.zip'
+            zip_filename = f'cmr-{repo_name}.zip'
         else:
             now = datetime.now()
             date_str = now.strftime('%Y%m%d')
             time_str = now.strftime('%H%M')
-            zip_filename = f'cmeta-repo-{repo_name}-{date_str}-{time_str}.zip'
+            zip_filename = f'cmr-{repo_name}-{date_str}-{time_str}.zip'
 
         # Determine output path
         if output_path is None:
@@ -732,7 +732,7 @@ class Category(InitCategory):
         r = utils.files.zip_directory(
             repo_path,
             zip_path,
-            skip_dirs=skip_dirs,
+            skip_directories=skip_dirs,
             fail_on_error=self.fail_on_error
         )
         if r['return']>0: return r
