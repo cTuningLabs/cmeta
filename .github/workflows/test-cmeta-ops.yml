@@ -7,14 +7,15 @@
 name: Test cMeta ops
 
 on:
-  push:
-    paths:
-      - '**'
-      - '!**.md'
-  pull_request:
-    branches:
-      - main
-      - dev
+  workflow_dispatch:
+#  push:
+#    paths:
+#      - '**'
+#      - '!**.md'
+#  pull_request:
+#    branches:
+#      - main
+#      - dev
 
 defaults:
   run:
