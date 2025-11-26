@@ -10,6 +10,7 @@ import os
 from cmeta.category import InitCategory
 
 from cmeta import utils
+from datetime import datetime
 
 class Category(InitCategory):
     """
@@ -304,7 +305,7 @@ class Category(InitCategory):
 
                 elif method == 'zip':
                     # Download zip
-                    r = utils.files.download(url, path=path, show_progress=con, fail_on_error = self.fail_on_error)
+                    r = utils.net.download(url, path=path, show_progress=con, fail_on_error = self.fail_on_error)
                     if r['return'] >0: return r
 
                     full_path_to_zip_file = r['path']
@@ -645,5 +646,101 @@ class Category(InitCategory):
         """
 
         return self.get_(**params, method='local')
+
+    def zip_(
+            self,
+            state:                  dict,                       # cMeta state.
+            arg1:                   str | None,                 # Repo name (alias and/or UID).
+            skip_date:              bool = False,               # Skip date and time from filename
+            skip_dirs:              list | None = None,         # Directories to skip (default: ['.venv', '__pycache__'])
+            output_path:            str | None = None,          # Output path for zip file (current directory by default)
+    ):
+        """
+        Zip cMeta repository.
+
+        Args:
+          state (dict): cMeta state
+          arg1 (str): repository name (alias and/or UID)
+          skip_date (bool): if True, skip date and time from filename
+          skip_dirs (list): directories to skip from zipping
+          output_path (str): output path for zip file
+
+        Returns:
+          (CM return dict):
+
+          * return (int): return code == 0 if no error and >0 if error
+          * (error) (str): error string if return>0
+          * (zip_path) (str): path to created zip file
+        """
+
+        con = state.get('control',{}).get('con', False)
+        
+        if skip_dirs is None:
+            skip_dirs = ['.venv', '__pycache__']
+
+        # Find the repository
+        p = {'category': state['category'], 
+             'command': 'find',
+             'arg1': arg1,
+             'sort': False,
+             'base': True}
+
+        r = self.cm.access(p)
+        if r['return']>0: return r
+
+        repo_artifacts = r.get('artifacts',[])
+        
+        if len(repo_artifacts) == 0:
+            return {'return':1, 'error':f'repository {arg1} not found'}
+        
+        if len(repo_artifacts) > 1:
+            return {'return':1, 'error':f'multiple repositories found for {arg1}, please specify exact name'}
+
+        repo = repo_artifacts[0]
+        repo_path = repo['path']
+        repo_meta = repo['cmeta']
+        repo_cmeta_ref_parts = repo['cmeta_ref_parts']
+        repo_alias = repo_cmeta_ref_parts.get('artifact_alias', '')
+        repo_uid = repo_cmeta_ref_parts['artifact_uid']
+
+        # Generate repo name for filename
+        repo_name = repo_alias if repo_alias else repo_uid
+
+        # Generate filename
+        if skip_date:
+            zip_filename = f'cmeta-repo-{repo_name}.zip'
+        else:
+            now = datetime.now()
+            date_str = now.strftime('%Y%m%d')
+            time_str = now.strftime('%H%M')
+            zip_filename = f'cmeta-repo-{repo_name}-{date_str}-{time_str}.zip'
+
+        # Determine output path
+        if output_path is None:
+            output_path = os.getcwd()
+        
+        zip_path = os.path.join(output_path, zip_filename)
+
+        if con:
+            print('')
+            print(f'Zipping repository {repo_name} from {repo_path}')
+            print(f'Output file: {zip_path}')
+            if skip_dirs:
+                print(f'Skipping directories: {", ".join(skip_dirs)}')
+
+        # Zip the directory
+        r = utils.files.zip_directory(
+            repo_path,
+            zip_path,
+            skip_dirs=skip_dirs,
+            fail_on_error=self.fail_on_error
+        )
+        if r['return']>0: return r
+
+        if con:
+            print(f'Repository successfully zipped to: {zip_path}')
+
+        return {'return':0, 'zip_path': zip_path}
+
 #TBD
 # add cx repo checkout xyz abc

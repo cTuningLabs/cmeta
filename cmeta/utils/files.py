@@ -661,61 +661,6 @@ def _get_encoding(encoding, file_format):
     
     return encoding
 
-
-def download(url, filename=None, path=None, chunk_size=65536, show_progress=False, fail_on_error=False, text="Downloading "):
-    """
-    Download a file from URL into path/filename, auto-detecting missing pieces.
-    """
-    import os
-    from urllib.parse import urlparse
-    from urllib.request import Request, urlopen
-    from urllib.error import URLError, HTTPError
-
-    if not url:
-        return _error('url is required', fail_on_error=fail_on_error)
-
-    tqdm_cls = None
-    if show_progress:
-        try:
-            from tqdm import tqdm as tqdm_cls
-        except ImportError as e:
-            return _error('tqdm package is required when show_progress is True', exception=e, fail_on_error=fail_on_error)
-
-    try:
-        path = os.path.abspath(path) if path else os.getcwd()
-        os.makedirs(path, exist_ok=True)
-
-        if not filename:
-            path_part = urlparse(url).path.rstrip('/')
-            filename = os.path.basename(path_part) or 'downloaded-file'
-
-        target_path = os.path.join(path, filename)
-        request = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-
-        with urlopen(request) as response, open(target_path, 'wb') as out_file:
-            total_size = response.getheader('Content-Length')
-            total_size = int(total_size) if total_size is not None else None
-            downloaded = 0
-            progress = tqdm_cls(total=total_size, unit='B', unit_scale=True, unit_divisor=1024, desc=text+filename) if tqdm_cls else None
-
-            try:
-                while True:
-                    chunk = response.read(chunk_size)
-                    if not chunk:
-                        break
-                    out_file.write(chunk)
-                    downloaded += len(chunk)
-                    if progress:
-                        progress.update(len(chunk))
-            finally:
-                if progress:
-                    progress.close()
-
-    except (URLError, HTTPError, OSError) as e:
-        return _error(f'Failed to download {url}', exception=e, fail_on_error=fail_on_error)
-
-    return {'return': 0, 'filename': filename, 'path': target_path, 'size': downloaded}
-
 def unzip(filename, path=None, remove_directories=0, skip_directories=None, overwrite=True, clean=False, fail_on_error=False):
     """
     Unzip file to the current directory or 'path'.
@@ -792,3 +737,65 @@ def unzip(filename, path=None, remove_directories=0, skip_directories=None, over
             return _error(f"Failed to remove zip file {filename}: {e}", 1, e, fail_on_error)
 
     return {'return': 0}
+
+def zip_directory(source_dir, output_path, skip_directories=None, fail_on_error=True, logger=None):
+    """
+    Creates a zip archive from a directory.
+    
+    Args:
+        source_dir: Path to the directory to zip
+        output_path: Path where the zip file will be created
+        skip_directories: List of directory names to skip (e.g., ['.git', '__pycache__'])
+        fail_on_error: Whether to raise exceptions or return error dict
+        logger: Logger instance for debug messages
+    
+    Returns:
+        Dict with 'return' (0=success, non-zero=error) and optional 'error'
+    """
+    if skip_directories is None:
+        skip_directories = []
+    
+    source_path = Path(source_dir)
+    
+    if not source_path.exists():
+        return _error(f"Source directory '{source_dir}' does not exist", 1, None, fail_on_error)
+    
+    if not source_path.is_dir():
+        return _error(f"'{source_dir}' is not a directory", 1, None, fail_on_error)
+    
+    if logger is not None:
+        logger.debug(f"utils.files.zip_directory - creating zip archive from {source_dir} to {output_path}")
+    
+    try:
+        # Ensure output directory exists
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zip_ref:
+            for file_path in source_path.rglob('*'):
+                # Check if any parent directory should be skipped
+                skip = False
+                for parent in file_path.relative_to(source_path).parts:
+                    if parent in skip_directories:
+                        skip = True
+                        break
+                
+                if skip:
+                    if logger is not None:
+                        logger.debug(f"utils.files.zip_directory - skipping {file_path}")
+                    continue
+                
+                # Add file or directory to zip
+                if file_path.is_file():
+                    arcname = file_path.relative_to(source_path)
+                    zip_ref.write(file_path, arcname)
+                    if logger is not None:
+                        logger.debug(f"utils.files.zip_directory - added {arcname}")
+        
+        if logger is not None:
+            logger.debug(f"utils.files.zip_directory - successfully created {output_path}")
+       
+    except Exception as e:
+        return _error(f"Failed to create zip archive: {str(e)}", 1, e, fail_on_error)
+
+    return {'return': 0, 'output_path': output_path}
