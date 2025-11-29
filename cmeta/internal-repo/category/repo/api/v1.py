@@ -26,22 +26,22 @@ class Category(InitCategory):
     ############################################################
     def get_(
             self, 
-            state:                  dict,                       # cMeta state.
-            arg1:                   str | None = None,          # Repo name (alias and/or UID).
-            url:                    str | None = None,          # Repo URL (optional)
-            path:                   str | None = None,          # Repo path (optional. $HOME/CMETA/{repo alias} by default)
-            folder:                 str | None = None,          # Force this folder to store repository inside $HOME/CMETA (skiped if path is set)
-            subdir:                 str | None = None,          # Repository is stored in this 
-            method:                 str | None = None,          # Method (git, zip, local) - will be detected automatically if not specified
-            local:                  bool = False,               # If True, set method to 'local'
-            meta:                   dict | None = None,         # Repo meta data 
-            update:                 bool = False,               # Force update git repos
-            status:                 bool = False,               # Check status of git repos
-            checkout:               str | None = None,          # git checkout to this branch or commit
+            state:                  dict,                # cMeta state.
+            arg1:                   str = None,          # Repo name (alias and/or UID).
+            url:                    str = None,          # Repo URL (optional)
+            path:                   str = None,          # Repo path (optional. $HOME/CMETA/{repo alias} by default)
+            folder:                 str = None,          # Force this folder to store repository inside $HOME/CMETA (skiped if path is set)
+            subdir:                 str = None,          # Repository is stored in this 
+            method:                 str = None,          # Method (git, zip, local) - will be detected automatically if not specified
+            local:                  bool = False,        # If True, set method to 'local'
+            meta:                   dict = None,         # Repo meta data 
+            update:                 bool = False,        # Force update git repos
+            status:                 bool = False,        # Check status of git repos
+            checkout:               str = None,          # git checkout to this branch or commit
 
             pre:                    str = '',
             post:                   str = '',
-            hide:                   bool = False,               # hide git clone command print (if PAT/secret is present) 
+            hide:                   bool = False,        # hide git clone command print (if PAT/secret is present) 
 
             skip_parent_dir_in_zip: bool = False,
     ):
@@ -651,11 +651,11 @@ class Category(InitCategory):
 
     def zip_(
             self,
-            state:                  dict,                       # cMeta state.
-            arg1:                   str | None,                 # Repo name (alias and/or UID).
-            skip_date:              bool = False,               # Skip date and time from filename
-            skip_dirs:              list | None = None,         # Directories to skip (default: ['.venv', '__pycache__'])
-            output_path:            str | None = None,          # Output path for zip file (current directory by default)
+            state:                  dict,                # cMeta state.
+            arg1:                   str,                 # Repo name (alias and/or UID).
+            skip_date:              bool = False,        # Skip date and time from filename
+            skip_dirs:              list = None,         # Directories to skip (default: ['.venv', '__pycache__'])
+            output_path:            str = None,          # Output path for zip file (current directory by default)
     ):
         """
         Zip cMeta repository.

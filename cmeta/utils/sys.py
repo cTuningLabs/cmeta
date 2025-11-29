@@ -547,7 +547,7 @@ def run_command_with_timeout_tree_kill_on_windows(
     cmd,
     capture_output: bool,
     cur_env,
-    timeout: float | None,
+    timeout: float,
     shell: bool = True,
     text: bool = True,
 ):
