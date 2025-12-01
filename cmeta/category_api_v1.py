@@ -527,7 +527,6 @@ class Category(InitCategory):
                 import time
                 start_time = time.perf_counter()                
 
-
             if con:
                 print (f'Deleting artifact located at "{artifact_path}" ...')
                 if not force:
@@ -542,7 +541,6 @@ class Category(InitCategory):
             artifact_cmeta_ref_parts = artifact['cmeta_ref_parts']
             artifact_uid = artifact_cmeta_ref_parts['artifact_uid']
             artifact_alias_lowercase = artifact_cmeta_ref_parts.get('artifact_alias_lowercase', artifact_cmeta_ref_parts.get('artifact_alias'))
-
 
             # Remove from index first
             error = False
@@ -674,6 +672,8 @@ class Category(InitCategory):
         repo_artifact = repo_artifacts[0]
         repo_path = repo_artifact['full_path']
 
+        repo_cmeta = repo_artifact['cmeta']
+
         repo_cmeta_ref_parts = repo_artifact['cmeta_ref_parts']
 
         artifact_repo_alias = repo_cmeta_ref_parts.get('artifact_alias')
@@ -700,7 +700,10 @@ class Category(InitCategory):
 
         artifact_dir = artifact_alias if artifact_alias != None and artifact_alias != '' else artifact_uid
 
-        sharding_slices = category_cmeta.get('sharding_slices')
+        if category_uid in repo_cmeta.get('sharding_slices', {}):
+            sharding_slices = repo_cmeta['sharding_slices'][category_uid]
+        else:
+            sharding_slices = category_cmeta.get('sharding_slices')
 
         if sharding_slices is not None:
             r = utils.files.apply_sharding_to_path(category_path, artifact_dir, sharding_slices)
@@ -859,11 +862,12 @@ class Category(InitCategory):
 
         # Check if new target repo
         target_repo_path = None
+        target_repo_cmeta = None
         if target_repo_alias is not None or target_repo_uid is not None:
             repo_cmeta_ref = {'category_alias': 'repo', 'category_uid': self.cm.cfg['category_repo_uid']}
             
-            if target_repo_uid != None: repo_cmeta_ref['artifact_uid'] = target_repo_uid
-            if target_repo_alias != None: repo_cmeta_ref['artifact_alias'] = target_repo_alias
+            if target_repo_uid is not None: repo_cmeta_ref['artifact_uid'] = target_repo_uid
+            if target_repo_alias is not None: repo_cmeta_ref['artifact_alias'] = target_repo_alias
 
             r = self.cm.repos.find(repo_cmeta_ref)
             if r['return']>0: return r
@@ -872,10 +876,11 @@ class Category(InitCategory):
 
             if len(repo_artifacts)>1:
                 paths = ', '.join([a['path'] for a in repo_artifacts])
-                return {'return':1, 'error': f'more than one target repo found when moving or renaming artifacts'} 
+                return {'return':1, 'error': f'more than one target repo found when moving or renaming artifacts: {paths}'} 
 
             target_repo_artifact = repo_artifacts[0]
             target_repo_path = target_repo_artifact['full_path']
+            target_repo_cmeta = target_repo_artifact['cmeta']
 
             repo_cmeta_ref_parts = target_repo_artifact['cmeta_ref_parts']
 
@@ -913,9 +918,32 @@ class Category(InitCategory):
             cmeta_ref_parts = artifact['cmeta_ref_parts'].copy()
 
             category_alias = cmeta_ref_parts['category_alias']
+            category_uid = cmeta_ref_parts['category_uid']
 
             artifact_alias = cmeta_ref_parts.get('artifact_alias')
             artifact_uid = cmeta_ref_parts['artifact_uid']
+
+            # Get meta of the current repository if no target to get sharding_slices per repo if needed
+            if target_repo_cmeta is None:
+                tmp_repo_cmeta_ref = {'category_alias': 'repo', 'category_uid': self.cm.cfg['category_repo_uid']}
+                
+                if cmeta_ref_parts.get('repo_uid') is not None: tmp_repo_cmeta_ref['artifact_uid'] = cmeta_ref_parts['repo_uid']
+                if cmeta_ref_parts.get('repo_alias') is not None: tmp_repo_cmeta_ref['artifact_alias'] = cmeta_ref_parts['repo_alias']
+
+                r = self.cm.repos.find(tmp_repo_cmeta_ref)
+                if r['return']>0: return r
+
+                tmp_repo_artifacts = r['artifacts']
+
+                if len(tmp_repo_artifacts)>1:
+                    paths = ', '.join([a['path'] for a in tmp_repo_artifacts])
+                    return {'return':1, 'error': f'more than one target repo found when moving or renaming artifacts: {paths}'} 
+
+                tmp_target_repo_artifact = tmp_repo_artifacts[0]
+                target_repo_cmeta = tmp_target_repo_artifact['cmeta']
+
+            if category_uid in target_repo_cmeta.get('sharding_slices', {}):
+                sharding_slices = target_repo_cmeta['sharding_slices'][category_uid]
 
             if copy:
                 if tmp_target_uid is None and target_uid is not None:

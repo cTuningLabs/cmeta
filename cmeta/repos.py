@@ -832,8 +832,6 @@ class Repos:
 
                     category_name = category_meta['artifact']
 
-                    sharding_slices = category_meta.get('sharding_slices')
-
                     r = utils.names.parse_cmeta_name(category_name)
                     if r['return']>0: return r
                     cmeta_name_parts = r['name']
@@ -844,6 +842,11 @@ class Repos:
                     full_category_name = f'{category},' + category_uid
 
                     path_to_category = os.path.join(repo_full_path, category)
+
+                    if category_uid in repo_meta.get('sharding_slices', {}):
+                        sharding_slices = repo_meta['sharding_slices'][category_uid]
+                    else:
+                        sharding_slices = category_meta.get('sharding_slices')
 
                     if os.path.isdir(path_to_category):
                         if conx:
@@ -1087,7 +1090,7 @@ def _get_artifacts_from_sharded_path(base_path, slices, depth=0, prefix=''):
     
     for entry in os.listdir(base_path):
         entry_path = os.path.join(base_path, entry)
-        if os.path.isdir(entry_path) and len(entry) == expected_length:
+        if os.path.isdir(entry_path) and len(entry) <= expected_length:
             # This directory matches the expected shard length
             # Recurse to next level, building up the path prefix
             new_prefix = os.path.join(prefix, entry) if prefix else entry

@@ -212,7 +212,7 @@ class Category(InitCategory):
         if os.path.isfile(arg2) and not (force or f):
             return {'return':1, 'error':f'Output file already exists (use --force or --f option to overwrite): {arg2}'} 
 
-        r = self.cm.utils.files.safe_write_file(arg2, data, sort_keys=sorty_keys)
+        r = self.cm.utils.files.safe_write_file(arg2, data, sort_keys=sort_keys)
         if r['return'] > 0: return r
 
         return {'return':0}
