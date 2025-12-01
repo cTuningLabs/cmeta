@@ -1,4 +1,7 @@
-﻿cMeta (0.4.0):
+﻿cMeta (0.6.0):
+  * Added sharding for artifacts
+
+cMeta (0.4.0):
   * Fixed another major bug in the category module loader.
 
 cMeta (0.3.0):

@@ -32,6 +32,37 @@ class Category(InitCategory):
 
     
     ############################################################
+    def _safe_delete_directory_if_empty_with_sharding(
+            self,
+            artifact_path: str,
+            sharding_slices: list = None
+    ):
+        """
+        Safely delete empty directories up the hierarchy based on sharding configuration.
+
+        Args:
+            artifact_path (str): Path to the artifact directory.
+            sharding_slices (list | None): Sharding configuration from category meta.
+
+        Returns:
+            dict: A cMeta dictionary with the following keys
+                - **return** (int): 0 if success, >0 if error.
+                - **error** (str): Error message if `return > 0`.
+        """
+        current_path = os.path.dirname(artifact_path)
+        extra_levels = 1 if sharding_slices is None else len(sharding_slices) + 1
+
+        for _i in range(extra_levels):
+            r = self.cm.utils.files.safe_delete_directory_if_empty(current_path)
+            if r['return'] > 0:
+                return r
+            if os.path.isdir(current_path):
+                break
+            current_path = os.path.dirname(current_path)
+
+        return {'return': 0}
+
+    ############################################################
     def test(self, 
              params: dict):
         """
@@ -479,6 +510,9 @@ class Category(InitCategory):
 
         force = force or f
     
+        category_cmeta = state['category_artifact']['cmeta']
+        sharding_slices = category_cmeta.get('sharding_slices')
+
         for artifact in artifacts:
             artifact_path = artifact['path']
             artifact_cmeta = artifact['cmeta']
@@ -509,6 +543,7 @@ class Category(InitCategory):
             artifact_uid = artifact_cmeta_ref_parts['artifact_uid']
             artifact_alias_lowercase = artifact_cmeta_ref_parts.get('artifact_alias_lowercase', artifact_cmeta_ref_parts.get('artifact_alias'))
 
+
             # Remove from index first
             error = False
             r = self.cm.repos.remove_from_index(artifact_index_file, artifact_uid, artifact_alias_lowercase)
@@ -523,9 +558,8 @@ class Category(InitCategory):
 
             # Delete root if empty
             if not error:
-                root_artifact_path = os.path.dirname(artifact_path)
-                r = self.cm.utils.files.safe_delete_directory_if_empty(root_artifact_path)
-                if r['return']>0:
+                r = self._safe_delete_directory_if_empty_with_sharding(artifact_path, sharding_slices)
+                if r['return'] > 0:
                     error = True
 
             if error:
@@ -653,6 +687,8 @@ class Category(InitCategory):
         category_alias = category['artifact_alias']
         category_uid = category['artifact_uid']
 
+        category_cmeta = state['category_artifact']['cmeta']
+
         category_path = os.path.join(repo_path, category_alias)
 
         if not virtual:
@@ -664,7 +700,15 @@ class Category(InitCategory):
 
         artifact_dir = artifact_alias if artifact_alias != None and artifact_alias != '' else artifact_uid
 
-        artifact_path = os.path.join(category_path, artifact_dir)
+        sharding_slices = category_cmeta.get('sharding_slices')
+
+        if sharding_slices is not None:
+            r = utils.files.apply_sharding_to_path(category_path, artifact_dir, sharding_slices)
+            if r['return']>0: return r
+
+            artifact_path = r['sharded_path']
+        else:
+            artifact_path = os.path.join(category_path, artifact_dir)
 
         cmeta_filename_json = os.path.join(artifact_path, self.cm.cfg['meta_filename_base'] + '.json')
         cmeta_filename_yaml = os.path.join(artifact_path, self.cm.cfg['meta_filename_base'] + '.yaml')
@@ -853,8 +897,11 @@ class Category(InitCategory):
 
         tmp_target_uid = None
 
+        category_cmeta = state['category_artifact']['cmeta']
+        sharding_slices = category_cmeta.get('sharding_slices')
+
         for artifact in artifacts:
-            # Get path to sthe original original artifact
+            # Get path to the original original artifact
             path = os.path.normpath(artifact['path'])
 
             if not os.path.isdir(path):
@@ -911,7 +958,13 @@ class Category(InitCategory):
                 else:
                     target_artifact_dir = artifact_uid
 
-            path_to_target_artifact = os.path.join(path_to_target_category, target_artifact_dir)
+            if sharding_slices is not None:
+                r = utils.files.apply_sharding_to_path(path_to_target_category, target_artifact_dir, sharding_slices)
+                if r['return']>0: return r
+
+                path_to_target_artifact = r['sharded_path']
+            else:
+                path_to_target_artifact = os.path.join(path_to_target_category, target_artifact_dir)
 
             if path == path_to_target_artifact and not update_uid:
                 return {'return':1, 'error':f"can't {command} artifact {artifact_alias} to itself"}
@@ -938,6 +991,11 @@ class Category(InitCategory):
                 print (command2.capitalize() + f" {path} -> {path_to_target_artifact} ...")
 
             if not os.path.isdir(path_to_target_artifact):
+                if sharding_slices is not None:
+                    # Check if target sub-directories exists:
+                    sub_path_to_target_artifact = os.path.dirname(path_to_target_artifact)
+                    os.makedirs(sub_path_to_target_artifact, exist_ok=True)
+
                 try:
                     if copy:
                         shutil.copytree(path, path_to_target_artifact, copy_function=shutil.copy2, ignore_dangling_symlinks=False)
@@ -975,9 +1033,9 @@ class Category(InitCategory):
                    if r['return']>0: return r
 
             # Delete root if empty
-            root_artifact_path = os.path.dirname(path)
-            r = self.cm.utils.files.safe_delete_directory_if_empty(root_artifact_path)
-            # Skip
+            if not copy:
+                r = self._safe_delete_directory_if_empty_with_sharding(path, sharding_slices)
+                # Ignore errors when deleting empty directories during move
 
             # Update index
             kwargs = {}

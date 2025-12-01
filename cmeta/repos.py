@@ -832,6 +832,8 @@ class Repos:
 
                     category_name = category_meta['artifact']
 
+                    sharding_slices = category_meta.get('sharding_slices')
+
                     r = utils.names.parse_cmeta_name(category_name)
                     if r['return']>0: return r
                     cmeta_name_parts = r['name']
@@ -847,7 +849,10 @@ class Repos:
                         if conx:
                             print (f'    Processing category {category} ...', flush=True)
                         
-                        artifact_dirs = os.listdir(path_to_category)
+                        if sharding_slices is not None:  
+                            artifact_dirs = _get_artifacts_from_sharded_path(path_to_category, sharding_slices)
+                        else:
+                            artifact_dirs = os.listdir(path_to_category)
 
                         for artifact in tqdm(artifact_dirs, disable = not (con and conx), desc="      Processing artifacts: "):
                             path_to_artifact = os.path.join(path_to_category, artifact)
@@ -1067,3 +1072,25 @@ def _get_full_path(path, repo_meta):
             full_path = os.path.join(path, subdir)
     
     return full_path
+
+################################################################################
+def _get_artifacts_from_sharded_path(base_path, slices, depth=0, prefix=''):
+    """Recursively traverse sharded directory structure"""
+    if depth >= len(slices):
+        # We've traversed all shard levels, return items at this level with their paths
+        if os.path.isdir(base_path):
+            return [os.path.join(prefix, entry) for entry in os.listdir(base_path)]
+        return []
+    
+    artifacts = []
+    expected_length = slices[depth]
+    
+    for entry in os.listdir(base_path):
+        entry_path = os.path.join(base_path, entry)
+        if os.path.isdir(entry_path) and len(entry) == expected_length:
+            # This directory matches the expected shard length
+            # Recurse to next level, building up the path prefix
+            new_prefix = os.path.join(prefix, entry) if prefix else entry
+            artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix))
+    
+    return artifacts

@@ -799,3 +799,47 @@ def zip_directory(source_dir, output_path, skip_directories=None, fail_on_error=
         return _error(f"Failed to create zip archive: {str(e)}", 1, e, fail_on_error)
 
     return {'return': 0, 'output_path': output_path}
+
+def apply_sharding_to_name(name: str, slices=None):
+    """
+    Apply sharding to a single path component (file or directory name).
+    Returns a list of subdirectory names + the original name.
+    """
+
+    parts = []
+
+    if not slices:
+        parts = [name]
+
+    else:
+        start = 0
+
+        for length in slices:
+            end = start + length
+            parts.append(name[start:end])
+            start = end
+
+        # Final element is the actual original name
+        parts.append(name)
+
+    return {'return':0, 'parts': parts}
+
+
+def apply_sharding_to_path(path: str, name: str, slices: list):
+    """
+    Takes an input path like "20251109.test" and shard it into 
+    directories based on slices schema.
+    
+    Returns the full sharded path under base_dir.
+    """
+    r = apply_sharding_to_name(name, slices)
+    if r['return']>0: return r
+
+    sharded_parts = r['parts']
+
+    # Compose final result:
+    # path / (sharded path parts)
+
+    full_path = os.path.join(path, *sharded_parts)
+
+    return {'return':0, 'sharded_path': full_path}
