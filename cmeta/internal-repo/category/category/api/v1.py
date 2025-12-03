@@ -20,6 +20,42 @@ class Category(InitCategory):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
+    def delete(self, params):
+        """
+        Delete category
+
+        @base.delete_
+        """
+
+        control = params.get('state',{}).get('control',{})
+
+        con = control.get('con', False)
+        verbose = control.get('verbose', False)
+
+        p = self._prepare_input_from_params(params, base = True)
+
+        r = self.cm.access(p)
+        if r['return']>0: return r
+
+        deleted_artifacts = r.get('deleted_artifacts', [])
+        reindex = False
+
+        for artifact in deleted_artifacts:
+            cmeta = artifact['cmeta']
+            if not cmeta.get('no_index', False):
+                reindex = True
+                break
+ 
+        if reindex:
+            if con:
+                print('')
+
+            rx = self.cm.repos.index(clean=True, con=con, verbose=verbose)
+            if rx['return']>0: return rx
+
+        return r
+
+
     def create(self, params):
         """
         Create new category with commands
