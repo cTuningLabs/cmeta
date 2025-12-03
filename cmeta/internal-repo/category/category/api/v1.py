@@ -19,6 +19,7 @@ class Category(InitCategory):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
+
     def create(self, params):
         """
         Create new category with commands
@@ -36,7 +37,7 @@ class Category(InitCategory):
             arg1_obj_parts = r['obj_parts']
             arg1_alias = arg1_obj_parts.get('alias')
             if arg1_alias is not None:
-                arg1_alias = arg1_alias.strip().lower()
+                arg1_alias = arg1_alias.strip()
                 r = names.is_valid_category_alias(arg1_alias)
                 if r['return'] >0: return r         
 

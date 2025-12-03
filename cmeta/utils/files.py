@@ -823,7 +823,7 @@ def zip_directory(source_dir, output_path, skip_directories=None, fail_on_error=
     return {'return': 0, 'output_path': output_path}
 
 ##########################################################################################
-def apply_sharding_to_name(name: str, slices=None):
+def shard_name(name: str, slices=None):
     """
     Apply sharding to a single path component (file or directory name).
     Returns a list of subdirectory names + the original name.
@@ -832,37 +832,35 @@ def apply_sharding_to_name(name: str, slices=None):
     will be used (e.g., '___' for a 2-char shard). Placeholder length = shard_length + 1.
     This ensures predictable directory structure for database listing and migration.
     """
-
-    parts = []
-
     if not slices:
         parts = [name]
-
     else:
+        parts = []
         start = 0
-
         for length in slices:
             end = start + length
             
-            # Check if we have enough characters for this shard
-            if start >= len(name):
-                # Name too short - use underscore placeholder
-                parts.append('_' * (length + 1))
-            else:
-                # Extract shard from name
-                shard = name[start:end]
-                
-                # If shard is shorter than expected (end of name), use placeholder
+            # Extract shard from name, padding with underscores if needed
+            if start < len(name):
+                shard = name[start:end].lower() # important to enable faster search ...
+                # Fill remainder with underscores if shard is shorter than expected
                 if len(shard) < length:
-                    parts.append('_' * (length + 1))
-                else:
-                    parts.append(shard)
+                    shard = shard + '_' * (length - len(shard))
+            else:
+                # If we've exhausted the name, use underscores
+                shard = '_' * length
             
-            start = end
+            shard = shard.replace(' ', '_')
 
+            # Avoiding glitches on Windows
+            if shard.endswith('.'): shard = shard[:-1] + '_'
+            
+            parts.append(shard)
+            start = end
+        
         # Final element is the actual original name (always)
         parts.append(name)
-
+    
     return {'return':0, 'parts': parts}
 
 
@@ -874,7 +872,7 @@ def apply_sharding_to_path(path: str, name: str, slices: list):
     
     Returns the full sharded path under base_dir.
     """
-    r = apply_sharding_to_name(name, slices)
+    r = shard_name(name, slices)
     if r['return']>0: return r
 
     sharded_parts = r['parts']
@@ -882,9 +880,14 @@ def apply_sharding_to_path(path: str, name: str, slices: list):
     # Compose final result:
     # path / (sharded path parts)
 
-    full_path = os.path.join(path, *sharded_parts)
+    sharded_path = os.path.join(*sharded_parts)
 
-    return {'return':0, 'sharded_path': full_path}
+    if path is not None:
+       full_path = os.path.join(path, sharded_path)
+    else:
+       full_path = sharded_path
+
+    return {'return':0, 'sharded_parts': sharded_parts, 'sharded_path': full_path}
 
 ##########################################################################################
 def safe_delete_directory_if_empty_with_sharding(

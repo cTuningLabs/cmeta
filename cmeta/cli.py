@@ -128,8 +128,8 @@ def process(cmd):
         if category_obj == '.':
 
             r = utils.common.detect_cid_in_the_current_directory(cmeta, 
-                                                                 debug = cmeta_init.get('debug', False), 
-                                                                 logger = logger)
+                  debug = cmeta_init.get('debug', False), 
+                  logger = logger)
             if r['return'] >0: return r
 
             artifact_repo_name = r['artifact_repo_name']

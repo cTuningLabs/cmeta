@@ -94,6 +94,9 @@ def is_valid_category_alias(alias):
     if alias.endswith('.'):
         return {'return': 1, 'error': f'Invalid alias "{alias}". Cannot end with a dot'}
 
+    if alias != alias.lower():
+        return {'return': 1, 'error': f'Invalid alias "{alias}". Cannot have capital letters'}
+
     # Check for reserved names on Windows (case-insensitive)
     reserved_names = {'CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 
                       'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 

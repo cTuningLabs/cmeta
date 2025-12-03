@@ -378,6 +378,7 @@ class Category(InitCategory):
             state:     dict,           # cMeta state.
             arg1:      str   = None,   # Artifact alias or UID.
             tags:      str   = None,   # Optional tag filter.
+            extra:     bool  = False,  # Show extra info
             skip_uids: bool  = False,  # Skip UIDs when using wildcards.
             yaml:      bool  = False,  # Output as YAML instead of JSON.
     ):
@@ -418,12 +419,14 @@ class Category(InitCategory):
         сmeta = artifact['cmeta']
 
         if con:
+            data = artifact if extra else сmeta
+
             if yaml:
                 import yaml
-                print (yaml.dump(сmeta, indent=2, sort_keys=True))
+                print (yaml.dump(data, indent=2, sort_keys=True))
             else:
                 import json
-                print (json.dumps(сmeta, indent=2, sort_keys=True))
+                print (json.dumps(data, indent=2, sort_keys=True))
         
         return {'return':0, 'artifact': artifact, 'cmeta': сmeta}
 
@@ -832,6 +835,18 @@ class Category(InitCategory):
         if copy and num_found_artifacts > 1 and target_uid is not None:
             return {'return':1, 'error':'can\'t specify the same UID when copying multiple artifacts'}
 
+        if copy:
+            command = 'copy'
+            command2 = 'copying'
+        else:    
+            if num_found_artifacts > 1 or target_alias is not None or target_uid is not None:
+                command = 'move'
+                command2 = 'moving' 
+            else:
+                command = 'rename'
+                command2 = 'renaming'
+
+
         # Check if new target repo
         target_repo_path = None
         target_repo_cmeta = None
@@ -847,8 +862,8 @@ class Category(InitCategory):
             repo_artifacts = r['artifacts']
 
             if len(repo_artifacts)>1:
-                paths = ', '.join([a['path'] for a in repo_artifacts])
-                return {'return':1, 'error': f'more than one target repo found when moving or renaming artifacts: {paths}'} 
+                paths = '\n'.join(['* '+a['path'] for a in repo_artifacts])
+                return {'return':1, 'error': f'more than one target repo found when {command2} artifacts:\n{paths}'} 
 
             target_repo_artifact = repo_artifacts[0]
             target_repo_path = target_repo_artifact['full_path']
@@ -860,22 +875,11 @@ class Category(InitCategory):
             target_repo_uid = repo_cmeta_ref_parts['artifact_uid']
 
         # Iterate over artifacts
-        if con:
-            if copy:
-                command = 'copy'
-                command2 = 'copying'
-            else:    
-                if num_found_artifacts > 1 or target_repo_path is not None:
-                    command = 'move'
-                    command2 = 'moving' 
-                else:
-                    command = 'rename'
-                    command2 = 'renaming'
-
         tmp_target_uid = None
 
         category_cmeta = state['category_artifact']['cmeta']
         sharding_slices = category_cmeta.get('sharding_slices')
+        target_sharding_slices = category_cmeta.get('sharding_slices')
         no_index = category_cmeta.get('no_index', False)
 
         for artifact in artifacts:
@@ -909,14 +913,14 @@ class Category(InitCategory):
                 tmp_repo_artifacts = r['artifacts']
 
                 if len(tmp_repo_artifacts)>1:
-                    paths = ', '.join([a['path'] for a in tmp_repo_artifacts])
-                    return {'return':1, 'error': f'more than one target repo found when moving or renaming artifacts: {paths}'} 
+                    paths = '\n'.join(['* '+a['path'] for a in tmp_repo_artifacts])
+                    return {'return':1, 'error': f'more than one target repo found when {command2} artifacts:\n{paths}'} 
 
                 tmp_target_repo_artifact = tmp_repo_artifacts[0]
                 target_repo_cmeta = tmp_target_repo_artifact['cmeta']
 
             if category_uid in target_repo_cmeta.get('sharding_slices', {}):
-                sharding_slices = target_repo_cmeta['sharding_slices'][category_uid]
+                target_sharding_slices = target_repo_cmeta['sharding_slices'][category_uid]
 
             if copy:
                 if tmp_target_uid is None and target_uid is not None:
@@ -957,8 +961,8 @@ class Category(InitCategory):
                 else:
                     target_artifact_dir = artifact_uid
 
-            if sharding_slices is not None:
-                r = utils.files.apply_sharding_to_path(path_to_target_category, target_artifact_dir, sharding_slices)
+            if target_sharding_slices is not None:
+                r = utils.files.apply_sharding_to_path(path_to_target_category, target_artifact_dir, target_sharding_slices)
                 if r['return']>0: return r
 
                 path_to_target_artifact = r['sharded_path']
@@ -990,7 +994,7 @@ class Category(InitCategory):
                 print (command2.capitalize() + f" {path} -> {path_to_target_artifact} ...")
 
             if not os.path.isdir(path_to_target_artifact):
-                if sharding_slices is not None:
+                if target_sharding_slices is not None:
                     # Check if target sub-directories exists:
                     sub_path_to_target_artifact = os.path.dirname(path_to_target_artifact)
                     os.makedirs(sub_path_to_target_artifact, exist_ok=True)

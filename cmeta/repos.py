@@ -351,6 +351,11 @@ class Repos:
             repo_path = repo_artifact['path']
             repo_meta = repo_artifact['cmeta']
 
+            repo_cmeta_ref_parts = repo_artifact['cmeta_ref_parts']
+
+            repo_alias = repo_cmeta_ref_parts.get('artifact_alias')
+            repo_uid = repo_cmeta_ref_parts['artifact_uid']
+
             if category_uid in repo_meta.get('sharding_slices', {}):
                 sharding_slices = repo_meta['sharding_slices'][category_uid]
             else:
@@ -1029,38 +1034,53 @@ class Repos:
             if conx:
                 print (f'    Processing category {category} ...', flush=True)
 
-            if sharding_slices is not None:
-                # Pass artifact_alias for smart shard pruning when not indexing
-                search_alias = artifact_alias if index_artifacts is None else None
-                artifact_dirs = _get_artifacts_from_sharded_path(path_to_category, sharding_slices, artifact_alias=search_alias)
-            else:
-                artifact_dirs = os.listdir(path_to_category)
 
-            # Filter artifact_dirs if searching without index
-            if index_artifacts is None and artifact_alias is not None and artifact_alias != '':
+            if index_artifacts is not None:
+                # TBD sharding
+                if sharding_slices is not None:
+                    # Pass artifact_alias for smart shard pruning when not indexing
+                    search_alias = artifact_alias if index_artifacts is None else None
+                    artifact_dirs = _get_artifacts_from_sharded_path(path_to_category, sharding_slices, artifact_alias=search_alias)
+                else:
+                    artifact_dirs = os.listdir(path_to_category)
+
+                tmp_artifact_dirs = tqdm(artifact_dirs, disable = not (con and conx), desc="      Indexing artifacts: ")
+
+            else:
+                # Filter artifact_dirs if searching without index
+                tmp_artifact_dirs = []
+
+                if artifact_alias is None or artifact_alias == '':
+                    artifact_alias = '*'
+
                 lowercase_artifact_alias = artifact_alias.lower()
                 
                 if '*' in artifact_alias or '?' in artifact_alias:
-                    # Wildcard search - case-insensitive
-                    filtered_dirs = []
-                    for artifact_dir in artifact_dirs:
-                        artifact_name = os.path.basename(artifact_dir).lower()
-                        if fnmatch.fnmatch(artifact_name, lowercase_artifact_alias):
-                            filtered_dirs.append(artifact_dir)
-                    artifact_dirs = filtered_dirs
-                else:
-                    # Exact match - case-insensitive
-                    filtered_dirs = []
-                    for artifact_dir in artifact_dirs:
-                        artifact_name = os.path.basename(artifact_dir).lower()
-                        if artifact_name == lowercase_artifact_alias:
-                            filtered_dirs.append(artifact_dir)
-                    artifact_dirs = filtered_dirs
+                    if sharding_slices is not None:
+                        tmp_artifact_dirs = _get_artifacts_from_sharded_path(path_to_category, sharding_slices, artifact_alias=artifact_alias)
+                    else:
+                        tmp_artifact_dirs = os.listdir(path_to_category)
 
-            if index_artifacts is None:
-                tmp_artifact_dirs = artifact_dirs
-            else:
-                tmp_artifact_dirs = tqdm(artifact_dirs, disable = not (con and conx), desc="      Processing artifacts: ")
+                else:
+                    last_artifact_dirs_parent = None
+                    path_to_category_with_shard = path_to_category
+
+                    if sharding_slices is not None:
+                        r = utils.files.apply_sharding_to_path(None, artifact_alias, sharding_slices)
+                        if r['return']>0: return r
+
+                        last_artifact_dirs = r['sharded_parts']
+                        if len(last_artifact_dirs)>0:
+                            last_artifact_dirs_parent = os.path.join(*(last_artifact_dirs[:-1]))
+                            path_to_category_with_shard = os.path.join(path_to_category, last_artifact_dirs_parent)
+
+                    if os.path.isdir(path_to_category_with_shard):
+                        for artifact_dir in os.listdir(path_to_category_with_shard):
+                            if artifact_dir.lower() == lowercase_artifact_alias:
+                                tmp_dir = artifact_dir if last_artifact_dirs_parent is None else os.path.join(last_artifact_dirs_parent, artifact_dir)
+                                tmp_artifact_dirs.append(tmp_dir)
+                                break
+
 
             for long_artifact in tmp_artifact_dirs:
                 artifact = os.path.basename(long_artifact)
@@ -1085,6 +1105,7 @@ class Repos:
                     if index_artifacts is None:
                         r = utils.names.parse_cmeta_name(artifact_meta['category'])
                         if r['return']>0: return r
+
                         cmeta_category_name_parts = r['name']
 
                         if cmeta_category_name_parts['uid'] != category_uid:
@@ -1104,8 +1125,8 @@ class Repos:
                     if uid is None or not utils.names.is_valid_cmeta_uid(uid):
                         print ('', flush=True)
                         print (f"           Warning: {artifact} doesn't have proper {uid}")
-                        input ('                Press Enter to continue ...')
-
+                        self.log.error (f"           Warning: {artifact} doesn't have proper {uid}")
+                        # TBD - better handling?
 
                     if artifact_uid is not None and artifact_uid != uid:
                         continue
@@ -1184,116 +1205,85 @@ def _get_full_path(path, repo_meta):
     return full_path
 
 ################################################################################
-def _get_artifacts_from_sharded_path(base_path, slices, depth=0, prefix='', artifact_alias=None):
+def _get_artifacts_from_sharded_path(base_path, slices, artifact_alias=None):
     """
-    Recursively traverse sharded directory structure with smart pruning.
-    
-    Handles placeholder directories (underscore-filled) for short artifact names.
-    When a name is shorter than required by sharding, placeholders of length
-    shard_length + 1 are used (e.g., '___' for a 2-char shard).
+    Get list of artifact directories from sharded path structure.
     
     Args:
-        base_path: Current directory path
-        slices: List of shard lengths (e.g., [2, 2] for 2-char, 2-char sharding)
-        depth: Current depth in the shard hierarchy
-        prefix: Accumulated path prefix
-        artifact_alias: Optional artifact name/pattern to optimize traversal
+        base_path: Base path to search
+        slices: List of slice lengths (e.g. [2] or [3,2])
+        artifact_alias: Optional alias to filter (supports wildcards)
         
     Returns:
-        List of artifact paths relative to base category path
+        list: List of relative paths to artifact directories
     """
-    if depth >= len(slices):
-        # We've traversed all shard levels, return items at this level with their paths
-        if os.path.isdir(base_path):
-            entries = os.listdir(base_path)
-            
-            # If we have an artifact_alias filter, apply it at the leaf level
-            if artifact_alias is not None and artifact_alias != '':
-                lowercase_alias = artifact_alias.lower()
-                has_wildcards = '*' in lowercase_alias or '?' in lowercase_alias
-                
-                filtered_entries = []
-                for entry in entries:
-                    entry_lower = entry.lower()
-                    if has_wildcards:
-                        if fnmatch.fnmatch(entry_lower, lowercase_alias):
-                            filtered_entries.append(entry)
-                    else:
-                        if entry_lower == lowercase_alias:
-                            filtered_entries.append(entry)
-                
-                entries = filtered_entries
-            
-            return [os.path.join(prefix, entry) for entry in entries]
+    if not os.path.isdir(base_path):
         return []
     
-    artifacts = []
-    expected_length = slices[depth]
-    placeholder = '_' * (expected_length + 1)
+    # Normalize artifact_alias for case-insensitive matching
+    lowercase_artifact_alias = None
+    use_wildcard = False
+    if artifact_alias is not None:
+        lowercase_artifact_alias = artifact_alias.lower()
+        use_wildcard = '*' in artifact_alias or '?' in artifact_alias
     
-    # Calculate how many characters we've consumed so far
-    chars_consumed = sum(slices[:depth])
+    # Calculate total depth from slices
+    total_depth = sum(slices)
     
-    # If we have an artifact_alias, use it to prune the search
-    if artifact_alias is not None and artifact_alias != '':
-        lowercase_alias = artifact_alias.lower()
+    def _recursive_traverse(current_path, current_depth, rel_path_parts):
+        """
+        Recursively traverse sharded structure and collect matching artifacts.
         
-        # Check if this is an exact match (no wildcards)
-        has_wildcards = '*' in lowercase_alias or '?' in lowercase_alias
-        
-        if not has_wildcards:
-            # For exact match, determine which path to take
-            if len(lowercase_alias) > chars_consumed + expected_length:
-                # Name is long enough - navigate directly to the correct shard
-                shard_chars = lowercase_alias[chars_consumed:chars_consumed + expected_length]
-                entry_path = os.path.join(base_path, shard_chars)
-                
-                if os.path.isdir(entry_path):
-                    new_prefix = os.path.join(prefix, shard_chars) if prefix else shard_chars
-                    artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix, artifact_alias))
-                
-                return artifacts
+        Args:
+            current_path: Current directory path
+            current_depth: Current depth in the shard structure
+            rel_path_parts: List of path components for building relative path
             
-            elif len(lowercase_alias) > chars_consumed:
-                # Name has some characters for this shard, but not enough for next level
-                # Try the partial shard first, then try placeholder
-                shard_chars = lowercase_alias[chars_consumed:chars_consumed + expected_length]
-                entry_path = os.path.join(base_path, shard_chars)
-                
-                if os.path.isdir(entry_path):
-                    new_prefix = os.path.join(prefix, shard_chars) if prefix else shard_chars
-                    artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix, artifact_alias))
-                
-                # Also check placeholder directory since the name might be too short
-                placeholder_path = os.path.join(base_path, placeholder)
-                if os.path.isdir(placeholder_path):
-                    new_prefix = os.path.join(prefix, placeholder) if prefix else placeholder
-                    artifacts.extend(_get_artifacts_from_sharded_path(placeholder_path, slices, depth + 1, new_prefix, artifact_alias))
-                
-                return artifacts
-            
-            else:
-                # Name is too short for this shard level - look for placeholder directory
-                entry_path = os.path.join(base_path, placeholder)
-                
-                if os.path.isdir(entry_path):
-                    new_prefix = os.path.join(prefix, placeholder) if prefix else placeholder
-                    artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix, artifact_alias))
-                
-                return artifacts
+        Returns:
+            list: Matched artifact paths
+        """
+        matches = []
         
-        else:
-            # Wildcard search - we need to traverse all potentially matching shards
-            # Don't try to extract shard patterns - just traverse everything and filter at leaf level
-            pass  # Fall through to normal traversal
+        try:
+            entries = os.listdir(current_path)
+        except (OSError, PermissionError):
+            return matches
+        
+        # At target depth - check for matching artifact directories
+        if current_depth == total_depth:
+            for dirname in entries:
+                dir_path = os.path.join(current_path, dirname)
+                if not os.path.isdir(dir_path):
+                    continue
+                
+                final_name = dirname.lower()
+                
+                # Filter by artifact_alias if provided
+                if lowercase_artifact_alias is not None:
+                    if use_wildcard:
+                        if not fnmatch.fnmatch(final_name, lowercase_artifact_alias):
+                            continue
+                    else:
+                        if final_name != lowercase_artifact_alias:
+                            continue
+                
+                # Build relative path
+                artifact_path = os.path.join(*(rel_path_parts + [dirname]))
+                matches.append(artifact_path)
+        
+        # Not at target depth yet - continue traversing
+        elif current_depth < total_depth:
+            for dirname in entries:
+                dir_path = os.path.join(current_path, dirname)
+                if os.path.isdir(dir_path):
+                    # Recursively traverse subdirectory
+                    matches.extend(_recursive_traverse(
+                        dir_path,
+                        current_depth + len(dirname),
+                        rel_path_parts + [dirname]
+                    ))
+        
+        return matches
     
-    # Default behavior: traverse all matching directories (including placeholders)
-    for entry in os.listdir(base_path):
-        entry_path = os.path.join(base_path, entry)
-        if os.path.isdir(entry_path):
-            # Accept both regular shards and placeholder directories
-            if entry == placeholder or len(entry) <= expected_length:
-                new_prefix = os.path.join(prefix, entry) if prefix else entry
-                artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix, artifact_alias))
-    
-    return artifacts
+    # Start recursive traversal from base_path
+    return _recursive_traverse(base_path, 0, [])
