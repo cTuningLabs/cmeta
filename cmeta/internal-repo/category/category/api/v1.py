@@ -28,11 +28,27 @@ class Category(InitCategory):
 
         con = params.get('state',{}).get('control',{}).get('con', False)
 
+        arg1 = params.get('arg1')
+
+        if arg1 is not None and arg1.strip() != '':
+            r = names.parse_cmeta_obj(arg1, fail_on_error = self.fail_on_error)
+            if r['return'] >0: return r
+            arg1_obj_parts = r['obj_parts']
+            arg1_alias = arg1_obj_parts.get('alias')
+            if arg1_alias is not None:
+                arg1_alias = arg1_alias.strip().lower()
+                r = names.is_valid_category_alias(arg1_alias)
+                if r['return'] >0: return r         
+
         # Will create deep copy of params
         p = self._prepare_input_from_params(params, base = True)
 
         meta = p.setdefault('meta', {})
-        if 'default_api_version' not in meta: meta['default_api_version']=1
+        if 'last_api_version' not in meta: 
+            meta['last_api_version'] = 1
+
+        if 'base_category_default_api_versions' not in meta:
+            meta['base_category_default_api_versions'] = {'1': 1}
 
         if 'yaml' not in p:
             p['yaml'] = True

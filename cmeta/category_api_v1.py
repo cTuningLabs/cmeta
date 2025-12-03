@@ -21,46 +21,8 @@ class Category(InitCategory):
     Standard Base Category with artifact management functions
     """
 
-#    def __init__(self, 
-#                 cm = None,
-#                 module_file_path = None,
-#                 logger: logging.Logger = None):
-#        super().__init__(cm, module_file_path, logger)
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, module_file_path = __file__, **kwargs)
-
-    
-    ############################################################
-    def _safe_delete_directory_if_empty_with_sharding(
-            self,
-            artifact_path: str,
-            sharding_slices: list = None
-    ):
-        """
-        Safely delete empty directories up the hierarchy based on sharding configuration.
-
-        Args:
-            artifact_path (str): Path to the artifact directory.
-            sharding_slices (list | None): Sharding configuration from category meta.
-
-        Returns:
-            dict: A cMeta dictionary with the following keys
-                - **return** (int): 0 if success, >0 if error.
-                - **error** (str): Error message if `return > 0`.
-        """
-        current_path = os.path.dirname(artifact_path)
-        extra_levels = 1 if sharding_slices is None else len(sharding_slices) + 1
-
-        for _i in range(extra_levels):
-            r = self.cm.utils.files.safe_delete_directory_if_empty(current_path)
-            if r['return'] > 0:
-                return r
-            if os.path.isdir(current_path):
-                break
-            current_path = os.path.dirname(current_path)
-
-        return {'return': 0}
 
     ############################################################
     def test(self, 
@@ -279,6 +241,9 @@ class Category(InitCategory):
         artifacts = r['artifacts']
         updated_artifacts = []
 
+        category_cmeta = state['category_artifact']['cmeta']
+        no_index = category_cmeta.get('no_index', False)
+
         for artifact in artifacts:
             updated = False
 
@@ -338,15 +303,16 @@ class Category(InitCategory):
                r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
                if r['return']>0: return r
 
-               # Update index
-               artifact_index_file = artifact['index_file']
-
-               artifact_cmeta_ref_parts = artifact['cmeta_ref_parts']
-
-               r = self.cm.repos.add_to_index(cmeta, artifact_cmeta_ref_parts, artifact_path)
-               if r['return']>0: return r
-
                updated = True
+
+               # Update index
+               if not no_index:
+                   artifact_index_file = artifact['index_file']
+
+                   artifact_cmeta_ref_parts = artifact['cmeta_ref_parts']
+
+                   r = self.cm.repos.add_to_index(cmeta, artifact_cmeta_ref_parts, artifact_path)
+                   if r['return']>0: return r
 
             # Provide info
             if updated:
@@ -512,6 +478,7 @@ class Category(InitCategory):
     
         category_cmeta = state['category_artifact']['cmeta']
         sharding_slices = category_cmeta.get('sharding_slices')
+        no_index = category_cmeta.get('no_index', False)
 
         for artifact in artifacts:
             artifact_path = artifact['path']
@@ -537,16 +504,18 @@ class Category(InitCategory):
                         print ('    Skipped!')
                         continue
 
-            artifact_index_file = artifact['index_file']
             artifact_cmeta_ref_parts = artifact['cmeta_ref_parts']
             artifact_uid = artifact_cmeta_ref_parts['artifact_uid']
             artifact_alias_lowercase = artifact_cmeta_ref_parts.get('artifact_alias_lowercase', artifact_cmeta_ref_parts.get('artifact_alias'))
 
             # Remove from index first
             error = False
-            r = self.cm.repos.remove_from_index(artifact_index_file, artifact_uid, artifact_alias_lowercase)
-            if r['return']>0:
-                error = True
+            if not no_index:
+                artifact_index_file = artifact['index_file']
+
+                r = self.cm.repos.remove_from_index(artifact_index_file, artifact_uid, artifact_alias_lowercase)
+                if r['return']>0:
+                    error = True
 
             # Delete directory if exists (if was not deleted already by another process)
             if not error:
@@ -556,7 +525,7 @@ class Category(InitCategory):
 
             # Delete root if empty
             if not error:
-                r = self._safe_delete_directory_if_empty_with_sharding(artifact_path, sharding_slices)
+                r = utils.files.safe_delete_directory_if_empty_with_sharding(artifact_path, sharding_slices)
                 if r['return'] > 0:
                     error = True
 
@@ -754,28 +723,30 @@ class Category(InitCategory):
             r = utils.files.safe_write_file(tmp_cmeta_filename, data=cmeta, fail_on_error = self.fail_on_error)
             if r['return']>0: return r
 
-        # Update index
-        cmeta_ref_parts = {}
-
-        if artifact_alias is not None: 
-            cmeta_ref_parts['artifact_alias'] = artifact_alias
-            lowercase_artifact_alias = artifact_alias.lower()
-            if lowercase_artifact_alias != artifact_alias:
-                cmeta_ref_parts['lowercase_artifact_alias'] = lowercase_artifact_alias
-
-        cmeta_ref_parts['artifact_uid'] = artifact_uid
-
-        cmeta_ref_parts['category_alias'] = category_alias
-        cmeta_ref_parts['category_uid'] = category_uid
-
-        cmeta_ref_parts['repo_alias'] = artifact_repo_alias
-        cmeta_ref_parts['repo_uid'] = artifact_repo_uid
-
         if path is not None:
             artifact_path = path 
 
-        r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, artifact_path)
-        if r['return']>0: return r
+        # Update index
+        if not category_cmeta.get('no_index', False):
+            cmeta_ref_parts = {}
+
+            if artifact_alias is not None: 
+                cmeta_ref_parts['artifact_alias'] = artifact_alias
+                lowercase_artifact_alias = artifact_alias.lower()
+                if lowercase_artifact_alias != artifact_alias:
+                    cmeta_ref_parts['lowercase_artifact_alias'] = lowercase_artifact_alias
+
+            cmeta_ref_parts['artifact_uid'] = artifact_uid
+
+            cmeta_ref_parts['category_alias'] = category_alias
+            cmeta_ref_parts['category_uid'] = category_uid
+
+            cmeta_ref_parts['repo_alias'] = artifact_repo_alias
+            cmeta_ref_parts['repo_uid'] = artifact_repo_uid
+
+
+            r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, artifact_path)
+            if r['return']>0: return r
 
         # Print artifact path
         if con:
@@ -904,6 +875,7 @@ class Category(InitCategory):
 
         category_cmeta = state['category_artifact']['cmeta']
         sharding_slices = category_cmeta.get('sharding_slices')
+        no_index = category_cmeta.get('no_index', False)
 
         for artifact in artifacts:
             # Get path to the original original artifact
@@ -959,8 +931,6 @@ class Category(InitCategory):
                 if target_repo_path is None and artifact_alias is not None and artifact_alias == target_alias:
                     if not update_uid:
                         return {'return':1, 'error':f"can't {command} artifact {artifact_alias} to itself"}
-
-            artifact_index_file = artifact['index_file']
 
             # Find path to a category of the original artifact
             normal_path = os.path.normpath(path)
@@ -1062,16 +1032,19 @@ class Category(InitCategory):
 
             # Delete root if empty
             if not copy:
-                r = self._safe_delete_directory_if_empty_with_sharding(path, sharding_slices)
+                r = utils.files.safe_delete_directory_if_empty_with_sharding(path, sharding_slices)
                 # Ignore errors when deleting empty directories during move
 
             # Update index
-            kwargs = {}
-            if not copy:
-                kwargs.update(original_alias=artifact_alias, original_uid=artifact_uid)
+            if not no_index:
+                artifact_index_file = artifact['index_file']
 
-            r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, path_to_target_artifact, **kwargs)
-            if r['return']>0: return r
+                kwargs = {}
+                if not copy:
+                    kwargs.update(original_alias=artifact_alias, original_uid=artifact_uid)
+
+                r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, path_to_target_artifact, **kwargs)
+                if r['return']>0: return r
 
         return {'return':0, 'artifacts': artifacts}
 

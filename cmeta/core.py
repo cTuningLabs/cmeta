@@ -209,6 +209,8 @@ class CMeta:
 
             state['origin'] = origin
 
+        inside_cli = 'cli' in state.get('origin',{})
+
         # Check nested call
         if 'nested_call' not in state:
             nested_call = 0
@@ -319,24 +321,35 @@ class CMeta:
             base_command = control_params.get('base', False)
             category_api_ver = control_params.get('api', None)
 
-            category_api_module_ver = None
-            base_category_api_module_ver = None
+            category_api_module_ver = '1'
+            base_category_api_module_ver = '1'
+
+            str_category_api_ver = None if category_api_ver is None else str(category_api_ver)
 
             if base_command:
-                base_category_api_module_ver = self.cfg['base_category_default_api_version'] if category_api_ver is None else str(category_api_ver)
+                if category_api_ver is not None and str_category_api_ver != '0':
+                    base_category_api_module_ver = str_category_api_ver
+                elif inside_cli or str_category_api_ver == '0':
+                    base_category_api_module_ver = str(self.cfg['base_category_last_api_version'])
             else:
-                category_api_module_ver = category_meta.get('default_api_version', '1') if category_api_ver is None else str(category_api_ver)
+                if category_api_ver is not None and str_category_api_ver != '0':
+                    category_api_module_ver = str_category_api_ver
+                elif inside_cli or str_category_api_ver == '0':
+                    if category_meta.get('last_api_version') is not None:
+                        category_api_module_ver = str(category_meta['last_api_version'])
+
                 if not category_meta.get('skip_base_category_commands', False):
-                    base_category_api_module_ver = category_meta.get('base_category_default_api_version')
-                    if base_category_api_module_ver is None:
-                        base_category_api_module_ver = category_meta.get('base_category_default_api_versions', {}).get(category_api_module_ver)
-                    if base_category_api_module_ver is None:
-                        base_category_api_module_ver = self.cfg['base_category_default_api_version']
+                    if category_meta.get('base_category_default_api_versions', {}).get(category_api_module_ver) is not None:
+                        base_category_api_module_ver = str(category_meta['base_category_default_api_versions'][category_api_module_ver])
+                    elif category_meta.get('base_category_default_api_version') is not None:
+                        base_category_api_module_ver = str(category_meta['base_category_default_api_version'])
            
             # Check min cMeta versions
             category_min_cmeta_version = category_meta.get('min_cmeta_version_api')
+
             if category_min_cmeta_version is None and category_api_module_ver is not None:
                 category_min_cmeta_version = category_meta.get('min_cmeta_version',{}).get(str(category_api_module_ver))
+
             if category_min_cmeta_version is not None:
                 from .version import __version__
                 r = utils.common.compare_versions(category_min_cmeta_version, __version__)
@@ -348,7 +361,7 @@ class CMeta:
             # Prepare paths to APIs
             category_apis = []
 
-            if category_api_module_ver is not None:
+            if not base_command and category_api_module_ver is not None:
                 category_api_path = os.path.join(category_artifact['path'], 'api', f'v{category_api_module_ver}.py')
 
                 if os.path.isfile(category_api_path):

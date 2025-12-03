@@ -71,6 +71,61 @@ def is_valid_cmeta_uid(text: str) -> bool:
     """
     return len(text)==16 and all(c in set("0123456789abcdefABCDEF") for c in text)
 
+def is_valid_category_alias(alias):
+    """
+    Validate if category alias is valid (Windows, Linux, MacOS)
+
+    Args:
+        text (str): The string to validate as category alias.
+
+    Returns:
+        bool: False if wrong
+    """
+    
+    r = is_valid_cmeta_alias(alias)
+    if r['return']>0: return r
+
+    if ' ' in alias:
+        return {'return': 1, 'error': f'Invalid alias "{alias}". Cannot contain spaces'}
+
+    if alias.startswith('.'):
+        return {'return': 1, 'error': f'Invalid alias "{alias}". Cannot start with a dot'}
+    
+    if alias.endswith('.'):
+        return {'return': 1, 'error': f'Invalid alias "{alias}". Cannot end with a dot'}
+
+    # Check for reserved names on Windows (case-insensitive)
+    reserved_names = {'CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 
+                      'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 
+                      'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'}
+
+    base_name = alias.split('.')[0].upper()
+    if base_name in reserved_names:
+        return {'return': 1, 'error': f'Invalid alias "{alias}". Reserved name on Windows'}
+    
+    return {'return':0}
+
+def is_valid_cmeta_alias(alias):
+    """
+    Validate if category alias is valid (Windows, Linux, MacOS)
+
+    Args:
+        text (str): The string to validate as category alias.
+
+    Returns:
+        bool: False if wrong
+    """
+    invalid_chars = '<>:"/\\|?*'
+
+    if any(char in alias for char in invalid_chars):
+        return {'return': 1, 'error': f'Invalid characters in alias "{alias}" - it cannot contain: {invalid_chars}'}
+    
+    # Check for leading/trailing spaces or dots (problematic on Windows)
+    if alias != alias.strip():
+        return {'return': 1, 'error': f'Invalid alias "{alias}". Cannot have leading/trailing spaces'}
+
+    return {'return':0}
+
 def parse_cmeta_name(name: Optional[Union[str, Dict[str, Any]]], key: Optional[str] = None) -> Dict[str, Any]:
     """
     Parse cMeta name (alias | uid | alias,uid), returning a dict.

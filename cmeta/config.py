@@ -59,7 +59,7 @@ cfg = {
 
         "meta_filename_base": "_cmeta",
 
-        "base_category_default_api_version": 1,
+        "base_category_last_api_version": 1,
 
         "command_aliases": {
           "search": "find",

@@ -235,7 +235,7 @@ class Repos:
         if artifact_uid is not None and artifact_uid != "":
             if artifact_uid not in index.get(self.KEY_INDEX_UIDS, {}):
                 x = f'"{artifact_alias}" ({artifact_uid})' if artifact_alias is not None and artifact_alias != '' else f'{artifact_uid}'
-                err = f'{category_alias} artifact {x} not found in the cMeta index'
+                err = f'{category_alias} artifact {x} not found'
                 return _error(err, 16, None, self.fail_on_error)
 
             artifact_uids.append(artifact_uid)
@@ -263,7 +263,7 @@ class Repos:
                 if lowercase_artifact_alias not in index.get(self.KEY_INDEX_LOWERCASE_ALIASES, {}):
                     # We should not be failing below even on debug to handle multiple-search - we need to handle aggregated search results
                     x_artifact_alias = "artifacts" if artifact_alias == '' or artifact_alias == None or artifact_alias == '*' else f'"{artifact_alias}"'
-                    return _error(f'{category_alias} {x_artifact_alias} not found in the cMeta index', 16, None, False) #self.fail_on_error)
+                    return _error(f'{category_alias} {x_artifact_alias} not found', 16, None, False) #self.fail_on_error)
 
                 artifact_uids.extend(index[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_artifact_alias])
 
@@ -308,10 +308,66 @@ class Repos:
 
                 artifacts.append(artifact)
 
-
             result['artifacts'] = artifacts
 
         return result
+
+    ###################################################################################################
+    def find_in_file_system(self, category_meta, category_alias, category_uid, artifact_alias = None, artifact_uid = None, repo_uids = []):
+        """
+        Find artifacts by scanning directories instead of using index.
+        Used for categories with no_index flag.
+        
+        Args:
+            category_alias: Category alias (lowercase)
+            category_uid: Category UID
+            artifact_alias: Optional artifact alias (supports wildcards)
+            artifact_uid: Optional artifact UID
+           
+        Returns:
+            dict: {'return': 0, 'artifacts': [...]} or error
+        """
+
+        # Get repo artifacts
+        repo_artifacts = []
+
+        if repo_uids == None:
+            repo_uids = ['*']
+
+        for repo_uid in repo_uids:
+            repo_alias = None
+            if repo_uid == '*':
+                repo_alias = '*'
+                repo_uid = None
+
+            r = self.find_in_index('repo', self.cfg['category_repo_uid'], repo_alias, repo_uid)
+            if r['return'] >0: return r
+            repo_artifacts += r['artifacts']
+
+        # Iterate over repos:
+        artifacts = []
+
+        for repo_artifact in repo_artifacts:
+            repo_path = repo_artifact['path']
+            repo_meta = repo_artifact['cmeta']
+
+            if category_uid in repo_meta.get('sharding_slices', {}):
+                sharding_slices = repo_meta['sharding_slices'][category_uid]
+            else:
+                sharding_slices = category_meta.get('sharding_slices')
+
+            # Get category path
+            path_to_category = os.path.join(repo_path, category_alias)
+            if os.path.isdir(path_to_category):
+                # Look for artifacts
+                r = self._find_artifacts(repo_meta, repo_alias, repo_uid, category_meta, category_alias, category_uid, path_to_category, 
+                                         False, False, None, 0, 
+                                         artifact_alias = artifact_alias, artifact_uid = artifact_uid)
+                if r['return'] >0: return r
+                
+                artifacts += r['artifacts']
+        
+        return {'return': 0, 'artifacts': artifacts}
 
     ###################################################################################################
     def find(self, cmeta_ref, add_index_file=False, tags=None, skip_uids=False):
@@ -379,13 +435,24 @@ class Repos:
 
                 category_uid = category['cmeta_ref_parts']['artifact_uid']
 
-                r = self.find_in_index(category_alias, category_uid, artifact_alias, artifact_uid, repos = artifact_repo_artifacts, add_index_file = add_index_file, skip_uids=skip_uids)
-                if r['return'] >0: 
-                    if r['return'] == 16:
-                        # If index not found
-                        continue
+                category_cmeta = category['cmeta']
 
-                    return r
+                if category_cmeta.get('no_index', False):
+                    r = self.find_in_file_system(category_cmeta, category_alias, category_uid, artifact_alias, artifact_uid, repo_uids = artifact_repo_artifacts)
+                    if r['return'] >0: 
+                        if r['return'] == 16:
+                            # If index not found
+                            continue
+                        return r
+
+                else:
+                    r = self.find_in_index(category_alias, category_uid, artifact_alias, artifact_uid, repos = artifact_repo_artifacts, add_index_file = add_index_file, skip_uids=skip_uids)
+                    if r['return'] >0: 
+                        if r['return'] == 16:
+                            # If index not found
+                            continue
+
+                        return r
 
                 # Check conditions
                 add_artifacts = []
@@ -406,7 +473,7 @@ class Repos:
 
         if len(artifacts) == 0:
             x_artifact_alias = "artifacts" if artifact_alias == '' or artifact_alias == None else f'"{artifact_alias}"'
-            return _error(f'{category_alias} {x_artifact_alias} not found in the cMeta index', 16, None, False) #self.fail_on_error)
+            return _error(f'{category_alias} {x_artifact_alias} not found', 16, None, False) #self.fail_on_error)
 
         return {'return':0, 'artifacts':artifacts}
 
@@ -830,6 +897,9 @@ class Repos:
 
                     category_meta = category_mix['meta']
 
+                    if category_meta.get('no_index', False):
+                        continue
+
                     category_name = category_meta['artifact']
 
                     r = utils.names.parse_cmeta_name(category_name)
@@ -843,126 +913,12 @@ class Repos:
 
                     path_to_category = os.path.join(repo_full_path, category)
 
-                    if category_uid in repo_meta.get('sharding_slices', {}):
-                        sharding_slices = repo_meta['sharding_slices'][category_uid]
-                    else:
-                        sharding_slices = category_meta.get('sharding_slices')
+                    r = self._find_artifacts(repo_meta, repo_alias, repo_uid, category_meta, category_alias, category_uid, path_to_category, 
+                                             con, conx, index_artifacts, artifact_num)
+                    if r['return'] >0: return r
 
-                    if os.path.isdir(path_to_category):
-                        if conx:
-                            print (f'    Processing category {category} ...', flush=True)
-                        
-                        if sharding_slices is not None:  
-                            artifact_dirs = _get_artifacts_from_sharded_path(path_to_category, sharding_slices)
-                        else:
-                            artifact_dirs = os.listdir(path_to_category)
-
-                        for artifact in tqdm(artifact_dirs, disable = not (con and conx), desc="      Processing artifacts: "):
-                            path_to_artifact = os.path.join(path_to_category, artifact)
-
-                            artifact_meta_desc_file_json = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.json')
-                            artifact_meta_desc_file_yaml = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.yaml')
-
-                            artifact_meta = {}
-
-                            if os.path.isfile(artifact_meta_desc_file_yaml):
-                                r = utils.files.safe_read_file(artifact_meta_desc_file_yaml, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
-                                if r['return']==0: 
-                                    artifact_meta = r['data']
-                            elif os.path.isfile(artifact_meta_desc_file_json):
-                                r = utils.files.safe_read_file(artifact_meta_desc_file_json, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
-                                if r['return']==0: 
-                                    artifact_meta = r['data']
-                            else:
-                                # Checking older format
-                                artifact_meta_desc_file_json = os.path.join(path_to_artifact, '_cm.json')
-                                artifact_meta_desc_file_yaml = os.path.join(path_to_artifact, '_cm.yaml')
-
-                                if os.path.isfile(artifact_meta_desc_file_yaml):
-                                    r = utils.files.safe_read_file(artifact_meta_desc_file_yaml, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
-                                    if r['return']==0: 
-                                        artifact_meta = r['data']
-                                elif os.path.isfile(artifact_meta_desc_file_json):
-                                    r = utils.files.safe_read_file(artifact_meta_desc_file_json, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
-                                    if r['return']==0: 
-                                        artifact_meta = r['data']
-
-                                if artifact_meta:
-                                    # Update to new format
-                                    uid = artifact_meta['uid']
-                                    alias = artifact_meta.get('alias')
-
-                                    if uid is None or not utils.names.is_valid_cmeta_uid(uid):
-                                        uid = utils.names.generate_cmeta_uid()
-
-                                    artifact_meta['artifact'] = uid
-                                    artifact_meta['category'] = full_category_name
-
-                                    for key in ['uid', 'alias', 'automation_uid', 'automation_alias']:
-                                        if key in artifact_meta:
-                                            del(artifact_meta[key])
-
-                                    artifact_meta_desc_file_yaml = os.path.join(path_to_category, artifact, self.cfg['meta_filename_base'] + '.json')
-
-                                    r = utils.files.safe_write_file(artifact_meta_desc_file_yaml, artifact_meta, fail_on_error=self.fail_on_error, logger=self.logger)
-                                    if r['return']>0: return r
-
-                            if artifact_meta:
-                                artifact_name = artifact_meta['artifact']
-                                artifact_num += 1
-
-                                r = utils.names.parse_cmeta_name(artifact_name)
-                                if r['return']>0: return r
-                                cmeta_name_parts = r['name']
-
-                                uid = cmeta_name_parts.get('uid')
-                                if uid is None or not utils.names.is_valid_cmeta_uid(uid):
-                                    print ('', flush=True)
-                                    print (f"           Warning: {artifact} doesn't have proper {uid}")
-                                    input ('                Press Enter to continue ...')
-
-
-                                alias = artifact
-                                lowercase_alias = alias.lower()
-
-                                if category not in index_artifacts:
-                                    index_artifacts[category] = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
-
-                                uids = index_artifacts[category][self.KEY_INDEX_UIDS]
-                                aliases_lower_case = index_artifacts[category][self.KEY_INDEX_LOWERCASE_ALIASES]
-
-                                if uid in uids:
-                                    xpath = uids[uid]['path']
-                                    if xpath != path_to_artifact:
-                                        return {'return':1, 'error': f'ambiguity -  artifact "{artifact}" with the same UID "{uid}" and path "{path_to_artifact}" alredy exists in the index in path "{xpath}"- please fix it!'}
-
-                                else:
-                                    entry = {'path':path_to_artifact, 'cmeta':artifact_meta}
-
-                                    cmeta_ref_parts = {'artifact_uid':uid, 'category_uid':category_uid, 'repo_uid':repo_uid}
-                                    if alias is not None and alias != "": 
-                                        cmeta_ref_parts['artifact_alias'] = alias
-                                        if alias != alias.lower():
-                                            cmeta_ref_parts['artifact_alias_lowercase'] = alias.lower()
-                                    if category_alias is not None and category_alias!="": 
-                                        cmeta_ref_parts['category_alias'] = category_alias
-                                    if repo_alias is not None and repo_alias!="": 
-                                        cmeta_ref_parts['repo_alias'] = repo_alias
-                                    entry['cmeta_ref_parts'] = cmeta_ref_parts
-
-                                    uids[uid] = entry
-
-                                if alias is not None and alias != '':
-                                    alias_lower_case = alias.lower()
-                                    if alias_lower_case not in aliases_lower_case:
-                                        aliases_lower_case[alias_lower_case] = []
-                                    name_uids = aliases_lower_case[alias_lower_case]
-                                    if uid not in name_uids:
-                                        name_uids.append(uid)
-
-                                    if len(name_uids)>1:
-                                        print ('', flush=True)
-                                        print (f'      Warning: Conflict for {category_alias}:{alias} - multiple UIDs: "{name_uids} ..."')
+                    an = r['artifact_num']
+                    artifact_num = an
 
         else:
             for category_mix in categories:
@@ -1053,6 +1009,157 @@ class Repos:
         return r
 
 
+    ################################################################################
+    def _find_artifacts(self, repo_meta, repo_alias, repo_uid, category_meta, category_alias, category_uid, path_to_category, 
+                              con, conx, index_artifacts, artifact_num,
+                              artifact_alias = None, artifact_uid = None):
+
+        from tqdm import tqdm
+
+        artifacts = []
+
+        category = category_alias
+
+        if category_uid in repo_meta.get('sharding_slices', {}):
+            sharding_slices = repo_meta['sharding_slices'][category_uid]
+        else:
+            sharding_slices = category_meta.get('sharding_slices')
+
+        if os.path.isdir(path_to_category):
+            if conx:
+                print (f'    Processing category {category} ...', flush=True)
+
+            if sharding_slices is not None:
+                # Pass artifact_alias for smart shard pruning when not indexing
+                search_alias = artifact_alias if index_artifacts is None else None
+                artifact_dirs = _get_artifacts_from_sharded_path(path_to_category, sharding_slices, artifact_alias=search_alias)
+            else:
+                artifact_dirs = os.listdir(path_to_category)
+
+            # Filter artifact_dirs if searching without index
+            if index_artifacts is None and artifact_alias is not None and artifact_alias != '':
+                lowercase_artifact_alias = artifact_alias.lower()
+                
+                if '*' in artifact_alias or '?' in artifact_alias:
+                    # Wildcard search - case-insensitive
+                    filtered_dirs = []
+                    for artifact_dir in artifact_dirs:
+                        artifact_name = os.path.basename(artifact_dir).lower()
+                        if fnmatch.fnmatch(artifact_name, lowercase_artifact_alias):
+                            filtered_dirs.append(artifact_dir)
+                    artifact_dirs = filtered_dirs
+                else:
+                    # Exact match - case-insensitive
+                    filtered_dirs = []
+                    for artifact_dir in artifact_dirs:
+                        artifact_name = os.path.basename(artifact_dir).lower()
+                        if artifact_name == lowercase_artifact_alias:
+                            filtered_dirs.append(artifact_dir)
+                    artifact_dirs = filtered_dirs
+
+            if index_artifacts is None:
+                tmp_artifact_dirs = artifact_dirs
+            else:
+                tmp_artifact_dirs = tqdm(artifact_dirs, disable = not (con and conx), desc="      Processing artifacts: ")
+
+            for long_artifact in tmp_artifact_dirs:
+                artifact = os.path.basename(long_artifact)
+
+                path_to_artifact = os.path.join(path_to_category, long_artifact)
+
+                artifact_meta_desc_file_json = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.json')
+                artifact_meta_desc_file_yaml = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.yaml')
+
+                artifact_meta = {}
+
+                if os.path.isfile(artifact_meta_desc_file_yaml):
+                    r = utils.files.safe_read_file(artifact_meta_desc_file_yaml, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
+                    if r['return']==0: 
+                        artifact_meta = r['data']
+                elif os.path.isfile(artifact_meta_desc_file_json):
+                    r = utils.files.safe_read_file(artifact_meta_desc_file_json, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
+                    if r['return']==0: 
+                        artifact_meta = r['data']
+
+                if artifact_meta:
+                    if index_artifacts is None:
+                        r = utils.names.parse_cmeta_name(artifact_meta['category'])
+                        if r['return']>0: return r
+                        cmeta_category_name_parts = r['name']
+
+                        if cmeta_category_name_parts['uid'] != category_uid:
+                            continue
+
+                        cmeta_category_alias = cmeta_category_name_parts.get('alias')
+                        if cmeta_category_alias is not None and cmeta_category_alias !='' and cmeta_category_alias != category_alias:
+                            continue
+
+                    artifact_name = artifact_meta['artifact']
+
+                    r = utils.names.parse_cmeta_name(artifact_name)
+                    if r['return']>0: return r
+                    cmeta_name_parts = r['name']
+
+                    uid = cmeta_name_parts.get('uid')
+                    if uid is None or not utils.names.is_valid_cmeta_uid(uid):
+                        print ('', flush=True)
+                        print (f"           Warning: {artifact} doesn't have proper {uid}")
+                        input ('                Press Enter to continue ...')
+
+
+                    if artifact_uid is not None and artifact_uid != uid:
+                        continue
+
+                    alias = artifact
+                    lowercase_alias = alias.lower()
+
+                    entry = {'path':path_to_artifact, 'cmeta':artifact_meta}
+
+                    cmeta_ref_parts = {'artifact_uid':uid, 'category_uid':category_uid, 'repo_uid':repo_uid}
+                    if alias is not None and alias != "": 
+                        cmeta_ref_parts['artifact_alias'] = alias
+                        if alias != alias.lower():
+                            cmeta_ref_parts['artifact_alias_lowercase'] = alias.lower()
+                    if category_alias is not None and category_alias!="": 
+                        cmeta_ref_parts['category_alias'] = category_alias
+                    if repo_alias is not None and repo_alias!="": 
+                        cmeta_ref_parts['repo_alias'] = repo_alias
+                    entry['cmeta_ref_parts'] = cmeta_ref_parts
+
+                    if index_artifacts is None:
+                        artifacts.append(entry)
+
+                    else:
+                        artifact_num += 1
+
+                        if category not in index_artifacts:
+                            index_artifacts[category] = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
+
+                        uids = index_artifacts[category][self.KEY_INDEX_UIDS]
+                        aliases_lower_case = index_artifacts[category][self.KEY_INDEX_LOWERCASE_ALIASES]
+
+                        if uid in uids:
+                            xpath = uids[uid]['path']
+                            if xpath != path_to_artifact:
+                                return {'return':1, 'error': f'ambiguity -  artifact "{artifact}" with the same UID "{uid}" and path "{path_to_artifact}" alredy exists in the index in path "{xpath}"- please fix it!'}
+
+                        else:
+                            uids[uid] = entry
+
+                        if alias is not None and alias != '':
+                            alias_lower_case = alias.lower()
+                            if alias_lower_case not in aliases_lower_case:
+                                aliases_lower_case[alias_lower_case] = []
+                            name_uids = aliases_lower_case[alias_lower_case]
+                            if uid not in name_uids:
+                                name_uids.append(uid)
+
+                            if len(name_uids)>1:
+                                print ('', flush=True)
+                                print (f'      Warning: Conflict for {category_alias}:{alias} - multiple UIDs: "{name_uids} ..."')
+
+        return {'return':0, 'artifact_num': artifact_num, 'artifacts': artifacts}
+
 ################################################################################
 def _get_full_path(path, repo_meta):
     """
@@ -1077,23 +1184,116 @@ def _get_full_path(path, repo_meta):
     return full_path
 
 ################################################################################
-def _get_artifacts_from_sharded_path(base_path, slices, depth=0, prefix=''):
-    """Recursively traverse sharded directory structure"""
+def _get_artifacts_from_sharded_path(base_path, slices, depth=0, prefix='', artifact_alias=None):
+    """
+    Recursively traverse sharded directory structure with smart pruning.
+    
+    Handles placeholder directories (underscore-filled) for short artifact names.
+    When a name is shorter than required by sharding, placeholders of length
+    shard_length + 1 are used (e.g., '___' for a 2-char shard).
+    
+    Args:
+        base_path: Current directory path
+        slices: List of shard lengths (e.g., [2, 2] for 2-char, 2-char sharding)
+        depth: Current depth in the shard hierarchy
+        prefix: Accumulated path prefix
+        artifact_alias: Optional artifact name/pattern to optimize traversal
+        
+    Returns:
+        List of artifact paths relative to base category path
+    """
     if depth >= len(slices):
         # We've traversed all shard levels, return items at this level with their paths
         if os.path.isdir(base_path):
-            return [os.path.join(prefix, entry) for entry in os.listdir(base_path)]
+            entries = os.listdir(base_path)
+            
+            # If we have an artifact_alias filter, apply it at the leaf level
+            if artifact_alias is not None and artifact_alias != '':
+                lowercase_alias = artifact_alias.lower()
+                has_wildcards = '*' in lowercase_alias or '?' in lowercase_alias
+                
+                filtered_entries = []
+                for entry in entries:
+                    entry_lower = entry.lower()
+                    if has_wildcards:
+                        if fnmatch.fnmatch(entry_lower, lowercase_alias):
+                            filtered_entries.append(entry)
+                    else:
+                        if entry_lower == lowercase_alias:
+                            filtered_entries.append(entry)
+                
+                entries = filtered_entries
+            
+            return [os.path.join(prefix, entry) for entry in entries]
         return []
     
     artifacts = []
     expected_length = slices[depth]
+    placeholder = '_' * (expected_length + 1)
     
+    # Calculate how many characters we've consumed so far
+    chars_consumed = sum(slices[:depth])
+    
+    # If we have an artifact_alias, use it to prune the search
+    if artifact_alias is not None and artifact_alias != '':
+        lowercase_alias = artifact_alias.lower()
+        
+        # Check if this is an exact match (no wildcards)
+        has_wildcards = '*' in lowercase_alias or '?' in lowercase_alias
+        
+        if not has_wildcards:
+            # For exact match, determine which path to take
+            if len(lowercase_alias) > chars_consumed + expected_length:
+                # Name is long enough - navigate directly to the correct shard
+                shard_chars = lowercase_alias[chars_consumed:chars_consumed + expected_length]
+                entry_path = os.path.join(base_path, shard_chars)
+                
+                if os.path.isdir(entry_path):
+                    new_prefix = os.path.join(prefix, shard_chars) if prefix else shard_chars
+                    artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix, artifact_alias))
+                
+                return artifacts
+            
+            elif len(lowercase_alias) > chars_consumed:
+                # Name has some characters for this shard, but not enough for next level
+                # Try the partial shard first, then try placeholder
+                shard_chars = lowercase_alias[chars_consumed:chars_consumed + expected_length]
+                entry_path = os.path.join(base_path, shard_chars)
+                
+                if os.path.isdir(entry_path):
+                    new_prefix = os.path.join(prefix, shard_chars) if prefix else shard_chars
+                    artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix, artifact_alias))
+                
+                # Also check placeholder directory since the name might be too short
+                placeholder_path = os.path.join(base_path, placeholder)
+                if os.path.isdir(placeholder_path):
+                    new_prefix = os.path.join(prefix, placeholder) if prefix else placeholder
+                    artifacts.extend(_get_artifacts_from_sharded_path(placeholder_path, slices, depth + 1, new_prefix, artifact_alias))
+                
+                return artifacts
+            
+            else:
+                # Name is too short for this shard level - look for placeholder directory
+                entry_path = os.path.join(base_path, placeholder)
+                
+                if os.path.isdir(entry_path):
+                    new_prefix = os.path.join(prefix, placeholder) if prefix else placeholder
+                    artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix, artifact_alias))
+                
+                return artifacts
+        
+        else:
+            # Wildcard search - we need to traverse all potentially matching shards
+            # Don't try to extract shard patterns - just traverse everything and filter at leaf level
+            pass  # Fall through to normal traversal
+    
+    # Default behavior: traverse all matching directories (including placeholders)
     for entry in os.listdir(base_path):
         entry_path = os.path.join(base_path, entry)
-        if os.path.isdir(entry_path) and len(entry) <= expected_length:
-            # This directory matches the expected shard length
-            # Recurse to next level, building up the path prefix
-            new_prefix = os.path.join(prefix, entry) if prefix else entry
-            artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix))
+        if os.path.isdir(entry_path):
+            # Accept both regular shards and placeholder directories
+            if entry == placeholder or len(entry) <= expected_length:
+                new_prefix = os.path.join(prefix, entry) if prefix else entry
+                artifacts.extend(_get_artifacts_from_sharded_path(entry_path, slices, depth + 1, new_prefix, artifact_alias))
     
     return artifacts

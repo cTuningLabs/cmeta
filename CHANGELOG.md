@@ -1,4 +1,11 @@
-﻿cMeta (0.6.0):
+﻿cMeta (0.8.0):
+  * Simplified sharding schema
+  * Changed default API handling
+
+cMeta (0.7.0):
+  * Added no_index artifacts
+
+cMeta (0.6.0):
   * Added sharding for artifacts
 
 cMeta (0.4.0):

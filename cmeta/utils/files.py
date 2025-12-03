@@ -15,6 +15,7 @@ import stat
 import zipfile
 from pathlib import Path
 import uuid
+import hashlib
 
 from .common import _error
 
@@ -37,12 +38,14 @@ RETRY_REPLACE_FILE = 10
 RETRY_TIMESTAMP_FILE = 10
 RETRY_DELETE_ATTEMPTS = 5
 
+##########################################################################################
 def _get_lockfile_path(filepath):
     """
     Returns the path to the lock file, external to the target path.
     """
     return f"{filepath}{LOCK_SUFFIX}"
 
+##########################################################################################
 def is_path_within(base, target):
     """
     Checks if base path is within target path
@@ -59,6 +62,7 @@ def is_path_within(base, target):
 
     return common == base
 
+##########################################################################################
 def _acquire_lock(filepath, timeout=3, logger=None):
     """
     Tries to acquire a lock file for the target path, with timeout.
@@ -80,6 +84,7 @@ def _acquire_lock(filepath, timeout=3, logger=None):
             logger.debug(f"utils.files._acquire_lock - failed to create {lockfile} ...")
         raise TimeoutError(f"Could not acquire lock on '{filepath}' within {timeout} seconds: {str(e)}")
 
+##########################################################################################
 def _check_lock(filepath, file_lock, logger = None):
     """
     Checks if the lock is still valid.
@@ -91,6 +96,7 @@ def _check_lock(filepath, file_lock, logger = None):
     if logger is not None:
         logger.debug(f"utils.files._check_lock - lock file checked for {filepath} ...")
 
+##########################################################################################
 def _release_lock(filepath, file_lock, logger = None):
     """
     Releases the FileLock.
@@ -117,6 +123,7 @@ def _release_lock(filepath, file_lock, logger = None):
         _cleanup_lock_file(lockfile, logger)
         raise e
 
+##########################################################################################
 def _cleanup_lock_file(lockfile_path, logger=None):
     """
     Manually removes the lock file if it exists.
@@ -132,6 +139,7 @@ def _cleanup_lock_file(lockfile_path, logger=None):
             logger.debug(f"utils.files._cleanup_lock_file - failed to remove {lockfile_path}: {str(e)}")
         # Don't raise - this is a cleanup operation
 
+##########################################################################################
 def _detect_file_format(filepath):
     """
     Returns file type based on extension.
@@ -146,6 +154,7 @@ def _detect_file_format(filepath):
     else:
         return "text"
 
+##########################################################################################
 def _read_file_data(filepath, encoding=None):
     """
     Helper function to read file data based on format.
@@ -167,10 +176,12 @@ def _read_file_data(filepath, encoding=None):
             return f.read()
 
 
+##########################################################################################
 def read_file(filepath, fail_on_error=False, logger=None, encoding=None):
     return safe_read_file(filepath, encoding=encoding, timeout=0, retry_if_not_found=1, fail_on_error=fail_on_error, logger=logger)
 
 
+##########################################################################################
 def safe_read_file(filepath, encoding=None, lock=False, keep_locked=False, timeout=3, retry_if_not_found=0, fail_on_error=False, logger=None):
     """
     Safely reads a file with optional locking. Cleans up lock on error.
@@ -278,6 +289,7 @@ def safe_read_file(filepath, encoding=None, lock=False, keep_locked=False, timeo
 
     return r
 
+##########################################################################################
 def write_file(filepath, data, encoding=None, fail_on_error=False, logger=None, sort_keys=True, file_format=None, newline='\n'):
 
     if file_format is None:
@@ -306,6 +318,7 @@ def write_file(filepath, data, encoding=None, fail_on_error=False, logger=None, 
 
 
 
+##########################################################################################
 def safe_write_file(filepath, data, timeout=3, file_lock=None, atomic=False, encoding=None, fail_on_error=False, logger=None, sort_keys=True):
     """
     Safely writes data to a file. Supports atomic write via temp file + rename.
@@ -371,6 +384,7 @@ def safe_write_file(filepath, data, timeout=3, file_lock=None, atomic=False, enc
 
     return {'return': 0}
 
+##########################################################################################
 def safe_delete_directory(dirpath, timeout=3, fail_on_error=False, logger=None):
     """
     Safely and recursively deletes a directory with all its contents.
@@ -496,6 +510,7 @@ def safe_delete_directory(dirpath, timeout=3, fail_on_error=False, logger=None):
                 else:
                     raise
 
+##########################################################################################
 def safe_delete_directory_if_empty(dirpath):
     """Check quickly if directory is empty and remove it safely."""
     try:
@@ -508,6 +523,7 @@ def safe_delete_directory_if_empty(dirpath):
 
     return {'return':0}
 
+##########################################################################################
 def lock_path(path, timeout=3, fail_on_error=False, logger=None):
     """Acquires a lock for any file or directory path."""
     if logger is not None:
@@ -519,6 +535,7 @@ def lock_path(path, timeout=3, fail_on_error=False, logger=None):
     except Exception as e:
         return _error(None, 1, e, fail_on_error)
 
+##########################################################################################
 def unlock_path(path, file_lock, fail_on_error=False, logger=None):
     """Releases the lock for any file or directory path."""
 
@@ -532,6 +549,7 @@ def unlock_path(path, file_lock, fail_on_error=False, logger=None):
 
     return {'return':0}
 
+##########################################################################################
 def safe_read_file_via_cache(filepath, cache, timeout=10, fail_on_error=False, logger=None):
     """
     Reads a file with caching based on file modification timestamp.
@@ -601,6 +619,7 @@ def safe_read_file_via_cache(filepath, cache, timeout=10, fail_on_error=False, l
     
     return result
 
+##########################################################################################
 def safe_read_yaml_or_json(filepath, lock=False, keep_locked=False, timeout=3, fail_on_error=False, retry_if_not_found=0, logger=None):
     """
     Safely reads a YAML or JSON file by trying YAML first, then JSON.
@@ -648,6 +667,7 @@ def safe_read_yaml_or_json(filepath, lock=False, keep_locked=False, timeout=3, f
     # Neither file exists
     return _error(f"'{base_path}(.yaml or .json)' do not exist", ERROR_CODE_FILE_NOT_FOUND, None, fail_on_error)
 
+##########################################################################################
 def _get_encoding(encoding, file_format):
     """
     Helper function to determine the appropriate encoding for file operations.
@@ -661,6 +681,7 @@ def _get_encoding(encoding, file_format):
     
     return encoding
 
+##########################################################################################
 def unzip(filename, path=None, remove_directories=0, skip_directories=None, overwrite=True, clean=False, fail_on_error=False):
     """
     Unzip file to the current directory or 'path'.
@@ -738,6 +759,7 @@ def unzip(filename, path=None, remove_directories=0, skip_directories=None, over
 
     return {'return': 0}
 
+##########################################################################################
 def zip_directory(source_dir, output_path, skip_directories=None, fail_on_error=True, logger=None):
     """
     Creates a zip archive from a directory.
@@ -800,10 +822,15 @@ def zip_directory(source_dir, output_path, skip_directories=None, fail_on_error=
 
     return {'return': 0, 'output_path': output_path}
 
+##########################################################################################
 def apply_sharding_to_name(name: str, slices=None):
     """
     Apply sharding to a single path component (file or directory name).
     Returns a list of subdirectory names + the original name.
+    
+    If name is shorter than required by slices, underscore-filled placeholders
+    will be used (e.g., '___' for a 2-char shard). Placeholder length = shard_length + 1.
+    This ensures predictable directory structure for database listing and migration.
     """
 
     parts = []
@@ -816,15 +843,30 @@ def apply_sharding_to_name(name: str, slices=None):
 
         for length in slices:
             end = start + length
-            parts.append(name[start:end])
+            
+            # Check if we have enough characters for this shard
+            if start >= len(name):
+                # Name too short - use underscore placeholder
+                parts.append('_' * (length + 1))
+            else:
+                # Extract shard from name
+                shard = name[start:end]
+                
+                # If shard is shorter than expected (end of name), use placeholder
+                if len(shard) < length:
+                    parts.append('_' * (length + 1))
+                else:
+                    parts.append(shard)
+            
             start = end
 
-        # Final element is the actual original name
+        # Final element is the actual original name (always)
         parts.append(name)
 
     return {'return':0, 'parts': parts}
 
 
+##########################################################################################
 def apply_sharding_to_path(path: str, name: str, slices: list):
     """
     Takes an input path like "20251109.test" and shard it into 
@@ -843,3 +885,33 @@ def apply_sharding_to_path(path: str, name: str, slices: list):
     full_path = os.path.join(path, *sharded_parts)
 
     return {'return':0, 'sharded_path': full_path}
+
+##########################################################################################
+def safe_delete_directory_if_empty_with_sharding(
+        artifact_path: str,
+        sharding_slices: list = None
+    ):
+    """
+    Safely delete empty directories up the hierarchy based on sharding configuration.
+
+    Args:
+        artifact_path (str): Path to the artifact directory.
+        sharding_slices (list | None): Sharding configuration from category meta.
+
+    Returns:
+        dict: A cMeta dictionary with the following keys
+            - **return** (int): 0 if success, >0 if error.
+            - **error** (str): Error message if `return > 0`.
+    """
+    current_path = os.path.dirname(artifact_path)
+    extra_levels = 1 if sharding_slices is None else len(sharding_slices) + 1
+
+    for _i in range(extra_levels):
+        r = safe_delete_directory_if_empty(current_path)
+        if r['return'] > 0: return r
+
+        if os.path.isdir(current_path): break
+
+        current_path = os.path.dirname(current_path)
+
+    return {'return': 0}
