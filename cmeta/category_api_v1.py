@@ -657,6 +657,7 @@ class Category(InitCategory):
         category_uid = category['artifact_uid']
 
         category_cmeta = state['category_artifact']['cmeta']
+        no_index = category_cmeta.get('no_index', False)
 
         category_path = os.path.join(repo_path, category_alias)
 
@@ -727,7 +728,7 @@ class Category(InitCategory):
             artifact_path = path 
 
         # Update index
-        if not category_cmeta.get('no_index', False):
+        if not no_index:
             cmeta_ref_parts = {}
 
             if artifact_alias is not None: 
