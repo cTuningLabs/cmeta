@@ -44,6 +44,8 @@ class Category(InitCategory):
             hide:                   bool = False,        # hide git clone command print (if PAT/secret is present) 
 
             skip_parent_dir_in_zip: bool = False,
+
+            zip_file:               str = None,
     ):
         """
         Clone or pull CM repository.
@@ -104,6 +106,12 @@ class Category(InitCategory):
         if local:
             method = 'local'
 
+        if zip_file is not None:
+            if not os.path.isfile(zip_file):
+                return {'return':1, 'error':f'zip file {zip_file} not found'}
+
+            method = 'local_zip'
+
         # Search for an artifact
         repo_artifacts = []
 
@@ -114,8 +122,8 @@ class Category(InitCategory):
         add_repo_paths_to_index = []
 
         ######################################################################################################################
-        if (repo_name is not None and repo_name != '') or (path is None and url is None):
-            # Call base find function to find an artifact with a website
+        if (repo_name is not None and repo_name != '') or (path is None and url is None and zip_file is None):
+            # Call base find function to find an artifact
             p = {'category':state['category'], 
                  'command':'find',
                  'sort':False,
@@ -223,6 +231,9 @@ class Category(InitCategory):
         ######################################################################################################################
         else:
             # It's a new repo
+            if zip_file is not None:
+                repo_name = zip_file
+
             if repo_name is not None and repo_name != '':
                 # Spread into alias and UID
                 r = utils.names.parse_cmeta_name(repo_name)
@@ -265,7 +276,6 @@ class Category(InitCategory):
                 else:
                     method = 'git'
 
-
             ######################################################################################################################
             # Check what to do depending on whether the path exists or not
             if os.path.isdir(path) and method != 'local':
@@ -304,6 +314,11 @@ class Category(InitCategory):
                         if rc != 0:
                             return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
                     
+
+                elif method == 'local_zip':
+                    # Unzip with cleaning
+                    r = utils.files.unzip(zip_file, path=path, overwrite=False, clean=False, fail_on_error = self.fail_on_error)
+                    if r['return'] >0: return r
 
                 elif method == 'zip':
                     # Download zip
@@ -474,6 +489,15 @@ class Category(InitCategory):
 
         return result
 
+    def create(self, params):
+        """
+        Create local cMeta repository
+
+        @self.get_
+        """
+
+        return self.get_(**params, local=True)
+
 
     def update__(self, params):
         """
@@ -624,12 +648,38 @@ class Category(InitCategory):
 
     def pull(self, params):
         """
-        Get cMeta Git repositories
+        Pull cMeta Git repositories
 
         @self.get_
         """
 
-        return self.get_(**params, update=True)
+        return self.get_(**params)
+
+    def clone(self, params):
+        """
+        Clone cMeta Git repositories
+
+        @self.get_
+        """
+
+        return self.get_(**params)
+
+    def checkout(self, params):
+        """
+        Checkout cMeta Git repositories
+
+        @self.get_
+        """
+
+        if 'arg2' not in params:
+            return {'return':1, 'error': 'checkout name is not specified in arg2'}
+
+        import copy
+        copy_params = params.copy()
+
+        checkout = copy_params.pop('arg2')
+
+        return self.get_(**copy_params, update=True, checkout = checkout)
 
     def clone(self, params):
         """
@@ -648,6 +698,21 @@ class Category(InitCategory):
         """
 
         return self.get_(**params, method='local')
+
+    def unzip(self, params):
+        """
+        Unzip local cMeta repository
+
+        @self.get_
+        """
+
+        import copy
+        copy_params = params.copy()
+
+        zip_file = copy_params.pop('arg1')
+
+        return self.get_(**copy_params, zip_file=zip_file, method='local_zip')
+
 
     def zip_(
             self,
@@ -743,6 +808,3 @@ class Category(InitCategory):
             print(f'Repository successfully zipped to: {zip_path}')
 
         return {'return':0, 'zip_path': zip_path}
-
-#TBD
-# add cx repo checkout xyz abc

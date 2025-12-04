@@ -1,4 +1,7 @@
-﻿cMeta (0.8.0):
+﻿cMeta (0.9.0):
+  * Fixed bugs in sharding schema
+
+cMeta (0.8.0):
   * Simplified sharding schema
   * Changed default API handling
 

@@ -702,8 +702,6 @@ def unzip(filename, path=None, remove_directories=0, skip_directories=None, over
                 # Get original path
                 orig_path = member.filename
 
-                print (orig_path)
-                
                 # Split path
                 parts = orig_path.split('/')
                 # Remove empty parts
@@ -725,8 +723,6 @@ def unzip(filename, path=None, remove_directories=0, skip_directories=None, over
                 if len(parts) <= remove_directories:
                     continue
                 
-                print (len(parts))
-
                 new_parts = parts[remove_directories:]
                 
                 target_path = os.path.join(path, *new_parts)
