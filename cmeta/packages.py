@@ -23,7 +23,7 @@ class PackageResult:
     name: str
     version: str
     satisfies: bool
-    specifier: str | None
+    specifier: str 
     installed_now: bool
 
 
@@ -35,7 +35,7 @@ class Packages:
         logger=None,
         fail_on_error=False,
         allow_install=True,
-        timeout: float | None = None,   # global default timeout
+        timeout: float = None,   # global default timeout
     ):
 
         self.cache = cache or {}
