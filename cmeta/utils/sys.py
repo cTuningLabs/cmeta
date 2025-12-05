@@ -11,15 +11,16 @@ from .common import _error
 from .cli import print_params_help
 
 ###################################################################################################
-def load_module(module_path, module_cache, fail_on_error=False, category=False, cmeta=None):
+def load_module(module_path, module_cache, fail_on_error=False, category=False, cmeta=None, suffix=None):
     import os, sys, importlib.util, importlib.machinery, re, hashlib
 
-    def sanitize(name):
+    def sanitize(name, suffix=None):
         cleaned = re.sub(r'[^0-9a-zA-Z_]', '_', name)
         if re.match(r'^\d', cleaned):
             cleaned = "_" + cleaned
         if cleaned != name or cleaned.strip("_") == "":
-            suffix = hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
+            if suffix is None or suffix == '':
+                suffix = hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
             cleaned = f"{cleaned}_{suffix}"
         return cleaned
 
@@ -34,7 +35,7 @@ def load_module(module_path, module_cache, fail_on_error=False, category=False, 
     raw_cat = os.path.basename(category_dir)
     raw_pkg = os.path.basename(module_dir)
 
-    cat_name = sanitize(raw_cat)
+    cat_name = sanitize(raw_cat, suffix)
     pkg_name = sanitize(raw_pkg)
 
     full_package_name = f"{cat_name}.{pkg_name}"

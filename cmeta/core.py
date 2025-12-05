@@ -337,6 +337,7 @@ class CMeta:
             # Unique category found - check meta and code
             category_artifact = category_artifacts[0]
             category_meta = category_artifact['cmeta']
+            category_uid = category_artifact['cmeta_ref_parts']['artifact_uid']
 
             # Update state with some duplication for simplicity of further use ...
             state['category_artifact'] = category_artifact
@@ -391,7 +392,7 @@ class CMeta:
                 category_api_path = os.path.join(category_artifact['path'], 'api', f'v{category_api_module_ver}.py')
 
                 if os.path.isfile(category_api_path):
-                    category_apis.append({'path':category_api_path})
+                    category_apis.append({'path':category_api_path, 'suffix': category_uid})
                 elif category_api_ver is not None or category_api_module_ver != '1':
                     return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self.fail_on_error)
 
@@ -406,7 +407,9 @@ class CMeta:
             # Load categories
             for category_api in category_apis:
                 # category api path should be resolved by now
-                r = utils.sys.load_module(category_api['path'], self.category_cache, fail_on_error = self.fail_on_error, category=True, cmeta=self)
+                suffix = category_api.get('suffix')
+
+                r = utils.sys.load_module(category_api['path'], self.category_cache, fail_on_error = self.fail_on_error, category=True, cmeta=self, suffix=suffix)
                 if r['return'] >0: return r
 
                 category_api['code'] = r['cache']['initialized_class']
