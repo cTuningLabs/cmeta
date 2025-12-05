@@ -37,6 +37,7 @@ class CMeta:
                  pause_if_error: Optional[bool] = None,
                  package_allow_install: Optional[bool] = True,
                  package_timeout: Optional[float] = None,
+                 print_host_info: Optional[bool] = False,
     ):
 
         """Initialize CMeta with repositories
@@ -120,6 +121,8 @@ class CMeta:
         self.js = utils.common.safe_print_json_to_str
         self.utils = utils
 
+        self.print_host_info = print_host_info
+
         #################################################################################
         # Create directory if it doesn't exist (thread/process safe)
         for path in [self.home_path]: #, self.repos_path, self.index_path]:
@@ -186,6 +189,9 @@ class CMeta:
             Dictionary with {"return": 0, ...} for success or {"return": >0, "error": "error text"} for errors
         """
 
+        if self.print_host_info:
+            utils.sys.get_min_host_info(only_memory=True, con=True)
+
         # Log where this call is coming from if debug
         if self.debug:
             self.logger.debug(60*'=')
@@ -197,6 +203,10 @@ class CMeta:
                 caller_filename = caller_frame.filename
                 abs_path = os.path.abspath(caller_filename)
                 self.logger.debug(f'ACCESS is from "{abs_path}"')
+
+            r = utils.sys.get_min_host_info()
+            if r['return'] == 0:
+                self.logger.debug(r['string'])
 
         # Make shallow copy of top keys to avoid altering original input keys
         # It's relatively fast in comparison with deep copy 
@@ -247,6 +257,7 @@ class CMeta:
 
         # Continue processing request
         con = control_params.get('con', False)
+
         # Force con in control_params to simplify APIs
         control_params['con'] = con
 

@@ -750,3 +750,49 @@ def get_dir_size(path, binary=False, unit=None):
         'total_files': total_files
     }
 
+###################################################################################################
+def get_min_host_info(only_memory=False, binary=False, unit="GB", con=False):
+
+    import psutil
+    import os
+
+    # --- Total system memory ---
+    total_memory = psutil.virtual_memory().total
+
+    # --- Number of CPU cores ---
+    physical_cores = psutil.cpu_count(logical=False)
+    logical_cores = psutil.cpu_count(logical=True)
+
+    # --- Memory used by the current Python process ---
+    process = psutil.Process(os.getpid())
+    memory_used = process.memory_info().rss  # bytes
+
+    r = format_size(total_memory, binary=binary, unit=unit)
+    if r['return']>0: return r
+    nice_total_memory = r['nice_size']
+
+    r = format_size(memory_used, binary=binary, unit=unit)
+    if r['return']>0: return r
+    nice_memory_used = r['nice_size']
+
+    x = ''
+
+    if not only_memory:
+         x += (f"Host physical cores: {physical_cores}\n"
+               f"Host logical cores: {logical_cores}\n")
+
+    x += (f"Host total memory: {nice_total_memory}\n"
+          f"Memory used by current process: {nice_memory_used}\n")
+
+    if con:
+        print (x)
+
+    return {'return':0,
+            'physical_cores': physical_cores,
+            'logical_cores': logical_cores,
+            'total_memory': total_memory,
+            'nice_total_memory': nice_total_memory,
+            'memory_used': memory_used,
+            'nice_memory_used': nice_memory_used,
+            'string': x,
+    }
