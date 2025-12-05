@@ -135,7 +135,7 @@ class Packages:
             cmd.extend(install_args.split())
 
         if con:
-            print (f'  {' '.join(cmd)}') 
+            print (f"  {' '.join(cmd)}") 
 
         try:
             proc = subprocess.Popen(
@@ -203,7 +203,7 @@ class Packages:
             cmd.extend(install_args.split())
 
         if con:
-            print (f'  {' '.join(cmd)}') 
+            print (f"  {' '.join(cmd)}") 
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
