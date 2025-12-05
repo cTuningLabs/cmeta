@@ -33,6 +33,7 @@ dependencies = [
      "tabulate",
      "tqdm",
      "filelock",
+     "packaging",
 ]
 
 [project.optional-dependencies]

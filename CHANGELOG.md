@@ -1,4 +1,7 @@
-﻿cMeta (0.9.0):
+﻿cMeta (0.10.0):
+  * Fixed more bugs; added on-the-fly package management; added common functions
+
+cMeta (0.9.0):
   * Fixed bugs in sharding schema
 
 cMeta (0.8.0):

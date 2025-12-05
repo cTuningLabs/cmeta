@@ -318,3 +318,24 @@ def compare_versions(version1, version2):
 
     return {'return':0, 'comparison': comparison}
 
+###################################################################################################
+def generate_timestamp(cut = None, slices = None):
+    from datetime import datetime
+
+    timestamp = datetime.now().strftime("%Y%m%d-%M%S")
+
+    if cut is not None and cut>0:
+        timestamp = timestamp[:cut]
+
+    path = timestamp
+
+    if slices is not None and len(slices)>0:
+        from .files import shard_name
+        import os
+
+        r = shard_name(path, slices)
+        if r['return']>0: return r
+
+        path = os.path.join(*r['parts'])
+
+    return {'return':0, 'timestamp': timestamp, 'path': path}

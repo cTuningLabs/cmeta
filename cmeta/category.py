@@ -1,5 +1,5 @@
 """
-Managing Category class
+Category Manager class
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 

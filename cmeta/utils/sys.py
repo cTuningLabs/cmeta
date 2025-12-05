@@ -10,6 +10,7 @@ import os
 from .common import _error
 from .cli import print_params_help
 
+###################################################################################################
 def load_module(module_path, module_cache, fail_on_error=False, category=False, cmeta=None):
     import os, sys, importlib.util, importlib.machinery, re, hashlib
 
@@ -543,6 +544,7 @@ def run(cmd,
 
     return {'return': 0, 'returncode': returncode, 'stdout': stdout, 'stderr': stderr}
 
+###################################################################################################
 def run_command_with_timeout_tree_kill_on_windows(
     cmd,
     capture_output: bool,
@@ -666,3 +668,85 @@ def run_command_with_timeout_tree_kill_on_windows(
         stderr = ""
 
     return returncode, stdout, stderr
+
+###################################################################################################
+def format_size(size, binary=True, unit=None):
+    """
+    Convert size in bytes to a human-readable string.
+
+    binary=True  → 1024 base + IEC units (KiB, MiB, GiB...)
+    binary=False → 1000 base + SI units (KB, MB, GB...)
+
+    unit=None    → auto-select best unit
+    unit="MB"    → force SI megabytes
+    unit="MiB"   → force IEC mebibytes
+    """
+
+    # Choose base and unit list
+    if binary:
+        base = 1024
+        units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB']
+    else:
+        base = 1000
+        units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']
+
+    nice_size = None  # final output string
+
+    # ---------------------------------------------------------
+    # Forced unit mode
+    # ---------------------------------------------------------
+    if unit is not None:
+        if unit not in units:
+            raise ValueError(f"Invalid unit '{unit}'. Must be one of: {units}")
+        # Convert based on unit index
+        power = units.index(unit)
+        value = size / (base ** power)
+        nice_size = f"{value:.2f} {unit}"
+
+    else:
+        # -----------------------------------------------------
+        # Automatic unit selection mode
+        # -----------------------------------------------------
+        working_size = size  # avoid modifying input
+        for current_unit in units:
+            if working_size < base:
+                nice_size = f"{working_size:.2f} {current_unit}"
+                break
+            working_size /= base
+
+        # Extremely large values fallback
+        if nice_size is None:
+            nice_size = f"{working_size:.2f} {units[-1]}"
+
+    return {'return': 0, 'nice_size': nice_size}
+
+###################################################################################################
+def get_dir_size(path, binary=False, unit=None):
+    total = 0
+    total_dirs = 0
+    total_files = 0
+
+    for root, dirs, files in os.walk(path):
+        # Count subdirectories at this level
+        total_dirs += len(dirs)
+
+        for f in files:
+            fp = os.path.join(root, f)
+            if os.path.isfile(fp):  # avoid broken symlinks
+                total += os.path.getsize(fp)
+                total_files += 1
+
+    r = format_size(total, binary, unit)
+    if r['return'] > 0:
+        return r
+
+    nice_size = r['nice_size']
+
+    return {
+        'return': 0,
+        'size': total,
+        'nice_size': nice_size,
+        'total_dirs': total_dirs,
+        'total_files': total_files
+    }
+

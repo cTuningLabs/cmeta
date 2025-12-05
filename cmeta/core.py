@@ -19,6 +19,7 @@ from pathlib import Path
 from . import config
 from . import utils
 from .repos import Repos
+from .packages import Packages
 
 control_params_desc = config.params_desc + config.params_command2_desc + config.params_command_desc + config.params_init_desc
 
@@ -33,7 +34,11 @@ class CMeta:
                  log_level: Optional[str] = None,
                  log_file: Optional[str] = None,
                  log_format: Optional[str] = None,
-                 pause_if_error: Optional[bool] = None):
+                 pause_if_error: Optional[bool] = None,
+                 package_allow_install: Optional[bool] = True,
+                 package_timeout: Optional[float] = None,
+    ):
+
         """Initialize CMeta with repositories
         
         Args:
@@ -127,6 +132,16 @@ class CMeta:
                 self.logger.error(f"Error creating home directory: {e}")
                 raise
         
+        #################################################################################
+        # Initialize package manager
+        self.packages = Packages(
+            cfg=self.cfg,
+            logger=self.logger,
+            fail_on_error=self.fail_on_error,
+            allow_install=package_allow_install,
+            timeout=package_timeout,
+        )
+
         #################################################################################
         # Initialize repositories manager
         self.repos = Repos(
