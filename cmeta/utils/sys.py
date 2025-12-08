@@ -11,7 +11,31 @@ from .common import _error
 from .cli import print_params_help
 
 ###################################################################################################
-def load_module(module_path, module_cache, fail_on_error=False, category=False, cmeta=None, suffix=None):
+def load_module(
+        module_path: str,              # Absolute path to the Python module file
+        module_cache: dict,            # Dictionary to store cached module information
+        fail_on_error: bool = False,   # If True, raise exception on error
+        category: bool = False,        # If True, initialize the Category class from the module
+        cmeta = None,                  # CMeta instance to pass to Category initialization
+        suffix: str = None             # Optional suffix for module name sanitization
+):
+    """Dynamically load a Python module from file path with caching support.
+    
+    Loads category API modules and manages them in a cache. Handles module naming
+    sanitization and creates proper package structures for category modules.
+    
+    Args:
+        module_path (str): Absolute path to the Python module file.
+        module_cache (dict): Dictionary to store cached module information.
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        category (bool): If True, initializes the Category class from the module.
+        cmeta: CMeta instance to pass to Category initialization.
+        suffix (str | None): Optional suffix for module name sanitization.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and 'cache' containing module info,
+              or 'return' > 0 and 'error' on failure.
+    """
     import os, sys, importlib.util, importlib.machinery, re, hashlib
 
     def sanitize(name, suffix=None):
@@ -89,7 +113,23 @@ def load_module(module_path, module_cache, fail_on_error=False, category=False, 
         return _error(f"Failed to import module {full_module_name}", 1, e, fail_on_error)
 
 ###################################################################################################
-def find_command_func(category_api, command):
+def find_command_func(
+        category_api,  # Category API object instance
+        command: str   # Command name string to search for
+):
+    """Find command function in category API object.
+    
+    Searches for the command function using standard naming conventions:
+    command_, command__, or command (in that order).
+    
+    Args:
+        category_api: Category API object instance.
+        command (str): Command name string to search for.
+        
+    Returns:
+        dict: Dictionary with 'return': 0, 'func' (function object or None),
+              and 'func_name' (actual function name if found).
+    """
 
     func = None
 
@@ -108,8 +148,21 @@ def find_command_func(category_api, command):
     return result
 
 ###################################################################################################
-def get_func_properties(f):
-    """Get function properties"""
+def get_func_properties(
+        f  # Function object to inspect
+):
+    """Extract source code properties from a function object.
+    
+    Gets the source file path, line numbers, and API documentation text
+    for a given function.
+    
+    Args:
+        f: Function object to inspect.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and properties including 'filename',
+              'start_line', 'end_line', and 'api_text'.
+    """
 
     import inspect
 
@@ -144,8 +197,23 @@ def get_func_properties(f):
     
 
 ###################################################################################################
-def find_func_definition(obj, name):
-    """Find function definitiion"""
+def find_func_definition(
+        obj,        # Object instance to search for the function
+        name: str   # Name of the function to find
+):
+    """Find function definition in an object by name.
+    
+    Locates a function by name in an object's class, unwraps decorators,
+    and extracts its source code properties.
+    
+    Args:
+        obj: Object instance to search for the function.
+        name (str): Name of the function to find.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and function properties on success,
+              or 'return': 1 and 'error' if function not found.
+    """
     import inspect
 
     func = getattr(obj.__class__, name, None)
@@ -160,17 +228,25 @@ def find_func_definition(obj, name):
 
 
 ###################################################################################################
-def get_api_info(category_api, command, full_command, control_params_desc = None, category_apis = []):
-    """Extract function definition and docstring for API information
+def get_api_info(
+        category_api,                  # The category API object
+        command: str,                  # The command name
+        full_command: str,             # Full command string
+        control_params_desc = None,    # Control parameters description
+        category_apis: list = []       # List of category APIs
+):
+    """Extract function definition and docstring for API information.
     
     Args:
-        category_api: The category API object
-        command: The command name
-        category_api_path: Path to the category API file
+        category_api: The category API object.
+        command (str): The command name.
+        full_command (str): Full command string.
+        control_params_desc: Control parameters description.
+        category_apis (list): List of category APIs.
         
     Returns:
-        Dictionary with {"return": 0, "api_info": "formatted API info string"} for success
-        or {"return": >0, "error": "error text"} for errors
+        dict: Dictionary with 'return': 0 and 'api_info' string for success,
+              or 'return' > 0 and 'error' for errors.
     """
     
     r = find_func_definition(category_api, command)
@@ -228,7 +304,21 @@ def get_api_info(category_api, command, full_command, control_params_desc = None
     return {'return':0, 'api_info': api_info}
 
 ###################################################################################################
-def get_api_text(lines, start_line):
+def get_api_text(
+        lines: list,      # List of source code lines
+        start_line: int   # Starting line number
+):
+    """Extract API text from function source lines.
+    
+    Parses function definition and docstring from source code lines.
+    
+    Args:
+        lines (list): List of source code lines.
+        start_line (int): Starting line number.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and 'api_info' containing formatted text.
+    """
 
     api_info = ''
 
@@ -280,6 +370,10 @@ def get_api_text(lines, start_line):
 
 ###################################################################################################
 def flush_input():
+    """Flush stdin buffer on Unix/Linux/Mac and Windows.
+    
+    Clears any pending keyboard input from the stdin buffer.
+    """
     import os, sys
 
     if os.name == 'posix':  # Unix/Linux/Mac
@@ -293,52 +387,51 @@ def flush_input():
     return
 
 ############################################################
-def run(cmd, 
-        work_dir=None,
-        env=None, 
-        envs=None, 
-        genv=None, 
-        capture_output=False, 
-        text_cmd='$',
-        timeout=None, 
-        verbose=False, 
-        hide_in_cmd=None, 
-        save_script='', 
-        run_script=False, 
-        script_prefix='', 
-        skip_run=False, 
-        print_cmd=False,
-        con=False,
-        fail_on_error=False,
-        logger=None):
+def run(
+        cmd: str,                    # Command to execute
+        work_dir: str = None,        # Working directory
+        env: dict = None,            # 2nd level env to update global ENV
+        envs: dict = None,           # 1st level of env to update global ENV
+        genv: dict = None,           # Global ENV (force in the end)
+        capture_output: bool = False,  # If True, capture stdout/stderr
+        text_cmd: str = '$',         # Text prefix for command display
+        timeout: int = None,         # Timeout in seconds
+        verbose: bool = False,       # If True, print extra info
+        hide_in_cmd: list = None,    # List of keys in CMD to hide (for secrets)
+        save_script: str = '',       # Path to save script for reproducibility
+        run_script: bool = False,    # If True, run created script
+        script_prefix: str = '',     # Prefix string to add to script
+        skip_run: bool = False,      # If True, skip execution
+        print_cmd: bool = False,     # If True, force print CMD
+        con: bool = False,           # If True, enable console output
+        fail_on_error: bool = False,  # If True, raise exception on error
+        logger = None                # Optional logger for debug messages
+):
     """
-    Run CMD with environment
+    Run CMD with environment.
 
-    Input:
-        cmd (str): command to execute
-        envs (dict): 1st level of env to update global ENV
-        env (dict): 2nd (current) env to update global ENV
-        genv (dict): global ENV (force in the end)
-        capture_output (bool): False by default
-        timeout (int): None by default
-                       TBD: Current timeout doesn't terminate subprocesses
-                       need to use POpen.
-        verbose (bool): if True, print extra info
-        hide_in_cmd (list): list keys in CMD to hide (for secrets)
-        save_script (str): save script for reproducibility
-        run_script (bool): run create script (useful for pipes)
-        script_prefix (str): add prefix string to script
-        skip_run (bool): if True, skip run
-        print_cmd (bool): if True, force print CMD
-        con (bool): if True, enable console output
+    Args:
+        cmd (str): Command to execute.
+        work_dir (str | None): Working directory.
+        env (dict | None): 2nd (current) env to update global ENV.
+        envs (dict | None): 1st level of env to update global ENV.
+        genv (dict | None): Global ENV (force in the end).
+        capture_output (bool): False by default.
+        text_cmd (str): Text prefix for command display.
+        timeout (int | None): None by default. TBD: Current timeout doesn't terminate subprocesses.
+        verbose (bool): If True, print extra info.
+        hide_in_cmd (list | None): List of keys in CMD to hide (for secrets).
+        save_script (str): Save script for reproducibility.
+        run_script (bool): Run created script (useful for pipes).
+        script_prefix (str): Add prefix string to script.
+        skip_run (bool): If True, skip run.
+        print_cmd (bool): If True, force print CMD.
+        con (bool): If True, enable console output.
+        fail_on_error (bool): If True, raise exception on error.
+        logger: Optional logger for debug messages.
 
-    Output:
-        dict: unified CM output
-            * return (int): 0 if success
-            * returncode (int): command return code
-            * stdout (str): standard output
-            * stderr (str): standard error
-            * (error) (str): error string if return > 0
+    Returns:
+        dict: Unified output with 'return', 'returncode', 'stdout', 'stderr'.
     """
 
     import subprocess
@@ -547,13 +640,31 @@ def run(cmd,
 
 ###################################################################################################
 def run_command_with_timeout_tree_kill_on_windows(
-    cmd,
-    capture_output: bool,
-    cur_env,
-    timeout: float,
-    shell: bool = True,
-    text: bool = True,
+        cmd: str,                    # Command string to execute
+        capture_output: bool,        # If True, capture stdout and stderr
+        cur_env: dict,               # Environment variables dictionary
+        timeout: float,              # Timeout in seconds
+        shell: bool = True,          # If True, run command through shell
+        text: bool = True            # If True, decode output as text
 ):
+    """Run command on Windows with timeout and process tree termination.
+    
+    Uses Windows Job Objects to ensure entire process tree is killed on timeout.
+    
+    Args:
+        cmd (str): Command string to execute.
+        capture_output (bool): If True, capture stdout and stderr.
+        cur_env (dict): Environment variables dictionary.
+        timeout (float): Timeout in seconds.
+        shell (bool): If True, run command through shell.
+        text (bool): If True, decode output as text.
+        
+    Returns:
+        tuple: (returncode, stdout, stderr).
+        
+    Raises:
+        OSError: If Windows API calls fail.
+    """
     import subprocess
     import ctypes
     from ctypes import wintypes
@@ -671,16 +782,24 @@ def run_command_with_timeout_tree_kill_on_windows(
     return returncode, stdout, stderr
 
 ###################################################################################################
-def format_size(size, binary=True, unit=None):
-    """
-    Convert size in bytes to a human-readable string.
-
-    binary=True  → 1024 base + IEC units (KiB, MiB, GiB...)
-    binary=False → 1000 base + SI units (KB, MB, GB...)
-
-    unit=None    → auto-select best unit
-    unit="MB"    → force SI megabytes
-    unit="MiB"   → force IEC mebibytes
+def format_size(
+        size: int,               # Size in bytes to format
+        binary: bool = True,     # If True, use 1024 base with IEC units
+        unit: str = None         # Force specific unit (e.g., 'MB', 'MiB')
+):
+    """Convert size in bytes to a human-readable string.
+    
+    Args:
+        size (int): Size in bytes to format.
+        binary (bool): If True, use 1024 base with IEC units (KiB, MiB, GiB).
+                       If False, use 1000 base with SI units (KB, MB, GB).
+        unit (str | None): Force specific unit (e.g., 'MB', 'MiB'). If None, auto-select.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and 'nice_size' containing formatted string.
+        
+    Raises:
+        ValueError: If unit is not valid.
     """
 
     # Choose base and unit list
@@ -722,7 +841,24 @@ def format_size(size, binary=True, unit=None):
     return {'return': 0, 'nice_size': nice_size}
 
 ###################################################################################################
-def get_dir_size(path, binary=False, unit=None):
+def get_dir_size(
+        path: str,               # Directory path to measure
+        binary: bool = False,    # If True, use binary (1024) units
+        unit: str = None         # Force specific unit for size formatting
+):
+    """Calculate total size of a directory recursively.
+    
+    Walks through directory tree and sums file sizes.
+    
+    Args:
+        path (str): Directory path to measure.
+        binary (bool): If True, use binary (1024) units, else decimal (1000).
+        unit (str | None): Force specific unit for size formatting.
+        
+    Returns:
+        dict: Dictionary with 'return': 0, 'size' in bytes, 'nice_size' formatted,
+              'total_dirs' count, and 'total_files' count.
+    """
     total = 0
     total_dirs = 0
     total_files = 0
@@ -752,7 +888,25 @@ def get_dir_size(path, binary=False, unit=None):
     }
 
 ###################################################################################################
-def get_min_host_info(only_memory=False, binary=False, unit="GB", con=False):
+def get_min_host_info(
+        only_memory: bool = False,  # If True, only return memory information
+        binary: bool = False,       # If True, use binary (1024) units for memory
+        unit: str = "GB",           # Unit for memory size formatting
+        con: bool = False           # If True, print information to console
+):
+    """Get minimal host system information including CPU and memory.
+    
+    Args:
+        only_memory (bool): If True, only return memory information.
+        binary (bool): If True, use binary (1024) units for memory sizes.
+        unit (str): Unit for memory size formatting (default: 'GB').
+        con (bool): If True, print information to console.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and host information including:
+              'physical_cores', 'logical_cores', 'total_memory', 'nice_total_memory',
+              'memory_used', 'nice_memory_used', and 'string' (formatted output).
+    """
 
     import psutil
     import os

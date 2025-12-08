@@ -25,8 +25,10 @@ class Category(InitCategory):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
     ############################################################
-    def test(self, 
-             params: dict):
+    def test(
+            self,
+            params: dict  # Parameters dictionary
+    ):
         """
         Test category.
 
@@ -34,7 +36,7 @@ class Category(InitCategory):
             params (dict): Parameters dictionary.
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
         """
 
@@ -45,11 +47,11 @@ class Category(InitCategory):
 
     ############################################################
     def info_(
-         self, 
-         state:  dict,            # cMeta state.
-         arg1:   str = None,      # Artifact alias or UID.
-         clip:   bool = True,     # If True, attempt to copy cRef to the clipboard.
-         url:    bool = False     # If True, copy URL with detected cRef to the clipboard.
+            self,
+            state: dict,             # cMeta state
+            arg1: str = None,        # Artifact alias or UID
+            clip: bool = True,       # If True, copy cRef to clipboard
+            url: bool = False        # If True, copy URL with detected cRef to clipboard
     ):
         """
         Get artifact info.
@@ -61,7 +63,7 @@ class Category(InitCategory):
             url (bool): If True, copy URL with detected cRef to the clipboard.
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **artifacts** (list): List of matched artifacts.
@@ -120,13 +122,13 @@ class Category(InitCategory):
 
     ############################################################
     def find_(
-            self, 
-            state:          dict,            # cMeta state.
-            arg1:           str = None,      # Artifact alias or UID.
-            tags:           str = None,      # Comma-separated string or iterable of tags to match.
-            sort:           bool = None,     # Sort by path.
-            add_index_file: bool = False,    # Add index file information.
-            skip_uids:      bool = False     # Skip UIDs when using wildcards.
+            self,
+            state: dict,                 # cMeta state
+            arg1: str = None,            # Artifact alias or UID
+            tags: str = None,            # Comma-separated string or iterable of tags to match
+            sort: bool = None,           # Sort by path
+            add_index_file: bool = False,  # Add index file information
+            skip_uids: bool = False      # Skip UIDs when using wildcards
     ):
         """
         Find artifacts.
@@ -140,7 +142,7 @@ class Category(InitCategory):
             skip_uids (bool): Skip UIDs when using wildcards.
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **artifacts** (list): List of matched artifacts.
@@ -185,19 +187,19 @@ class Category(InitCategory):
 
     ############################################################
     def update_(
-            self, 
-            state:         dict,           # cMeta state.
-            arg1:          str  = None,    # cMeta artifact(s) with wildcards.
-            tags:          str  = None,    # Prune artifacts by tags.
-            sort:          bool = True,    # Sort artifacts by alias and UID when updating in batch.
-            skip_uids:     bool = False,   # Skip UIDs when using wildcards.
-            meta:          dict = {},      # Meta dictionary to merge recursively with existing artifact.
-            new_tags:      str  = None,    # Add more tags.
-            replace_lists: bool = False,   # Replace lists during merging.
-            replace:       bool = False,   # Replace existing meta dictionary entirely.
-            ignore_errors: bool = False,   # Ignore errors when updating multiple artifacts.
-            create:        bool = False,   # If artifact doesn't exist attempt to create
-            create_params: dict = {},      # Pass params to create function
+            self,
+            state: dict,                 # cMeta state
+            arg1: str = None,            # cMeta artifact(s) with wildcards
+            tags: str = None,            # Prune artifacts by tags
+            sort: bool = True,           # Sort artifacts by alias and UID when updating in batch
+            skip_uids: bool = False,     # Skip UIDs when using wildcards
+            meta: dict = {},             # Meta dictionary to merge recursively with existing artifact
+            new_tags: str = None,        # Add more tags
+            replace_lists: bool = False,  # Replace lists during merging
+            replace: bool = False,       # Replace existing meta dictionary entirely
+            ignore_errors: bool = False,  # Ignore errors when updating multiple artifacts
+            create: bool = False,        # If artifact doesn't exist attempt to create
+            create_params: dict = {}     # Pass params to create function
     ):
         """
         Update artifact(s).
@@ -213,9 +215,11 @@ class Category(InitCategory):
             replace_lists (bool): Replace lists during merging.
             replace (bool): Replace existing meta dictionary entirely.
             ignore_errors (bool): Ignore errors when updating multiple artifacts.
+            create (bool): If artifact doesn't exist attempt to create.
+            create_params (dict): Pass params to create function.
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **artifacts** (list): All matched artifacts.
@@ -330,12 +334,12 @@ class Category(InitCategory):
 
     ############################################################
     def list_(
-            self, 
-            state:     dict,          # cMeta state.
-            arg1:      str  = None,   # Artifact alias or UID.
-            tags:      str  = None,   # Optional tag filter.
-            sort:      bool = None,   # Sort by alias or UID.
-            skip_uids: bool = False   # Skip UIDs when using wildcards.
+            self,
+            state: dict,             # cMeta state
+            arg1: str = None,        # Artifact alias or UID
+            tags: str = None,        # Optional tag filter
+            sort: bool = None,       # Sort by alias or UID
+            skip_uids: bool = False  # Skip UIDs when using wildcards
     ):
         """
         List artifact names.
@@ -348,7 +352,7 @@ class Category(InitCategory):
             skip_uids (bool): Skip UIDs when using wildcards.
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **artifacts** (list): List of matched artifacts.
@@ -374,13 +378,13 @@ class Category(InitCategory):
 
     ############################################################
     def read_(
-            self, 
-            state:     dict,           # cMeta state.
-            arg1:      str   = None,   # Artifact alias or UID.
-            tags:      str   = None,   # Optional tag filter.
-            extra:     bool  = False,  # Show extra info
-            skip_uids: bool  = False,  # Skip UIDs when using wildcards.
-            yaml:      bool  = False,  # Output as YAML instead of JSON.
+            self,
+            state: dict,             # cMeta state
+            arg1: str = None,        # Artifact alias or UID
+            tags: str = None,        # Optional tag filter
+            extra: bool = False,     # Show extra info
+            skip_uids: bool = False,  # Skip UIDs when using wildcards
+            yaml: bool = False       # Output as YAML instead of JSON
     ):
         """
         Read artifact meta.
@@ -389,11 +393,12 @@ class Category(InitCategory):
             state (dict): cMeta state.
             arg1 (str | None): Artifact alias or UID.
             tags (str | list | None): Optional tag filter.
+            extra (bool): Show extra info.
             skip_uids (bool): Skip UIDs when using wildcards.
             yaml (bool): Output as YAML instead of JSON.
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **artifact** (dict): Matched artifact.
@@ -432,17 +437,16 @@ class Category(InitCategory):
 
     ############################################################
     def delete_(
-            self, 
-            state:         dict,             # cMeta state.
-            arg1:          str  = None,      # Artifact alias or UID.
-            tags:          str  = None,      # Optional tag filter.
-            sort:          bool = True,      # Sort artifacts by alias and UID.
-            force:         bool = False,     # Force deletion without confirmation.
-            f:             bool = False,     # Shorthand for force.
-            skip_uids:     bool = False,     # Skip UIDs when using wildcards.
-            unlink:        bool = False,     # Unlink instead of delete.
-            ignore_errors: bool = False,     # Ignore errors when deleting multiple artifacts.
-            print_time:    bool = False      # Print time per deletion
+            self,
+            state: dict,                 # cMeta state
+            arg1: str = None,            # Artifact alias or UID
+            tags: str = None,            # Optional tag filter
+            sort: bool = True,           # Sort artifacts by alias and UID
+            force: bool = False,         # Force deletion without confirmation
+            f: bool = False,             # Shorthand for force
+            skip_uids: bool = False,     # Skip UIDs when using wildcards
+            ignore_errors: bool = False,  # Ignore errors when deleting multiple artifacts
+            print_time: bool = False     # Print time per deletion
     ):
         """
         Delete and unindex artifact(s).
@@ -455,10 +459,11 @@ class Category(InitCategory):
             force (bool): Force deletion without confirmation.
             f (bool): Shorthand for force.
             skip_uids (bool): Skip UIDs when using wildcards.
-            unlink (bool): Unlink instead of delete.
+            ignore_errors (bool): Ignore errors when deleting multiple artifacts.
+            print_time (bool): Print time per deletion.
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **artifacts** (list): All matched artifacts.
@@ -550,15 +555,14 @@ class Category(InitCategory):
 
     ############################################################
     def create_(
-            self, 
-            state:   dict,               # cMeta state.
-            arg1:    str   = None,       # Artifact alias or UID.
-            tags:    str   = None,       # Tags to add to the artifact.
-            meta:    dict  = {},         # Initial metadata dictionary.
-            yaml:    bool  = False,      # Save metadata as YAML instead of JSON.
-            virtual: bool  = False,      # Virtual artfiact created only in index (such as repo)
-            path:    str   = None,       # Use this path for artifact (useful for virtual artifacts such as repo)
-            
+            self,
+            state: dict,             # cMeta state
+            arg1: str = None,        # Artifact alias or UID
+            tags: str = None,        # Tags to add to the artifact
+            meta: dict = {},         # Initial metadata dictionary
+            yaml: bool = False,      # Save metadata as YAML instead of JSON
+            virtual: bool = False,   # Virtual artifact created only in index (such as repo)
+            path: str = None         # Use this path for artifact (useful for virtual artifacts)
     ):
         """
         Create and index an artifact.
@@ -569,9 +573,11 @@ class Category(InitCategory):
             tags (str | list | None): Tags to add to the artifact.
             meta (dict): Initial metadata dictionary.
             yaml (bool): Save metadata as YAML instead of JSON.
+            virtual (bool): Virtual artifact created only in index (such as repo).
+            path (str | None): Use this path for artifact (useful for virtual artifacts such as repo).
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **path** (str): Path to the created artifact.
@@ -761,38 +767,31 @@ class Category(InitCategory):
 
     ############################################################
     def move_(
-            self, 
-            state:         dict,           # cMeta state.
-            arg1:          str,            # cMeta artifact(s) with wildcards to be renamed or moved.
-            arg2:          str,            # New cMeta artifact name and/or new repository
-
-            tags:          str  = None,    # Prune source artifacts by tags.
-            sort:          bool = True,    # Sort artifacts by alias and UID when updating in batch.
-            skip_uids:     bool = False,   # Skip UIDs when using wildcards.
-            meta:          dict = {},      # Meta dictionary to merge recursively with existing artifact.
-            new_tags:      str  = None,    # Add more tags.
-            replace_lists: bool = False,   # Replace lists during merging.
-            replace:       bool = False,   # Replace existing meta dictionary entirely.
-            ignore_errors: bool = False,   # Ignore errors when updating multiple artifacts.
-            copy:          bool = False    # If True, copy artifact instead of moving.
+            self,
+            state: dict,                 # cMeta state
+            arg1: str,                   # cMeta artifact(s) with wildcards to be renamed or moved
+            arg2: str,                   # New cMeta artifact name and/or new repository
+            tags: str = None,            # Prune source artifacts by tags
+            sort: bool = True,           # Sort artifacts by alias and UID when updating in batch
+            skip_uids: bool = False,     # Skip UIDs when using wildcards
+            ignore_errors: bool = False,  # Ignore errors when updating multiple artifacts
+            copy: bool = False           # If True, copy artifact instead of moving
     ):
         """
         Rename and/or move artifact(s).
 
         Args:
             state (dict): cMeta state.
-            arg1 (str | None): cMeta artifact(s) with wildcards.
-            tags (str | list | None): Prune artifacts by tags.
+            arg1 (str): cMeta artifact(s) with wildcards to be renamed or moved.
+            arg2 (str): New cMeta artifact name and/or new repository.
+            tags (str | list | None): Prune source artifacts by tags.
             sort (bool): Sort artifacts by alias and UID when updating in batch.
             skip_uids (bool): Skip UIDs when using wildcards.
-            meta (dict): Meta dictionary to merge recursively with existing artifact.
-            new_tags (str | list | None): Add more tags.
-            replace_lists (bool): Replace lists during merging.
-            replace (bool): Replace existing meta dictionary entirely.
             ignore_errors (bool): Ignore errors when updating multiple artifacts.
+            copy (bool): If True, copy artifact instead of moving.
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **artifacts** (list): All matched artifacts.
@@ -1055,13 +1054,19 @@ class Category(InitCategory):
 
     ############################################################
     def copy__(
-            self, 
-            params: dict, # cMeta params.
+            self,
+            params: dict  # cMeta params
     ):
         """
-        Copy artifact(s)
+        Copy artifact(s).
 
         @base.move_(**params, copy=True)
+
+        Args:
+            params (dict): cMeta params.
+
+        Returns:
+            dict: A cMeta dictionary (see move_ for details).
         """
 
         p = self._prepare_input_from_params(params)
@@ -1073,15 +1078,15 @@ class Category(InitCategory):
 
     ############################################################
     def get_(
-            self, 
-            state:   dict,                # cMeta state.
-            arg1:    str    = None,       # Artifact alias or UID.
-            tags:    str    = None,       # Tags to add to the artifact (for creation).
-            skip_uids: bool = False,      # Skip UIDs when using wildcards.
-            yaml:    bool   = False,      # Save/output metadata as YAML instead of JSON.
-            meta:    dict   = {},         # Initial metadata dictionary (for creation).
-            virtual: bool   = False,      # Virtual artifact created only in index (for creation).
-            path:    str    = None,       # Use this path for artifact (for creation).
+            self,
+            state: dict,             # cMeta state
+            arg1: str = None,        # Artifact alias or UID
+            tags: str = None,        # Tags to add to the artifact (for creation)
+            skip_uids: bool = False,  # Skip UIDs when using wildcards
+            yaml: bool = False,      # Save/output metadata as YAML instead of JSON
+            meta: dict = {},         # Initial metadata dictionary (for creation)
+            virtual: bool = False,   # Virtual artifact created only in index (for creation)
+            path: str = None         # Use this path for artifact (for creation)
     ):
         """
         Get artifact meta. Read if exists, create and read if doesn't exist.
@@ -1097,7 +1102,7 @@ class Category(InitCategory):
             path (str | None): Use this path for artifact (used during creation).
 
         Returns:
-            dict: A cMeta dictionary with the following keys
+            dict: A cMeta dictionary with the following keys:
                 - **return** (int): 0 if success, >0 if error.
                 - **error** (str): Error message if `return > 0`.
                 - **artifact** (dict): Matched artifact.

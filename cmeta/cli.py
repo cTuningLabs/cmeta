@@ -25,9 +25,23 @@ cli_params_desc = config.params_desc + config.params_command_desc
 cli_init_params_desc = config.params_init_desc
 params_command2_desc = config.params_command2_desc
 
-def process(cmd):
-    """
-    (cmd will not be changed)
+def process(
+        cmd: list
+):
+    """Process command line arguments and execute CMeta operations.
+    
+    This function parses command-line arguments, initializes the CMeta framework,
+    and executes the requested category command. It handles global flags, category
+    detection, and command routing.
+    
+    Args:
+        cmd (list): Command line arguments as a list of strings. The original list is not modified.
+        
+    Returns:
+        dict: A CMeta dictionary with the following keys:
+            - return (int): 0 for success, >0 for error codes.
+            - error (str): Error message if return > 0.
+            - Other keys depend on the executed command.
     """
 
     global caller, cmeta_init, fail_on_error, logger, cmeta
@@ -207,12 +221,14 @@ def process(cmd):
 
 
 
-def catch(result):
+def catch(
+        result: dict  # Result dictionary from CMeta operation
+):
     """
     Check result dictionary for errors and exit if error is found.
     
     Args:
-        result: Dictionary that must contain a "return" key
+        result (dict): Dictionary that must contain a "return" key
         
     Raises:
         SystemExit: If return code is greater than 0, exits with that code
@@ -252,31 +268,55 @@ def catch(result):
 
     return return_code
 
-def set_fail_on_error(value):
+def set_fail_on_error(
+        value: bool  # Boolean value for fail_on_error flag
+):
+    """Set the global fail_on_error flag for error handling behavior.
+    
+    Args:
+        value (bool): Boolean value to set for fail_on_error flag.
+    """
     global fail_on_error
     fail_on_error = value
 
 def main_cmeta() -> int:
+    """Entry point for the 'cmeta' command-line interface.
+    
+    Returns:
+        int: Exit code (0 for success, non-zero for errors).
+    """
     global caller
     caller = "cmeta"
     return main()
 
 def main_meta() -> int:
+    """Entry point for the 'meta' command-line interface.
+    
+    Returns:
+        int: Exit code (0 for success, non-zero for errors).
+    """
     global caller
     caller = "meta"
     return main()
 
 def main_cx() -> int:
+    """Entry point for the 'cx' command-line interface.
+    
+    Returns:
+        int: Exit code (0 for success, non-zero for errors).
+    """
     global caller
     caller = "cx"
     return main()
 
 def main() -> int:
-    """
-    Main function for CLI entry point. Processes sys.argv and calls CMeta.
+    """Main function for CLI entry point. Processes sys.argv and calls CMeta.
+    
+    Parses command-line arguments from sys.argv, processes them through the CMeta
+    framework, and handles the results including error checking and exit codes.
     
     Returns:
-        Exit code: 0 for success, non-zero for errors
+        int: Exit code (0 for success, non-zero for errors).
     """
     global caller
     if caller is None:

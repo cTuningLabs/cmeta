@@ -6,17 +6,23 @@ cMeta author and developer: (C) 2025 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
-def access_api(url, params, headers = {}):
-    """
-    Send POST request to FastAPI endpoint with params and return JSON response.
+from .common import _error
+
+def access_api(
+        url: str,         # The API endpoint URL
+        params: dict,     # Dictionary of parameters to send as JSON
+        headers: dict = {}  # Optional dictionary of HTTP headers
+):
+    """Send POST request to FastAPI endpoint with JSON params and return response.
     
-    Parameters:
-        url (str): The API endpoint URL
-        params (dict): Dictionary of parameters to send as JSON
+    Args:
+        url (str): The API endpoint URL.
+        params (dict): Dictionary of parameters to send as JSON in the POST request body.
+        headers (dict): Optional dictionary of HTTP headers to include in the request.
         
     Returns:
-        dict: {'return': 0, 'output': dict} on success
-              {'return': 1, 'error': str} on error
+        dict: Dictionary with 'return': 0 and 'response' containing parsed JSON response,
+              or 'return': 1 and 'error' message on failure.
     """
     import requests
 
@@ -37,9 +43,32 @@ def access_api(url, params, headers = {}):
 
 
 
-def download(url, filename=None, path=None, chunk_size=65536, show_progress=False, fail_on_error=False, text="Downloading "):
-    """
-    Download a file from URL into path/filename, auto-detecting missing pieces.
+def download(
+        url: str,                     # URL of the file to download
+        filename: str = None,         # Name for the downloaded file
+        path: str = None,             # Directory to save the file
+        chunk_size: int = 65536,      # Size of chunks to download in bytes
+        show_progress: bool = False,  # If True, display download progress
+        fail_on_error: bool = False,  # If True, raise exception on error
+        text: str = "Downloading "   # Prefix text for progress bar
+):
+    """Download a file from URL to local filesystem.
+    
+    Auto-detects filename from URL if not provided. Supports progress display
+    with tqdm if show_progress is enabled.
+    
+    Args:
+        url (str): URL of the file to download.
+        filename (str | None): Name for the downloaded file. If None, extracts from URL.
+        path (str | None): Directory to save the file. If None, uses current working directory.
+        chunk_size (int): Size of chunks to download in bytes. Default is 65536 (64KB).
+        show_progress (bool): If True, displays download progress using tqdm.
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        text (str): Prefix text for progress bar description.
+        
+    Returns:
+        dict: Dictionary with 'return': 0, 'filename', 'path', and 'size' on success,
+              or 'return': 1 and 'error' on failure.
     """
     import os
     from urllib.parse import urlparse

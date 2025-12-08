@@ -20,6 +20,7 @@ from . import config
 from . import utils
 from .repos import Repos
 from .packages import Packages
+from .version import __version__
 
 control_params_desc = config.params_desc + config.params_command2_desc + config.params_command_desc + config.params_init_desc
 
@@ -70,6 +71,8 @@ class CMeta:
         self.config = config
         self.cfg = self.config.cfg
         cfg = self.cfg
+
+        self.__version__ = __version__
 
         r = config.check_init_vars_from_env()
         if r['return'] > 0: 
@@ -588,6 +591,14 @@ class CMeta:
         return result
 
 def _list_paths(cmeta):
+    """Generate a list of formatted path strings for CMeta configuration.
+    
+    Args:
+        cmeta: CMeta instance.
+        
+    Returns:
+        list: List of formatted path strings for logging/display.
+    """
 
     import sys
 

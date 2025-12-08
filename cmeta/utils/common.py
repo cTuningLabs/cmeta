@@ -7,7 +7,19 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
-    """
+    """Create error return dictionary or raise exception based on fail_on_error flag.
+    
+    Args:
+        error_msg: Error message string. If None, uses exception string.
+        return_code: Error return code. Default is 1. Code 16 is for file not found warnings.
+        exception: Optional exception object to include in error message.
+        fail_on_error: If True, raises exception instead of returning error dict.
+        
+    Returns:
+        dict: Dictionary with 'return' and 'error' keys.
+        
+    Raises:
+        Exception: If fail_on_error is True and return_code != 16.
     """
 
     # Return code 16 is a special one - it's more a warning to handle files that are not found
@@ -26,11 +38,16 @@ def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
 
     return {'return': return_code, 'error': err}
 
-def deep_merge(target, source, append_lists=False, ignore_root_keys=[]):
+def deep_merge(
+        target: dict,                   # Original dictionary to be updated
+        source: dict,                   # New dictionary with updates
+        append_lists: bool = False,     # If True, append lists instead of overwrite
+        ignore_root_keys: list = []     # Keys to ignore at root level
+):
     """
     Recursively updates the target dictionary with values from the source dictionary.
     
-    Parameters:
+    Args:
         target (dict): The original dictionary to be updated.
         source (dict): The new dictionary with updates.
         append_lists (bool): If True, lists will be appended instead of overwritten.
@@ -54,8 +71,22 @@ def deep_merge(target, source, append_lists=False, ignore_root_keys=[]):
 
     return target
 
-def safe_serialize_json(obj, non_serializable_text = None):
-    """
+def safe_serialize_json(
+        obj,                                    # Python object to serialize
+        non_serializable_text: str = None       # Text for non-serializable objects
+):
+    """Recursively serialize Python objects to JSON-compatible format.
+    
+    Handles objects that are not JSON serializable by converting them to strings
+    or nested structures. Sets, tuples, and non-serializable objects are handled.
+    
+    Args:
+        obj: Python object to serialize.
+        non_serializable_text (str | None): Text to use for non-serializable objects. 
+                              Default is "#NON-SERIALIZABLE#".
+        
+    Returns:
+        JSON-serializable version of obj (dict, list, str, int, float, bool, None).
     """
     import json
 
@@ -77,15 +108,47 @@ def safe_serialize_json(obj, non_serializable_text = None):
         else:
             return non_serializable_text
 
-def safe_print_json(obj, indent=2, non_serializable_text=None, ignore_keys=[], sort=True):
-    """
+def safe_print_json(
+        obj,                                    # Python object to print as JSON
+        indent: int = 2,                        # Number of spaces for indentation
+        non_serializable_text: str = None,      # Text for non-serializable objects
+        ignore_keys: list = [],                 # Top-level keys to exclude
+        sort: bool = True                       # If True, sort dictionary keys
+):
+    """Print object as JSON with safe serialization of non-serializable objects.
+    
+    Args:
+        obj: Python object to print as JSON.
+        indent (int): Number of spaces for indentation. Default is 2.
+        non_serializable_text (str | None): Text to use for non-serializable objects.
+        ignore_keys (list): List of top-level keys to exclude from output.
+        sort (bool): If True, sort dictionary keys. Default is True.
+        
+    Returns:
+        dict: Dictionary with 'return': 0.
     """
     print(safe_print_json_to_str(obj, indent=indent, non_serializable_text=non_serializable_text, ignore_keys=ignore_keys, sort=sort))
 
     return {'return':0}
 
-def safe_print_json_to_str(obj, indent=None, non_serializable_text=None, ignore_keys=[], sort=True):
-    """
+def safe_print_json_to_str(
+        obj,                                    # Python object to convert to JSON string
+        indent: int = 2,                        # Number of spaces for indentation
+        non_serializable_text: str = None,      # Text for non-serializable objects
+        ignore_keys: list = [],                 # Top-level keys to exclude
+        sort: bool = True                       # If True, sort dictionary keys
+):
+    """Convert object to JSON string with safe serialization.
+    
+    Args:
+        obj: Python object to convert to JSON string.
+        indent (int): Number of spaces for indentation. Default is 2.
+        non_serializable_text (str | None): Text to use for non-serializable objects.
+        ignore_keys (list): List of top-level keys to exclude from output.
+        sort (bool): If True, sort dictionary keys. Default is True.
+        
+    Returns:
+        str: JSON string representation of obj.
     """
     import json
 
@@ -95,8 +158,20 @@ def safe_print_json_to_str(obj, indent=None, non_serializable_text=None, ignore_
 
     return json.dumps(safe_serialize_json(obj, non_serializable_text=non_serializable_text), indent=indent, sort_keys=sort)
 
-def normalize_tags(tags, fail_on_error = False):
-    """
+def normalize_tags(
+        tags,                           # Tags as comma-separated string or list
+        fail_on_error: bool = False     # If True, raise exception on error
+):
+    """Normalize tags from string or list format to clean list of strings.
+    
+    Converts comma-separated string to list and strips whitespace from each tag.
+    
+    Args:
+        tags (str | list): Tags as comma-separated string or list of strings.
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and 'tags' list, or 'return' > 0 and 'error' on failure.
     """
  
     if type(tags) == str:
@@ -111,8 +186,31 @@ def normalize_tags(tags, fail_on_error = False):
 
     return {'return':0, 'tags': clean_tags}
 
-def detect_cid_in_the_current_directory(cmeta, path = None, debug = False, logger = None):
-    """
+def detect_cid_in_the_current_directory(
+        cmeta,                      # CMeta instance
+        path: str = None,           # Directory path to check
+        debug: bool = False,        # If True, enable debug logging
+        logger = None               # Logger instance for debug output
+):
+    """Detect CMeta repository, category, and artifact from current or specified directory.
+    
+    Traverses the directory tree to find CMeta repository information and determine
+    which artifact the current path corresponds to.
+    
+    Args:
+        cmeta: CMeta instance.
+        path (str | None): Directory path to check. If None, uses current working directory.
+        debug (bool): If True, enables debug logging.
+        logger: Logger instance for debug output.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and detected information including:
+            - artifact_repo_name: Name of the artifact repository
+            - artifact_path: Relative path within repository
+            - category_alias, category_uid: Category identifiers
+            - category_obj: Category object string
+            - artifact_alias, artifact_uid, artifact_name: Artifact identifiers
+            Or 'return' > 0 and 'error' on failure.
     """
 
     import os
@@ -226,8 +324,20 @@ def detect_cid_in_the_current_directory(cmeta, path = None, debug = False, logge
             'artifact_name': artifact_name
     }
 
-def copy_text_to_clipboard(text = '', add_quotes = False, do_not_fail = False):
-    """
+def copy_text_to_clipboard(
+        text: str = '',             # Text string to copy to clipboard
+        add_quotes: bool = False,   # If True, wrap text in quotes
+        do_not_fail: bool = False   # If True, return warning instead of error
+):
+    """Copy text to system clipboard using pyperclip.
+    
+    Args:
+        text (str): Text string to copy to clipboard.
+        add_quotes (bool): If True, wraps text in double quotes before copying.
+        do_not_fail (bool): If True, returns warning instead of error if pyperclip not installed.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error'/'warning' on failure.
     """
 
     import sys
@@ -249,11 +359,14 @@ def copy_text_to_clipboard(text = '', add_quotes = False, do_not_fail = False):
 
     return {'return':0}
 
-def compare_versions(version1, version2):
+def compare_versions(
+        version1: str,  # First version string (e.g., "0.3.1", "1.2", "3.2.0-dev")
+        version2: str   # Second version string
+):
     """
     Compare two version strings.
     
-    Parameters:
+    Args:
         version1 (str): First version string (e.g., "0.3.1", "1.2", "3.2.0-dev")
         version2 (str): Second version string
         
@@ -319,7 +432,22 @@ def compare_versions(version1, version2):
     return {'return':0, 'comparison': comparison}
 
 ###################################################################################################
-def generate_timestamp(cut = None, slices = None):
+def generate_timestamp(
+        cut: int = None,     # If specified, truncate timestamp to this many characters
+        slices: list = None  # List of slice sizes for creating sharded path
+):
+    """Generate timestamp string and optionally create sharded path.
+    
+    Creates a timestamp in format YYYYMMDD-MMSS and optionally creates a sharded
+    directory path from it.
+    
+    Args:
+        cut (int | None): If specified, truncates timestamp to this many characters.
+        slices (list | None): List of slice sizes for creating sharded path.
+        
+    Returns:
+        dict: Dictionary with 'return': 0, 'timestamp' (string), and 'path' (sharded if slices provided).
+    """
     from datetime import datetime
 
     timestamp = datetime.now().strftime("%Y%m%d-%M%S")

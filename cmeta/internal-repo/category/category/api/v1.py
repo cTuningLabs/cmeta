@@ -20,11 +20,22 @@ class Category(InitCategory):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
-    def delete(self, params):
+    def delete(
+            self,
+            params: dict  # cMeta parameters
+    ):
         """
-        Delete category
+        Delete category.
 
         @base.delete_
+        
+        Args:
+            params (dict): cMeta parameters.
+            
+        Returns:
+            dict: A cMeta dictionary with the following keys:
+                - **return** (int): 0 if success, >0 if error.
+                - **error** (str): Error message if `return > 0`.
         """
 
         control = params.get('state',{}).get('control',{})
@@ -56,11 +67,23 @@ class Category(InitCategory):
         return r
 
 
-    def create(self, params):
+    def create(
+            self,
+            params: dict  # cMeta parameters
+    ):
         """
-        Create new category with commands
+        Create new category with commands.
 
         @base.create_
+        
+        Args:
+            params (dict): cMeta parameters.
+            
+        Returns:
+            dict: A cMeta dictionary with the following keys:
+                - **return** (int): 0 if success, >0 if error.
+                - **error** (str): Error message if `return > 0`.
+                - **path** (str): Path to the created category.
         """
 
         con = params.get('state',{}).get('control',{}).get('con', False)
@@ -116,11 +139,22 @@ class Category(InitCategory):
 
 
 
-    def move(self, params):
+    def move(
+            self,
+            params: dict  # cMeta parameters
+    ):
         """
-        Move/rename category
+        Move/rename category.
 
         @base.move_
+        
+        Args:
+            params (dict): cMeta parameters.
+            
+        Returns:
+            dict: A cMeta dictionary with the following keys:
+                - **return** (int): 0 if success, >0 if error.
+                - **error** (str): Error message if `return > 0`.
         """
 
         con = params.get('state',{}).get('control',{}).get('con', False)

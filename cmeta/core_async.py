@@ -23,9 +23,17 @@ _cmeta_index = 0
 
 
 def _get_cmeta(**kwargs):
-    """
-    Lazy initialization of CMeta per multiprocessing worker.
-    Mirrors FastAPI logic where the instance is created once per process.
+    """Lazy initialization of CMeta per multiprocessing worker.
+    
+    Creates a single CMeta instance per process worker. This function is called
+    by worker processes to initialize their own CMeta instance, mirroring the
+    pattern used in FastAPI where instances are created once per process.
+    
+    Args:
+        **kwargs: Keyword arguments to pass to CMeta constructor.
+        
+    Returns:
+        CMeta: The initialized CMeta instance for this worker process.
     """
     global _cmeta_instance, _cmeta_index
 
@@ -45,23 +53,44 @@ def _get_cmeta(**kwargs):
 
 
 def _access_worker(params, kwargs):
-    """
-    Standalone function executed inside the ProcessPool.
-    Must NOT reference `self`, or use bound methods → prevents pickling errors.
+    """Standalone function executed inside the ProcessPool worker.
+    
+    This function must be a standalone function (not a bound method) to avoid
+    pickling errors when being passed to worker processes. It initializes or
+    retrieves the worker's CMeta instance and executes the access request.
+    
+    Args:
+        params: Dictionary of parameters to pass to cmeta.access().
+        kwargs: Keyword arguments for CMeta initialization.
+        
+    Returns:
+        dict: Result dictionary from cmeta.access().
     """
     cmeta = _get_cmeta(**kwargs)
     return cmeta.access(params)
 
 
 class CMetaAsync(CMeta):
-    """
-    Async wrapper around CMeta using multiprocessing to avoid blocking
-    event loop in FastAPI or asyncio-based services.
-
+    """Async wrapper around CMeta using multiprocessing for non-blocking operations.
+    
+    This class extends CMeta to provide asynchronous wrappers around blocking
+    operations using a ProcessPoolExecutor. It prevents blocking the event loop
+    in FastAPI or other asyncio-based services by executing CMeta operations in
+    separate worker processes.
+    
     Inherits all CMeta methods while providing async wrappers for blocking operations.
     """
 
     def __init__(self, max_workers=None, logger=None, loop=None, **kwargs):
+        """Initialize CMetaAsync with process pool executor.
+        
+        Args:
+            max_workers: Maximum number of worker processes in the pool.
+                        If None, defaults to ProcessPoolExecutor's default.
+            logger: Custom logger instance. If None, uses parent CMeta's logger.
+            loop: Event loop to use. If None, gets the current event loop.
+            **kwargs: Additional keyword arguments passed to CMeta constructor.
+        """
         # Initialize parent CMeta
         super().__init__(**kwargs)
 
@@ -80,8 +109,15 @@ class CMetaAsync(CMeta):
         )
 
     async def access(self, params):
-        """
-        Asynchronous non-blocking wrapper that runs CMeta.access() in a worker process.
+        """Asynchronous non-blocking wrapper for CMeta.access().
+        
+        Runs CMeta.access() in a worker process to avoid blocking the event loop.
+        
+        Args:
+            params: Dictionary of parameters to pass to CMeta.access().
+            
+        Returns:
+            dict: Result dictionary from CMeta.access() with 'return' and other keys.
         """
         func = partial(_access_worker, params, self._cmeta_kwargs)
 
@@ -93,15 +129,24 @@ class CMetaAsync(CMeta):
             return {"return": 99, "error": f"CMetaAsync internal error: {e}"}
 
     def access_sync(self, params):
-        """
-        Synchronous access using the inherited CMeta.access() method.
-        Use this when you're already in a worker thread/process.
+        """Synchronous access using the inherited CMeta.access() method.
+        
+        Use this method when already executing in a worker thread or process
+        where blocking is acceptable.
+        
+        Args:
+            params: Dictionary of parameters to pass to CMeta.access().
+            
+        Returns:
+            dict: Result dictionary from CMeta.access().
         """
         return super().access(params)
 
     def shutdown(self):
-        """
-        Optional: Clean shutdown of executor (can be tied to FastAPI shutdown event).
+        """Gracefully shutdown the process pool executor.
+        
+        Waits for all pending tasks to complete before shutting down the executor.
+        This method can be tied to FastAPI or other framework shutdown events.
         """
         self._logger.info("Shutting down CMetaAsync executor...")
         self._executor.shutdown(wait=True)

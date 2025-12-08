@@ -23,22 +23,27 @@ class Repos:
     """
     
     ###################################################################################################
-    def __init__(self, 
-                 cfg: Dict[str, Any],
-                 home_path: Path,
-                 index_path: Path,
-                 repos_config_path: Path,
-                 logger: logging.Logger = None,
-                 index_extension: str = '.pkl',
-                 fail_on_error = False):
+    def __init__(
+            self,
+            cfg: Dict[str, Any],             # Configuration dictionary
+            home_path: Path,                 # Path to repositories directory
+            index_path: Path,                # Path to index directory
+            repos_config_path: Path,         # Path to repositories config file
+            logger: logging.Logger = None,   # Logger instance (optional)
+            index_extension: str = '.pkl',   # Index file extension
+            fail_on_error: bool = False      # If True, raise exception on error
+    ):
         """
         Initialize Repos manager.
         
         Args:
-            cfg: Configuration dictionary
-            home_path: Path to repositories directory
-            repos_config_path: Path to repositories config file
-            logger: Logger instance (optional)
+            cfg (Dict[str, Any]): Configuration dictionary.
+            home_path (Path): Path to repositories directory.
+            index_path (Path): Path to index directory.
+            repos_config_path (Path): Path to repositories config file.
+            logger (logging.Logger | None): Logger instance (optional).
+            index_extension (str): Index file extension.
+            fail_on_error (bool): If True, raise exception on error.
         """
         self.cfg = cfg
         self.home_path = home_path
@@ -60,9 +65,21 @@ class Repos:
         self.KEY_INDEX_LOWERCASE_ALIASES = 'lowercase_aliases'
 
     ###################################################################################################
-    def init(self, con=False, verbose=False):
-        """
-        Check if runs for the first time (there is no repos.json and index)
+    def init(
+            self,
+            con: bool = False,      # Console mode flag (for compatibility)
+            verbose: bool = False   # Enable verbose output (for compatibility)
+    ):
+        """Initialize repositories and index if running for the first time.
+        
+        Creates repos directory, local repository, and triggers reindexing if needed.
+        
+        Args:
+            con (bool): Console mode flag (for compatibility).
+            verbose (bool): Enable verbose output (for compatibility).
+            
+        Returns:
+            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
         """
 
         trigger_reindex = False
@@ -179,7 +196,15 @@ class Repos:
 
     ###################################################################################################
     def remove_from_index(self, index_file, artifact_uid, lowercase_artifact_alias):
-        """
+        """Remove an artifact from the repository index.
+        
+        Args:
+            index_file: Path to index file.
+            artifact_uid: UID of artifact to remove.
+            lowercase_artifact_alias: Lowercase alias of artifact to remove from alias index.
+            
+        Returns:
+            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
         """
         r = utils.files.safe_read_file(index_file, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
         if r['return']>0: 
@@ -214,7 +239,21 @@ class Repos:
 
     ###################################################################################################
     def find_in_index(self, category_alias, category_uid, artifact_alias = None, artifact_uid = None, repos = [], only_uids=False, add_index_file=False, skip_uids=False):
-        """
+        """Find artifacts in the repository index.
+        
+        Args:
+            category_alias: Lowercase category alias.
+            category_uid: Category UID.
+            artifact_alias: Artifact alias to search for.
+            artifact_uid: Artifact UID to search for.
+            repos: List of repository names to search in.
+            only_uids: If True, return only UIDs without full metadata.
+            add_index_file: If True, include index_file path in result.
+            skip_uids: If True, skip UID validation.
+            
+        Returns:
+            dict: Dictionary with 'return': 0 and 'lst' containing found artifacts,
+                  or 'return' > 0 and 'error' on failure.
         """
         category_alias = category_alias.lower()
 
@@ -375,7 +414,17 @@ class Repos:
 
     ###################################################################################################
     def find(self, cmeta_ref, add_index_file=False, tags=None, skip_uids=False):
-        """
+        """Find artifacts by cMeta reference.
+        
+        Args:
+            cmeta_ref: cMeta reference string or parsed dictionary.
+            add_index_file: If True, include index_file path in result.
+            tags: Optional tags to filter results.
+            skip_uids: If True, skip UID validation.
+            
+        Returns:
+            dict: Dictionary with 'return': 0 and 'artifacts' list on success,
+                  or 'return' > 0 and 'error' on failure.
         """
 
         # Parse cMeta ref
@@ -486,8 +535,16 @@ class Repos:
 
     ######################################################################################################################
     def reindex(self, con=False, verbose=False):
-        """
-        Clean index and reindex all repos
+        """Clean index and reindex all repositories.
+        
+        Removes existing index files and rebuilds them by scanning all repositories.
+        
+        Args:
+            con: If True, print console messages during reindexing.
+            verbose: If True, print detailed progress information.
+            
+        Returns:
+            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
         """
 
         return self.index(clean=True, con=con, verbose=verbose)
@@ -1017,6 +1074,27 @@ class Repos:
     def _find_artifacts(self, repo_meta, repo_alias, repo_uid, category_meta, category_alias, category_uid, path_to_category, 
                               con, conx, index_artifacts, artifact_num,
                               artifact_alias = None, artifact_uid = None):
+        """Find and index artifacts in a category directory.
+        
+        Args:
+            repo_meta: Repository metadata dictionary.
+            repo_alias: Repository alias.
+            repo_uid: Repository UID.
+            category_meta: Category metadata dictionary.
+            category_alias: Category alias.
+            category_uid: Category UID.
+            path_to_category: Path to category directory.
+            con: If True, enable console output.
+            conx: If True, enable extended console output.
+            index_artifacts: Dictionary to populate with found artifacts (None for searching without indexing).
+            artifact_num: Current artifact count.
+            artifact_alias: Optional artifact alias to filter results (supports wildcards).
+            artifact_uid: Optional artifact UID to filter results.
+            
+        Returns:
+            dict: Dictionary with 'return': 0, 'artifacts' list, and 'artifact_num' on success,
+                  or 'return' > 0 and 'error' on failure.
+        """
 
         from tqdm import tqdm
 

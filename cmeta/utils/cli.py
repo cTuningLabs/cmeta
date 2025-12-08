@@ -11,7 +11,10 @@ from typing import Dict, Any, List, Optional
 from .files import safe_read_file
 from .common import deep_merge, _error
 
-def parse_cmd(cmd, fail_on_error = False):
+def parse_cmd(
+        cmd,                      # Command string to parse, list of arguments, or None
+        fail_on_error: bool = False  # If True, raise exception on error
+):
     """
     Parse command line string or argument list into a structured dictionary.
     
@@ -28,14 +31,14 @@ def parse_cmd(cmd, fail_on_error = False):
     - Argument separator: -- (remaining args go to 'unparsed')
     
     Args:
-        cmd: Command string to parse, list of arguments, or None
+        cmd: Command string to parse, list of arguments, or None.
+        fail_on_error (bool): If True, raise exception on error.
         
     Returns:
-        Dictionary with keys:
+        dict: Dictionary with keys:
         - 'return': 0 for success, >0 for error
-        - 'params': Dictionary of parsed flags and values
-                    May include "args" and "unparsed"
-        - 'error': Error message (only present if return > 0)
+        - 'params': Dictionary of parsed flags and values (may include "args" and "unparsed")
+        - 'error': Error message (only present if return > 0).
     """
 
     if cmd is None:
@@ -118,7 +121,19 @@ def parse_cmd(cmd, fail_on_error = False):
     }
 
 
-def split_flag(*args, **params):
+def split_flag(
+        *args,   # Positional arguments passed to _split_flag
+        **params  # Keyword arguments passed to _split_flag
+):
+    """Wrapper for _split_flag that handles exceptions.
+    
+    Args:
+        *args: Positional arguments passed to _split_flag.
+        **params: Keyword arguments passed to _split_flag.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and 'split_flag' tuple, or 'return' > 0 and 'error'.
+    """
     try:
         key, value, updated_array = _split_flag(*args,**params)
     except Exception as e:
@@ -317,12 +332,20 @@ def check_params(params, params_description, fail_on_error = False) -> Dict[str,
     }
 
 
-def print_params_help(params_description):
-    """
-    Print formatted help for parameters.
+def print_params_help(
+        params_description: list  # List of parameter dictionaries
+):
+    """Generate formatted help text for command-line parameters.
+    
+    Creates a formatted string displaying parameter flags, types, and descriptions
+    with proper column alignment.
     
     Args:
-        params_description: List of parameter dictionaries
+        params_description (list): List of parameter dictionaries containing 'key', 'type',
+                                   'desc', 'aliases', etc.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and 'params_info' containing formatted help text.
     """
 
     params_info = ''

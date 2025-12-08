@@ -19,8 +19,22 @@ class Category(InitCategory):
 
 
     ############################################################
-    def test_(self, state, arg1=None, flag1=False):
+    def test_(
+            self,
+            state: dict,             # cMeta state
+            arg1: str = None,        # Test argument 1
+            flag1: bool = False      # Test flag 1
+    ):
         """
+        Test function.
+        
+        Args:
+            state (dict): cMeta state.
+            arg1 (str | None): Test argument 1.
+            flag1 (bool): Test flag 1.
+            
+        Returns:
+            dict: Dictionary with 'return': 0.
         """
 
         self.logger.debug("RUNNING API v1 test_")
@@ -31,8 +45,18 @@ class Category(InitCategory):
         return {'return':0}
 
     ############################################################
-    def test2(self, params):
+    def test2(
+            self,
+            params: dict  # cMeta parameters
+    ):
         """
+        Test function 2.
+        
+        Args:
+            params (dict): cMeta parameters.
+            
+        Returns:
+            dict: Dictionary with 'return': 0.
         """
 
         self.logger.debug("RUNNING API v1 test2")

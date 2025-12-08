@@ -20,11 +20,15 @@ class Category(InitCategory):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
     ############################################################
-    def uid_(self, state):
+    def uid_(
+        self,
+        state           # [dict] cMeta state object
+    ):
         """
         Generate UID
 
-        Args: None
+        Args:
+            state (dict): cMeta state object.
         """
 
         self.logger.debug("running utils.uid")
@@ -39,11 +43,15 @@ class Category(InitCategory):
         return {'return':0, 'uid':uid}
 
     ############################################################
-    def uuid_(self, state):
+    def uuid_(
+        self,
+        state           # [dict] cMeta state object
+    ):
         """
         Generate UUID
 
-        Args: None
+        Args:
+            state (dict): cMeta state object.
         """
 
         import uuid
@@ -60,13 +68,19 @@ class Category(InitCategory):
         return {'return':0, 'uuid':uuid}
 
     ############################################################
-    def find_by_cid_(self, state, arg1, ask=False):
+    def find_by_cid_(
+        self,
+        state,          # [dict] cMeta state object
+        arg1,           # [str] Standard CID
+        ask = False     # [bool] If True, ask for CID in console
+    ):
         """
         Find artifacts by standard CID
 
         Args:
-           arg1 (str): standard CID
-           ask (bool): if True, ask for CID in a console
+            state (dict): cMeta state object.
+            arg1 (str): Standard CID.
+            ask (bool): If True, ask for CID in console.
         """
         self.logger.debug("running utils.find_by_cid")
 
@@ -97,16 +111,25 @@ class Category(InitCategory):
         return r
 
     ############################################################
-    def smart_find_by_cid_(self, state, arg1, far=False, web=False, ask=False):
+    def smart_find_by_cid_(
+        self,
+        state,              # [dict] cMeta state object
+        arg1 = None,        # [str] CID that can be wrapped with some text
+        far = False,        # [bool] If True, open FAR in found artifact
+        web = False,        # [bool] If True, remove cmeta:///? from CID (web request)
+        ask = False,        # [bool] If True, ask for CID in console
+        cid = None          # [str] Direct CID to use
+    ):
         """
         Find artifacts by wrapped CID
 
         Args:
-           arg1 (str): CID that can be wrapped with some text
-           ask (bool): if True, ask for CID in a console
-           web (bool): if True, remove cmeta:///? from CID (web request)
-           far (bool): if true, open FAR in found artifact
-       
+            state (dict): cMeta state object.
+            arg1 (str): CID that can be wrapped with some text.
+            far (bool): If True, open FAR in found artifact.
+            web (bool): If True, remove cmeta:///? from CID (web request).
+            ask (bool): If True, ask for CID in console.
+            cid (str): Direct CID to use.
         """
         self.logger.debug("running utils.find_by_cid_smart")
 
@@ -120,8 +143,12 @@ class Category(InitCategory):
 
             from urllib.parse import unquote
             cid = unquote(cid)
-        else:
+        elif cid is not None:
+            cid = _extract_category_artifact(cid) 
+        elif arg1 is not None:
             cid = _extract_category_artifact(arg1) 
+        else:
+            return {'return':1, 'error': 'CID is not specified'}
 
         if self.cm.debug:
             self.logger.debug(f"extracted_cid={cid}")
@@ -142,27 +169,46 @@ class Category(InitCategory):
         return r
 
     ############################################################
-    def copy_text_to_clipboard_(self, state, arg1 = "", add_quotes = False, do_not_fail = True):
+    def copy_text_to_clipboard_(
+        self,
+        state,                  # [dict] cMeta state object
+        arg1 = "",              # [str] Text to copy to clipboard
+        add_quotes = False,     # [bool] Add quotes to the text if True
+        do_not_fail = True      # [bool] Do not fail on error if True
+    ):
         """
         Copy text to clipboard
 
         Args:
-           arg1 (str): text to copy to clipboard
-           add_quotes (bool): add quotes to the text if True
+            state (dict): cMeta state object.
+            arg1 (str): Text to copy to clipboard.
+            add_quotes (bool): Add quotes to the text if True.
+            do_not_fail (bool): Do not fail on error if True.
         """
 
         return self.cm.utils.common.copy_text_to_clipboard(arg1, add_quotes)
 
 
     ############################################################
-    def json2yaml_(self, state, arg1, arg2=None, force=False, f=False, sort_keys=False):
+    def json2yaml_(
+        self,
+        state,                  # [dict] cMeta state object
+        arg1,                   # [str] Input JSON file
+        arg2 = None,            # [str] Output YAML file (if None, use {input file without ext}.yaml)
+        force = False,          # [bool] If True and output file exists, overwrite it
+        f = False,              # [bool] If True and output file exists, overwrite it
+        sort_keys = False       # [bool] Sort keys in output if True
+    ):
         """
-        Copy text to clipboard and add quotes if needed
+        Convert JSON file to YAML file
+
         Args:
-           arg1 (str): input JSON file
-           arg2 (str, optional): output YAML file (if None, use {input file without ext}.yaml
-           force (bool, optional): if True and output file exists, overwrite it
-           f (bool, optional): if True and output file exists, overwrite it
+            state (dict): cMeta state object.
+            arg1 (str): Input JSON file.
+            arg2 (str): Output YAML file (if None, use {input file without ext}.yaml).
+            force (bool): If True and output file exists, overwrite it.
+            f (bool): If True and output file exists, overwrite it.
+            sort_keys (bool): Sort keys in output if True.
         """
 
         self.logger.debug("running utils json2yaml")
@@ -187,14 +233,25 @@ class Category(InitCategory):
 
 
     ############################################################
-    def yaml2json_(self, state, arg1, arg2=None, force=False, f=False, sort_keys=False):
+    def yaml2json_(
+        self,
+        state,                  # [dict] cMeta state object
+        arg1,                   # [str] Input YAML file
+        arg2 = None,            # [str] Output JSON file (if None, use {input file without ext}.json)
+        force = False,          # [bool] If True and output file exists, overwrite it
+        f = False,              # [bool] If True and output file exists, overwrite it
+        sort_keys = False       # [bool] Sort keys in output if True
+    ):
         """
         Convert YAML file to JSON file
+
         Args:
-           arg1 (str): input YAML file
-           arg2 (str, optional): output JSON file (if None, use {input file without ext}.json
-           force (bool, optional): if True and output file exists, overwrite it
-           f (bool, optional): if True and output file exists, overwrite it
+            state (dict): cMeta state object.
+            arg1 (str): Input YAML file.
+            arg2 (str): Output JSON file (if None, use {input file without ext}.json).
+            force (bool): If True and output file exists, overwrite it.
+            f (bool): If True and output file exists, overwrite it.
+            sort_keys (bool): Sort keys in output if True.
         """
 
         self.logger.debug("running utils yaml2json")
@@ -228,12 +285,21 @@ class Category(InitCategory):
 
 
     ############################################################
-    def pickle2json_(self, state, arg1, arg2=None, sort_keys=False):
+    def pickle2json_(
+        self,
+        state,                  # [dict] cMeta state object
+        arg1,                   # [str] Pickle file
+        arg2 = None,            # [str] JSON file (if not specified, use base of pickle file with .json)
+        sort_keys = False       # [bool] Sort keys in output if True
+    ):
         """
-        Change date and time in files
+        Convert pickle file to JSON file
+
         Args:
-           arg1 (str): pickle file
-           arg2 (str, optional): json file. If not specified, use base of pickle file with .json
+            state (dict): cMeta state object.
+            arg1 (str): Pickle file.
+            arg2 (str): JSON file (if not specified, use base of pickle file with .json).
+            sort_keys (bool): Sort keys in output if True.
         """
 
         import os
@@ -272,12 +338,19 @@ class Category(InitCategory):
         return {'return':0, 'json_file': arg2}
 
     ############################################################
-    def json2pickle_(self, state, arg1, arg2=None):
+    def json2pickle_(
+        self,
+        state,              # [dict] cMeta state object
+        arg1,               # [str] JSON file
+        arg2 = None         # [str] Pickle file (if not specified, use base of json file with .pkl)
+    ):
         """
         Convert JSON file to pickle file
+
         Args:
-           arg1 (str): json file
-           arg2 (str, optional): pickle file. If not specified, use base of json file with .pkl
+            state (dict): cMeta state object.
+            arg1 (str): JSON file.
+            arg2 (str): Pickle file (if not specified, use base of json file with .pkl).
         """
 
         import os
@@ -315,12 +388,19 @@ class Category(InitCategory):
         return {'return':0, 'pickle_file': arg2}
 
     ############################################################
-    def utf8sig_to_utf8_(self, state, arg1, arg2=None):
+    def utf8sig_to_utf8_(
+        self,
+        state,              # [dict] cMeta state object
+        arg1,               # [str] Input file (UTF-8 with BOM)
+        arg2 = None         # [str] Output file (if None, overwrites input file and creates .bak backup)
+    ):
         """
         Convert UTF-8 with BOM (utf-8-sig) file to standard UTF-8
+
         Args:
-           arg1 (str): input file (UTF-8 with BOM)
-           arg2 (str, optional): output file. If None, overwrites input file and creates .bak backup
+            state (dict): cMeta state object.
+            arg1 (str): Input file (UTF-8 with BOM).
+            arg2 (str): Output file (if None, overwrites input file and creates .bak backup).
         """
 
         import os

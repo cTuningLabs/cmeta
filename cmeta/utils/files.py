@@ -39,16 +39,34 @@ RETRY_TIMESTAMP_FILE = 10
 RETRY_DELETE_ATTEMPTS = 5
 
 ##########################################################################################
-def _get_lockfile_path(filepath):
-    """
-    Returns the path to the lock file, external to the target path.
+def _get_lockfile_path(
+        filepath: str  # Path to the file that needs locking
+):
+    """Get the lock file path for a given file path.
+    
+    Args:
+        filepath (str): Path to the file that needs locking.
+        
+    Returns:
+        str: Path to the corresponding lock file (filepath + .lock suffix).
     """
     return f"{filepath}{LOCK_SUFFIX}"
 
 ##########################################################################################
-def is_path_within(base, target):
-    """
-    Checks if base path is within target path
+def is_path_within(
+        base: str,   # Base path to check
+        target: str  # Target path to check against
+):
+    """Check if base path is within target path.
+    
+    Determines if the base path is a subdirectory or file within the target path.
+    
+    Args:
+        base (str): Base path to check.
+        target (str): Target path to check against.
+        
+    Returns:
+        bool: True if base is within target, False otherwise.
     """
 
     base = os.path.abspath(base)
@@ -63,11 +81,26 @@ def is_path_within(base, target):
     return common == base
 
 ##########################################################################################
-def _acquire_lock(filepath, timeout=3, logger=None):
-    """
-    Tries to acquire a lock file for the target path, with timeout.
-    Uses FileLock for cross-platform compatibility.
-    Returns FileLock object to be used for release.
+def _acquire_lock(
+        filepath: str,       # Path to the file to lock
+        timeout: int = 3,    # Maximum seconds to wait for lock
+        logger = None        # Optional logger for debug messages
+):
+    """Acquire a file lock for cross-platform thread/process-safe file operations.
+    
+    Uses FileLock library to create and acquire a lock file. Blocks until lock
+    is acquired or timeout expires.
+    
+    Args:
+        filepath (str): Path to the file to lock.
+        timeout (int): Maximum seconds to wait for lock acquisition. Default is 3.
+        logger: Optional logger for debug messages.
+        
+    Returns:
+        FileLock: Acquired lock object that must be released later.
+        
+    Raises:
+        TimeoutError: If lock cannot be acquired within timeout period.
     """
     lockfile = _get_lockfile_path(filepath)
     if logger is not None:
@@ -85,9 +118,20 @@ def _acquire_lock(filepath, timeout=3, logger=None):
         raise TimeoutError(f"Could not acquire lock on '{filepath}' within {timeout} seconds: {str(e)}")
 
 ##########################################################################################
-def _check_lock(filepath, file_lock, logger = None):
-    """
-    Checks if the lock is still valid.
+def _check_lock(
+        filepath: str,  # Path to the locked file
+        file_lock,      # FileLock object to check
+        logger = None   # Optional logger for debug messages
+):
+    """Verify that a file lock is still valid.
+    
+    Args:
+        filepath (str): Path to the locked file.
+        file_lock: FileLock object to check.
+        logger: Optional logger for debug messages.
+        
+    Raises:
+        TimeoutError: If lock has expired or is no longer valid.
     """
     if not file_lock.is_locked:
         if logger is not None:
@@ -97,9 +141,17 @@ def _check_lock(filepath, file_lock, logger = None):
         logger.debug(f"utils.files._check_lock - lock file checked for {filepath} ...")
 
 ##########################################################################################
-def _release_lock(filepath, file_lock, logger = None):
-    """
-    Releases the FileLock.
+def _release_lock(
+        filepath: str,  # Path to the locked file
+        file_lock,      # FileLock object to release
+        logger = None   # Optional logger for debug messages
+):
+    """Release a previously acquired file lock.
+    
+    Args:
+        filepath (str): Path to the locked file.
+        file_lock: FileLock object to release.
+        logger: Optional logger for debug messages.
     """
     lockfile = _get_lockfile_path(filepath)
     
@@ -124,10 +176,18 @@ def _release_lock(filepath, file_lock, logger = None):
         raise e
 
 ##########################################################################################
-def _cleanup_lock_file(lockfile_path, logger=None):
-    """
-    Manually removes the lock file if it exists.
-    This ensures cleanup on systems where filelock doesn't auto-cleanup.
+def _cleanup_lock_file(
+        lockfile_path: str,  # Path to the lock file to remove
+        logger = None        # Optional logger for debug messages
+):
+    """Manually remove lock file if it exists.
+    
+    Ensures cleanup on systems where filelock doesn't auto-cleanup.
+    Errors are logged but not raised since this is a cleanup operation.
+    
+    Args:
+        lockfile_path (str): Path to the lock file to remove.
+        logger: Optional logger for debug messages.
     """
     try:
         if os.path.exists(lockfile_path):
@@ -140,9 +200,16 @@ def _cleanup_lock_file(lockfile_path, logger=None):
         # Don't raise - this is a cleanup operation
 
 ##########################################################################################
-def _detect_file_format(filepath):
-    """
-    Returns file type based on extension.
+def _detect_file_format(
+        filepath: str  # Path to the file
+):
+    """Detect file format based on file extension.
+    
+    Args:
+        filepath (str): Path to the file.
+        
+    Returns:
+        str: File format ('json', 'yaml', 'pickle', or 'text').
     """
     suffix = Path(filepath).suffix.lower()
     if suffix == ".json":
@@ -155,9 +222,21 @@ def _detect_file_format(filepath):
         return "text"
 
 ##########################################################################################
-def _read_file_data(filepath, encoding=None):
-    """
-    Helper function to read file data based on format.
+def _read_file_data(
+        filepath: str,        # Path to the file to read
+        encoding: str = None  # Character encoding for text files
+):
+    """Read file data with format-specific parsing.
+    
+    Automatically detects file format and uses appropriate parser
+    (JSON, YAML, pickle, or plain text).
+    
+    Args:
+        filepath (str): Path to the file to read.
+        encoding (str | None): Character encoding for text files. If None, uses binary mode for pickle.
+        
+    Returns:
+        Parsed file content (dict for JSON/YAML, bytes/str for text/pickle).
     """
     file_format = _detect_file_format(filepath)
 
@@ -177,19 +256,59 @@ def _read_file_data(filepath, encoding=None):
 
 
 ##########################################################################################
-def read_file(filepath, fail_on_error=False, logger=None, encoding=None):
+def read_file(
+        filepath: str,             # Path to the file to read
+        fail_on_error: bool = False,  # If True, raise exception on error
+        logger = None,             # Optional logger for debug messages
+        encoding: str = None       # Character encoding for text files
+):
+    """Read file without locking (convenience wrapper for safe_read_file).
+    
+    Args:
+        filepath (str): Path to the file to read.
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        logger: Optional logger for debug messages.
+        encoding (str | None): Character encoding for text files.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and 'data', or 'return' > 0 and 'error'.
+    """
     return safe_read_file(filepath, encoding=encoding, timeout=0, retry_if_not_found=1, fail_on_error=fail_on_error, logger=logger)
 
 
 ##########################################################################################
-def safe_read_file(filepath, encoding=None, lock=False, keep_locked=False, timeout=3, retry_if_not_found=0, fail_on_error=False, logger=None):
-    """
-    Safely reads a file with optional locking. Cleans up lock on error.
-    If keep_locked=True and lock=True, the lock is maintained after successful read.
+def safe_read_file(
+        filepath: str,                  # Path to the file to read
+        encoding: str = None,           # Character encoding for text files
+        lock: bool = False,             # If True, use file locking
+        keep_locked: bool = False,      # If True, keep lock after read
+        timeout: int = 3,               # Lock timeout in seconds
+        retry_if_not_found: int = 0,    # Number of retries if file not found
+        fail_on_error: bool = False,    # If True, raise exception on error
+        logger = None                   # Optional logger for debug messages
+):
+    """Safely read file with optional locking and retry logic.
     
-    WARNING: This function is NOT thread-safe for async usage. It uses blocking I/O
-    operations that will block the event loop. For async usage, consider using
-    aiofiles and asyncio-compatible locking mechanisms.
+    Provides thread/process-safe file reading with file locking support.
+    Cleans up lock on error. If keep_locked=True and lock=True, maintains
+    the lock after successful read (caller must release).
+    
+    WARNING: This function uses blocking I/O operations. Not suitable for
+    async contexts - use aiofiles and async locking instead.
+    
+    Args:
+        filepath: Path to the file to read.
+        encoding: Character encoding for text files. If None, auto-detected.
+        lock: If True, acquires file lock before reading.
+        keep_locked: If True with lock=True, keeps lock after read (returns in result).
+        timeout: Seconds to wait for lock acquisition. Default is 3.
+        retry_if_not_found: Number of retry attempts if file not found.
+        fail_on_error: If True, raises exception on error instead of returning error dict.
+        logger: Optional logger for debug messages.
+        
+    Returns:
+        dict: Dictionary with 'return': 0, 'data', 'filepath', and optionally 'last_modified'
+              and 'file_lock' (if keep_locked=True). Returns 'return' > 0 and 'error' on failure.
     """
     if logger is not None:
         logger.debug(f"utils.files.safe_read_file - preparing to read {filepath} ...")
@@ -290,7 +409,33 @@ def safe_read_file(filepath, encoding=None, lock=False, keep_locked=False, timeo
     return r
 
 ##########################################################################################
-def write_file(filepath, data, encoding=None, fail_on_error=False, logger=None, sort_keys=True, file_format=None, newline='\n'):
+def write_file(
+        filepath: str,              # Path where file should be written
+        data,                       # Data to write
+        encoding: str = None,       # Character encoding for text files
+        fail_on_error: bool = False,  # If True, raise exception on error
+        logger = None,              # Optional logger for debug messages
+        sort_keys: bool = True,     # If True, sort dictionary keys in JSON/YAML
+        file_format: str = None,    # Force specific format (json/yaml/pickle/text)
+        newline: str = '\n'         # Newline character for text files
+):
+    """Write data to file with format-specific serialization.
+    
+    Automatically serializes data based on file format (JSON, YAML, pickle, or text).
+    
+    Args:
+        filepath (str): Path where file should be written.
+        data: Data to write (dict/list for JSON/YAML, any object for pickle/text).
+        encoding (str | None): Character encoding for text files. If None, auto-detected.
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        logger: Optional logger for debug messages.
+        sort_keys (bool): If True, sorts dictionary keys in JSON/YAML output.
+        file_format (str | None): Force specific format ('json', 'yaml', 'pickle', 'text'). If None, auto-detected.
+        newline (str): Newline character for text files. Default is '\n'.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+    """
 
     if file_format is None:
         file_format = _detect_file_format(filepath)
@@ -319,13 +464,38 @@ def write_file(filepath, data, encoding=None, fail_on_error=False, logger=None, 
 
 
 ##########################################################################################
-def safe_write_file(filepath, data, timeout=3, file_lock=None, atomic=False, encoding=None, fail_on_error=False, logger=None, sort_keys=True):
-    """
-    Safely writes data to a file. Supports atomic write via temp file + rename.
+def safe_write_file(
+        filepath: str,              # Path where file should be written
+        data,                       # Data to write
+        timeout: int = 3,           # Seconds to wait for lock acquisition
+        file_lock = None,           # Existing lock to use
+        atomic: bool = False,       # If True, use temp file + rename
+        encoding: str = None,       # Character encoding for text files
+        fail_on_error: bool = False,  # If True, raise exception on error
+        logger = None,              # Optional logger for debug messages
+        sort_keys: bool = True      # If True, sort dictionary keys in JSON/YAML
+):
+    """Safely write data to file with locking and optional atomic write.
     
-    WARNING: This function is NOT thread-safe for async usage. It uses blocking I/O
-    operations that will block the event loop. For async usage, consider using
-    aiofiles and asyncio-compatible locking mechanisms.
+    Provides thread/process-safe file writing with file locking support.
+    Supports atomic writes via temp file + rename for data integrity.
+    
+    WARNING: This function uses blocking I/O operations. Not suitable for
+    async contexts - use aiofiles and async locking instead.
+    
+    Args:
+        filepath (str): Path where file should be written.
+        data: Data to write (dict/list for JSON/YAML, any object for pickle/text).
+        timeout (int): Seconds to wait for lock acquisition. Default is 3.
+        file_lock: Existing lock to use. If None, acquires new lock.
+        atomic (bool): If True, writes to temp file then renames for atomicity.
+        encoding (str | None): Character encoding for text files. If None, auto-detected.
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        logger: Optional logger for debug messages.
+        sort_keys (bool): If True, sorts dictionary keys in JSON/YAML output.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
     """
     if logger is not None:
         logger.debug(f"utils.files.safe_write_file - preparing to write {filepath} ...")
@@ -385,7 +555,12 @@ def safe_write_file(filepath, data, timeout=3, file_lock=None, atomic=False, enc
     return {'return': 0}
 
 ##########################################################################################
-def safe_delete_directory(dirpath, timeout=3, fail_on_error=False, logger=None):
+def safe_delete_directory(
+        dirpath: str,               # Full path to directory to delete
+        timeout: int = 3,           # Lock timeout in seconds
+        fail_on_error: bool = False,  # If True, raise exceptions
+        logger = None               # Logger instance for debug messages
+):
     """
     Safely and recursively deletes a directory with all its contents.
     Works cross-platform (Windows, Linux, MacOS) and handles special cases like
@@ -394,13 +569,13 @@ def safe_delete_directory(dirpath, timeout=3, fail_on_error=False, logger=None):
     If lock acquisition fails but directory doesn't exist, returns success.
     
     Args:
-        dirpath: Full path to directory to delete
-        timeout: Lock timeout in seconds
-        fail_on_error: Whether to raise exceptions or return error dict
-        logger: Logger instance for debug messages
+        dirpath (str): Full path to directory to delete.
+        timeout (int): Lock timeout in seconds.
+        fail_on_error (bool): Whether to raise exceptions or return error dict.
+        logger: Logger instance for debug messages.
     
     Returns:
-        Dict with 'return' (0=success, non-zero=error) and optional 'error'
+        Dict with 'return' (0=success, non-zero=error) and optional 'error'.
     """
     if logger is not None:
         logger.debug(f"utils.files.self_delete_directory - preparing to delete {dirpath} ...")
@@ -441,9 +616,15 @@ def safe_delete_directory(dirpath, timeout=3, fail_on_error=False, logger=None):
             return {'return': 0}
         
         def handle_remove_readonly(func, path, exc):
-            """
-            Error handler for shutil.rmtree to handle read-only files.
-            This is especially important for .git directories on Windows.
+            """Error handler for shutil.rmtree to handle read-only files.
+            
+            Clears readonly bit and retries deletion. Important for .git
+            directories on Windows.
+            
+            Args:
+                func: Function that failed (e.g., os.remove, os.rmdir).
+                path: Path to the file/directory that couldn't be removed.
+                exc: Exception information.
             """
             if logger is not None:
                 logger.debug(f"utils.files.self_delete_directory - handling read-only file: {path}")
@@ -511,8 +692,17 @@ def safe_delete_directory(dirpath, timeout=3, fail_on_error=False, logger=None):
                     raise
 
 ##########################################################################################
-def safe_delete_directory_if_empty(dirpath):
-    """Check quickly if directory is empty and remove it safely."""
+def safe_delete_directory_if_empty(
+        dirpath: str  # Path to the directory to potentially delete
+):
+    """Delete directory only if it's empty (no files or subdirectories).
+    
+    Quickly checks if directory is empty and removes it. Ignores all errors
+    (permissions, race conditions, etc.) for safe cleanup operations.
+    
+    Args:
+        dirpath (str): Path to the directory to potentially delete.
+    """
     try:
         if os.path.isdir(dirpath):
             with os.scandir(dirpath) as it:
@@ -524,8 +714,24 @@ def safe_delete_directory_if_empty(dirpath):
     return {'return':0}
 
 ##########################################################################################
-def lock_path(path, timeout=3, fail_on_error=False, logger=None):
-    """Acquires a lock for any file or directory path."""
+def lock_path(
+        path: str,                  # Path to lock (file or directory)
+        timeout: int = 3,           # Seconds to wait for lock acquisition
+        fail_on_error: bool = False,  # If True, raise exception on error
+        logger = None               # Optional logger for debug messages
+):
+    """Acquire a lock on a file or directory path.
+    
+    Args:
+        path (str): Path to lock (file or directory).
+        timeout (int): Seconds to wait for lock acquisition. Default is 3.
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        logger: Optional logger for debug messages.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and 'file_lock' on success,
+              or 'return' > 0 and 'error' on failure.
+    """
     if logger is not None:
         logger.debug(f"utils.files.lock_path - preparing to lock path {path} ...")
 
@@ -536,8 +742,23 @@ def lock_path(path, timeout=3, fail_on_error=False, logger=None):
         return _error(None, 1, e, fail_on_error)
 
 ##########################################################################################
-def unlock_path(path, file_lock, fail_on_error=False, logger=None):
-    """Releases the lock for any file or directory path."""
+def unlock_path(
+        path: str,                  # Path to unlock (file or directory)
+        file_lock,                  # FileLock object from lock_path()
+        fail_on_error: bool = False,  # If True, raise exception on error
+        logger = None               # Optional logger for debug messages
+):
+    """Release a lock on a file or directory path.
+    
+    Args:
+        path (str): Path to unlock (file or directory).
+        file_lock: FileLock object from lock_path().
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        logger: Optional logger for debug messages.
+        
+    Returns:
+        dict: Error dict with 'return' > 0 and 'error' on failure, None on success.
+    """
 
     if logger is not None:
         logger.debug(f"utils.files.unlock_path - preparing to unlock path {path} ...")
@@ -550,7 +771,13 @@ def unlock_path(path, file_lock, fail_on_error=False, logger=None):
     return {'return':0}
 
 ##########################################################################################
-def safe_read_file_via_cache(filepath, cache, timeout=10, fail_on_error=False, logger=None):
+def safe_read_file_via_cache(
+        filepath: str,              # Path to the file to read
+        cache: dict,                # Dictionary to store cached data
+        timeout: int = 10,          # Lock timeout for file operations
+        fail_on_error: bool = False,  # If True, raise exceptions
+        logger = None               # Optional logger for debug messages
+):
     """
     Reads a file with caching based on file modification timestamp.
     Automatically reloads if file has been modified since last cache.
@@ -559,13 +786,14 @@ def safe_read_file_via_cache(filepath, cache, timeout=10, fail_on_error=False, l
     can be corrupted by concurrent access, and it uses blocking I/O operations.
     
     Args:
-        filepath: Path to the file to read
-        cache: Dictionary to store cached data (modified in-place)
-        timeout: Lock timeout for file operations
-        fail_on_error: Whether to raise exceptions or return error dict
+        filepath (str): Path to the file to read.
+        cache (dict): Dictionary to store cached data (modified in-place).
+        timeout (int): Lock timeout for file operations.
+        fail_on_error (bool): Whether to raise exceptions or return error dict.
+        logger: Optional logger for debug messages.
     
     Returns:
-        Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'
+        Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'.
     """
     path = Path(filepath)
     
@@ -620,23 +848,31 @@ def safe_read_file_via_cache(filepath, cache, timeout=10, fail_on_error=False, l
     return result
 
 ##########################################################################################
-def safe_read_yaml_or_json(filepath, lock=False, keep_locked=False, timeout=3, fail_on_error=False, retry_if_not_found=0, logger=None):
+def safe_read_yaml_or_json(
+        filepath: str,              # Path to file (extension ignored)
+        lock: bool = False,         # If True, use file locking
+        keep_locked: bool = False,  # If True, keep lock after read
+        timeout: int = 3,           # Lock timeout in seconds
+        fail_on_error: bool = False,  # If True, raise exceptions
+        retry_if_not_found: int = 0,  # Number of retries if file not found
+        logger = None               # Logger instance for debug messages
+):
     """
     Safely reads a YAML or JSON file by trying YAML first, then JSON.
     Removes any existing extension from filepath and tries .yaml, then .json.
     
     Args:
-        filepath: Path to file (extension will be ignored/removed)
-        lock: Whether to use file locking
-        keep_locked: Whether to keep lock after successful read
-        timeout: Lock timeout
-        fail_on_error: Whether to raise exceptions or return error dict
-        retry_if_not_found: Number of retries if file not found
-        logger: Logger instance for debug messages
+        filepath (str): Path to file (extension will be ignored/removed).
+        lock (bool): Whether to use file locking.
+        keep_locked (bool): Whether to keep lock after successful read.
+        timeout (int): Lock timeout.
+        fail_on_error (bool): Whether to raise exceptions or return error dict.
+        retry_if_not_found (int): Number of retries if file not found.
+        logger: Logger instance for debug messages.
     
     Returns:
-        Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'
-        If keep_locked=True and lock=True, also returns 'file_lock'
+        Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'.
+        If keep_locked=True and lock=True, also returns 'file_lock'.
     """
     if yaml is None:
         return _error("YAML library not available. Install with: pip install pyyaml", 1, None, fail_on_error)
@@ -668,9 +904,18 @@ def safe_read_yaml_or_json(filepath, lock=False, keep_locked=False, timeout=3, f
     return _error(f"'{base_path}(.yaml or .json)' do not exist", ERROR_CODE_FILE_NOT_FOUND, None, fail_on_error)
 
 ##########################################################################################
-def _get_encoding(encoding, file_format):
-    """
-    Helper function to determine the appropriate encoding for file operations.
+def _get_encoding(
+        encoding: str = None,  # User-provided encoding
+        file_format: str = None  # File format (json/yaml/pickle/binary)
+):
+    """Determine the appropriate encoding for file operations.
+    
+    Args:
+        encoding (str | None): User-provided encoding (None, '', or specific encoding string).
+        file_format (str | None): File format (e.g., 'json', 'yaml', 'pickle', 'binary').
+        
+    Returns:
+        str or None: Encoding to use ('utf-8' for text formats, None for binary).
     """
     if encoding == '': 
         encoding = None
@@ -682,9 +927,28 @@ def _get_encoding(encoding, file_format):
     return encoding
 
 ##########################################################################################
-def unzip(filename, path=None, remove_directories=0, skip_directories=None, overwrite=True, clean=False, fail_on_error=False):
-    """
-    Unzip file to the current directory or 'path'.
+def unzip(
+        filename: str,                    # Path to ZIP file to extract
+        path: str = None,                 # Destination directory
+        remove_directories: int = 0,      # Number of leading directory levels to strip
+        skip_directories: list = None,    # List of directory names to skip
+        overwrite: bool = True,           # If True, overwrite existing files
+        clean: bool = False,              # If True, delete ZIP after extraction
+        fail_on_error: bool = False       # If True, raise exception on error
+):
+    """Extract a ZIP archive to a directory.
+    
+    Args:
+        filename (str): Path to ZIP file to extract.
+        path (str | None): Destination directory (defaults to current directory).
+        remove_directories (int): Number of leading directory levels to strip from paths.
+        skip_directories (list | None): List of directory names to skip during extraction.
+        overwrite (bool): If True, overwrite existing files.
+        clean (bool): If True, delete ZIP file after successful extraction.
+        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+        
+    Returns:
+        dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
     """
     
     if skip_directories is None:
@@ -756,19 +1020,25 @@ def unzip(filename, path=None, remove_directories=0, skip_directories=None, over
     return {'return': 0}
 
 ##########################################################################################
-def zip_directory(source_dir, output_path, skip_directories=None, fail_on_error=True, logger=None):
+def zip_directory(
+        source_dir: str,                # Path to the directory to zip
+        output_path: str,               # Path where the zip file will be created
+        skip_directories: list = None,  # List of directory names to skip
+        fail_on_error: bool = True,     # If True, raise exceptions
+        logger = None                   # Logger instance for debug messages
+):
     """
     Creates a zip archive from a directory.
     
     Args:
-        source_dir: Path to the directory to zip
-        output_path: Path where the zip file will be created
-        skip_directories: List of directory names to skip (e.g., ['.git', '__pycache__'])
-        fail_on_error: Whether to raise exceptions or return error dict
-        logger: Logger instance for debug messages
+        source_dir (str): Path to the directory to zip.
+        output_path (str): Path where the zip file will be created.
+        skip_directories (list | None): List of directory names to skip (e.g., ['.git', '__pycache__']).
+        fail_on_error (bool): Whether to raise exceptions or return error dict.
+        logger: Logger instance for debug messages.
     
     Returns:
-        Dict with 'return' (0=success, non-zero=error) and optional 'error'
+        Dict with 'return' (0=success, non-zero=error) and optional 'error'.
     """
     if skip_directories is None:
         skip_directories = []
@@ -820,13 +1090,20 @@ def zip_directory(source_dir, output_path, skip_directories=None, fail_on_error=
 
 ##########################################################################################
 def shard_name(name: str, slices=None):
-    """
-    Apply sharding to a single path component (file or directory name).
-    Returns a list of subdirectory names + the original name.
+    """Apply sharding to a single path component.
     
-    If name is shorter than required by slices, underscore-filled placeholders
-    will be used (e.g., '___' for a 2-char shard). Placeholder length = shard_length + 1.
-    This ensures predictable directory structure for database listing and migration.
+    Generates shard directory names from a name string based on specified slice lengths.
+    If the name is shorter than required, uses underscore-filled placeholders to ensure
+    predictable directory structure.
+    
+    Args:
+        name: Name to shard (file or directory name).
+        slices: List of integers specifying shard lengths (e.g., [2, 2] creates 2-char shards).
+                None means no sharding.
+    
+    Returns:
+        list: List containing shard directory names followed by the original name.
+              Example: shard_name('example', [2, 2]) -> ['ex', 'am', 'example']
     """
     if not slices:
         parts = [name]
@@ -862,11 +1139,18 @@ def shard_name(name: str, slices=None):
 
 ##########################################################################################
 def apply_sharding_to_path(path: str, name: str, slices: list):
-    """
-    Takes an input path like "20251109.test" and shard it into 
-    directories based on slices schema.
+    """Apply sharding to construct a full sharded directory path.
     
-    Returns the full sharded path under base_dir.
+    Combines a base path with sharded directory components generated from a name.
+    
+    Args:
+        path: Base directory path to prepend to sharded path.
+        name: Name to shard.
+        slices: List of integers specifying shard lengths (e.g., [2, 2]).
+    
+    Returns:
+        dict: Dictionary with 'return': 0, 'sharded_parts': list of path components,
+              and 'sharded_path': full sharded path string. On error, 'return' > 0.
     """
     r = shard_name(name, slices)
     if r['return']>0: return r

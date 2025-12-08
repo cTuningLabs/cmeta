@@ -50,6 +50,12 @@ class Packages:
     # Logging wrapper
     # ------------------------------------------------------------------
     def log(self, level, msg):
+        """Log a message using the configured logger.
+        
+        Args:
+            level: Log level string (e.g., 'debug', 'info', 'warning', 'error').
+            msg: Message to log.
+        """
         if self.logger:
             fn = getattr(self.logger, level, None)
             if callable(fn):
@@ -59,6 +65,14 @@ class Packages:
     # Version helpers
     # ------------------------------------------------------------------
     def get_version(self, module):
+        """Get version string from a Python module.
+        
+        Args:
+            module: Python module object.
+            
+        Returns:
+            str or None: Version string if available, None otherwise.
+        """
         if hasattr(module, "__version__"):
             return module.__version__
         try:
@@ -68,6 +82,14 @@ class Packages:
             return None
 
     def poetry_to_pep440(self, spec):
+        """Convert Poetry-style version specifier to PEP 440 format.
+        
+        Args:
+            spec: Poetry version specifier (e.g., '^1.2.0', '~1.2.0', '1.*').
+            
+        Returns:
+            str: PEP 440 compatible version specifier.
+        """
         spec = spec.strip()
         if spec.startswith("^"):
             base = pkg_version.parse(spec[1:])
@@ -83,6 +105,17 @@ class Packages:
         return spec
 
     def build_spec(self, v, vmin, vmax, specifier):
+        """Build a version specifier string from version constraints.
+        
+        Args:
+            v: Exact version string (e.g., '1.2.0').
+            vmin: Minimum version string.
+            vmax: Maximum version string.
+            specifier: Poetry or PEP 440 version specifier.
+            
+        Returns:
+            str or None: Combined version specifier, or None if no constraints provided.
+        """
         parts = []
         if v: parts.append(f"=={v}")
         if vmin: parts.append(f">={vmin}")
@@ -101,6 +134,11 @@ class Packages:
     # Subprocess KILL UTILITIES (Windows / Linux / macOS)
     # ------------------------------------------------------------------
     def kill_process_tree(self, pid):
+        """Kill a process tree (process and all its children).
+        
+        Args:
+            pid: Process ID to kill.
+        """
         try:
             # Linux / macOS
             if hasattr(os, "killpg"):
@@ -119,6 +157,18 @@ class Packages:
     # Sync Installation with per-call timeout override
     # ------------------------------------------------------------------
     def pip_install_sync(self, pkg, silent, install_args, timeout, con):
+        """Install a Python package using pip synchronously.
+        
+        Args:
+            pkg: Package requirement string (e.g., 'numpy>=1.20').
+            silent: If True, suppress installation output.
+            install_args: Additional pip install arguments string.
+            timeout: Timeout in seconds (None for no timeout).
+            con: If True, print console messages.
+            
+        Raises:
+            RuntimeError: If installation is disabled, times out, or fails.
+        """
         if not self.allow_install:
             raise RuntimeError(f"Installation disabled. Cannot install '{pkg}'.")
 
@@ -168,6 +218,15 @@ class Packages:
             raise
 
     def _output(self, stdout, stderr):
+        """Combine stdout and stderr into a single output string.
+        
+        Args:
+            stdout: Standard output string.
+            stderr: Standard error string.
+            
+        Returns:
+            str: Combined output with newline separator if both present.
+        """
         x = ''
 
         stdout = '' if stdout is None else stdout.strip()
@@ -242,6 +301,14 @@ class Packages:
     # IMPORT Helpers
     # ------------------------------------------------------------------
     def try_import(self, name):
+        """Try to import a Python module by name.
+        
+        Args:
+            name: Module name to import.
+            
+        Returns:
+            module or None: Module object if import succeeds, None if not found.
+        """
         try:
             return importlib.import_module(name)
         except ModuleNotFoundError:
@@ -251,6 +318,19 @@ class Packages:
     # Build cache key
     # ------------------------------------------------------------------
     def build_cache_key(self, name, version, vmin, vmax, specifier, async_flag):
+        """Build a cache key for package lookup.
+        
+        Args:
+            name: Package name.
+            version: Exact version string.
+            vmin: Minimum version string.
+            vmax: Maximum version string.
+            specifier: Version specifier string.
+            async_flag: True if async import, False otherwise.
+            
+        Returns:
+            str: Cache key string.
+        """
         return f"{name}|{version}|{vmin}|{vmax}|{specifier}|async={async_flag}"
 
     # ------------------------------------------------------------------
@@ -271,6 +351,24 @@ class Packages:
         allow_install=None,
         con=False,
     ):
+        """Get or install a Python package synchronously.
+        
+        Args:
+            name: Package name to import.
+            version: Exact version required.
+            version_min: Minimum version required.
+            version_max: Maximum version required.
+            specifier: Version specifier (Poetry or PEP 440 format).
+            silent: If True, suppress installation output.
+            install_args: Additional pip install arguments.
+            timeout: Installation timeout in seconds (overrides default).
+            use_cache: If True, use cached results.
+            allow_install: If True, allow package installation (overrides instance setting).
+            con: If True, print console messages.
+            
+        Returns:
+            PackageResult: Object with module, name, version, satisfies, specifier, and installed_now fields.
+        """
 
         if allow_install is None:
             allow_install = self.allow_install

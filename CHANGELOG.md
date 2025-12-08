@@ -1,4 +1,7 @@
-﻿cMeta (0.10.0):
+﻿cMeta (0.11.0):
+  * Updated documentation for all functions
+
+cMeta (0.10.0):
   * Fixed more bugs; added on-the-fly package management; added common functions
 
 cMeta (0.9.0):

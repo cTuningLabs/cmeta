@@ -22,7 +22,12 @@ class InitCategory:
                  cm = None,
                  module_file_path = None,
                  logger: logging.Logger = None):
-        """
+        """Initialize the category base class without artifact management functions.
+        
+        Args:
+            cm: CMeta instance. If None, creates a new one.
+            module_file_path: Path to the category module file. If None, uses base category.
+            logger: Logger instance. If None, uses CMeta's logger.
         """
 
         if cm is None:
@@ -78,7 +83,18 @@ class InitCategory:
             self.logger.debug(f"Initializing {extra_text}category class from: {caller_frame.filename}:{caller_frame.lineno}")
 
     def _prepare_input_from_params(self, params, extra={}, base=False):
-        """
+        """Prepare input dictionary from params for category command execution.
+        
+        Extracts relevant information from params and state, adds extra parameters,
+        and prepares a clean input dictionary for command execution.
+        
+        Args:
+            params: Dictionary containing parameters and state.
+            extra: Additional parameters to merge into the result.
+            base: If True, adds 'base': True flag to call base category commands.
+            
+        Returns:
+            dict: Prepared input dictionary with category, command, and control flags.
         """
 
         import copy
@@ -99,7 +115,17 @@ class InitCategory:
         return p
 
     def _prepare_input_from_state(self, state, base=False):
-        """
+        """Prepare input dictionary from state for category command execution.
+        
+        Extracts category, command, and control information from state to create
+        a minimal input dictionary for command execution.
+        
+        Args:
+            state: State dictionary containing category, command, and control info.
+            base: If True, adds 'base': True flag to call base category commands.
+            
+        Returns:
+            dict: Prepared input dictionary with category, command, and control flags.
         """
 
         p = {}

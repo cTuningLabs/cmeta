@@ -109,12 +109,14 @@ params_init_desc = [
 ]
 
 
-def is_on(value):
+def is_on(
+        value  # String value to check for "on" state
+):
     """
     Check if a string value represents an "on" state.
     
     Args:
-        value: String to check (case-insensitive). Can be None.
+        value (str | bool | None): String to check (case-insensitive). Can be None.
         
     Returns:
         bool: True if value is "1", "on", "true" or "yes" (case-insensitive), False otherwise.
@@ -132,19 +134,22 @@ def is_on(value):
     return value.lower().strip() in ('1', 'on', 'true', 'yes')
 
 
-def set_logging(name,
-                log_level: Optional[str] = None, 
-                log_file: Optional[str] = None,
-                log_format: Optional[str] = None) -> logging.Logger:
+def set_logging(
+        name: str,                        # Logger name
+        log_level: Optional[str] = None,  # Logging level string
+        log_file: Optional[str] = None,   # Path to log file
+        log_format: Optional[str] = None  # Format string for log messages
+) -> logging.Logger:
     """Set up logging configuration and return a logger.
     
     Args:
-        log_level: Logging level as string (case-insensitive). 
+        name (str): Logger name.
+        log_level (str | None): Logging level as string (case-insensitive). 
                   Accepted values: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
                   If None or empty string, logging is disabled.
-        log_file: Path to log file. If provided and not empty, logs will be written to this file.
+        log_file (str | None): Path to log file. If provided and not empty, logs will be written to this file.
                  If None or empty string, logs will be written to console.
-        log_format: Format string for log messages.
+        log_format (str | None): Format string for log messages.
         
     Returns:
         logging.Logger: Configured logger instance.
@@ -214,6 +219,17 @@ def set_logging(name,
 
 
 def check_init_vars_from_env():
+    """Load CMeta initialization parameters from environment variables.
+    
+    Checks various environment variables to determine the home directory,
+    logging settings, and debug/fail-on-error flags for CMeta initialization.
+    
+    Returns:
+        dict: A CMeta dictionary with the following keys:
+            - return (int): Always 0 (success).
+            - init (dict): Dictionary containing initialization parameters including
+              'home', 'fail_on_error', 'log_level', 'log_file', and 'debug'.
+    """
 
     init = {}
 
@@ -255,9 +271,28 @@ def check_init_vars_from_env():
 
     return {'return':0, 'init':init}
 
-def update_init_and_setup_logger(name, init = {}, force_init = {}):
-    """
-    Setup cMeta init params from environment and logger
+def update_init_and_setup_logger(
+        name: str,             # Logger name
+        init: dict = {},       # Base initialization dictionary
+        force_init: dict = {}  # Parameters to forcibly override
+):
+    """Setup CMeta initialization parameters and configure logger.
+    
+    Merges initialization parameters from environment with forced parameters,
+    applies defaults and logical implications (e.g., debug mode enables DEBUG logging),
+    and sets up the logger with the specified configuration.
+    
+    Args:
+        name (str): Logger name (typically __name__ of the calling module).
+        init (dict): Base initialization dictionary from environment.
+        force_init (dict): Dictionary of parameters to forcibly override init values.
+        
+    Returns:
+        dict: A CMeta dictionary with the following keys:
+            - **return** (int): 0 for success, >0 for error.
+            - **error** (str): Error message if return > 0.
+            - **logger** (logging.Logger): Configured logger instance (if return == 0).
+            - init (dict): Final merged initialization parameters (if return == 0).
     """
     
     for k in force_init:
