@@ -1,5 +1,5 @@
 """
-CMeta log functions
+cMeta log functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 

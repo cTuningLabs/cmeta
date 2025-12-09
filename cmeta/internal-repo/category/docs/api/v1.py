@@ -1,5 +1,5 @@
 """
-CMeta experiment functions
+cMeta docs functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 

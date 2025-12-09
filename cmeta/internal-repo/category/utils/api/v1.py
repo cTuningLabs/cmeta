@@ -1,5 +1,5 @@
 """
-cMeta utilities.
+cMeta misc utilities
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 

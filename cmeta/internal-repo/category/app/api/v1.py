@@ -1,5 +1,5 @@
 """
-CMeta app functions
+cMeta app functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 

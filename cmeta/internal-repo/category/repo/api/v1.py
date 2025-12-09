@@ -1,5 +1,5 @@
 """
-CMeta repo functions
+cMeta repo functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 

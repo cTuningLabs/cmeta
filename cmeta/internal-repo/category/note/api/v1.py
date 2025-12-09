@@ -1,5 +1,5 @@
 """
-CMeta note functions
+cMeta note functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 

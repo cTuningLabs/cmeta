@@ -1,5 +1,5 @@
 """
-CMeta category functions
+cMeta category functions
 
 cMeta author and developer: (C) 2025 Grigori Fursin
 
