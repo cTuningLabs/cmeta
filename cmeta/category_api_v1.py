@@ -1086,7 +1086,8 @@ class Category(InitCategory):
             yaml: bool = False,      # Save/output metadata as YAML instead of JSON
             meta: dict = {},         # Initial metadata dictionary (for creation)
             virtual: bool = False,   # Virtual artifact created only in index (for creation)
-            path: str = None         # Use this path for artifact (for creation)
+            path: str = None,        # Use this path for artifact (for creation)
+            show_path: bool = False
     ):
         """
         Get artifact meta. Read if exists, create and read if doesn't exist.
@@ -1100,6 +1101,7 @@ class Category(InitCategory):
             meta (dict): Initial metadata dictionary (used during creation).
             virtual (bool): Virtual artifact created only in index (used during creation).
             path (str | None): Use this path for artifact (used during creation).
+            show_path (bool): Print path instead of meta 
 
         Returns:
             dict: A cMeta dictionary with the following keys:
@@ -1113,26 +1115,36 @@ class Category(InitCategory):
         # Try to read the artifact first
         con = state.get('control',{}).get('con', False)
 
+        if con and show_path:
+            import copy
+            state = copy.deepcopy(state)
+            state['control']['con'] = False
+
         r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids)
         
         # If artifact exists, return it
         if r['return'] == 0:
             r['created'] = False
-            return r
-        
-        # If error is not "artifact not found", return the error
-        if r['return'] != 16:
-            return r
-        
-        # Artifact doesn't exist, create it
-        r = self.create_(state, arg1, tags=tags, meta=meta, yaml=yaml, virtual=virtual, path=path)
-        if r['return'] > 0:
-            return r
-        
-        # Read the newly created artifact
-        r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids, yaml=yaml)
-        if r['return'] > 0:
-            return r
-        
-        r['created'] = True
+
+        else:
+            
+            # If error is not "artifact not found", return the error
+            if r['return'] != 16:
+                return r
+            
+            # Artifact doesn't exist, create it
+            r = self.create_(state, arg1, tags=tags, meta=meta, yaml=yaml, virtual=virtual, path=path)
+            if r['return'] > 0:
+                return r
+            
+            # Read the newly created artifact
+            r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids, yaml=yaml)
+            if r['return'] > 0:
+                return r
+            
+            r['created'] = True
+
+        if con and show_path:
+            print (r['artifact']['path'])
+
         return r
