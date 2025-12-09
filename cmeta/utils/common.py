@@ -6,6 +6,7 @@ cMeta author and developer: (C) 2025 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
+###################################################################################################
 def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
     """Create error return dictionary or raise exception based on fail_on_error flag.
     
@@ -38,6 +39,7 @@ def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
 
     return {'return': return_code, 'error': err}
 
+###################################################################################################
 def deep_merge(
         target: dict,                   # Original dictionary to be updated
         source: dict,                   # New dictionary with updates
@@ -71,6 +73,7 @@ def deep_merge(
 
     return target
 
+###################################################################################################
 def safe_serialize_json(
         obj,                                    # Python object to serialize
         non_serializable_text: str = None       # Text for non-serializable objects
@@ -108,6 +111,7 @@ def safe_serialize_json(
         else:
             return non_serializable_text
 
+###################################################################################################
 def safe_print_json(
         obj,                                    # Python object to print as JSON
         indent: int = 2,                        # Number of spaces for indentation
@@ -131,6 +135,7 @@ def safe_print_json(
 
     return {'return':0}
 
+###################################################################################################
 def safe_print_json_to_str(
         obj,                                    # Python object to convert to JSON string
         indent: int = 2,                        # Number of spaces for indentation
@@ -158,6 +163,7 @@ def safe_print_json_to_str(
 
     return json.dumps(safe_serialize_json(obj, non_serializable_text=non_serializable_text), indent=indent, sort_keys=sort)
 
+###################################################################################################
 def normalize_tags(
         tags,                           # Tags as comma-separated string or list
         fail_on_error: bool = False     # If True, raise exception on error
@@ -186,6 +192,7 @@ def normalize_tags(
 
     return {'return':0, 'tags': clean_tags}
 
+###################################################################################################
 def detect_cid_in_the_current_directory(
         cmeta,                      # CMeta instance
         path: str = None,           # Directory path to check
@@ -324,6 +331,7 @@ def detect_cid_in_the_current_directory(
             'artifact_name': artifact_name
     }
 
+###################################################################################################
 def copy_text_to_clipboard(
         text: str = '',             # Text string to copy to clipboard
         add_quotes: bool = False,   # If True, wrap text in quotes
@@ -359,6 +367,7 @@ def copy_text_to_clipboard(
 
     return {'return':0}
 
+###################################################################################################
 def compare_versions(
         version1: str,  # First version string (e.g., "0.3.1", "1.2", "3.2.0-dev")
         version2: str   # Second version string
@@ -467,3 +476,24 @@ def generate_timestamp(
         path = os.path.join(*r['parts'])
 
     return {'return':0, 'timestamp': timestamp, 'path': path}
+
+import re
+
+###################################################################################################
+def sort_versions(versions, reverse=False):
+    def parse_version(v):
+        # Remove leading 'v' if present
+        v = v.lstrip("v")
+        
+        # Extract numeric components (e.g., [12, 3, 4] from "12.3.4dev")
+        nums = [int(x) for x in re.findall(r'\d+', v)]
+        
+        # Extract trailing non-numeric part for optional tie-breaking
+        suffix_match = re.search(r'[a-zA-Z]+', v)
+        suffix = suffix_match.group(0) if suffix_match else ""
+        
+        # Return tuple enabling correct comparison
+        # Numeric parts first, suffix last
+        return (*nums, suffix)
+
+    return sorted(versions, key=parse_version, reverse=reverse)
