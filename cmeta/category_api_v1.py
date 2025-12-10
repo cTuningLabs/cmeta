@@ -51,7 +51,8 @@ class Category(InitCategory):
             state: dict,             # cMeta state
             arg1: str = None,        # Artifact alias or UID
             clip: bool = True,       # If True, copy cRef to clipboard
-            url: bool = False        # If True, copy URL with detected cRef to clipboard
+            url: bool = False,       # If True, copy URL with detected cRef to the clipboard
+            name: bool = False,      # If True, copy artifact name to the clipboard
     ):
         """
         Get artifact info.
@@ -61,6 +62,7 @@ class Category(InitCategory):
             arg1 (str | None): Artifact alias or UID.
             clip (bool): If True, copy cRef to clipboard.
             url (bool): If True, copy URL with detected cRef to the clipboard.
+            name (bool): If True, copy artifact name to the clipboard
 
         Returns:
             dict: A cMeta dictionary with the following keys:
@@ -110,6 +112,12 @@ class Category(InitCategory):
                     print ('')
                     print (f'cRef URL: {clipboard_text}')
                      
+            elif name:
+                r = utils.names.restore_cmeta_name(cmeta_ref_parts, key='artifact', fail_on_error = self.fail_on_error)
+                if r['return']>0: return r
+
+                clipboard_text = r['name']
+
             elif clip:
                 clipboard_text = f'{cref_text}{cref}'
 
