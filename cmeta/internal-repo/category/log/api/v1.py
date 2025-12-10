@@ -65,3 +65,64 @@ class Category(InitCategory):
         print (json.dumps(params, indent=2))
 
         return {'return':0}
+
+    ############################################################
+    def record_(
+            self,
+            state: dict,
+            arg1: str,
+            paths: list = None,
+            data: dict = None,
+    ):
+        """
+        Record log.
+        
+        Args:
+            state (dict): cMeta state.
+            arg1 (str): Log name.
+            paths (list | None): Additional path segments.
+            data (dict | None): Log data to write.
+            
+        Raises:
+            Exception: If artifact access fails or file write fails.
+            
+        Returns:
+            dict: Dictionary with 'return': 0 on success, >0 on error.
+        """
+
+        self.logger.debug("RUNNING log v1 record_")
+
+        r = self.cm.access({'category': state['category'], 
+                            'command': 'get', 
+                            'base': True,
+                            'arg1': arg1,
+                           })
+        if r['return']>0: return r
+
+        path = r['artifact']['path']
+
+        # Prepare extra paths
+        if paths is not None and len(paths)>0:
+            path = os.path.join(path, *paths)
+
+        # Generate timestamp
+        r = self.cm.utils.common.generate_timestamp()
+        if r['return']>0: return r
+
+        timestamp = r['timestamp']
+
+        paths2 = [timestamp[:8], timestamp[9:11]]
+
+        path = os.path.join(path, *paths2)
+
+        if not os.path.isdir(path):
+            os.makedirs(path)
+
+        filename = timestamp + '.json'
+
+        filename_with_path = os.path.join(path, filename)
+
+        r = self.cm.utils.files.write_file(filename_with_path, data)
+        if r['return']>0: return r
+
+        return {'return':0}

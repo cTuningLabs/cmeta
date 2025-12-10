@@ -459,7 +459,7 @@ def generate_timestamp(
     """
     from datetime import datetime
 
-    timestamp = datetime.now().strftime("%Y%m%d-%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     if cut is not None and cut>0:
         timestamp = timestamp[:cut]
@@ -477,11 +477,11 @@ def generate_timestamp(
 
     return {'return':0, 'timestamp': timestamp, 'path': path}
 
-import re
-
 ###################################################################################################
 def sort_versions(versions, reverse=False):
     def parse_version(v):
+        import re
+
         # Remove leading 'v' if present
         v = v.lstrip("v")
         
