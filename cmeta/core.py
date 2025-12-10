@@ -284,11 +284,40 @@ class CMeta:
                 if con:
                     print (self.cfg['name'] + f' version {__version__}')
 
+                if con:
                     print ('')
 
                     paths_list = _list_paths(self)
                     for log_path in paths_list:
                         print (log_path)
+
+                        
+                # Check latest version
+                r = utils.net.access_api(url = self.cfg['default_ctuning_api'],
+                                         params = {'command':'get-last-cmeta-version'},
+                                         timeout = 3)
+
+                if r['return'] == 0:
+                    rr = r['response']
+                    if rr['return'] == 0:
+                        last_cmeta_version = rr['last_cmeta_version']
+                        result['last_cmeta_version'] = last_cmeta_version
+
+                        r = utils.common.compare_versions(last_cmeta_version, __version__)
+                        if r['return'] == 0:
+                            if r['comparison'] == '<':
+                                result['requires_update'] = True
+                                if con:
+                                    print ('')
+                                    print (f'WARNING: Your cMeta version ({__version__}) is outdated.')
+                                    print (f'         Latest version: {last_cmeta_version}')
+                                    print (f'         Update via: pip install -U cmeta')
+                            else:
+                                if con:
+                                    print ('')
+                                    print (f'Your cMeta version is up-to-date!')
+                else:
+                    return self._error(f'Accessing latest version info failed: {r["error"]}', 1, None, self.fail_on_error)
 
             elif control_params.get('reindex', False):
                 r = self.repos.reindex(con=con, verbose=verbose)

@@ -53,6 +53,7 @@ cfg = {
 
         "default_git": "https://github.com",
         "default_git_repo": "ctuninglabs",
+        "default_ctuning_api": "https://cTuning.ai/api/v1",
 
         "index_dir": "index",
         "index_db_filename": "index.db",

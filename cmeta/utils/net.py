@@ -11,7 +11,8 @@ from .common import _error
 def access_api(
         url: str,         # The API endpoint URL
         params: dict,     # Dictionary of parameters to send as JSON
-        headers: dict = {}  # Optional dictionary of HTTP headers
+        headers: dict = {},  # Optional dictionary of HTTP headers
+        timeout: int = 30    # Request timeout in seconds
 ):
     """Send POST request to FastAPI endpoint with JSON params and return response.
     
@@ -19,6 +20,7 @@ def access_api(
         url (str): The API endpoint URL.
         params (dict): Dictionary of parameters to send as JSON in the POST request body.
         headers (dict): Optional dictionary of HTTP headers to include in the request.
+        timeout (int): Request timeout in seconds. Default is 30 seconds.
         
     Returns:
         dict: Dictionary with 'return': 0 and 'response' containing parsed JSON response,
@@ -27,7 +29,7 @@ def access_api(
     import requests
 
     try:
-        response = requests.post(url, json=params, headers=headers)
+        response = requests.post(url, json=params, headers=headers, timeout=timeout)
         response.raise_for_status()
         
         output = response.json()
