@@ -305,7 +305,7 @@ class CMeta:
 
                         r = utils.common.compare_versions(last_cmeta_version, __version__)
                         if r['return'] == 0:
-                            if r['comparison'] == '<':
+                            if r['comparison'] == '>':
                                 result['requires_update'] = True
                                 if con:
                                     print ('')

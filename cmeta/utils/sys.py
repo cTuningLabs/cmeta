@@ -857,34 +857,70 @@ def get_dir_size(
         
     Returns:
         dict: Dictionary with 'return': 0, 'size' in bytes, 'nice_size' formatted,
-              'total_dirs' count, and 'total_files' count.
+              'total_dirs' count, 'total_files' count, 'latest_modification_dt',
+              and 'weird_dates' list of files with future modification dates.
     """
+    from datetime import datetime
+    
     total = 0
     total_dirs = 0
     total_files = 0
+    latest_mtime = None
+    weird_dates = []
+    current_time = datetime.now().timestamp()
 
     for root, dirs, files in os.walk(path):
         # Count subdirectories at this level
         total_dirs += len(dirs)
+        
+        # Check modification time of the current directory
+        try:
+            dir_mtime = os.path.getmtime(root)
+            if latest_mtime is None or dir_mtime > latest_mtime:
+                latest_mtime = dir_mtime
+        except (OSError, PermissionError):
+            pass  # Skip directories we can't access
 
         for f in files:
             fp = os.path.join(root, f)
             if os.path.isfile(fp):  # avoid broken symlinks
-                total += os.path.getsize(fp)
-                total_files += 1
+                try:
+                    total += os.path.getsize(fp)
+                    total_files += 1
+                    
+                    # Check file modification time
+                    file_mtime = os.path.getmtime(fp)
+                    
+                    # Detect files with future modification dates
+                    if file_mtime > current_time:
+                        weird_dates.append({
+                            'path': fp,
+                            'mtime': file_mtime,
+                            'mtime_dt': datetime.fromtimestamp(file_mtime).isoformat()
+                        })
+                    
+                    if latest_mtime is None or file_mtime > latest_mtime:
+                        latest_mtime = file_mtime
+                except (OSError, PermissionError):
+                    pass  # Skip files we can't access
 
     r = format_size(total, binary, unit)
     if r['return'] > 0:
         return r
 
     nice_size = r['nice_size']
+    
+    # Convert timestamp to datetime
+    latest_modification_dt = datetime.fromtimestamp(latest_mtime) if latest_mtime is not None else None
 
     return {
         'return': 0,
         'size': total,
         'nice_size': nice_size,
         'total_dirs': total_dirs,
-        'total_files': total_files
+        'total_files': total_files,
+        'latest_modification_dt': latest_modification_dt,
+        'weird_dates': weird_dates
     }
 
 ###################################################################################################

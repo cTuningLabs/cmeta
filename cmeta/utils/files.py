@@ -1198,3 +1198,48 @@ def safe_delete_directory_if_empty_with_sharding(
         current_path = os.path.dirname(current_path)
 
     return {'return': 0}
+
+##########################################################################################
+def get_latest_tree_modification_time(path):
+    """
+    Return the maximum modification time (mtime) of the directory
+    or any file/directory inside it (recursively).
+    Works on Linux, macOS, and Windows.
+    """
+    latest = os.path.getmtime(path)
+
+    # Stack for our own DFS (faster than recursion)
+    stack = [path]
+
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as it:
+                for entry in it:
+                    try:
+                        m = entry.stat().st_mtime
+                        if m > latest:
+                            latest = m
+
+                        # Recurse into subdirectories
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(entry.path)
+
+                    except FileNotFoundError:
+                        # Entry disappeared during scan — skip
+                        pass
+        except (NotADirectoryError, PermissionError):
+            # Not a directory or forbidden — ignore
+            pass
+
+    return {'return':0, 'latest': latest}
+
+##########################################################################################
+def get_latest_modification_time(path):
+    """
+    """
+
+    mtime = os.path.getmtime(directory)
+    modified_dt = datetime.fromtimestamp(mtime)
+
+    return {'return':0, 'last': modified_dt}
