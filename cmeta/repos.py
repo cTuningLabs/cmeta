@@ -1192,6 +1192,14 @@ class Repos:
                         if cmeta_category_alias is not None and cmeta_category_alias !='' and cmeta_category_alias != category_alias:
                             continue
 
+                    if 'artifact' not in artifact_meta:
+                        print ('', flush=True)
+                        print (f"           Warning: {artifact} doesn't have 'artifact' key in {path_to_artifact}")
+                        self.logger.error (f"           Warning: {artifact} doesn't have proper 'artifact' key in {path_to_artifact}")
+
+                        # TBD - better handling?
+                        continue
+
                     artifact_name = artifact_meta['artifact']
 
                     r = utils.names.parse_cmeta_name(artifact_name)
@@ -1202,8 +1210,10 @@ class Repos:
                     if uid is None or not utils.names.is_valid_cmeta_uid(uid):
                         print ('', flush=True)
                         print (f"           Warning: {artifact} doesn't have proper {uid}")
-                        self.log.error (f"           Warning: {artifact} doesn't have proper {uid}")
+                        self.logger.error (f"           Warning: {artifact} doesn't have proper {uid}")
+
                         # TBD - better handling?
+                        continue
 
                     if artifact_uid is not None and artifact_uid != uid:
                         continue

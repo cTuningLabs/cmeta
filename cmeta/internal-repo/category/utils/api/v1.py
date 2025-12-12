@@ -446,6 +446,156 @@ class Category(InitCategory):
         return {'return':0, 'output_file': arg2}
 
 
+    ############################################################
+    def convert_old_entries_(
+        self,
+        state,              # [dict] cMeta state object
+        arg1 = '.',         # [str] path to entries to convert
+        meta = {},          # [dict] Merge this meta
+    ):
+        """
+        Convert entries in a path (arg1) by merging _cmeta.json or _cmeta.yaml with meta
+
+        Args:
+            state (dict): cMeta state object.
+            arg1 (str): Path to search for entries to convert.
+            meta (dict): Merge this meta with existing _cmeta files.
+        """
+
+        import os
+
+        con = state['control'].get('con', False)
+
+        # Check if path exists
+        if not os.path.exists(arg1):
+            return {'return':1, 'error':f'Path not found: {arg1}'}
+
+        converted_count = 0
+        error_count = 0
+        errors = []
+
+        # Recursively walk through all subdirectories
+        for root, dirs, files in os.walk(arg1):
+            # Look for _cmeta.json or _cmeta.yaml
+            cmeta_file = None
+            if '_cmeta.json' in files:
+                cmeta_file = os.path.join(root, '_cmeta.json')
+            elif '_cmeta.yaml' in files:
+                cmeta_file = os.path.join(root, '_cmeta.yaml')
+
+            if cmeta_file:
+                if con:
+                    print(f'Processing: {cmeta_file}')
+
+                # Load existing meta file
+                r = self.cm.utils.files.safe_read_file(cmeta_file)
+                if r['return'] > 0:
+                    error_msg = f"Failed to read {cmeta_file}: {r.get('error', 'Unknown error')}"
+                    errors.append(error_msg)
+                    error_count += 1
+                    if con:
+                        print(f'  ERROR: {error_msg}')
+                    continue
+
+                existing_data = r['data']
+
+                # Merge with provided meta (meta takes precedence)
+                merged_data = {**existing_data, **meta}
+
+                # Save back to the same file
+                r = self.cm.utils.files.safe_write_file(cmeta_file, merged_data)
+                if r['return'] > 0:
+                    error_msg = f"Failed to write {cmeta_file}: {r.get('error', 'Unknown error')}"
+                    errors.append(error_msg)
+                    error_count += 1
+                    if con:
+                        print(f'  ERROR: {error_msg}')
+                    continue
+
+                converted_count += 1
+                if con:
+                    print(f'  Successfully converted')
+            
+            else:
+                # Check for legacy _cm.yaml or _cm.json files
+                cm_yaml_file = os.path.join(root, '_cm.yaml') if '_cm.yaml' in files else None
+                cm_json_file = os.path.join(root, '_cm.json') if '_cm.json' in files else None
+                
+                if cm_yaml_file or cm_json_file:
+                    if con:
+                        print(f'Processing legacy files in: {root}')
+                    
+                    merged_data = {}
+                    
+                    # First, try to read _cm.yaml
+                    if cm_yaml_file:
+                        if con:
+                            print(f'  Reading: {cm_yaml_file}')
+                        r = self.cm.utils.files.safe_read_file(cm_yaml_file)
+                        if r['return'] > 0:
+                            error_msg = f"Failed to read {cm_yaml_file}: {r.get('error', 'Unknown error')}"
+                            errors.append(error_msg)
+                            error_count += 1
+                            if con:
+                                print(f'  ERROR: {error_msg}')
+                            continue
+                        merged_data = r['data']
+                    
+                    # Then, try to read and merge _cm.json
+                    if cm_json_file:
+                        if con:
+                            print(f'  Reading: {cm_json_file}')
+                        r = self.cm.utils.files.safe_read_file(cm_json_file)
+                        if r['return'] > 0:
+                            error_msg = f"Failed to read {cm_json_file}: {r.get('error', 'Unknown error')}"
+                            errors.append(error_msg)
+                            error_count += 1
+                            if con:
+                                print(f'  ERROR: {error_msg}')
+                            continue
+                        merged_data = {**merged_data, **r['data']}
+                    
+                    # Finally, merge with provided meta (meta takes precedence)
+                    merged_data = {**merged_data, **meta}
+
+                    if 'artifact' not in merged_data and 'uid' in merged_data:
+                        merged_data['artifact'] = merged_data['uid']
+
+                    # Save to _cmeta.json
+                    output_file = os.path.join(root, '_cmeta.json')
+                    if con:
+                        print(f'  Writing: {output_file}')
+                    
+                    r = self.cm.utils.files.safe_write_file(output_file, merged_data)
+                    if r['return'] > 0:
+                        error_msg = f"Failed to write {output_file}: {r.get('error', 'Unknown error')}"
+                        errors.append(error_msg)
+                        error_count += 1
+                        if con:
+                            print(f'  ERROR: {error_msg}')
+                        continue
+                    
+                    converted_count += 1
+                    if con:
+                        print(f'  Successfully converted legacy files to _cmeta.json')
+
+        if con:
+            print(f'\nConversion complete:')
+            print(f'  Files converted: {converted_count}')
+            print(f'  Errors: {error_count}')
+
+        result = {
+            'return': 0 if error_count == 0 else 1,
+            'converted_count': converted_count,
+            'error_count': error_count
+        }
+
+        if errors:
+            result['errors'] = errors
+
+        return result
+
+
 ###################################################################################################
 def _extract_category_artifact(s: str) -> str:
     import re

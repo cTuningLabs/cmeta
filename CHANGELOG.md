@@ -1,4 +1,7 @@
-﻿cMeta (0.11.0):
+﻿cMeta (0.12.0):
+  * Added new categories to support CK
+
+cMeta (0.11.0):
   * Updated documentation for all functions
 
 cMeta (0.10.0):
