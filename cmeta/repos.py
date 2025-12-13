@@ -517,7 +517,9 @@ class Repos:
 
                         if type(ctags) != list:
                             cmeta_ref_parts = a['cmeta_ref_parts']
-                            return {'return':1, 'error':f'tags are corrupted for artifact "{cmeta_ref_parts['artifact_alias']},{cmeta_ref_parts['artifact_uid']}"'}
+                            cmeta_ref_parts_artifact_alias = cmeta_ref_parts['artifact_alias']
+                            cmeta_ref_parts_artifact_uid = cmeta_ref_parts['artifact_uid']
+                            return {'return':1, 'error':f'tags are corrupted for artifact "{cmeta_ref_parts_artifact_alias},{cmeta_ref_parts_artifact_uid}"'}
 
                         if all(str(tag).lower() in [str(ctag).lower() for ctag in ctags] for tag in tags):
                             add_artifacts.append(a)
