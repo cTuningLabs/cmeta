@@ -515,7 +515,11 @@ class Repos:
                         cmeta = a['cmeta']
                         ctags = cmeta.get('tags', [])
 
-                        if all(tag.lower() in [ctag.lower() for ctag in ctags] for tag in tags):
+                        if type(ctags) != list:
+                            cmeta_ref_parts = a['cmeta_ref_parts']
+                            return {'return':1, 'error':f'tags are corrupted for artifact "{cmeta_ref_parts['artifact_alias']},{cmeta_ref_parts['artifact_uid']}"'}
+
+                        if all(str(tag).lower() in [str(ctag).lower() for ctag in ctags] for tag in tags):
                             add_artifacts.append(a)
 
                 else:
