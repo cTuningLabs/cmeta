@@ -928,9 +928,13 @@ def get_min_host_info(
         only_memory: bool = False,  # If True, only return memory information
         binary: bool = False,       # If True, use binary (1024) units for memory
         unit: str = "GB",           # Unit for memory size formatting
-        con: bool = False           # If True, print information to console
+        con: bool = False,          # If True, print information to console
+        line: int = 0,
 ):
     """Get minimal host system information including CPU and memory.
+    
+    Retrieves system information including CPU core counts, total memory,
+    free memory, and current process memory usage.
     
     Args:
         only_memory (bool): If True, only return memory information.
@@ -940,15 +944,29 @@ def get_min_host_info(
         
     Returns:
         dict: Dictionary with 'return': 0 and host information including:
-              'physical_cores', 'logical_cores', 'total_memory', 'nice_total_memory',
-              'memory_used', 'nice_memory_used', and 'string' (formatted output).
+              'physical_cores' (int): Number of physical CPU cores.
+              'logical_cores' (int): Number of logical CPU cores.
+              'total_memory' (int): Total system memory in bytes.
+              'nice_total_memory' (str): Formatted total memory string.
+              'free_memory' (int): Free system memory in bytes.
+              'nice_free_memory' (str): Formatted free memory string.
+              'memory_used' (int): Memory used by current process in bytes.
+              'nice_memory_used' (str): Formatted process memory string.
+              'self_time' (float): Execution time in seconds.
+              'nice_self_time' (str): Formatted execution time.
+              'string' (str): Formatted output for display.
     """
 
     import psutil
     import os
+    import time
+
+    start_time = time.time()
 
     # --- Total system memory ---
-    total_memory = psutil.virtual_memory().total
+    mem_info = psutil.virtual_memory()
+    total_memory = mem_info.total
+    free_memory = mem_info.available
 
     # --- Number of CPU cores ---
     physical_cores = psutil.cpu_count(logical=False)
@@ -962,18 +980,32 @@ def get_min_host_info(
     if r['return']>0: return r
     nice_total_memory = r['nice_size']
 
+    r = format_size(free_memory, binary=binary, unit=unit)
+    if r['return']>0: return r
+    nice_free_memory = r['nice_size']
+
     r = format_size(memory_used, binary=binary, unit=unit)
     if r['return']>0: return r
     nice_memory_used = r['nice_size']
 
     x = ''
 
+    if line>0:
+        x += '='*line + '\n'
+
     if not only_memory:
-         x += (f"Host physical cores: {physical_cores}\n"
-               f"Host logical cores: {logical_cores}\n")
+        x += (f"Host physical cores: {physical_cores}\n"
+              f"Host logical cores: {logical_cores}\n")
 
     x += (f"Host total memory: {nice_total_memory}\n"
-          f"Memory used by current process: {nice_memory_used}\n")
+        f"Host free memory: {nice_free_memory}\n"
+        f"Memory used by current process: {nice_memory_used}\n")
+
+    end_time = time.time()
+    self_time = end_time - start_time
+    nice_self_time = f"{self_time:.3f} sec."
+
+    x += f"Self time: {nice_self_time}\n"
 
     if con:
         print (x)
@@ -983,7 +1015,96 @@ def get_min_host_info(
             'logical_cores': logical_cores,
             'total_memory': total_memory,
             'nice_total_memory': nice_total_memory,
+            'free_memory': free_memory,
+            'nice_free_memory': nice_free_memory,
             'memory_used': memory_used,
             'nice_memory_used': nice_memory_used,
             'string': x,
+            'self_time': self_time,
+            'nice_self_time': nice_self_time,
     }
+
+##########################################################################################
+def get_disk_space(
+        path: str,              # Path to check disk space for
+        nice: bool = False,     # If True, return human-readable sizes
+        binary: bool = False,   # If True, use binary (1024) units
+        unit: str = None,       # Force specific unit for size formatting
+        line: int = 0,
+):
+    """Get disk space information for a given path.
+    
+    Retrieves total, used, and free disk space for the filesystem containing
+    the specified path.
+    
+    Args:
+        path (str): Path to check disk space for.
+        nice (bool): If True, return human-readable sizes with 'nice_*' keys.
+        binary (bool): If True, use binary (1024) units, else decimal (1000).
+        unit (str | None): Force specific unit for size formatting (e.g., 'GB', 'GiB').
+        
+    Returns:
+        dict: Dictionary with 'return': 0 and:
+              'total' (int): Total disk space in bytes.
+              'used' (int): Used disk space in bytes.
+              'free' (int): Free disk space in bytes.
+              'self_time' (float): Execution time in seconds.
+              'nice_self_time' (str): Formatted execution time.
+              If nice=True, also includes:
+              'nice_total' (str): Formatted total size.
+              'nice_used' (str): Formatted used size.
+              'nice_free' (str): Formatted free size.
+    """
+
+    from shutil import disk_usage
+    import time
+
+    start_time = time.time()
+
+    usage = disk_usage(path)
+
+    result = {
+        'return':0, 
+        'total': usage.total,
+        'used': usage.used,
+        'free': usage.free
+    }
+
+    if nice:
+        x = ''
+
+        if line>0:
+            x += '='*line + '\n'
+
+        x += f'Path: {path}\n'
+        for key in ['total', 'used', 'free']:
+            size = result[key]
+
+            r = format_size(size, binary, unit)
+            if r['return']>0: return r
+
+            nice_size = r['nice_size']
+
+            result['nice_'+key] = nice_size
+
+            x += key.capitalize() + f' size: {nice_size}\n'
+
+        end_time = time.time()
+        self_time = end_time - start_time
+        nice_self_time = f"{self_time:.3f} sec."
+
+        x += f"Self time: {nice_self_time}\n"
+
+        result['string'] = x
+
+    end_time = time.time()
+    self_time = end_time - start_time
+    nice_self_time = f"{self_time:.3f} sec."
+
+    if nice:
+        x += f"Self time: {nice_self_time}\n"
+
+    result['self_time'] = self_time
+    result['nice_self_time'] = nice_self_time
+
+    return result

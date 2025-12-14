@@ -1243,3 +1243,4 @@ def get_latest_modification_time(path):
     modified_dt = datetime.fromtimestamp(mtime)
 
     return {'return':0, 'last': modified_dt}
+
