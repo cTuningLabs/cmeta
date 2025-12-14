@@ -36,6 +36,7 @@ class Packages:
         fail_on_error=False,
         allow_install=True,
         timeout: float = None,   # global default timeout
+        deps: dict = None,
     ):
 
         self.cache = cache or {}
@@ -45,6 +46,7 @@ class Packages:
         self.fail_on_error = fail_on_error
         self.allow_install = allow_install
         self.default_timeout = timeout  # seconds or None
+        self.deps = deps or {}
 
     # ------------------------------------------------------------------
     # Logging wrapper
@@ -333,6 +335,7 @@ class Packages:
         """
         return f"{name}|{version}|{vmin}|{vmax}|{specifier}|async={async_flag}"
 
+
     # ------------------------------------------------------------------
     # PUBLIC SYNC GET
     # ------------------------------------------------------------------
@@ -350,7 +353,6 @@ class Packages:
         use_cache=True,
         allow_install=None,
         con=False,
-        state=None,
     ):
         """Get or install a Python package synchronously.
         
@@ -416,19 +418,18 @@ class Packages:
                 with self.cache_lock:
                     self.cache[key] = result
 
-            if state is not None and type(state) == dict:
-                deps = state.setdefault('deps', {})
-                deps[f'python-{name}'] = {'package': result}
-
+            deps_name = 'python-' + name
+            dep = self.deps.setdefault(deps_name, {})
+            dep['package'] = result
 
             ### RETURN #############################################################
             return {"return": 0, "package": result}
 
         except Exception as e:
-            self.log("error", f"[sync] {e}")
+            self.log("error", f"[sync] {e} in {__name__}")
             if self.fail_on_error:
                 raise
-            return {"return": 1, "error": str(e)}
+            return {"return": 1, "error": f'internal error "{e}" in {__name__}'}
 
     # ------------------------------------------------------------------
     # PUBLIC ASYNC GET
@@ -447,7 +448,6 @@ class Packages:
         use_cache=True,
         allow_install=None,
         con=False,
-        state=None,
     ):
         try:
             import asyncio
@@ -499,15 +499,15 @@ class Packages:
                 with self.cache_lock:
                     self.cache[key] = result
 
-            if state is not None and type(state) == dict:
-                deps = state.setdefault('deps', {})
-                deps[f'python-{name}'] = {'package': result}
+            deps_name = 'python-' + name
+            dep = self.deps.setdefault(deps_name, {})
+            dep['package'] = result
 
             ### RETURN #############################################################
             return {"return": 0, "package": result}
 
         except Exception as e:
-            self.log("error", f"[async] {e}")
+            self.log("error", f"[async] {e} in {__name__}")
             if self.fail_on_error:
                 raise
-            return {"return": 1, "error": str(e)}
+            return {"return": 1, "error": f'internal error "{e}" in {__name__}'}
