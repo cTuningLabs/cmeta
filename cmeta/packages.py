@@ -350,6 +350,7 @@ class Packages:
         use_cache=True,
         allow_install=None,
         con=False,
+        state=None,
     ):
         """Get or install a Python package synchronously.
         
@@ -379,6 +380,7 @@ class Packages:
             if use_cache:
                 with self.cache_lock:
                     if key in self.cache:
+                        ### RETURN #############################################################
                         return {"return": 0, "package": self.cache[key]}
 
             module = self.try_import(name)
@@ -414,6 +416,12 @@ class Packages:
                 with self.cache_lock:
                     self.cache[key] = result
 
+            if state is not None and type(state) == dict:
+                deps = state.setdefault('deps', {})
+                deps[f'python-{name}'] = {'package': result}
+
+
+            ### RETURN #############################################################
             return {"return": 0, "package": result}
 
         except Exception as e:
@@ -439,6 +447,7 @@ class Packages:
         use_cache=True,
         allow_install=None,
         con=False,
+        state=None,
     ):
         try:
             import asyncio
@@ -454,6 +463,7 @@ class Packages:
             if use_cache:
                 with self.cache_lock:
                     if key in self.cache:
+                        ### RETURN #############################################################
                         return {"return": 0, "package": self.cache[key]}
 
             module = await asyncio.to_thread(self.try_import, name)
@@ -489,6 +499,11 @@ class Packages:
                 with self.cache_lock:
                     self.cache[key] = result
 
+            if state is not None and type(state) == dict:
+                deps = state.setdefault('deps', {})
+                deps[f'python-{name}'] = {'package': result}
+
+            ### RETURN #############################################################
             return {"return": 0, "package": result}
 
         except Exception as e:
