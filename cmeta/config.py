@@ -39,6 +39,8 @@ cfg = {
         "env_var_cmeta_debug": "CMETA_DEBUG",
         "env_var_internal_repo_path": "CMETA_INTERNAL_REPO_PATH",
         "env_var_cmeta_verbose": "CMETA_VERBOSE",
+        "env_var_cmeta_authors": "CMETA_AUTHORS",
+        "env_var_cmeta_copyright": "CMETA_COPYRIGHT",
         
         "repos_config_filename": "repos.json",
         "repos_dir": "repos",

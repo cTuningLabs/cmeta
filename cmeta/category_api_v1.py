@@ -734,6 +734,16 @@ class Category(InitCategory):
 
             cmeta['tags'] = meta_tags
 
+        if 'creation_timestamp' not in cmeta:
+            from datetime import datetime, timezone
+            cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
+
+        if 'authors' not in cmeta and os.environ.get(self.cm.cfg['env_var_cmeta_authors'], '') != '':
+            cmeta['authors'] = os.environ[self.cm.cfg['env_var_cmeta_authors']]
+
+        if 'copyright' not in cmeta and os.environ.get(self.cm.cfg['env_var_cmeta_copyright'], '') != '':
+            cmeta['copyright'] = os.environ[self.cm.cfg['env_var_cmeta_copyright']]
+
         # Save meta
         if not virtual:
             tmp_cmeta_filename = cmeta_filename_yaml if yaml else cmeta_filename_json
