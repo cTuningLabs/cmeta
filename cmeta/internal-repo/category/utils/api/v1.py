@@ -596,6 +596,107 @@ class Category(InitCategory):
         return result
 
 
+    ############################################################
+    def artifacts_(self, state, arg1 = None, arg2 = None, skip_categories = None, func = None, func_params = {}):
+        """
+        Analyze all artifacts for all categories
+
+        arg1: categories
+        arg2: artifacts
+        top_num: number of top artifacts to show in rankings (default: 30)
+        slow: if False (default), use cached results when artifact hasn't changed; if True, always perform deep analysis
+
+        @base.find_
+        """
+
+        import time
+        from datetime import datetime
+
+        start_time = time.time()
+
+        con = state.get('control',{}).get('con', False)
+
+        if skip_categories is None:
+            skip_categories = ['repo', 'log', 'result']
+
+        # First, find all categories
+        p = {'category': 'category',
+             'command':'find',
+             'arg1': arg1}     
+        
+        r = self.cm.access(p)
+        if r['return']>0: return r
+
+        categories = r.get('artifacts', [])
+        
+        if con:
+            print (f'Found {len(categories)} categories')
+            print ('')
+
+        all_artifacts = []
+        num = 0
+
+        # Process artifacts for each category
+        for category in categories:
+            category_cmeta = category['cmeta']
+            category_cmeta_ref_parts = category['cmeta_ref_parts']
+            
+            category_alias = category_cmeta_ref_parts.get('artifact_alias')
+            category_uid = category_cmeta_ref_parts['artifact_uid']
+
+            if category_alias in skip_categories:
+                continue
+
+            if con:
+                print ('-'*50)
+                print (f'Processing category: {category_alias},{category_uid}')
+                print ('')
+
+            p = {'category':category_uid,
+                 'command': 'find',
+                 'arg1': arg2}
+            
+            r = self.cm.access(p)
+            if r['return']>0 and r['return']!=16 : return r
+
+            artifacts = r.get('artifacts', [])
+            if len(artifacts)>0:
+                all_artifacts.extend(artifacts)
+
+                for artifact in artifacts:
+                    num += 1
+                    path = artifact['path']
+
+                    if os.path.isdir(path):
+
+                        mtime = os.path.getmtime(path)
+                        modified_dt = datetime.fromtimestamp(mtime)
+
+                        if con:
+                            print ('='*80)
+                            print (f' Artifact:      {num}')
+                            print (f' Path:          {path}')
+                            print (f' Last modified: {modified_dt}')
+
+
+                        if func is not None:
+                            r = func(artifact, num, func_params)
+                            if r['return']>0: return r
+
+                if con and num > 0:
+                    print ('')
+
+        elapsed_time = time.time() - start_time
+
+        if con:
+            print ('*'*80)
+            print (f'Total artifacts: {num}')
+            print (f'Elasped time:    {elapsed_time:.1f} seconds')
+
+        return {'return':0, 'artifacts': all_artifacts, 'elapsed_time': elapsed_time}
+
+
+
 ###################################################################################################
 def _extract_category_artifact(s: str) -> str:
     import re

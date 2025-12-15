@@ -1244,3 +1244,25 @@ def get_latest_modification_time(path):
 
     return {'return':0, 'last': modified_dt}
 
+
+
+##########################################################################################
+def get_creation_time(path):
+    """
+    """
+
+    import sys
+    from datetime import datetime
+
+    stat = os.stat(path)
+
+    # Windows: true creation time
+    if sys.platform.startswith("win"):
+        return datetime.fromtimestamp(stat.st_ctime)
+
+    # macOS / BSD: true birth time
+    if hasattr(stat, "st_birthtime"):
+        return datetime.fromtimestamp(stat.st_birthtime)
+
+    # Linux fallback: last content modification time
+    return datetime.fromtimestamp(stat.st_mtime)
