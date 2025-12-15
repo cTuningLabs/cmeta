@@ -159,12 +159,12 @@ class Repos:
 
         # If needed, delete the original one before adding the new/updated one
         if original_alias is not None:
-            lowercase_artifact_alias = original_alias.lower()
-            lowercase_alias_uids = lowercase_aliases.get(lowercase_artifact_alias, [])
+            artifact_alias_lowercase = original_alias.lower()
+            lowercase_alias_uids = lowercase_aliases.get(artifact_alias_lowercase, [])
             if original_uid in lowercase_alias_uids:
                 lowercase_alias_uids.remove(original_uid)
                 if len(lowercase_alias_uids) == 0:
-                    del(lowercase_aliases[lowercase_artifact_alias])
+                    del(lowercase_aliases[artifact_alias_lowercase])
 
         if original_uid is not None and original_uid in uids:
             del(uids[original_uid])
@@ -175,13 +175,13 @@ class Repos:
         uids[artifact_uid] = record
 
         if artifact_alias is not None: 
-            lowercase_artifact_alias = artifact_alias.lower()
+            artifact_alias_lowercase = artifact_alias.lower()
 
-            lowercase_alias_uids = lowercase_aliases.get(lowercase_artifact_alias, [])
+            lowercase_alias_uids = lowercase_aliases.get(artifact_alias_lowercase, [])
 
             if artifact_uid not in lowercase_alias_uids:
                 lowercase_alias_uids.append(artifact_uid)
-                lowercase_aliases[lowercase_artifact_alias] = lowercase_alias_uids
+                lowercase_aliases[artifact_alias_lowercase] = lowercase_alias_uids
 
         # Use atomic write to avoid corrupting large index files
         r = utils.files.safe_write_file(index_file, index_data, file_lock=index_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
@@ -195,13 +195,13 @@ class Repos:
 
 
     ###################################################################################################
-    def remove_from_index(self, index_file, artifact_uid, lowercase_artifact_alias):
+    def remove_from_index(self, index_file, artifact_uid, artifact_alias_lowercase):
         """Remove an artifact from the repository index.
         
         Args:
             index_file: Path to index file.
             artifact_uid: UID of artifact to remove.
-            lowercase_artifact_alias: Lowercase alias of artifact to remove from alias index.
+            artifact_alias_lowercase: Lowercase alias of artifact to remove from alias index.
             
         Returns:
             dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
@@ -216,13 +216,13 @@ class Repos:
             index_data = r['data']
             index_file_lock = r['file_lock']
 
-        if lowercase_artifact_alias is not None:
+        if artifact_alias_lowercase is not None:
             lowercase_aliases = index_data.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
-            lowercase_alias_uids = lowercase_aliases.get(lowercase_artifact_alias, [])
+            lowercase_alias_uids = lowercase_aliases.get(artifact_alias_lowercase, [])
             if artifact_uid in lowercase_alias_uids:
                 lowercase_alias_uids.remove(artifact_uid)
                 if len(lowercase_alias_uids) == 0:
-                    del(lowercase_aliases[lowercase_artifact_alias])
+                    del(lowercase_aliases[artifact_alias_lowercase])
 
         uids = index_data.setdefault(self.KEY_INDEX_UIDS, {})
 
@@ -279,7 +279,7 @@ class Repos:
             artifact_uids.append(artifact_uid)
 
         elif artifact_alias is not None and artifact_alias != "":
-            lowercase_artifact_alias = artifact_alias.lower()
+            artifact_alias_lowercase = artifact_alias.lower()
             if '*' in artifact_alias or '?' in artifact_alias:
                 check_artifact_uids = list(index.get(self.KEY_INDEX_UIDS, {}).keys())
 
@@ -295,15 +295,15 @@ class Repos:
                         if not skip_uids and lowercase_alias == '':
                             lowercase_alias = artifact_uid
 
-                    if fnmatch.fnmatch(lowercase_alias, lowercase_artifact_alias):
+                    if fnmatch.fnmatch(lowercase_alias, artifact_alias_lowercase):
                         artifact_uids.append(artifact_uid)
             else:
-                if lowercase_artifact_alias not in index.get(self.KEY_INDEX_LOWERCASE_ALIASES, {}):
+                if artifact_alias_lowercase not in index.get(self.KEY_INDEX_LOWERCASE_ALIASES, {}):
                     # We should not be failing below even on debug to handle multiple-search - we need to handle aggregated search results
                     x_artifact_alias = "artifacts" if artifact_alias == '' or artifact_alias == None or artifact_alias == '*' else f'"{artifact_alias}"'
                     return _error(f'{category_alias} {x_artifact_alias} not found', 16, None, False) #self.fail_on_error)
 
-                artifact_uids.extend(index[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_artifact_alias])
+                artifact_uids.extend(index[self.KEY_INDEX_LOWERCASE_ALIASES][artifact_alias_lowercase])
 
         else:
             artifact_uids = list(index.get(self.KEY_INDEX_UIDS, {}).keys())
@@ -1136,7 +1136,7 @@ class Repos:
                 if artifact_alias is None or artifact_alias == '':
                     artifact_alias = '*'
 
-                lowercase_artifact_alias = artifact_alias.lower()
+                artifact_alias_lowercase = artifact_alias.lower()
                 
                 if '*' in artifact_alias or '?' in artifact_alias:
                     if sharding_slices is not None:
@@ -1159,7 +1159,7 @@ class Repos:
 
                     if os.path.isdir(path_to_category_with_shard):
                         for artifact_dir in os.listdir(path_to_category_with_shard):
-                            if artifact_dir.lower() == lowercase_artifact_alias:
+                            if artifact_dir.lower() == artifact_alias_lowercase:
                                 tmp_dir = artifact_dir if last_artifact_dirs_parent is None else os.path.join(last_artifact_dirs_parent, artifact_dir)
                                 tmp_artifact_dirs.append(tmp_dir)
                                 break
@@ -1314,10 +1314,10 @@ def _get_artifacts_from_sharded_path(base_path, slices, artifact_alias=None):
         return []
     
     # Normalize artifact_alias for case-insensitive matching
-    lowercase_artifact_alias = None
+    artifact_alias_lowercase = None
     use_wildcard = False
     if artifact_alias is not None:
-        lowercase_artifact_alias = artifact_alias.lower()
+        artifact_alias_lowercase = artifact_alias.lower()
         use_wildcard = '*' in artifact_alias or '?' in artifact_alias
     
     # Calculate total depth from slices
@@ -1352,12 +1352,12 @@ def _get_artifacts_from_sharded_path(base_path, slices, artifact_alias=None):
                 final_name = dirname.lower()
                 
                 # Filter by artifact_alias if provided
-                if lowercase_artifact_alias is not None:
+                if artifact_alias_lowercase is not None:
                     if use_wildcard:
-                        if not fnmatch.fnmatch(final_name, lowercase_artifact_alias):
+                        if not fnmatch.fnmatch(final_name, artifact_alias_lowercase):
                             continue
                     else:
-                        if final_name != lowercase_artifact_alias:
+                        if final_name != artifact_alias_lowercase:
                             continue
                 
                 # Build relative path

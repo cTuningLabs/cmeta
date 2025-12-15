@@ -1,4 +1,7 @@
-﻿cMeta (0.13.0):
+﻿cMeta (0.14.0):
+  * Fixed bug in mixed case artifact handling
+
+cMeta (0.13.0):
   * Added state['deps'] for python packages
 
 cMeta (0.12.0):

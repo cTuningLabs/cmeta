@@ -760,9 +760,9 @@ class Category(InitCategory):
 
             if artifact_alias is not None: 
                 cmeta_ref_parts['artifact_alias'] = artifact_alias
-                lowercase_artifact_alias = artifact_alias.lower()
-                if lowercase_artifact_alias != artifact_alias:
-                    cmeta_ref_parts['lowercase_artifact_alias'] = lowercase_artifact_alias
+                artifact_alias_lowercase = artifact_alias.lower()
+                if artifact_alias_lowercase != artifact_alias:
+                    cmeta_ref_parts['artifact_alias_lowercase'] = artifact_alias_lowercase
 
             cmeta_ref_parts['artifact_uid'] = artifact_uid
 
