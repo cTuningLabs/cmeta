@@ -309,7 +309,18 @@ def main_cx() -> int:
     caller = "cx"
     return main()
 
-def main() -> int:
+def main_cserver() -> int:
+    """Entry point for the 'cserver' command-line interface.
+    
+    Returns:
+        int: Exit code (0 for success, non-zero for errors).
+    """
+
+    args = ['app', 'run', 'cserver'] + sys.argv[1:]
+
+    return main(args = args)
+
+def main(args = None) -> int:
     """Main function for CLI entry point. Processes sys.argv and calls CMeta.
     
     Parses command-line arguments from sys.argv, processes them through the CMeta
@@ -322,7 +333,10 @@ def main() -> int:
     if caller is None:
         caller = os.path.basename(sys.executable) + f" -m {__package__}"
 
-    result = process(sys.argv[1:])
+    if args is None:
+        args = sys.argv[1:]
+
+    result = process(args)
 
     result_code = catch(result)
 

@@ -122,3 +122,30 @@ def download(
 
     return {'return': 0, 'filename': filename, 'path': target_path, 'size': downloaded}
 
+
+##################################################################################################
+async def unify_request(request):
+    """
+    """
+
+    # Get query parameters
+    query_params = dict(request.query_params)
+
+    body_dict = {}
+
+    headers = request.headers
+
+    api_key = None
+    username = None
+
+    if request.method == "POST":
+        try:
+           body_dict = await request.json()
+        except Exception as e:
+           return {'return':99, 'error':format(e)}
+
+        query = {**query_params, **body_dict}
+    else:
+        query = query_params
+
+    return {'return':0, 'query': query}

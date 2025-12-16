@@ -449,8 +449,10 @@ def write_file(
         with open(filepath, mode, encoding=encoding, newline=set_newline) as f:
             if file_format == "json":
                 json.dump(data, f, indent=2, sort_keys=sort_keys)
+                f.write("\n")
             elif file_format == "yaml":
                 yaml.safe_dump(data, f, sort_keys=sort_keys)
+                f.write("\n")
             elif file_format == "pickle":
                 pickle.dump(data, f)
             else:
@@ -1266,3 +1268,11 @@ def get_creation_time(path):
 
     # Linux fallback: last content modification time
     return datetime.fromtimestamp(stat.st_mtime)
+
+##########################################################################################
+def quote_path(path):
+
+    if not path.startswith('"') and ' ' in path:
+        path = '"' + path + '"'
+
+    return path

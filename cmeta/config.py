@@ -41,6 +41,7 @@ cfg = {
         "env_var_cmeta_verbose": "CMETA_VERBOSE",
         "env_var_cmeta_authors": "CMETA_AUTHORS",
         "env_var_cmeta_copyright": "CMETA_COPYRIGHT",
+        "env_var_cmeta_server_info_url": "http://127.0.0.1:8004/far?hcref=",
         
         "repos_config_filename": "repos.json",
         "repos_dir": "repos",

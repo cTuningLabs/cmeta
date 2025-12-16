@@ -106,7 +106,7 @@ class Category(InitCategory):
 
             if url:
                 import urllib.parse
-                clipboard_text = f'http://localhost:3344/far-html/{urllib.parse.quote(cref, safe="")}'
+                clipboard_text = self.cm.cfg['env_var_cmeta_server_info_url'] + urllib.parse.quote(cref, safe="")
 
                 if con:
                     print ('')

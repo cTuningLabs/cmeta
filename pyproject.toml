@@ -48,13 +48,21 @@ async = [
     "asyncio",
 ]
 
-all = ["cmeta[dev,async]"]
+server = [
+    "fastapi",
+    "uvicorn",
+    "jinja2",
+    "cmeta[async]",
+]
+
+all = ["cmeta[dev,async,server]"]
 
 
 [project.scripts]
 cmeta = "cmeta.cli:main_cmeta"
 meta = "cmeta.cli:main_meta"
 cx = "cmeta.cli:main_cx"
+cserver = "cmeta.cli:main_cserver"
 
 [tool.setuptools.dynamic]
 version = {attr = "cmeta.version.__version__"}

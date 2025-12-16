@@ -184,7 +184,7 @@ class Category(InitCategory):
 
                                 rc = r['returncode']
                                 if rc != 0:
-                                    return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+                                    return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
 
 
                         else:
@@ -200,7 +200,7 @@ class Category(InitCategory):
 
                                 rc = r['returncode']
                                 if rc != 0:
-                                    return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+                                    return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
 
                             else:
                                 print ('')
@@ -213,7 +213,7 @@ class Category(InitCategory):
 
                                 rc = r['returncode']
                                 if rc != 0:
-                                    print (f'Warning: system command {cmd}" failed with exit code {rc}')
+                                    print (f'Warning: system command "{cmd}" failed with exit code {rc}')
 #                                    return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
 
 
@@ -298,7 +298,7 @@ class Category(InitCategory):
 
                     rc = r['returncode']
                     if rc != 0:
-                        return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+                        return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
 
                     if checkout is not None and checkout != '':
                         cmd = f'git checkout {checkout}'
@@ -312,7 +312,7 @@ class Category(InitCategory):
 
                         rc = r['returncode']
                         if rc != 0:
-                            return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+                            return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
                     
 
                 elif method == 'local_zip':

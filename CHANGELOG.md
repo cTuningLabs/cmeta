@@ -1,4 +1,8 @@
-﻿cMeta (0.14.0):
+﻿cMeta (0.15.0):
+  * Added cms - common meta server
+  * Added app run
+
+cMeta (0.14.0):
   * Fixed bug in mixed case artifact handling
 
 cMeta (0.13.0):
