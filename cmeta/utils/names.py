@@ -397,9 +397,9 @@ def restore_cmeta_ref(
     elif artifact:
         return _error(f"category is not present in cMeta ref {ref_parts} ", 1, None, fail_on_error)
     elif category:
-        return category
+        ref = f"{category}::"
     else:
-        return None
+        ref = None
 
     return {'return':0, 'ref':ref}
 
