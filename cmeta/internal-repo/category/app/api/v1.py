@@ -7,6 +7,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 import os
+import copy
 
 from cmeta.category import InitCategory
 
@@ -86,7 +87,8 @@ class Category(InitCategory):
 
         con = state.get('control',{}).get('con', False)
 
-        
+        env1 = env.copy()
+
         # Call base find function to find an artifact
         p = {'category':state['category'], 
              'command':'find',
@@ -104,8 +106,37 @@ class Category(InitCategory):
         artifact = artifacts[0]
 
         path = artifact['path']
-        cmeta = artifact['cmeta']
+        cmeta_orig = artifact['cmeta']
 
+        cmeta = copy.deepcopy(cmeta_orig)
+
+        # Check cfg
+        config_name = cmeta.get('config_name', '')
+        config_cmeta = {}
+        if config_name != '':
+            r = self.cm.access({'category': 'config,cc6bfe174be847ed',
+                                'command': 'get',
+                                'arg1': config_name})
+            if r['return']>0: return r
+
+            config_cmeta = r['artifact']['cmeta']
+
+            config_cmeta_vars = config_cmeta.get('vars', {})
+            cmeta = self.cm.utils.common.deep_merge(cmeta, config_cmeta, append_lists=True)
+
+            config_cmeta_env = config_cmeta.get('env', {})
+            if len(config_cmeta_env) >0:
+                env2 = env1.copy()
+                env1 = config_cmeta_env
+                env1 = self.cm.utils.common.deep_merge(env1, env2, append_lists=True)
+
+            config_cmeta_param = config_cmeta.get('param', {})
+            if len(config_cmeta_param) >0:
+                param1 = param
+                param = config_cmeta_param.copy()
+                param = self.cm.utils.common.deep_merge(param, param1, append_lists=True)
+
+            
         default_env = cmeta.get('default_env', {})
 
         if run_script is None or run_script == '':
@@ -140,14 +171,13 @@ class Category(InitCategory):
             cmd = f'. {path_to_run_script2}' 
 
 
-        envs = default_env.copy()
         if len(param)>0:
             param_env_prefix = cmeta.get('param_env_prefix', '')
             for p in param:
                 pp = param_env_prefix + p.upper()
-                envs[pp] = param[p]
+                env1[pp] = param[p]
 
-        r = self.cm.utils.sys.run(cmd, env=env, envs=envs, con=con, verbose=True)
+        r = self.cm.utils.sys.run(cmd, env=env1, envs=default_env, con=con, verbose=True)
         if r['return']>0: return r
 
         rc = r['returncode']
