@@ -1166,3 +1166,85 @@ class Category(InitCategory):
             print (r['artifact']['path'])
 
         return r
+
+    ############################################################
+    def set_(
+            self,
+            state: dict,             # cMeta state
+            arg1: str = None,        # Artifact alias or UID
+            tags: str = None,        # Tags to add to the artifact (for creation)
+            skip_uids: bool = False,  # Skip UIDs when using wildcards
+            yaml: bool = False,      # Save/output metadata as YAML instead of JSON
+            meta: dict = {},         # Initial metadata dictionary (for creation)
+            virtual: bool = False,   # Virtual artifact created only in index (for creation)
+            path: str = None,        # Use this path for artifact (for creation)
+            show_path: bool = False
+    ):
+        """
+        Set artifact meta. Update and read if exists, create and read if doesn't exist.
+
+        Args:
+            state (dict): cMeta state.
+            arg1 (str | None): Artifact alias or UID.
+            tags (str | list | None): Tags to add to the artifact (used during creation).
+            skip_uids (bool): Skip UIDs when using wildcards.
+            yaml (bool): Save/output metadata as YAML instead of JSON.
+            meta (dict): Initial metadata dictionary (used during creation).
+            virtual (bool): Virtual artifact created only in index (used during creation).
+            path (str | None): Use this path for artifact (used during creation).
+            show_path (bool): Print path instead of meta 
+
+        Returns:
+            dict: A cMeta dictionary with the following keys:
+                - **return** (int): 0 if success, >0 if error.
+                - **error** (str): Error message if `return > 0`.
+                - **artifact** (dict): Matched artifact.
+                - **cmeta** (dict): Artifact metadata.
+                - **created** (bool): True if artifact was created, False if it already existed.
+        """
+        
+        # Try to read the artifact first
+        con = state.get('control',{}).get('con', False)
+
+        import copy
+        state = copy.deepcopy(state)
+
+        state['control']['con'] = False
+
+        r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids)
+        
+        # If artifact exists, return it
+        created = False
+
+        if r['return'] == 0:
+            # Artifact doesn't exist, create it
+            r = self.update_(state, arg1, tags=tags, meta=meta)
+            if r['return'] > 0:
+                return r
+
+        else:
+            # If error is not "artifact not found", return the error
+            if r['return'] != 16:
+                return r
+            
+            # Artifact doesn't exist, create it
+            r = self.create_(state, arg1, tags=tags, meta=meta, yaml=yaml, virtual=virtual, path=path)
+            if r['return'] > 0:
+                return r
+
+            created = True
+            
+        # Read the newly created artifact
+        if con and not show_path:
+            state['control']['con'] = True
+
+        r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids, yaml=yaml)
+        if r['return'] > 0:
+            return r
+            
+        r['created'] = created
+
+        if con and show_path:
+            print (r['artifact']['path'])
+
+        return r
