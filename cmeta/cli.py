@@ -62,7 +62,6 @@ def process(
     # Parse CMD
     r = utils.parse_cmd(cmd, fail_on_error=fail_on_error)
     if r['return'] > 0: return r
-
     # Note that '-' in root keys will be replaced to '_' 
     # to be able to map them into Python variables ...
 

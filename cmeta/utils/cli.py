@@ -49,7 +49,7 @@ def parse_cmd(
     else:
         import copy
         cmd = copy.deepcopy(cmd)
-    
+
     # Initialize 
     params = {}
 

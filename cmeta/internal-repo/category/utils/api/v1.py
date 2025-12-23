@@ -712,9 +712,9 @@ def _extract_category_artifact(s: str) -> str:
     patterns = [
         (r'.*?\b([0-9a-fA-F]{16})\s*:\s*(.+)',  # trailing 16-hex before colon
          lambda g1, g2: f"{g1}::{g2.strip()}"),
-        (r'([\w.,\-\s"]+)::([\w.,\-\s"]+)',
+        (r'([\w.,\-@\s"]+)::([\w.,\-@\s"]+)',  # Added @ to character class
          lambda g1, g2: f"{g1}::{g2}"),
-        (r'([\w.,\-\s"]+):([\w.,\-\s"]+)',
+        (r'([\w.,\-@\s"]+):([\w.,\-@\s"]+)',  # Added @ to character class
          lambda g1, g2: f"{g1.split()[-1]}::{g2.split()[0]}"),
     ]
 
