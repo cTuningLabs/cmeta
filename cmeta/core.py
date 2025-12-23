@@ -386,6 +386,9 @@ class CMeta:
             str_category_api_ver = None if category_api_ver is None else str(category_api_ver)
 
             if base_command:
+                if category_meta.get('skip_base_category_commands', False):
+                    return {'return':1, 'error':'this category doesn\'t use base commands'}
+
                 if category_api_ver is not None and str_category_api_ver != '0':
                     base_category_api_module_ver = str_category_api_ver
                 elif inside_cli or str_category_api_ver == '0':
@@ -429,7 +432,7 @@ class CMeta:
                     return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self.fail_on_error)
 
             # Either base command or API file doesn't 
-            if base_category_api_module_ver is not None:
+            if base_category_api_module_ver is not None and not category_meta.get('skip_base_category_commands', False):
                 category_api_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'category_api_v{base_category_api_module_ver}.py')
                 if not os.path.isfile(category_api_path):
                     return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self.fail_on_error)

@@ -72,7 +72,7 @@ class Category(InitCategory):
         self,
         state,          # [dict] cMeta state object
         arg1,           # [str] Standard CID
-        ask = False     # [bool] If True, ask for CID in console
+        ask = False,    # [bool] If True, ask for CID in console
     ):
         """
         Find artifacts by standard CID
