@@ -72,6 +72,7 @@ class Category(InitCategory):
         self,
         state,          # [dict] cMeta state object
         arg1,           # [str] Standard CID
+        tags = None,    # [str] tags
         ask = False,    # [bool] If True, ask for CID in console
     ):
         """
@@ -97,7 +98,7 @@ class Category(InitCategory):
         if self.cm.debug:
             self.logger.debug(f"artifact_ref_parts={artifact_ref_parts}")
 
-        r = self.cm.repos.find(artifact_ref_parts)
+        r = self.cm.repos.find(artifact_ref_parts, tags=tags)
         if r['return']>0: return r
 
         artifacts = r['artifacts']
@@ -657,34 +658,34 @@ class Category(InitCategory):
                  'arg1': arg2}
             
             r = self.cm.access(p)
-            if r['return']>0 and r['return']!=16 : return r
+            if r['return']==0:
 
-            artifacts = r.get('artifacts', [])
-            if len(artifacts)>0:
-                all_artifacts.extend(artifacts)
+                artifacts = r.get('artifacts', [])
+                if len(artifacts)>0:
+                    all_artifacts.extend(artifacts)
 
-                for artifact in artifacts:
-                    num += 1
-                    path = artifact['path']
+                    for artifact in artifacts:
+                        num += 1
+                        path = artifact['path']
 
-                    if os.path.isdir(path):
+                        if os.path.isdir(path):
 
-                        mtime = os.path.getmtime(path)
-                        modified_dt = datetime.fromtimestamp(mtime)
+                            mtime = os.path.getmtime(path)
+                            modified_dt = datetime.fromtimestamp(mtime)
 
-                        if con:
-                            print ('='*80)
-                            print (f' Artifact:      {num}')
-                            print (f' Path:          {path}')
-                            print (f' Last modified: {modified_dt}')
+                            if con:
+                                print ('='*80)
+                                print (f' Artifact:      {num}')
+                                print (f' Path:          {path}')
+                                print (f' Last modified: {modified_dt}')
 
 
-                        if func is not None:
-                            r = func(artifact, num, func_params)
-                            if r['return']>0: return r
+                            if func is not None:
+                                r = func(artifact, num, func_params)
+                                if r['return']>0: return r
 
-                if con and num > 0:
-                    print ('')
+                    if con and num > 0:
+                        print ('')
 
         elapsed_time = time.time() - start_time
 
@@ -712,9 +713,9 @@ def _extract_category_artifact(s: str) -> str:
     patterns = [
         (r'.*?\b([0-9a-fA-F]{16})\s*:\s*(.+)',  # trailing 16-hex before colon
          lambda g1, g2: f"{g1}::{g2.strip()}"),
-        (r'([\w.,\-@\s"]+)::([\w.,\-@\s"]+)',  # Added @ to character class
-         lambda g1, g2: f"{g1}::{g2}"),
-        (r'([\w.,\-@\s"]+):([\w.,\-@\s"]+)',  # Added @ to character class
+        (r"([\w.,\-@'\s\"]+)::([\w.,\-@'\s\"]+)",  # Added ' to character class, already has ::
+         lambda g1, g2: f"{g1.strip()}::{g2.strip()}"),
+        (r"([\w.,\-@'\s\"]+):([\w.,\-@'\s\"]+)",  # Added ' to character class, single :
          lambda g1, g2: f"{g1.split()[-1]}::{g2.split()[0]}"),
     ]
 
