@@ -199,6 +199,7 @@ class Category(InitCategory):
             state: dict,                 # cMeta state
             arg1: str = None,            # Artifact alias or UID
             tags: str = None,            # Comma-separated string or iterable of tags to match
+            sort: bool = False,          # Sort by name
     ):
         """
         Find unique tags in artifacts.
@@ -238,7 +239,7 @@ class Category(InitCategory):
 
         artifacts = r['artifacts']
 
-        unique_tags = []
+        unique_tags = {}
 
         for artifact in artifacts:
             xtags = artifact['cmeta'].get('tags',[])
@@ -246,13 +247,19 @@ class Category(InitCategory):
             for xtag in xtags:
                 xtag = xtag.strip()
                 if xtag not in unique_tags:
-                    unique_tags.append(xtag)
-
-        unique_tags = sorted(unique_tags)
+                    unique_tags[xtag] = 0
+                unique_tags[xtag] += 1
 
         if con:
-            for utag in unique_tags:
-                print (utag)
+            if sort:
+                for utag in sorted(unique_tags):
+                    freq = unique_tags[utag]
+                    x = f'{utag} ({freq})'
+                    print (x)
+
+            else:
+                for k, v in sorted(unique_tags.items(), key=lambda item: item[1], reverse=True):
+                    print(f"{k} ({v})")
 
         return {'return':0, 'tags': unique_tags}
 
