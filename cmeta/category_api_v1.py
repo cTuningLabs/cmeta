@@ -194,6 +194,69 @@ class Category(InitCategory):
         return r
 
     ############################################################
+    def tags_(
+            self,
+            state: dict,                 # cMeta state
+            arg1: str = None,            # Artifact alias or UID
+            tags: str = None,            # Comma-separated string or iterable of tags to match
+    ):
+        """
+        Find unique tags in artifacts.
+
+        Args:
+            state (dict): cMeta state.
+            arg1 (str | None): Artifact alias or UID.
+            tags (str | list | None): Comma-separated string or iterable of tags to match.
+
+        Returns:
+            dict: A cMeta dictionary with the following keys:
+                - **return** (int): 0 if success, >0 if error.
+                - **error** (str): Error message if `return > 0`.
+                - **artifacts** (list): List of matched artifacts.
+        """
+
+        con = state['control'].get('con', False)
+
+        artifact_ref_parts = {}
+
+        if arg1 is not None:
+            r = utils.names.parse_cmeta_obj(arg1, key="artifact", fail_on_error = self.fail_on_error)
+            if r['return'] >0: return r
+            artifact_ref_parts.update(r['obj_parts'])
+
+        category_cmeta_ref_parts = state['category_artifact']['cmeta_ref_parts']
+        category_cmeta = state['category_artifact']['cmeta']
+
+        artifact_ref_parts['category_alias'] = category_cmeta_ref_parts['artifact_alias']
+        artifact_ref_parts['category_uid'] = category_cmeta_ref_parts['artifact_uid']
+
+        if self.cm.debug:
+            self.logger.debug(f"  self.cm.repos.tags({artifact_ref_parts})")
+
+        r = self.cm.repos.find(artifact_ref_parts, tags = tags)
+        if r['return']>0: return r
+
+        artifacts = r['artifacts']
+
+        unique_tags = []
+
+        for artifact in artifacts:
+            xtags = artifact['cmeta'].get('tags',[])
+
+            for xtag in xtags:
+                xtag = xtag.strip()
+                if xtag not in unique_tags:
+                    unique_tags.append(xtag)
+
+        unique_tags = sorted(unique_tags)
+
+        if con:
+            for utag in unique_tags:
+                print (utag)
+
+        return {'return':0, 'tags': unique_tags}
+
+    ############################################################
     def update_(
             self,
             state: dict,                 # cMeta state
