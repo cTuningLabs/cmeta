@@ -65,3 +65,20 @@ class Category(InitCategory):
         print (json.dumps(params, indent=2))
 
         return {'return':0}
+
+    ############################################################
+    def create(self, params):
+        """
+        Create experiment artifact
+
+        @base.create_
+        """
+        self.logger.debug("RUNNING experiment api v1 create")
+
+        p = self._prepare_input_from_params(params, base = False)
+
+        p['from_category'] = p['category']
+        p['category'] = 'utils,234ce5e3262e4d52'
+        p['command'] = 'create_artifact_with_date'
+
+        return self.cm.access(p)

@@ -277,12 +277,12 @@ class Category(InitCategory):
             replace: bool = False,       # Replace existing meta dictionary entirely
             ignore_errors: bool = False,  # Ignore errors when updating multiple artifacts
             create: bool = False,        # If artifact doesn't exist attempt to create
-            create_params: dict = {}     # Pass params to create function
+            create_params: dict = {},     # Pass params to create function
+            update_category: book = False,
     ):
         """
         Update artifact(s).
 
-        Args:
             state (dict): cMeta state.
             arg1 (str | None): cMeta artifact(s) with wildcards.
             tags (str | list | None): Prune artifacts by tags.
@@ -295,6 +295,7 @@ class Category(InitCategory):
             ignore_errors (bool): Ignore errors when updating multiple artifacts.
             create (bool): If artifact doesn't exist attempt to create.
             create_params (dict): Pass params to create function.
+            update_category (bool): Allow category update in meta
 
         Returns:
             dict: A cMeta dictionary with the following keys:
@@ -325,6 +326,10 @@ class Category(InitCategory):
 
         category_cmeta = state['category_artifact']['cmeta']
         no_index = category_cmeta.get('no_index', False)
+
+        ignore_root_keys = ['artifact']
+        if not update_category:
+            ignore_root_keys.append('category')
 
         for artifact in artifacts:
             updated = False
@@ -367,7 +372,7 @@ class Category(InitCategory):
                    if 'category' not in cmeta: cmeta['category'] = orig_category
 
                else:                                     
-                   cmeta = utils.common.deep_merge(cmeta, meta, append_lists=not replace_lists, ignore_root_keys=['artifact','category'])
+                   cmeta = utils.common.deep_merge(cmeta, meta, append_lists=not replace_lists, ignore_root_keys=ignore_root_keys)
 
 
                if new_tags is not None:
@@ -461,8 +466,9 @@ class Category(InitCategory):
             arg1: str = None,        # Artifact alias or UID
             tags: str = None,        # Optional tag filter
             extra: bool = False,     # Show extra info
-            skip_uids: bool = False,  # Skip UIDs when using wildcards
-            yaml: bool = False       # Output as YAML instead of JSON
+            skip_uids: bool = False, # Skip UIDs when using wildcards
+            yaml: bool = False,      # Output as YAML instead of JSON
+            load_files = [],         # Attempt to load files
     ):
         """
         Read artifact meta.
@@ -501,6 +507,21 @@ class Category(InitCategory):
 
         сmeta = artifact['cmeta']
 
+        result = {'return':0, 'artifact': artifact, 'cmeta': сmeta}
+
+        if len(load_files) > 0:
+            loaded_files = {}
+            path = artifact['path']
+            for filename in load_files:
+                file_path = os.path.join(path, filename)
+                loaded_files[filename] = {'path': file_path}
+                if os.path.isfile(file_path):
+                    r = self.cm.utils.files.safe_read_file(file_path, fail_on_error=self.fail_on_error)
+                    if r['return']>0: return r
+                    loaded_files[filename]['data'] = r['data']
+
+            result['loaded_files'] = loaded_files
+
         if con:
             data = artifact if extra else сmeta
 
@@ -511,7 +532,7 @@ class Category(InitCategory):
                 import json
                 print (json.dumps(data, indent=2, sort_keys=True))
         
-        return {'return':0, 'artifact': artifact, 'cmeta': сmeta}
+        return result
 
     ############################################################
     def delete_(
@@ -1175,7 +1196,8 @@ class Category(InitCategory):
             meta: dict = {},         # Initial metadata dictionary (for creation)
             virtual: bool = False,   # Virtual artifact created only in index (for creation)
             path: str = None,        # Use this path for artifact (for creation)
-            show_path: bool = False
+            show_path: bool = False,
+            load_files = [],
     ):
         """
         Get artifact meta. Read if exists, create and read if doesn't exist.
@@ -1208,7 +1230,7 @@ class Category(InitCategory):
             state = copy.deepcopy(state)
             state['control']['con'] = False
 
-        r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids)
+        r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids, load_files=load_files)
         
         # If artifact exists, return it
         if r['return'] == 0:
@@ -1226,7 +1248,7 @@ class Category(InitCategory):
                 return r
             
             # Read the newly created artifact
-            r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids, yaml=yaml)
+            r = self.read_(state, arg1, tags=tags, skip_uids=skip_uids, yaml=yaml, load_files=load_files)
             if r['return'] > 0:
                 return r
             

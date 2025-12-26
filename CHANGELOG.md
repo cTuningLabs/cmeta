@@ -1,4 +1,12 @@
-﻿cMeta (0.15.0):
+﻿cMeta (0.17.0):
+  * many updates
+  * added cx {category} read --load_files,=
+
+cMeta (0.16.0):
+  * Extended cx note create; cx work create; cx experiment create
+  * Extended cx config
+
+cMeta (0.15.0):
   * Added cms - common meta server
   * Added app run
 

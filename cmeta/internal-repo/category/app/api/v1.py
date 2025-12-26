@@ -119,7 +119,7 @@ class Category(InitCategory):
                                 'arg1': config_name})
             if r['return']>0: return r
 
-            config_cmeta = r['artifact']['cmeta']
+            config_cmeta = r['loaded_files']['data.json'].get('data', {})
 
             config_cmeta_vars = config_cmeta.get('vars', {})
             cmeta = self.cm.utils.common.deep_merge(cmeta, config_cmeta, append_lists=True)

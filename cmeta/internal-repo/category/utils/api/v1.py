@@ -434,7 +434,7 @@ class Category(InitCategory):
 
         # Write file with standard utf-8 encoding (without BOM)
         try:
-            with open(arg2, 'w', encoding='utf-8') as f:
+            with open(arg2, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(content)
         except Exception as e:
             return {'return':1, 'error':f'Failed to write file: {e}'}
@@ -455,7 +455,7 @@ class Category(InitCategory):
         meta = {},          # [dict] Merge this meta
     ):
         """
-        Convert entries in a path (arg1) by merging _cmeta.json or _cmeta.yaml with meta
+        Convert legacy CK/CM/CMX entries in a path (arg1) by merging _cmeta.json or _cmeta.yaml with meta
 
         Args:
             state (dict): cMeta state object.
@@ -596,7 +596,6 @@ class Category(InitCategory):
 
         return result
 
-
     ############################################################
     def artifacts_(self, state, arg1 = None, arg2 = None, skip_categories = None, func = None, func_params = {}):
         """
@@ -695,6 +694,102 @@ class Category(InitCategory):
             print (f'Elasped time:    {elapsed_time:.1f} seconds')
 
         return {'return':0, 'artifacts': all_artifacts, 'elapsed_time': elapsed_time}
+
+
+    ############################################################
+    def create_artifact_with_date(self, params):
+        """
+        Create artifact with date
+
+        @base.create_
+        """
+
+        from_category = params['from_category']
+
+        category_alias = from_category['artifact_alias']
+
+        self.logger.debug(f"From category: {category_alias}")
+
+        con = params['state']['control'].get('con', False)
+
+        from datetime import datetime
+        yyyymmdd = datetime.now().strftime("%Y%m%d")
+
+        p = self._prepare_input_from_params(params, base = True)
+
+        # Check config if need to do something with a path, i.e. open it with some application
+        r = self.cm.access({'category': 'config,cc6bfe174be847ed',
+                            'command': 'get',
+                            'arg1': self.cm.cfg['default_config_name']})
+        if r['return'] > 0: return r
+
+        loaded_files = r['loaded_files']
+
+        config_cmeta = loaded_files['data.json'].get('data', {})
+
+        key = f'{category_alias}'.replace('.','_') + '_create_cmd'
+        key2 = f'{category_alias}'.replace('.','_') + '_create_repo'
+
+        # Parse cMeta obj
+        arg1 = p.get('arg1')
+
+        r = self.cm.utils.names.parse_cmeta_obj(arg1)
+        if r['return'] > 0: return r
+
+        arg1_obj_parts = r['obj_parts']
+
+        alias = arg1_obj_parts.get('alias')
+        
+        if alias is None:
+            if con:
+                alias = input(f'Enter {category_alias} name: ')
+                alias = alias.strip()
+
+        if alias is None or alias == '':
+            alias = yyyymmdd
+        else:
+            if not (len(alias) >= 8 and alias[:8].isdigit()):
+                alias = yyyymmdd + '.' + alias
+
+        arg1_obj_parts['alias'] = alias
+
+        # Check target repo
+        repo_alias = arg1_obj_parts.get('repo_alias')
+        if repo_alias is None:
+            repo_alias = config_cmeta.get(key2)
+            if repo_alias is not None and repo_alias != '':
+                arg1_obj_parts['repo_alias'] = repo_alias
+
+        # Restore cMeta obj
+        r = self.cm.utils.names.restore_cmeta_obj(arg1_obj_parts)
+        if r['return'] > 0: return r
+
+        p['category'] = from_category
+        p['command'] = 'get'
+        p['arg1'] = r['obj']
+        p['con'] = False
+        del(p['from_category'])
+
+        # Create artifact
+        r = self.cm.access(p)
+        if r['return'] > 0: return r
+
+        path = r['artifact']['path']
+
+        if con:
+            print (f'Path to {category_alias}s: {path}')
+        
+        cmd = config_cmeta.get(key)
+
+        if cmd is not None and cmd != '':
+            cmd = cmd.replace('{path}', path)
+            if con:
+                print (f'Executing: {cmd}')
+            
+            os.system(cmd)
+
+        return r
+
 
 
 

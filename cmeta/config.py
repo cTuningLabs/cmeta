@@ -77,8 +77,9 @@ cfg = {
           "ls": "list",
           "load": "read",
           "cp": "copy",
-        }
+        },
 
+        "default_config_name": "default",
 }
 
 params_desc = [
