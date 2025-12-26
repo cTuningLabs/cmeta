@@ -792,6 +792,41 @@ class Category(InitCategory):
 
 
 
+    ############################################################
+    def access_ctuning_server_(self, state, params={}, headers={}, timeout=30):
+        """
+        Access cTuning server
+
+        """
+
+        con = state['control'].get('con', False)
+
+        # Check config if need to do something with a path, i.e. open it with some application
+        r = self.cm.access({'category': 'config,cc6bfe174be847ed',
+                            'command': 'get',
+                            'arg1': 'ctuning_server'})
+        if r['return'] > 0: return r
+
+        config_cmeta = r['loaded_files']['data.json'].get('data', {})
+
+        url = config_cmeta.get('url')
+        if url is None or url == '':
+            url = self.cm.cfg['default_ctuning_api']
+
+        if con:
+            print (f'Sending request to {url} ...')
+
+        r = self.cm.utils.net.access_api(url, params, headers, timeout)
+        if r['return']>0: return r
+
+        if con:
+            print ('')
+            import json
+            print (json.dumps(r, indent=2))
+
+        return r
+
+
 
 ###################################################################################################
 def _extract_category_artifact(s: str) -> str:
