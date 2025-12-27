@@ -15,10 +15,14 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 import uvicorn
 
 app = FastAPI()
+
+# Add session middleware (use a secure secret key in production)
+app.add_middleware(SessionMiddleware, secret_key="your-secret-key-here-change-in-production")
 
 script_path = os.path.abspath(__file__)
 home_dir = os.path.basename(os.path.dirname(script_path))
@@ -109,8 +113,8 @@ async def task_handler(request: Request, task: str):
             html_meta = {"message": r['error'], 'request': request}
             return templates.TemplateResponse('error.html', html_meta, status_code = 200)
         
-        # Store validated API key in request state
-        request.state.api_key = api_key
+        # Store validated API key in session
+        request.session['api_key'] = api_key
 
     url = str(request.url_for("task_handler", task=task)) + '?'
     url_server = str(request.url_for("home"))
@@ -164,8 +168,8 @@ async def task_files(request: Request, task: str, file_path: str):
 
     api_keys = cfg.get('api_keys', [])
     if len(api_keys)>0:
-        # Check if API key exists in request state and is valid
-        api_key = getattr(request.state, 'api_key', None)
+        # Check if API key exists in session and is valid
+        api_key = request.session.get('api_key')
         if api_key is None or api_key not in api_keys:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized access - invalid or missing API key")
 
