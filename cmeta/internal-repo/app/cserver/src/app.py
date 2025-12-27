@@ -21,8 +21,15 @@ import uvicorn
 
 app = FastAPI()
 
-# Add session middleware (use a secure secret key in production)
-app.add_middleware(SessionMiddleware, secret_key="your-secret-key-here-change-in-production")
+# Add session middleware with proper cookie settings
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key="cserver_secret_key_for_production",
+    session_cookie="cserver_session",
+    max_age=3600,  # 1 hour
+    same_site="lax",
+    https_only=False  # Set to True in production with HTTPS
+)
 
 script_path = os.path.abspath(__file__)
 home_dir = os.path.basename(os.path.dirname(script_path))
@@ -95,6 +102,7 @@ async def task_handler(request: Request, task: str):
 
     # Check if API KEYS
     api_keys = cfg.get('api_keys', [])
+    validated_api_key = None
     if len(api_keys)>0:
         err = ''
         api_key = query.get('api_key')
@@ -103,6 +111,8 @@ async def task_handler(request: Request, task: str):
         else:
             if api_key not in api_keys:
                 err = 'this api_key is not authorized'
+            else:
+                validated_api_key = api_key
 
         if err != '':
             r = {'return':1, 'error': err}
@@ -114,13 +124,17 @@ async def task_handler(request: Request, task: str):
             return templates.TemplateResponse('error.html', html_meta, status_code = 200)
         
         # Store validated API key in session
-        request.session['api_key'] = api_key
+        request.session['api_key'] = validated_api_key
 
     url = str(request.url_for("task_handler", task=task)) + '?'
     url_server = str(request.url_for("home"))
     url_server_js_script = url_server + 'static/js/cmeta_server.js'
     url_files = str(request.url_for("task_handler", task=task))
     if not url_files.endswith('/'): url_files += '/'
+    
+    # Add API key to file URLs if present
+    if validated_api_key:
+        url_files += f'?api_key={validated_api_key}'
 
     command = query.get('command', '')
     if command is None or command.strip() == '':
@@ -168,8 +182,17 @@ async def task_files(request: Request, task: str, file_path: str):
 
     api_keys = cfg.get('api_keys', [])
     if len(api_keys)>0:
-        # Check if API key exists in session and is valid
+        # Check if API key exists in session
         api_key = request.session.get('api_key')
+        
+        # If not in session, check query parameter as fallback
+        if api_key is None:
+            api_key = request.query_params.get('api_key')
+            if api_key is not None and api_key in api_keys:
+                # Store in session for future requests
+                request.session['api_key'] = api_key
+        
+        # Validate API key
         if api_key is None or api_key not in api_keys:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized access - invalid or missing API key")
 
@@ -220,7 +243,6 @@ async def task_files(request: Request, task: str, file_path: str):
 
     if media_type == 'text/html':
         html_meta={'request': request}
-
         return templates.TemplateResponse('task.html', html_meta, status_code = 200)
 
     return FileResponse(full_file_path, media_type=media_type)
