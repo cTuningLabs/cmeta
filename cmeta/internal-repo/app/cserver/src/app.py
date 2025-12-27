@@ -100,7 +100,7 @@ async def task_handler(request: Request, task: str):
 
     force_json = query.get('force_json', False)
 
-    # Check if API KEYS
+    # Check if API KEYS (very basic, native and insecure implementation just for testing)
     api_keys = cfg.get('api_keys', [])
     validated_api_key = None
     if len(api_keys)>0:
@@ -131,10 +131,6 @@ async def task_handler(request: Request, task: str):
     url_server_js_script = url_server + 'static/js/cmeta_server.js'
     url_files = str(request.url_for("task_handler", task=task))
     if not url_files.endswith('/'): url_files += '/'
-    
-    # Add API key to file URLs if present
-    if validated_api_key:
-        url_files += f'?api_key={validated_api_key}'
 
     command = query.get('command', '')
     if command is None or command.strip() == '':
