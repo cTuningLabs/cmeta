@@ -82,7 +82,10 @@ include = ["cmeta*"]
     "internal-repo/**/*.py",
     "internal-repo/**/*.bat",
     "internal-repo/**/*.sh",
-    "internal-repo/**/*.txt"
+    "internal-repo/**/*.txt",
+    "internal-repo/**/*.ico",
+    "internal-repo/**/*.js",
+    "internal-repo/**/*.html",
 ]
 
 [tool.setuptools.exclude-package-data]
