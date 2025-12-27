@@ -74,6 +74,48 @@ def deep_merge(
     return target
 
 ###################################################################################################
+def deep_remove(
+        target: dict,                   # Dictionary to remove keys/values from
+        source: dict                    # Dictionary specifying what to remove
+):
+    """
+    Recursively removes keys/values from target dictionary based on source dictionary.
+    
+    Args:
+        target (dict): The dictionary to remove keys/values from (modified in place).
+        source (dict): The dictionary specifying what to remove.
+                      - If value is a dict, recursively remove nested keys
+                      - If value is a list, remove list elements from target list
+                      - Otherwise, remove the entire key from target
+                      
+    Returns:
+        dict: The modified target dictionary
+    """
+    from collections.abc import Mapping
+
+    for key, value in source.items():
+        if key not in target:
+            continue
+            
+        if isinstance(value, Mapping) and isinstance(target[key], Mapping):
+            # Recursively remove from nested dictionaries
+            deep_remove(target[key], value)
+            # Remove the key if the nested dict is now empty
+            if not target[key]:
+                del target[key]
+        elif isinstance(value, list) and isinstance(target[key], list):
+            # Remove list elements that exist in source from target
+            target[key] = [item for item in target[key] if item not in value]
+            # Remove the key if the list is now empty
+            if not target[key]:
+                del target[key]
+        else:
+            # Remove the key entirely
+            del target[key]
+
+    return target
+
+###################################################################################################
 def safe_serialize_json(
         obj,                                    # Python object to serialize
         non_serializable_text: str = None       # Text for non-serializable objects

@@ -793,7 +793,7 @@ class Category(InitCategory):
 
 
     ############################################################
-    def access_ctuning_server_(self, state, query={}, headers={}, timeout=30, url=None, api_key=None):
+    def access_ctuning_server_(self, state, query={}, headers={}, timeout=30, url=None, api_key=None, files={}):
         """
         Access cTuning server
 
@@ -821,6 +821,12 @@ class Category(InitCategory):
         if api_key is not None and api_key != '':
             headers = copy.deepcopy(headers)
             headers['x-api-key'] = api_key
+
+        if len(files)>0:
+            r = self.cm.utils.files.files_encode(files)
+            if r['return']>0: return r
+
+            query['files_base64'] = r['files_base64']
 
         if con:
             print (f'Sending request to {url} ...')

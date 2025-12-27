@@ -792,7 +792,7 @@ def safe_read_file_via_cache(
         cache (dict): Dictionary to store cached data (modified in-place).
         timeout (int): Lock timeout for file operations.
         fail_on_error (bool): Whether to raise exceptions or return error dict.
-        logger: Optional logger for debug messages.
+        logger: Optional logger for debug messages
     
     Returns:
         Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'.
@@ -1037,7 +1037,7 @@ def zip_directory(
         output_path (str): Path where the zip file will be created.
         skip_directories (list | None): List of directory names to skip (e.g., ['.git', '__pycache__']).
         fail_on_error (bool): Whether to raise exceptions or return error dict.
-        logger: Logger instance for debug messages.
+        logger: Logger instance for debug messages
     
     Returns:
         Dict with 'return' (0=success, non-zero=error) and optional 'error'.
@@ -1276,3 +1276,44 @@ def quote_path(path):
         path = '"' + path + '"'
 
     return path
+
+##########################################################################################
+def files_encode(files):
+    """
+    files: list of file paths
+    returns: dict {filename: base64_string}
+    """
+    import base64
+
+    try:
+        files_base64 = {}
+
+        for path in files:
+            if os.path.isfile(path):
+                filename = os.path.basename(path)
+                with open(path, "rb") as f:
+                    data = f.read()
+                    files_base64[filename] = base64.b64encode(data).decode("utf-8")
+    except Exception as e:
+        return {'return':1, 'error': str(e)}
+
+    return {'return':0, 'files_base64': files_base64}
+
+##########################################################################################
+def files_decode(files_base64):
+    """
+    files_base64: dict {filename: base64_string}
+    returns: dict {filename: binary_bytes}
+    """
+    import base64
+
+    try:
+        files = {}
+
+        for filename, b64_data in files_base64.items():
+            files[filename] = base64.b64decode(b64_data)
+
+    except Exception as e:
+        return {'return':1, 'error': str(e)}
+
+    return {'return':0, 'files': files}
