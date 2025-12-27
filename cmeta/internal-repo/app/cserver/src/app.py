@@ -107,6 +107,9 @@ async def task_handler(request: Request, task: str):
         err = ''
         api_key = query.get('api_key')
         if api_key is None or api_key == '':
+            api_key = request.session.get('api_key')
+
+        if api_key is None or api_key == '':
             err = 'api_key must be present in the query'
         else:
             if api_key not in api_keys:
