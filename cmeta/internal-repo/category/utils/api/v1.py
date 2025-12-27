@@ -795,7 +795,7 @@ class Category(InitCategory):
 
 
     ############################################################
-    def access_ctuning_server_(self, state, params={}, headers={}, timeout=30, url=None):
+    def access_ctuning_server_(self, state, query={}, headers={}, timeout=30, url=None):
         """
         Access cTuning server
 
@@ -819,7 +819,7 @@ class Category(InitCategory):
         if con:
             print (f'Sending request to {url} ...')
 
-        r = self.cm.utils.net.access_api(url, params, headers, timeout)
+        r = self.cm.utils.net.access_api(url, query, headers, timeout)
         if r['return']>0: return r
 
         if con:
