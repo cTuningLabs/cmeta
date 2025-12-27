@@ -725,9 +725,7 @@ class Category(InitCategory):
                             'arg1': self.cm.cfg['default_config_name']})
         if r['return'] > 0: return r
 
-        loaded_files = r['loaded_files']
-
-        config_cmeta = loaded_files['data.json'].get('data', {})
+        config_cmeta = r['config_cmeta']
 
         key = f'{category_alias}'.replace('.','_') + '_create_cmd'
         key2 = f'{category_alias}'.replace('.','_') + '_create_repo'
@@ -795,11 +793,13 @@ class Category(InitCategory):
 
 
     ############################################################
-    def access_ctuning_server_(self, state, query={}, headers={}, timeout=30, url=None):
+    def access_ctuning_server_(self, state, query={}, headers={}, timeout=30, url=None, api_key=None):
         """
         Access cTuning server
 
         """
+
+        import copy
 
         con = state['control'].get('con', False)
 
@@ -809,12 +809,18 @@ class Category(InitCategory):
                             'arg1': 'ctuning_server'})
         if r['return'] > 0: return r
 
-        config_cmeta = r['loaded_files']['data.json'].get('data', {})
+        config_cmeta = r['config_cmeta']
 
         if url is None or url == '':
             url = config_cmeta.get('url')
             if url is None or url == '':
                 url = self.cm.cfg['default_ctuning_api']
+
+        if api_key is None or api_key == '':
+            api_key = config_cmeta.get('api_key')
+        if api_key is not None and api_key != '':
+            headers = copy.deepcopy(headers)
+            headers['x-api-key'] = api_key
 
         if con:
             print (f'Sending request to {url} ...')

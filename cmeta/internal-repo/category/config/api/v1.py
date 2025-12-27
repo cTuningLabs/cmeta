@@ -82,7 +82,11 @@ class Category(InitCategory):
         if 'load_files' not in p:
             p['load_files'] = ['data.json']
 
-        return self.cm.access(p)
+        r = self.cm.access(p)
+
+        r['config_cmeta'] = r.get('loaded_files',{}).get('data.json',{}).get('data', {})
+
+        return r
 
     ############################################################
     def get(self, params):
@@ -99,7 +103,11 @@ class Category(InitCategory):
         if 'load_files' not in p:
             p['load_files'] = ['data.json']
 
-        return self.cm.access(p)
+        r = self.cm.access(p)
+
+        r['config_cmeta'] = r.get('loaded_files',{}).get('data.json',{}).get('data', {})
+
+        return r
 
     ############################################################
     def show_(self, state, arg1):

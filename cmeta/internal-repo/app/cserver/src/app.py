@@ -32,6 +32,7 @@ app.mount('/static', StaticFiles(directory = home_dir_static), name="static")
 ##################################################################################################
 # Prepare cMeta
 from cmeta.core_async import CMetaAsync
+from cmeta import catch as cmeta_catch
 
 cpu_count = os.cpu_count()
 
@@ -39,7 +40,18 @@ max_workers = int (cpu_count * 0.8 + 0.5)
 
 cm = CMetaAsync(max_workers = max_workers, debug = False)
 
+##################################################################################################
+# Get configuration
 
+cfg = {}
+
+@app.on_event("startup")
+async def test_cmeta_repos():
+    global cm, cfg
+    r = await cm.access({'category':'config,cc6bfe174be847ed', 'command':'get', 'arg1':'cserver'})
+    if r['return'] > 0: cmeta_catch(r)
+
+    cfg = r['config_cmeta']
 
 ##################################################################################################
 @app.get("/")
@@ -75,6 +87,29 @@ async def task_handler(request: Request, task: str):
 
     query = r['query']
 
+    force_json = query.get('force_json', False)
+
+    # Check if API KEYS
+    api_keys = cfg.get('api_keys', [])
+    if len(api_keys)>0:
+        err = ''
+        api_key = query.get('api_key')
+        if api_key is None or api_key == '':
+            err = 'api_key must be present in the query'
+        else:
+            if api_key not in api_keys:
+                err = 'this api_key is not authorized'
+
+        if err != '':
+            r = {'return':1, 'error': err}
+
+            if force_json:
+               return JSONResponse(content = r)
+
+            html_meta = {"message": r['error'], 'request': request}
+            return templates.TemplateResponse('error.html', html_meta, status_code = 200)
+
+
     url = str(request.url_for("task_handler", task=task)) + '?'
     url_server = str(request.url_for("home"))
     url_server_js_script = url_server + 'static/js/cmeta_server.js'
@@ -99,6 +134,9 @@ async def task_handler(request: Request, task: str):
 
     r = await cm.access(cmeta_params)
     if r['return']>0: 
+        if force_json:
+            return JSONResponse(content = r)
+
         html_meta = {"message": r['error'], 'request': request}
         return templates.TemplateResponse('error.html', html_meta, status_code = 200)
 
@@ -109,14 +147,34 @@ async def task_handler(request: Request, task: str):
 
     html_meta['request'] = request
 
+    if force_json:
+        return JSONResponse(content = cm.utils.common.safe_serialize_json(r))
+
     return templates.TemplateResponse('task.html', html_meta, status_code = 200)
 
 ##################################################################################################
 @app.get("/{task}/{file_path:path}")
 async def task_files(request: Request, task: str, file_path: str):
+
     # Forbid relative paths
     if '..' in file_path or file_path.startswith('/') or file_path.startswith('\\'):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Relative paths are not allowed")
+
+    # Check if API KEYS
+    api_keys = cfg.get('api_keys', [])
+    if len(api_keys)>0:
+        err = ''
+        api_key = query.get('api_key')
+        if api_key is None or api_key == '':
+            err = 'api_key must be present in the query'
+        else:
+            if api_key not in api_keys:
+                err = 'this api_key is not authorized'
+
+        if err != '':
+            r = {'return':1, 'error': err}
+
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=err)
 
     task_name = f'cserver.{task}'
 
