@@ -840,3 +840,12 @@ class Category(InitCategory):
             print (json.dumps(r, indent=2))
 
         return r
+
+    ############################################################
+    def x(self, params):
+        """
+        Create artifact with date
+
+        @self.access_ctuning_server_
+        """
+        return self.access_ctuning_server_(**params)
