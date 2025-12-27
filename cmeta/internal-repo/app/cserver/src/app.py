@@ -108,7 +108,9 @@ async def task_handler(request: Request, task: str):
 
             html_meta = {"message": r['error'], 'request': request}
             return templates.TemplateResponse('error.html', html_meta, status_code = 200)
-
+        
+        # Store validated API key in request state
+        request.state.api_key = api_key
 
     url = str(request.url_for("task_handler", task=task)) + '?'
     url_server = str(request.url_for("home"))
@@ -160,21 +162,12 @@ async def task_files(request: Request, task: str, file_path: str):
     if '..' in file_path or file_path.startswith('/') or file_path.startswith('\\'):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Relative paths are not allowed")
 
-    # Check if API KEYS
     api_keys = cfg.get('api_keys', [])
     if len(api_keys)>0:
-        err = ''
-        api_key = query.get('api_key')
-        if api_key is None or api_key == '':
-            err = 'api_key must be present in the query'
-        else:
-            if api_key not in api_keys:
-                err = 'this api_key is not authorized'
-
-        if err != '':
-            r = {'return':1, 'error': err}
-
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=err)
+        # Check if API key exists in request state and is valid
+        api_key = getattr(request.state, 'api_key', None)
+        if api_key is None or api_key not in api_keys:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized access - invalid or missing API key")
 
     task_name = f'cserver.{task}'
 
@@ -205,7 +198,6 @@ async def task_files(request: Request, task: str, file_path: str):
         if not full_file_path.startswith(project_files_path):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid file path")
     except Exception as e:
-        logger.error(f"Path validation error: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file path")
 
     # Check if file exists
@@ -223,7 +215,7 @@ async def task_files(request: Request, task: str, file_path: str):
         media_type = 'application/octet-stream'
 
     if media_type == 'text/html':
-        html_meta['request'] = request
+        html_meta={'request': request}
 
         return templates.TemplateResponse('task.html', html_meta, status_code = 200)
 
