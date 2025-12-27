@@ -278,7 +278,7 @@ class Category(InitCategory):
             ignore_errors: bool = False,  # Ignore errors when updating multiple artifacts
             create: bool = False,        # If artifact doesn't exist attempt to create
             create_params: dict = {},     # Pass params to create function
-            update_category: book = False,
+            update_category: bool = False,
     ):
         """
         Update artifact(s).
