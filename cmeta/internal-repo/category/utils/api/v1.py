@@ -11,6 +11,8 @@ from cmeta.category import InitCategory
 
 from cmeta.utils import names
 
+from . import common
+
 class Category(InitCategory):
     """
     Various Utils
@@ -145,9 +147,9 @@ class Category(InitCategory):
             from urllib.parse import unquote
             cid = unquote(cid)
         elif cid is not None:
-            cid = _extract_category_artifact(cid) 
+            cid = common._extract_category_artifact(cid) 
         elif arg1 is not None:
-            cid = _extract_category_artifact(arg1) 
+            cid = common._extract_category_artifact(arg1) 
         else:
             return {'return':1, 'error': 'CID is not specified'}
 
@@ -793,7 +795,7 @@ class Category(InitCategory):
 
 
     ############################################################
-    def access_ctuning_server_(self, state, params={}, headers={}, timeout=30):
+    def access_ctuning_server_(self, state, params={}, headers={}, timeout=30, url=None):
         """
         Access cTuning server
 
@@ -809,9 +811,10 @@ class Category(InitCategory):
 
         config_cmeta = r['loaded_files']['data.json'].get('data', {})
 
-        url = config_cmeta.get('url')
         if url is None or url == '':
-            url = self.cm.cfg['default_ctuning_api']
+            url = config_cmeta.get('url')
+            if url is None or url == '':
+                url = self.cm.cfg['default_ctuning_api']
 
         if con:
             print (f'Sending request to {url} ...')
@@ -825,35 +828,3 @@ class Category(InitCategory):
             print (json.dumps(r, indent=2))
 
         return r
-
-
-
-###################################################################################################
-def _extract_category_artifact(s: str) -> str:
-    import re
-
-    # Remove leading/trailing whitespace and parentheses from the entire string
-    s = s.strip().strip('()')
-    
-    # 1) Specific case: ignore preceding words if a 16-hex token directly precedes ':'
-    # Example: "(in fursin website) Logos   f7458783a87400f1:79541da5b57f6591"
-    #          -> f7458783a87400f1::79541da5b57f6591
-    # 2) Already normalized with '::'
-    # 3) Single ':' -> normalize to '::'
-    patterns = [
-        (r'.*?\b([0-9a-fA-F]{16})\s*:\s*(.+)',  # trailing 16-hex before colon
-         lambda g1, g2: f"{g1}::{g2.strip()}"),
-        (r"([\w.,\-@'\s\"]+)::([\w.,\-@'\s\"]+)",  # Added ' to character class, already has ::
-         lambda g1, g2: f"{g1.strip()}::{g2.strip()}"),
-        (r"([\w.,\-@'\s\"]+):([\w.,\-@'\s\"]+)",  # Added ' to character class, single :
-         lambda g1, g2: f"{g1.split()[-1]}::{g2.split()[0]}"),
-    ]
-
-    for regex, builder in patterns:
-        match = re.search(regex, s)
-        if match:
-            g1 = match.group(1).strip()
-            g2 = match.group(2).strip()
-            return builder(g1, g2).replace('"', '')
-
-    return None
