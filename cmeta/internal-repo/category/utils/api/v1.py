@@ -685,6 +685,10 @@ class Category(InitCategory):
                                 r = func(artifact, num, func_params)
                                 if r['return']>0: return r
 
+                                add = r.get('add_to_artifact', {})
+                                if len(add)>0:
+                                    artifact['add'] = add 
+
                     if con and num > 0:
                         print ('')
 
