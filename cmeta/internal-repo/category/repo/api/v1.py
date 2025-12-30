@@ -221,6 +221,15 @@ class Category(InitCategory):
 
                             reindex= True
 
+                    if con:
+                        r = self.cm.utils.sys.get_disk_space(path=repo_path, nice=True, unit='GB')
+                        if r['return']>0: return r
+
+                        nice_free = r['nice_free']
+
+                        print ('')
+                        print (f'Free space in this repo: {nice_free}')
+
         ######################################################################################################################
         elif update or status:
             if con:
@@ -464,6 +473,14 @@ class Category(InitCategory):
 
 
 
+            if con:
+                r = self.cm.utils.sys.get_disk_space(path=path, nice=True, unit='GB')
+                if r['return']>0: return r
+
+                nice_free = r['nice_free']
+
+                print ('')
+                print (f'Free space in this repo: {nice_free}')
 
         ######################################################################################################################
         if reindex:
@@ -886,3 +903,53 @@ class Category(InitCategory):
         p['unplug'] = True
 
         return self.delete(p)
+
+    ###############################################################################################
+    def space(self, params):
+        """
+        Get space of a give repo
+        @self.find
+        """
+
+        state = params['state']
+        con = state.get('control',{}).get('con', False)
+
+        # Check if some repos exists
+        p = self._prepare_input_from_state(state, base = True)
+
+        p['command'] = 'find'
+        p['con'] = False
+
+        if 'arg1' in params:
+            p['arg1'] = params['arg1']
+
+        result = self.cm.access(p)
+        if result['return']>0: return result
+
+        artifacts = result['artifacts']
+
+        if len(artifacts)>0 and con:
+            print ('Free disk space for cMeta repositories:')
+            print ('')
+
+        for artifact in artifacts:
+            repo_path = artifact['path']
+
+            if os.path.isdir(repo_path):
+                cmeta_ref_parts = artifact['cmeta_ref_parts']
+
+                repo_alias = cmeta_ref_parts['artifact_alias']
+
+                r = self.cm.utils.sys.get_disk_space(path=repo_path, nice=True, unit='GB')
+                if r['return']>0: return r
+
+                artifact['space_info'] = r
+
+                nice_free = r['nice_free']
+
+                if con:
+                    x = f'{repo_alias} ({repo_path}): {nice_free}'
+                    print (x)
+
+
+        return result

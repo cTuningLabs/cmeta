@@ -930,6 +930,7 @@ def get_min_host_info(
         unit: str = "GB",           # Unit for memory size formatting
         con: bool = False,          # If True, print information to console
         line: int = 0,
+        self_time: bool = False,    # If True, print self-time
 ):
     """Get minimal host system information including CPU and memory.
     
@@ -1005,7 +1006,8 @@ def get_min_host_info(
     self_time = end_time - start_time
     nice_self_time = f"{self_time:.3f} sec."
 
-    x += f"Self time: {nice_self_time}\n"
+    if self_time:
+        x += f"Time to obtain system info: {nice_self_time}\n"
 
     if con:
         print (x)
@@ -1026,11 +1028,12 @@ def get_min_host_info(
 
 ##########################################################################################
 def get_disk_space(
-        path: str,              # Path to check disk space for
-        nice: bool = False,     # If True, return human-readable sizes
-        binary: bool = False,   # If True, use binary (1024) units
-        unit: str = None,       # Force specific unit for size formatting
+        path: str,                # Path to check disk space for
+        nice: bool = False,       # If True, return human-readable sizes
+        binary: bool = False,     # If True, use binary (1024) units
+        unit: str = None,         # Force specific unit for size formatting
         line: int = 0,
+        self_time: bool = False,  # If True, print self-time
 ):
     """Get disk space information for a given path.
     
@@ -1093,7 +1096,8 @@ def get_disk_space(
         self_time = end_time - start_time
         nice_self_time = f"{self_time:.3f} sec."
 
-        x += f"Self time: {nice_self_time}\n"
+        if self_time:
+            x += f"Time to obtain disk space: {nice_self_time}\n"
 
         result['string'] = x
 
