@@ -23,7 +23,7 @@ class Category(InitCategory):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
-    ############################################################
+    ###############################################################################################
     def get_(
             self, 
             state:                  dict,                # cMeta state.
@@ -347,6 +347,7 @@ class Category(InitCategory):
             ######################################################################################################################
             # Check if repository was created
             if os.path.isdir(path):
+                path = os.path.abspath(os.path.normpath(path))
                 # Try to read _cmr.yaml or create it (if already exists, to get correct artifact name and UID)
                 repo_meta_desc_path = os.path.join(path, self.cm.cfg['repo_meta_desc'])
 
@@ -372,6 +373,9 @@ class Category(InitCategory):
                     if r['return']>0: return r
                     repo_meta['category'] = r['name']
                     repo_updated = True
+
+                if repo_alias is None:
+                    repo_alias = os.path.basename(path)
 
                 final_repo_name = repo_meta.get('artifact')
                 if final_repo_name is None or final_repo_name == '':
@@ -473,6 +477,7 @@ class Category(InitCategory):
         return {'return':0}
 
 
+    ###############################################################################################
     def list__(self, params):
         """
         List cMeta repositories
@@ -489,6 +494,7 @@ class Category(InitCategory):
 
         return result
 
+    ###############################################################################################
     def create(self, params):
         """
         Create local cMeta repository
@@ -499,6 +505,7 @@ class Category(InitCategory):
         return self.get_(**params, local=True)
 
 
+    ###############################################################################################
     def update__(self, params):
         """
         Update cMeta Git repositories
@@ -509,6 +516,7 @@ class Category(InitCategory):
         return self.get_(**params, update=True)
 
 
+    ###############################################################################################
     def find(self, params):
         """
         Find cMeta repositories
@@ -525,16 +533,23 @@ class Category(InitCategory):
 
         return result
 
+    ###############################################################################################
     def delete(self, params):
         """
         Delete cMeta repositories
 
         @base.delete_
+
+        Args:
+            (unplug) (bool): if True, only unregister repository but don't delete!
+
         """
 
         state = params['state']
         con = state.get('control',{}).get('con', False)
         verbose = state.get('control',{}).get('verbose', False)
+
+        unplug = params.get('unplug', False)
 
         # Check if some repos exists
         p = self._prepare_input_from_state(state, base = True)
@@ -545,14 +560,18 @@ class Category(InitCategory):
         if 'arg1' in params:
             p['arg1'] = params['arg1']
 
-        r = self.cm.access(p)
-        if r['return']>0: return r
-
-        # Attempt to delete allowed ones
-        p = self._prepare_input_from_params(params, base = True)
-
         result = self.cm.access(p)
         if result['return']>0: return result
+
+        if unplug:
+            result['deleted_artifacts'] = result.pop('artifacts', [])
+
+        else:
+            # Attempt to delete allowed ones
+            p = self._prepare_input_from_params(params, base = True)
+
+            result = self.cm.access(p)
+            if result['return']>0: return result
 
         deleted_artifacts = result.get('deleted_artifacts', [])
 
@@ -590,6 +609,7 @@ class Category(InitCategory):
         return result
 
 
+    ###############################################################################################
     def move(self, params):
         """
         Move cMeta repositories - not supported
@@ -598,6 +618,7 @@ class Category(InitCategory):
         return {'return':1, 'error':'moving/renaming repositories is not supported'}
 
 
+    ###############################################################################################
     def get_alias_from_url_(self, state, arg1):
         """
         Get alias from URL
@@ -637,6 +658,7 @@ class Category(InitCategory):
         return {'return':0, 'alias':alias}
 
 
+    ###############################################################################################
     def status(self, params):
         """
         Update cMeta Git repositories
@@ -646,6 +668,7 @@ class Category(InitCategory):
 
         return self.get_(**params, status=True)
 
+    ###############################################################################################
     def pull(self, params):
         """
         Pull cMeta Git repositories
@@ -655,6 +678,7 @@ class Category(InitCategory):
 
         return self.get_(**params)
 
+    ###############################################################################################
     def clone(self, params):
         """
         Clone cMeta Git repositories
@@ -664,6 +688,7 @@ class Category(InitCategory):
 
         return self.get_(**params)
 
+    ###############################################################################################
     def checkout(self, params):
         """
         Checkout cMeta Git repositories
@@ -681,6 +706,7 @@ class Category(InitCategory):
 
         return self.get_(**copy_params, update=True, checkout = checkout)
 
+    ###############################################################################################
     def clone(self, params):
         """
         Clone cMeta Git repositories
@@ -690,6 +716,7 @@ class Category(InitCategory):
 
         return self.get_(**params, method='git')
 
+    ###############################################################################################
     def init(self, params):
         """
         Init local cMeta repository
@@ -699,6 +726,7 @@ class Category(InitCategory):
 
         return self.get_(**params, method='local')
 
+    ###############################################################################################
     def unzip(self, params):
         """
         Unzip local cMeta repository
@@ -714,6 +742,7 @@ class Category(InitCategory):
         return self.get_(**copy_params, zip_file=zip_file, method='local_zip')
 
 
+    ###############################################################################################
     def zip_(
             self,
             state:                  dict,                # cMeta state.
@@ -808,3 +837,52 @@ class Category(InitCategory):
             print(f'Repository successfully zipped to: {zip_path}')
 
         return {'return':0, 'zip_path': zip_path}
+
+    ###############################################################################################
+    def plug(self, params):
+        """
+        Plug local cMeta repository 
+        If arg1 is None, use current directory
+        If arg1 is not None:
+           If existing path -> use that path
+           If path does't exist, use as alias
+
+
+        @self.get_
+        """
+
+        arg1 = params.get('arg1', None)
+
+        if arg1 == '' or arg1 == '.':
+            arg1 = os.getcwd()
+
+        else:
+            arg1 = os.path.abspath(os.path.normpath(arg1))
+
+        p = params.copy()
+        p['arg1'] = None
+        p['local'] = True
+        p['path'] = arg1
+
+        return self.get_(**p)
+
+    ###############################################################################################
+    def unplug(self, params):
+        """
+        UnPlug local cMeta repository 
+        If arg1 is None, use current directory
+        If arg1 is not None:
+           If existing path -> use that path
+           If path does't exist, use as alias
+
+        @self.delete
+        """
+
+        arg1 = params.get('arg1', None)
+        if arg1 is None:
+            return {'return':1, 'error':'repo name is not specified'}
+
+        p = params.copy()
+        p['unplug'] = True
+
+        return self.delete(p)
