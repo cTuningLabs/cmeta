@@ -632,7 +632,7 @@ class Repos:
         to_update = False
 
         for path in original_paths_to_repos:
-            extra_meta = original_paths_to_repos[path].get('meta',{})
+            extra_meta = original_paths_to_repos[path].get('meta', {})
 
             if path.endswith('internal-repo') and os.path.normpath(path) != this_internal_repo_path:
                 path = this_internal_repo_path
@@ -653,6 +653,8 @@ class Repos:
                     repos_meta[path] = repo_meta
 
                     paths_to_repos[path] = {}
+                    if len(extra_meta)>0:
+                        paths_to_repos[path]['meta'] = extra_meta
 
         if to_update:
             # Do not sort keys - preserve order!

@@ -870,9 +870,8 @@ class Category(InitCategory):
 
         arg1 = params.get('arg1', None)
 
-        if arg1 == '' or arg1 == '.':
+        if arg1 is None or arg1 == '' or arg1 == '.':
             arg1 = os.getcwd()
-
         else:
             arg1 = os.path.abspath(os.path.normpath(arg1))
 
@@ -896,10 +895,21 @@ class Category(InitCategory):
         """
 
         arg1 = params.get('arg1', None)
-        if arg1 is None:
-            return {'return':1, 'error':'repo name is not specified'}
+
+        if arg1 is None or arg1 == '' or arg1 == '.':
+            # Attempt to detect in current
+            r = utils.common.detect_cid_in_the_current_directory(self.cm, debug = self.cm.debug, logger = self.cm.logger)
+            if r['return'] >0: return r
+
+            artifact_repo_alias = r['artifact_repo_alias']
+
+            if artifact_repo_alias is None or artifact_repo_alias == '':
+                return {'return':1, 'error':'couldn\'t detect repo in the current path'}
+
+            arg1 = artifact_repo_alias
 
         p = params.copy()
+        p['arg1'] = arg1
         p['unplug'] = True
 
         return self.delete(p)
