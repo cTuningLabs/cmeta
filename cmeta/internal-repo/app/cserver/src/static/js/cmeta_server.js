@@ -2,7 +2,7 @@
 
 JavaScript Functions to access cMeta server.
 
-Copyright (c) 2025 Grigori Fursin and cTuning Labs. 
+Copyright (c) 2025-2026 Grigori Fursin and cTuning Labs. 
 
 Apache License, Version 2.0.
 

@@ -1,7 +1,7 @@
 """
 cMeta docs functions
 
-cMeta author and developer: (C) 2025 Grigori Fursin
+cMeta author and developer: (C) 2025-2026 Grigori Fursin
 
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
