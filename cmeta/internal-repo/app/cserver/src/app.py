@@ -49,7 +49,10 @@ cpu_count = os.cpu_count()
 
 max_workers = int (cpu_count * 0.8 + 0.5)
 
-cm = CMetaAsync(max_workers = max_workers, debug = False)
+cm_debug = True if os.environ.get('CSERVER_CM_DEBUG', '').lower() in ['1', 'yes', 'true'] else False
+cm_print_host_info = True if os.environ.get('CSERVER_CM_PRINT_HOST_INFO', '').lower() in ['1', 'yes', 'true'] else False
+
+cm = CMetaAsync(max_workers = max_workers, debug = cm_debug, print_host_info = cm_print_host_info)
 
 ##################################################################################################
 # Get configuration
