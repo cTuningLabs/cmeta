@@ -619,7 +619,7 @@ class Category(InitCategory):
         con = state.get('control',{}).get('con', False)
 
         if skip_categories is None:
-            skip_categories = ['repo', 'log', 'result']
+            skip_categories = ['repo', 'log', 'result', 'cache']
 
         # First, find all categories
         p = {'category': 'category',

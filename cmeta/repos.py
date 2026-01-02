@@ -511,6 +511,18 @@ class Repos:
                 add_artifacts = []
 
                 if tags != None and len(tags)>0:
+                    # Split tags into inclusion and exclusion sets
+                    inclusion_tags = []
+                    exclusion_tags = []
+                    
+                    for tag in tags:
+                        tag_str = str(tag)
+                        if tag_str.startswith('-'):
+                            # Remove the '-' prefix and add to exclusion list
+                            exclusion_tags.append(tag_str[1:].lower())
+                        else:
+                            inclusion_tags.append(tag_str.lower())
+                    
                     for a in r['artifacts']:
                         cmeta = a['cmeta']
                         ctags = cmeta.get('tags', [])
@@ -521,7 +533,16 @@ class Repos:
                             cmeta_ref_parts_artifact_uid = cmeta_ref_parts['artifact_uid']
                             return {'return':1, 'error':f'tags are corrupted for artifact "{cmeta_ref_parts_artifact_alias},{cmeta_ref_parts_artifact_uid}"'}
 
-                        if all(str(tag).lower() in [str(ctag).lower() for ctag in ctags] for tag in tags):
+                        # Convert artifact tags to lowercase for comparison
+                        ctags_lower = [str(ctag).lower() for ctag in ctags]
+                        
+                        # Check if all inclusion tags are present
+                        has_all_inclusion = all(tag in ctags_lower for tag in inclusion_tags)
+                        
+                        # Check if none of the exclusion tags are present
+                        has_no_exclusion = not any(tag in ctags_lower for tag in exclusion_tags)
+                        
+                        if has_all_inclusion and has_no_exclusion:
                             add_artifacts.append(a)
 
                 else:
