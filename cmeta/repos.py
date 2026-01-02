@@ -538,11 +538,13 @@ class Repos:
                         
                         # Check if all inclusion tags are present
                         has_all_inclusion = all(tag in ctags_lower for tag in inclusion_tags)
-                        
+                        if not has_all_inclusion:
+                            continue
+
                         # Check if none of the exclusion tags are present
                         has_no_exclusion = not any(tag in ctags_lower for tag in exclusion_tags)
                         
-                        if has_all_inclusion and has_no_exclusion:
+                        if has_no_exclusion:
                             add_artifacts.append(a)
 
                 else:
