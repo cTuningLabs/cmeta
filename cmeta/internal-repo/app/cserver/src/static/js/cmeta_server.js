@@ -35,7 +35,15 @@ async function accessCT(api_url, dict, uploadInput) {
     }).then(response => {
       if (!response.ok)
         return {'return':127, 'error':'cMeta server API returned error: '+response.statusText};
-      return response.json();
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return response.json();
+      } else {
+        return response.text().then(html => {
+          return {'return':255, 'error':'cTuning server API error: fetched html instead of json', 'error_html':html};
+        });
+      }
     }).then(function (data) {
       output = data;
     }).catch(function(error) {
