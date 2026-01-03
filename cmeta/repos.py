@@ -413,7 +413,7 @@ class Repos:
         return {'return': 0, 'artifacts': artifacts}
 
     ###################################################################################################
-    def find(self, cmeta_ref, add_index_file=False, tags=None, skip_uids=False):
+    def find(self, cmeta_ref, add_index_file=False, tags=None, skip_uids=False, skip_non_indexed=False):
         """Find artifacts by cMeta reference.
         
         Args:
@@ -490,7 +490,7 @@ class Repos:
 
                 category_cmeta = category['cmeta']
 
-                if category_cmeta.get('no_index', False):
+                if category_cmeta.get('no_index', False) and not skip_non_indexed:
                     r = self.find_in_file_system(category_cmeta, category_alias, category_uid, artifact_alias, artifact_uid, repo_uids = artifact_repo_artifacts)
                     if r['return'] >0: 
                         if r['return'] == 16:

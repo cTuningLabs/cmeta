@@ -75,7 +75,10 @@ class Category(InitCategory):
         state,          # [dict] cMeta state object
         arg1,           # [str] Standard CID
         tags = None,    # [str] tags
+        far = False,        # [bool] If True, open FAR in found artifact
+        web = False,        # [bool] If True, remove cmeta:///? from CID (web request)
         ask = False,    # [bool] If True, ask for CID in console
+        skip_non_indexed = False,
     ):
         """
         Find artifacts by standard CID
@@ -92,6 +95,12 @@ class Category(InitCategory):
         if ask:
             arg1 = input('Enter CID: ')
 
+        if web and arg1.startswith('cmeta:///?'):
+            arg1 = arg1[10:]
+
+            from urllib.parse import unquote
+            arg1 = unquote(arg1)
+
         r = names.parse_cmeta_ref(arg1, fail_on_error = self.fail_on_error)
         if r['return']>0: return r
 
@@ -100,7 +109,7 @@ class Category(InitCategory):
         if self.cm.debug:
             self.logger.debug(f"artifact_ref_parts={artifact_ref_parts}")
 
-        r = self.cm.repos.find(artifact_ref_parts, tags=tags)
+        r = self.cm.repos.find(artifact_ref_parts, tags=tags, skip_non_indexed=skip_non_indexed)
         if r['return']>0: return r
 
         artifacts = r['artifacts']
@@ -110,6 +119,11 @@ class Category(InitCategory):
         if con:
             for artifact in artifacts:
                 print (artifact['path'])
+
+        path = artifacts[0]['path']
+
+        if far:
+            os.system(f'start far {path}')
 
         return r
 

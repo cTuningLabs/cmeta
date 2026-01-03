@@ -143,38 +143,37 @@ class Category(InitCategory):
             flat_cmeta = self.cm.utils.common.flatten_dict(config_cmeta)
             for k in sorted(flat_cmeta):
                 v = flat_cmeta[k]
-                print (f'var.{k}={v}')
+                print (f'--meta.{k}={v}')
 
         return r
 
     ############################################################
-    def set__(self, params):
+    def set_(self, 
+             state, 
+             arg1 = None,
+             meta = {},
+             load_files = None,
+             unset = False,
+        ):
         """
-        Set vars in params
+        Set keys in configuration artifacts
 
-        @base.create_
+        @base.get_
         """
 
         import copy
 
-        state = params['state']
-
         con = state['control'].get('con', False)
-
-        update_meta = copy.deepcopy(params.get('meta', {}))
-        update_vars = copy.deepcopy(params.get('var', {}))
-
-        update_meta = self.cm.utils.common.deep_merge(update_meta, update_vars, append_lists=True)
 
         p = {
            'category':state['category'],
-           'arg1':params.get('arg1')
+           'arg1':arg1
         }
 
-        if 'load_files' in params:
-            p['load_files'] = params['load_files']
+        if load_files is not None:
+            p['load_files'] = load_files
 
-        if len(update_meta) == 0:
+        if len(meta) == 0:
             p['command'] = 'show'
             p['con'] = con
         else:
@@ -183,7 +182,7 @@ class Category(InitCategory):
         r = self.cm.access(p)
         if r['return']>0: return r
 
-        if len(update_meta)>0:
+        if len(meta)>0:
             loaded_files = r['loaded_files']
 
             config_file_dict = loaded_files.get('data.json',{})
@@ -202,79 +201,26 @@ class Category(InitCategory):
                 config_file_lock = r['file_lock']
             
             # Update with update_meta
-            config_data = self.cm.utils.common.deep_merge(config_data, update_meta, append_lists=False)
+            if unset:
+                config_data = self.cm.utils.common.deep_remove(config_data, meta)
+            else:
+                config_data = self.cm.utils.common.deep_merge(config_data, meta, append_lists=False)
 
             # Save and release lock
             r = utils.files.safe_write_file(path, config_data, file_lock=config_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
             if r['return']>0: return r
 
-            if con:
-                print(f'Configuration updated in: {path}')
+            rx = self.cm.access({'category':state['category'], 'command':'show', 'arg1':arg1, 'con':con})
+            if rx['return']>0: return rx
 
         return r
 
     ############################################################
     def unset(self, params):
         """
-        Unset vars in params (including lists)
+        Unset (delete) keys in configuration artifacts
 
-        @base.create_
+        @self.set_
         """
 
-        import copy
-
-        state = params['state']
-
-        con = state['control'].get('con', False)
-
-        update_meta = copy.deepcopy(params.get('meta', {}))
-        update_vars = copy.deepcopy(params.get('var', {}))
-
-        update_meta = self.cm.utils.common.deep_merge(update_meta, update_vars, append_lists=True)
-
-        p = {
-           'category':state['category'],
-           'arg1':params.get('arg1')
-        }
-
-        if 'load_files' in params:
-            p['load_files'] = params['load_files']
-
-        if len(update_meta) == 0:
-            p['command'] = 'show'
-            p['con'] = con
-        else:
-            p['command'] = 'get'
-
-        r = self.cm.access(p)
-        if r['return']>0: return r
-
-        if len(update_meta)>0:
-            loaded_files = r['loaded_files']
-
-            config_file_dict = loaded_files.get('data.json',{})
-
-            path = config_file_dict['path']
-
-            # Load with lock
-            r = utils.files.safe_read_file(path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
-            if r['return']>0: 
-                if r['return']!=16: return r
-
-                config_data = {}
-                config_file_lock = None
-            else:
-                config_data = r['data']
-                config_file_lock = r['file_lock']
-            
-            # Remove keys from config_data
-            config_data = self.cm.utils.common.deep_remove(config_data, update_meta)
-
-            # Save and release lock
-            r = utils.files.safe_write_file(path, config_data, file_lock=config_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
-            if r['return']>0: return r
-
-            if con:
-                print(f'Configuration updated in: {path}')
-
-        return r
+        return self.set_(**params, unset=True)

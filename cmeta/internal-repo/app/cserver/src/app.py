@@ -133,6 +133,7 @@ async def task_handler(request: Request, task: str):
         request.session['api_key'] = validated_api_key
 
     url = str(request.url_for("task_handler", task=task)) + '?'
+    url2 = str(request.url_for("home"))
     url_server = str(request.url_for("home"))
     url_server_js_script = url_server + 'static/js/cmeta_server.js'
     url_files = str(request.url_for("task_handler", task=task))
@@ -147,6 +148,7 @@ async def task_handler(request: Request, task: str):
 
     cmeta_params['urls'] = {
         'url': url,
+        'url2': url2,
         'url_files': url_files,
         'url_server': url_server,
         'url_server_js_script': url_server_js_script,
