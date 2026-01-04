@@ -18,6 +18,55 @@ Copyright (C) 2025-2026 [Grigori Fursin](https://cTuning.ai/@gfursin) and [cTuni
 This project may include minor functionality reused from [MLCommons CK](https://github.com/mlcommons/ck), 
 developed by the same author and licensed under the same Apache 2.0 terms.
 
+## Installation
+
+### Simple PIP
+
+```bash
+pip install cmeta
+cmeta --version
+```
+
+### UV + PIP
+
+
+```bash
+uv venv
+uv pip install cmeta
+uv run cmeta --version
+```
+
+### UV + GIT
+
+
+```bash
+uv venv
+uv pip install --force-reinstall git+ssh://git@github.com/ctuninglabs/cmeta.git@main#egg=cmeta
+uv run cmeta --version
+```
+
+## Command line
+
+```bash
+cmeta --help
+cmeta --version
+```
+or
+```bash
+cx --help
+cx --version
+```
+
+## Python interface
+
+```python
+from cmeta import CMeta
+cm = CMeta()
+r = cm.access({'category':'repo', 'command':'list'})
+print (r)
+```
+
+
 ## Status
 
 *Under active development.*
