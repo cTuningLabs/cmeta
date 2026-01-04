@@ -4,8 +4,8 @@
 
 # cMeta (Common Meta Framework)
 
-cMeta (aka cX) is a common meta-framework for unifying, interconnecting and reusing code, data, and knowledge
-across projects and domains.
+cMeta (aka cX) is a common meta-framework for unifying, interconnecting and reusing code, data, 
+models, agents, and knowledge across projects and domains.
 
 ## License
 
