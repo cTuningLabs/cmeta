@@ -1,4 +1,7 @@
-﻿cMeta (0.18.0):
+﻿cMeta (0.19.0):
+  * many improvements and bug fixes
+
+cMeta (0.18.0):
   * various improvements including cx repo plug/unplug USB repos
 
 cMeta (0.17.0):
