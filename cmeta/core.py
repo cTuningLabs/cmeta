@@ -195,8 +195,28 @@ class CMeta:
         if self.print_host_info:
             utils.sys.get_min_host_info(only_memory=True, con=True)
 
+        # Manual override of global self.debug and self.fail_on_error
+        self_fail_on_error = self.fail_on_error
+        self_debug = self.debug
+
+# GF: it does't work as intended at this moment
+#        if 'debug' in request: 
+#            self_debug = request.get('debug')
+#            if self_debug is None: 
+#                self_debug = False
+#            if self_debug:
+#                self.logger.setLevel(logging.DEBUG)
+#                self_fail_on_error = True
+#
+#        for key in ['fail_on_error', 'fail-on-error', 'fail']:
+#            if key in request:
+#                self_fail_on_error = request.get(key)
+#                if self_fail_on_error is None: 
+#                    self_fail_on_error = False
+#                break
+
         # Log where this call is coming from if debug
-        if self.debug:
+        if self_debug:
             self.logger.debug(60*'=')
             self.logger.debug(f'ACCESS({self.js(request, indent=2)})')
 
@@ -226,7 +246,7 @@ class CMeta:
         if 'origin' not in state:
             origin = {}
 
-            if self.debug:
+            if self_debug:
                 origin['pwd'] = os.getcwd()
 
             if '_cli' in params:
@@ -249,7 +269,7 @@ class CMeta:
         state['nested_call'] = nested_call
 
         # Check and extract control params
-        r = utils.check_params(params, control_params_desc, fail_on_error=self.fail_on_error)
+        r = utils.check_params(params, control_params_desc, fail_on_error=self_fail_on_error)
         if r['return'] > 0: return r
 
         # remaining params are command params
@@ -317,18 +337,18 @@ class CMeta:
                                     print ('')
                                     print (f'Your cMeta version is up-to-date!')
                 else:
-                    return self._error(f'Accessing latest version info failed: {r["error"]}', 1, None, self.fail_on_error)
+                    return self._error(f'Accessing latest version info failed: {r["error"]}', 1, None, self_fail_on_error)
 
             elif control_params.get('reindex', False):
                 r = self.repos.reindex(con=con, verbose=verbose)
                 if r['return']>0: return r
 
             else:
-                return self._error('"category" is not defined', 1, None, self.fail_on_error)
+                return self._error('"category" is not defined', 1, None, self_fail_on_error)
 
         else:
             # Prepare to search for category record as artifact (category_name -> artifact_name, category_name = "category")!
-            r = utils.names.parse_cmeta_obj(category_obj, key = "artifact", fail_on_error = self.fail_on_error)
+            r = utils.names.parse_cmeta_obj(category_obj, key = "artifact", fail_on_error = self_fail_on_error)
             if r['return'] >0: return r
 
             cmeta_ref_parts = r['obj_parts']
@@ -342,15 +362,15 @@ class CMeta:
 
             if len(category_artifacts) == 0 or len(category_artifacts)>1:
                 if len(category_artifacts) == 0:
-                    return self._error(f'category "{category_obj}" not found', 8, None, self.fail_on_error)
+                    return self._error(f'category "{category_obj}" not found', 8, None, self_fail_on_error)
                 else:
                     err = f'Ambiguity for category "{category_obj}" - please specify the full name:'
                     for c in category_artifacts:
-                        r = utils.names.restore_cmeta_obj(c['cmeta_ref_parts'], key='artifact', fail_on_error = self.fail_on_error)
+                        r = utils.names.restore_cmeta_obj(c['cmeta_ref_parts'], key='artifact', fail_on_error = self_fail_on_error)
                         if r['return']>0: return r
                         category_str = r['obj']
                         err += f"\n* {category_str} ({c['path']})"
-                    return self._error(err, 8, None, self.fail_on_error)
+                    return self._error(err, 8, None, self_fail_on_error)
 
 
             # Prepare command
@@ -429,13 +449,13 @@ class CMeta:
                 if os.path.isfile(category_api_path):
                     category_apis.append({'path':category_api_path, 'suffix': category_uid})
                 elif category_api_ver is not None or category_api_module_ver != '1':
-                    return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self.fail_on_error)
+                    return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self_fail_on_error)
 
             # Either base command or API file doesn't 
             if base_category_api_module_ver is not None and not category_meta.get('skip_base_category_commands', False):
                 category_api_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'category_api_v{base_category_api_module_ver}.py')
                 if not os.path.isfile(category_api_path):
-                    return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self.fail_on_error)
+                    return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self_fail_on_error)
 
                 category_apis.append({'path':category_api_path, 'base':True})
 
@@ -444,7 +464,7 @@ class CMeta:
                 # category api path should be resolved by now
                 suffix = category_api.get('suffix')
 
-                r = utils.sys.load_module(category_api['path'], self.category_cache, fail_on_error = self.fail_on_error, category=True, cmeta=self, suffix=suffix)
+                r = utils.sys.load_module(category_api['path'], self.category_cache, fail_on_error = self_fail_on_error, category=True, cmeta=self, suffix=suffix)
                 if r['return'] >0: return r
 
                 category_api['code'] = r['cache']['initialized_class']
@@ -536,7 +556,7 @@ class CMeta:
                         command_alias = tmp_command_alias
                         break
 
-                if self.debug:
+                if self_debug:
                     self.logger.debug(f'Resolved command alias: {command_alias}')
 
                 for category_api in category_apis:
@@ -557,10 +577,10 @@ class CMeta:
                     if command_alias != command:
                         x += f' ({command_alias})'
                     # Shouldn't fail in debug since it's used to check multiple functions ...
-                    return self._error(f'command "{x}" doesn\'t exist in category API "{category_api_path}"', 32, None, False) # self.fail_on_error)
+                    return self._error(f'command "{x}" doesn\'t exist in category API "{category_api_path}"', 32, None, False) # self_fail_on_error)
 
                 if control_params.get('help', False):
-                    r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error = self.fail_on_error)
+                    r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error = self_fail_on_error)
                     if r['return']>0: return r
                     category_str = r['obj']
 
@@ -574,7 +594,7 @@ class CMeta:
                     result['help'] = help_text
 
                 else:
-                    if self.debug:
+                    if self_debug:
                         r = utils.sys.find_func_definition(category_api_code, command_func_name)
                         if r['return']>0: return r
 
@@ -593,7 +613,7 @@ class CMeta:
                             result = func(command_params)
 
                     except TypeError as te:
-                        if self.fail_on_error:
+                        if self_fail_on_error:
                             raise
 
                         ste = str(te)
@@ -602,7 +622,7 @@ class CMeta:
 #                        if j>0:
 #                            ste = ste[j:]
 
-                        r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error = self.fail_on_error)
+                        r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error = self_fail_on_error)
                         if r['return']>0: return r
                         category_str = r['obj']
 
@@ -625,7 +645,7 @@ class CMeta:
         if json_file is not None and json_file!='':
             r = utils.files.write_file(json_file, result)
             if r['return'] >0: 
-                return self._error(r['error'], r['return'], None, self.fail_on_error)
+                return self._error(r['error'], r['return'], None, self_fail_on_error)
 
         return result
 

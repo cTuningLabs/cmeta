@@ -185,7 +185,6 @@ def set_logging(
 
                 # Remove existing handlers to avoid duplicates
                 for handler in logger.handlers[:]:
-
                     logger.removeHandler(handler)
                 
                 # Create and configure handler

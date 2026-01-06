@@ -871,7 +871,8 @@ class Repos:
 
                         if alias is not None and alias != '':
                             uids = index_categories[self.KEY_INDEX_LOWERCASE_ALIASES].get(lowercase_alias, [])
-                            uids.append(uid)
+                            if uid not in uids:
+                                uids.append(uid)
                             index_categories[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_alias] = uids
 
                             if len(uids)>1:
@@ -1079,7 +1080,9 @@ class Repos:
                             for lowercase_alias in new_lowercase_aliases:
                                 if lowercase_alias not in lowercase_aliases:
                                     lowercase_aliases[lowercase_alias] = []
-                                lowercase_aliases[lowercase_alias] += new_lowercase_aliases[lowercase_alias]
+                                for xuid in new_lowercase_aliases[lowercase_alias]:
+                                    if xuid not in lowercase_aliases[lowercase_alias]:
+                                        lowercase_aliases[lowercase_alias].append(xuid)
 
                     artifact_num += len(existing_category_index.get(self.KEY_INDEX_UIDS, {}))
 

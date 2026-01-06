@@ -55,7 +55,7 @@ def process(
 
         fail_on_error = cmeta_init.get('fail_on_error', False)
 
-        for key in ['--fail-on-error', '--fail_on_error', '--debug']:
+        for key in ['--fail-on-error', '--fail_on_error', '--fail', '--debug']:
             if key in cmd:
                 fail_on_error = True
 
