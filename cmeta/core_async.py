@@ -9,6 +9,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 import os
 import asyncio
 import logging
+import traceback
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor
 
@@ -125,8 +126,9 @@ class CMetaAsync(CMeta):
             return await self._loop.run_in_executor(self._executor, func)
 
         except Exception as e:
+            tb = traceback.format_exc()
             self._logger.exception("Error executing CMetaAsync access")
-            return {"return": 99, "error": f"CMetaAsync internal error: {e}"}
+            return {"return": 99, "error": f"CMetaAsync internal error: {e}\n{tb}"}
 
     def access_sync(self, params):
         """Synchronous access using the inherited CMeta.access() method.
