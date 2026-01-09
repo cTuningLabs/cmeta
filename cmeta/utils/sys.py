@@ -40,12 +40,17 @@ def load_module(
 
     def sanitize(name, suffix=None):
         cleaned = re.sub(r'[^0-9a-zA-Z_]', '_', name)
+
         if re.match(r'^\d', cleaned):
             cleaned = "_" + cleaned
+
         if cleaned != name or cleaned.strip("_") == "":
             if suffix is None or suffix == '':
                 suffix = hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
+
+        if suffix is not None and suffix != '':
             cleaned = f"{cleaned}_{suffix}"
+
         return cleaned
 
     if not os.path.isfile(module_path):

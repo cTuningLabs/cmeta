@@ -22,6 +22,17 @@ class Category(InitCategory):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
     ############################################################
+    def test(self, params):
+
+        print ('Params:')
+        self.cm.j(params)
+
+        print (f'__name__ = {__name__}')
+        print (f'__file__ = {__file__}')
+
+        return {'return':0}
+
+    ############################################################
     def uid_(
         self,
         state           # [dict] cMeta state object
