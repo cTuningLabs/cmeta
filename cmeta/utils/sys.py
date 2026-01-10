@@ -929,6 +929,71 @@ def get_dir_size(
     }
 
 ###################################################################################################
+def get_min_arch_host_info():
+    import os
+    import platform
+    import struct
+
+    python_bits = struct.calcsize("P") * 8
+    system = platform.system()
+    system_lower = system.lower()
+
+    cpu_arch = platform.machine()
+
+    if system_lower == "windows":
+        os_bits = 64 if os.environ.get("PROCESSOR_ARCHITEW6432") else python_bits
+    elif system_lower == "darwin":
+        os_bits = 64
+    else:  # Linux / Unix
+        os_bits = 64 if cpu_arch.endswith("64") else 32
+
+    return {
+        "return": 0,
+        "os": system,                       # Windows, Linux, Darwin
+        "os_lower": system.lower(),
+        "os_release": platform.release(),   # OS version
+        "os_version": platform.version(),   # Detailed version
+        "python_bits": python_bits,
+        "os_bits": os_bits,
+        "cpu_arch": cpu_arch,               # x86_64, AMD64, arm64, aarch64, etc.
+        "cpu_arch_lower": cpu_arch.lower(),
+    }
+
+
+###################################################################################################
+def get_min_raw_host_info():
+    import psutil
+    import os
+    import platform
+    import sys
+    import struct
+
+    result = get_min_arch_host_info()
+    if result['return']>0: return result
+
+    # --- Number of CPU cores ---
+    physical_cores = psutil.cpu_count(logical=False)
+    logical_cores = psutil.cpu_count(logical=True)
+
+    mem_info = psutil.virtual_memory()
+    total_memory = mem_info.total
+    free_memory = mem_info.available
+
+    # --- Memory used by the current Python process ---
+    process = psutil.Process(os.getpid())
+    memory_used = process.memory_info().rss  # bytes
+
+    result.update({
+      'physical_cores': physical_cores,
+      'logical_cores': logical_cores,
+      'total_memory': total_memory,
+      'free_memory': free_memory,
+      'memory_used': memory_used,
+    })
+
+    return result
+
+###################################################################################################
 def get_min_host_info(
         only_memory: bool = False,  # If True, only return memory information
         binary: bool = False,       # If True, use binary (1024) units for memory
@@ -963,24 +1028,23 @@ def get_min_host_info(
               'string' (str): Formatted output for display.
     """
 
-    import psutil
-    import os
     import time
 
     start_time = time.time()
 
+    result = get_min_raw_host_info()
+    if result['return']>0: return result
+
     # --- Total system memory ---
-    mem_info = psutil.virtual_memory()
-    total_memory = mem_info.total
-    free_memory = mem_info.available
+    total_memory = result['total_memory']
+    free_memory = result['free_memory']
 
     # --- Number of CPU cores ---
-    physical_cores = psutil.cpu_count(logical=False)
-    logical_cores = psutil.cpu_count(logical=True)
+    physical_cores = result['physical_cores']
+    logical_cores = result['logical_cores']
 
     # --- Memory used by the current Python process ---
-    process = psutil.Process(os.getpid())
-    memory_used = process.memory_info().rss  # bytes
+    memory_used = result['memory_used']
 
     r = format_size(total_memory, binary=binary, unit=unit)
     if r['return']>0: return r
@@ -1017,19 +1081,16 @@ def get_min_host_info(
     if con:
         print (x)
 
-    return {'return':0,
-            'physical_cores': physical_cores,
-            'logical_cores': logical_cores,
-            'total_memory': total_memory,
-            'nice_total_memory': nice_total_memory,
-            'free_memory': free_memory,
-            'nice_free_memory': nice_free_memory,
-            'memory_used': memory_used,
-            'nice_memory_used': nice_memory_used,
-            'string': x,
-            'self_time': self_time,
-            'nice_self_time': nice_self_time,
-    }
+    result.update({
+      'nice_total_memory': nice_total_memory,
+      'nice_free_memory': nice_free_memory,
+      'nice_memory_used': nice_memory_used,
+      'string': x,
+      'self_time': self_time,
+      'nice_self_time': nice_self_time
+    })
+    
+    return result
 
 ##########################################################################################
 def get_disk_space(
