@@ -393,6 +393,7 @@ class CMeta:
 
             # Update state with some duplication for simplicity of further use ...
             state['category_artifact'] = category_artifact
+            state['category_cmeta'] = category_meta
             state['category'] = category_artifact['cmeta_ref_parts']
 
             ###################################################################################################

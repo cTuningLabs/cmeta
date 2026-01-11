@@ -386,8 +386,11 @@ class Repos:
         artifacts = []
 
         for repo_artifact in repo_artifacts:
-            repo_path = repo_artifact['path']
             repo_meta = repo_artifact['cmeta']
+            repo_path = repo_artifact['path']
+
+            # Take into account subdir if exists
+            full_repo_path = _get_full_path(repo_path, repo_meta)
 
             repo_cmeta_ref_parts = repo_artifact['cmeta_ref_parts']
 
@@ -400,7 +403,7 @@ class Repos:
                 sharding_slices = category_meta.get('sharding_slices')
 
             # Get category path
-            path_to_category = os.path.join(repo_path, category_alias)
+            path_to_category = os.path.join(full_repo_path, category_alias)
             if os.path.isdir(path_to_category):
                 # Look for artifacts
                 r = self._find_artifacts(repo_meta, repo_alias, repo_uid, category_meta, category_alias, category_uid, path_to_category, 
