@@ -121,6 +121,28 @@ class Category(InitCategory):
 
         add_repo_paths_to_index = []
 
+
+        ######################################################################################################################
+        if repo_name is None and url is not None and url!='':
+            if path is None or path == '':
+                # Try to check if repo with this url is already registered
+                r = self.get_alias_from_url_(state, url)
+                if r['return']>0: return r
+
+                xalias = r['alias']
+                xpath = os.path.join(repos_path, xalias)
+            else:
+                xpath = path
+
+            if os.path.isdir(xpath):
+                xpath_to_repo_desc = os.path.join(xpath, self.cm.cfg['repo_meta_desc'])
+
+                if os.path.isfile(xpath_to_repo_desc):
+                    r = utils.files.safe_read_file(xpath_to_repo_desc, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
+                    if r['return']==0: 
+                        xrepo_meta = r['data']
+                        repo_name = xrepo_meta.get('artifact', '')
+
         ######################################################################################################################
         if (repo_name is not None and repo_name != '') or (path is None and url is None and zip_file is None):
             # Call base find function to find an artifact

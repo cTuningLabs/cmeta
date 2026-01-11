@@ -106,7 +106,18 @@ class Category(InitCategory):
 
             if url:
                 import urllib.parse
-                clipboard_text = self.cm.cfg['env_var_cmeta_server_info_url'] + urllib.parse.quote(cref, safe="")
+                url = os.environ.get(self.cm.cfg['env_var_cmeta_server_info_url'], '')
+                if url == '':
+                    r = self.cm.access({'category': 'config,cc6bfe174be847ed', 'command': 'get', 'arg1': 'default'})
+                    if r['return'] > 0: return r
+
+                    cfg = r['config_cmeta']
+                    url = cfg.get('url_cserver_info', '')
+
+                if url == '':
+                    url = self.cm.cfg['url_cserver_info']
+                
+                clipboard_text = url + urllib.parse.quote(cref, safe="")
 
                 if con:
                     print ('')

@@ -41,7 +41,7 @@ cfg = {
         "env_var_cmeta_verbose": "CMETA_VERBOSE",
         "env_var_cmeta_authors": "CMETA_AUTHORS",
         "env_var_cmeta_copyright": "CMETA_COPYRIGHT",
-        "env_var_cmeta_server_info_url": "http://127.0.0.1:8004/far?hcref=",
+        "env_var_cmeta_server_info_url": "CMETA_SERVER_INFO_URL",
         
         "repos_config_filename": "repos.json",
         "repos_dir": "repos",
@@ -57,9 +57,9 @@ cfg = {
         "default_git": "https://github.com",
         "default_git_repo": "ctuninglabs",
         "default_ctuning_api": "https://cTuning.ai/api/v1",
+        "url_cserver_info": "http://127.0.0.1:8004/far?hcref=",
 
         "index_dir": "index",
-        "index_db_filename": "index.db",
 
         "meta_filename_base": "_cmeta",
 
