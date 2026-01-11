@@ -193,7 +193,7 @@ class CMeta:
         """
 
         if self.print_host_info:
-            utils.sys.get_min_host_info(only_memory=True, con=True)
+            utils.sys.get_min_host_info(only_memory=True, con=True, line=80)
 
         # Manual override of global self.debug and self.fail_on_error
         self_fail_on_error = self.fail_on_error
