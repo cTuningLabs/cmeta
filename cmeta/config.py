@@ -84,9 +84,10 @@ cfg = {
 
 params_desc = [
   {'key':'help', 'aliases':['h'], 'type': bool, 'desc': 'Show help' },
-  {'key':'version', 'aliases':['v'], 'type': bool, 'desc': 'Show version'},
+  {'key':'version', 'aliases':['V'], 'type': bool, 'desc': 'Show version'},
   {'key':'reindex', 'type': bool, 'desc': 'Reindex all artifacts'},
   {'key':'verbose', 'aliases':['v'], 'type': bool, 'desc': 'Use verbose output'},
+  {'key':'quiet', 'aliases':['q'], 'type': bool, 'desc': 'Quetly select default answer to questions'},
 ]
 
 params_command_desc = [

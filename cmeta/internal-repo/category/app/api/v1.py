@@ -85,7 +85,8 @@ class Category(InitCategory):
             dict: Dictionary with 'return': 0.
         """
 
-        con = state.get('control',{}).get('con', False)
+        con = state.get('control', {}).get('con', False)
+        verbose = state.get('control', {}).get('verbose', False)
 
         env1 = env.copy()
 
@@ -177,7 +178,7 @@ class Category(InitCategory):
                 pp = param_env_prefix + p.upper()
                 env1[pp] = param[p]
 
-        r = self.cm.utils.sys.run(cmd, env=env1, envs=default_env, con=con, verbose=True)
+        r = self.cm.utils.sys.run(cmd, env=env1, envs=default_env, con=con, verbose=verbose)
         if r['return']>0: return r
 
         rc = r['returncode']

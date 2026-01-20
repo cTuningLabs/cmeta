@@ -117,7 +117,7 @@ class CMeta:
 
         self._error = utils.common._error
 
-        self.category_cache = {}
+        self.module_cache = {}
 
         # Some debug functions
         self.j = utils.common.safe_print_json
@@ -440,7 +440,6 @@ class CMeta:
                 if r['comparison'] == '>':
                     return {'return':1, 'error': f'this category requires min cMeta version "{category_min_cmeta_version}" but "{__version__}" is installed'}
 
-
             # Prepare paths to APIs
             category_apis = []
 
@@ -465,7 +464,7 @@ class CMeta:
                 # category api path should be resolved by now
                 suffix = category_api.get('suffix')
 
-                r = utils.sys.load_module(category_api['path'], self.category_cache, fail_on_error = self_fail_on_error, category=True, cmeta=self, suffix=suffix)
+                r = utils.sys.load_module(category_api['path'], self.module_cache, fail_on_error = self_fail_on_error, init_class="Category", cmeta=self, suffix=suffix)
                 if r['return'] >0: return r
 
                 category_api['code'] = r['cache']['initialized_class']
@@ -590,7 +589,8 @@ class CMeta:
 
                     help_text = r['api_info']
 
-                    print (help_text)
+                    if con:
+                        print (help_text)
 
                     result['help'] = help_text
 

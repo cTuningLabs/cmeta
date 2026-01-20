@@ -1,4 +1,7 @@
-﻿cMeta (0.20.0):
+﻿cMeta (0.21.0):
+  * various bug fixes and important extensions
+
+cMeta (0.20.0):
   * many regular improvements and some serious bug fixes
 
 cMeta (0.19.0):

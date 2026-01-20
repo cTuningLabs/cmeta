@@ -873,8 +873,41 @@ class Category(InitCategory):
     ############################################################
     def x(self, params):
         """
-        Create artifact with date
-
         @self.access_ctuning_server_
         """
         return self.access_ctuning_server_(**params)
+
+    ############################################################
+    def select_artifact(self, params):
+        """
+        """
+
+        from . import common
+
+        return common.select_artifact_(self, **params)
+
+    ############################################################
+    def get_datetime_(self, state):
+        """
+        """
+
+        from datetime import datetime, timezone
+
+        con = state['control'].get('con', False)
+
+        # UTC time WITH timezone (+00:00)
+        utc_with_tz = datetime.now(timezone.utc).isoformat()
+
+        # UTC time WITHOUT timezone (naive datetime)
+        utc_without_tz = datetime.utcnow().isoformat()
+
+        # Local time with timezone
+        local_with_tz = datetime.now().astimezone().isoformat()
+
+        if con:
+            print("UTC ISO with timezone :", utc_with_tz)
+            print("UTC ISO without tz   :", utc_without_tz)
+            print("Local ISO with tz    :", local_with_tz)
+
+
+        return {'return':0}

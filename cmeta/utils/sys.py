@@ -15,7 +15,7 @@ def load_module(
         module_path: str,              # Absolute path to the Python module file
         module_cache: dict,            # Dictionary to store cached module information
         fail_on_error: bool = False,   # If True, raise exception on error
-        category: bool = False,        # If True, initialize the Category class from the module
+        init_class: str = None,        # If !=None, initialize this class
         cmeta = None,                  # CMeta instance to pass to Category initialization
         suffix: str = None             # Optional suffix for module name sanitization
 ):
@@ -57,10 +57,10 @@ def load_module(
         return _error(f'Module file not found: {module_path}', 16, None, fail_on_error)
 
     module_path = os.path.abspath(module_path)
-    module_dir = os.path.dirname(module_path)            # .../api
+    module_dir = os.path.dirname(module_path)
     module_name = os.path.splitext(os.path.basename(module_path))[0]
 
-    category_dir = os.path.dirname(module_dir)           # .../java.1
+    category_dir = os.path.dirname(module_dir)
     raw_cat = os.path.basename(category_dir)
     raw_pkg = os.path.basename(module_dir)
 
@@ -108,8 +108,9 @@ def load_module(
             "full_module_name": full_module_name,
         }
 
-        if category:
-            cache_data["initialized_class"] = module.Category(cm=cmeta)
+        if init_class:
+            cls = getattr(module, init_class)
+            cache_data["initialized_class"] = cls(cm=cmeta)
 
         module_cache[module_path] = cache_data
         return {"return": 0, "cache": cache_data}
@@ -484,7 +485,9 @@ def run(
                     k = k[1:].strip()
                     v1 = cur_env.get(k, '')
                     if v1 != '':
-                        v += os.pathsep + v1
+                        if not v.endswith(os.pathsep):
+                            v += os.pathsep
+                        v += v1
                 else:
                     v = None
 
