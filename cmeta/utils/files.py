@@ -1317,3 +1317,23 @@ def files_decode(files_base64):
         return {'return':1, 'error': str(e)}
 
     return {'return':0, 'files': files}
+
+##########################################################################################
+def gen_temp_filepath(template = None):
+    """
+    """
+
+    import tempfile
+    import uuid
+    import os
+
+    tmp_dir = tempfile.gettempdir()
+
+    if template is None or template == '':
+        template = 'cmeta-{{uid}}.tmp'
+
+    template = template.replace('{{uid}}', str(uuid.uuid4()))
+
+    temp_filepath = os.path.join(tmp_dir, template)
+
+    return {'return':0, 'filepath': temp_filepath}

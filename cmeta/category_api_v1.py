@@ -142,12 +142,13 @@ class Category(InitCategory):
     ############################################################
     def find_(
             self,
-            state: dict,                 # cMeta state
-            arg1: str = None,            # Artifact alias or UID
-            tags: str = None,            # Comma-separated string or iterable of tags to match
-            sort: bool = None,           # Sort by path
+            state: dict,                   # cMeta state
+            arg1: str = None,              # Artifact alias or UID
+            tags: str = None,              # Comma-separated string or iterable of tags to match
+            sort: bool = None,             # Sort by path
             add_index_file: bool = False,  # Add index file information
-            skip_uids: bool = False      # Skip UIDs when using wildcards
+            skip_uids: bool = False,       # Skip UIDs when using wildcards
+            match: dict = None,            # Filter artifacts by this match dict (if key ends with -, do not include value)
     ):
         """
         Find artifacts.
@@ -185,7 +186,7 @@ class Category(InitCategory):
         if self.cm.debug:
             self.logger.debug(f"  self.cm.repos.find({artifact_ref_parts})")
 
-        r = self.cm.repos.find(artifact_ref_parts, add_index_file = add_index_file, tags = tags, skip_uids = skip_uids)
+        r = self.cm.repos.find(artifact_ref_parts, add_index_file = add_index_file, tags = tags, skip_uids = skip_uids, match = match)
         if r['return']>0: return r
 
         artifacts = r['artifacts']
@@ -277,19 +278,19 @@ class Category(InitCategory):
     ############################################################
     def update_(
             self,
-            state: dict,                 # cMeta state
-            arg1: str = None,            # cMeta artifact(s) with wildcards
-            tags: str = None,            # Prune artifacts by tags
-            sort: bool = True,           # Sort artifacts by alias and UID when updating in batch
-            skip_uids: bool = False,     # Skip UIDs when using wildcards
-            meta: dict = {},             # Meta dictionary to merge recursively with existing artifact
-            new_tags: str = None,        # Add more tags
-            replace_lists: bool = False,  # Replace lists during merging
-            replace: bool = False,       # Replace existing meta dictionary entirely
-            ignore_errors: bool = False,  # Ignore errors when updating multiple artifacts
-            create: bool = False,        # If artifact doesn't exist attempt to create
-            create_params: dict = {},     # Pass params to create function
-            update_category: bool = False,
+            state: dict,                   # cMeta state
+            arg1: str = None,              # cMeta artifact(s) with wildcards
+            tags: str = None,              # Prune artifacts by tags
+            sort: bool = True,             # Sort artifacts by alias and UID when updating in batch
+            skip_uids: bool = False,       # Skip UIDs when using wildcards
+            meta: dict = {},               # Meta dictionary to merge recursively with existing artifact
+            new_tags: str = None,          # Add or remove tags (if endswith -, remove it)
+            replace_lists: bool = False,   # Replace lists during merging
+            replace: bool = False,         # Replace existing meta dictionary entirely
+            ignore_errors: bool = False,   # Ignore errors when updating multiple artifacts
+            create: bool = False,          # If artifact doesn't exist attempt to create
+            create_params: dict = {},      # Pass params to create function
+            update_category: bool = False, # Allow category update in meta
     ):
         """
         Update artifact(s).
@@ -393,7 +394,11 @@ class Category(InitCategory):
                    if r['return']>0: return r
                      
                    for t in r['tags']:
-                       if t not in meta_tags:
+                       if t.endswith('-'):
+                           t = t[:-1]
+                           if t in meta_tags:
+                               meta_tags.remove(t)
+                       elif t not in meta_tags:
                            meta_tags.append(t)
 
                    cmeta['tags'] = meta_tags

@@ -40,6 +40,25 @@ def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
     return {'return': return_code, 'error': err}
 
 ###################################################################################################
+def _error2(r, cm = None):
+    """Create error return dictionary or raise exception based on fail_on_error flag.
+    
+    Args:
+        r: cMeta access return dict
+        cm: object with fail_on_error: If True, raises exception instead of returning error dict.
+        
+    Returns:
+        dict: Dictionary with 'return' and 'error' keys.
+        
+    Raises:
+        Exception: If fail_on_error is True and return_code != 16.
+    """
+
+    fail_on_error = True if cm is not None and cm.fail_on_error else False
+
+    return _error(r.get('error'), r['return'], exception=None, fail_on_error=fail_on_error)
+
+###################################################################################################
 def deep_merge(
         target: dict,                   # Original dictionary to be updated
         source: dict,                   # New dictionary with updates
@@ -557,3 +576,43 @@ def flatten_dict(d, parent_key="", sep="."):
             items.append((new_key, v))
 
     return dict(items)
+
+###################################################################################################
+def matches_query(data, query):
+    for key, q_value in query.items():
+        negate = key.endswith("-")
+        actual_key = key[:-1] if negate else key
+
+        if actual_key not in data:
+            if negate:
+                continue  # key doesn't exist → OK for negation
+            return False
+
+        d_value = data[actual_key]
+
+        matched = value_matches(d_value, q_value)
+
+        if negate and matched:
+            return False
+        if not negate and not matched:
+            return False
+
+    return True
+
+
+###################################################################################################
+def value_matches(data_value, query_value):
+    # Dict → recursive match
+    if isinstance(query_value, dict):
+        if not isinstance(data_value, dict):
+            return False
+        return matches_query(data_value, query_value)
+
+    # List → query list must be subset of data list
+    if isinstance(query_value, list):
+        if not isinstance(data_value, list):
+            return False
+        return all(item in data_value for item in query_value)
+
+    # Scalar → direct equality
+    return data_value == query_value

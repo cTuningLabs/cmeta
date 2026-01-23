@@ -116,6 +116,7 @@ class CMeta:
             self.logger.info(log_path)
 
         self._error = utils.common._error
+        self._error2 = utils.common._error2
 
         self.module_cache = {}
 
@@ -464,7 +465,8 @@ class CMeta:
                 # category api path should be resolved by now
                 suffix = category_api.get('suffix')
 
-                r = utils.sys.load_module(category_api['path'], self.module_cache, fail_on_error = self_fail_on_error, init_class="Category", cmeta=self, suffix=suffix)
+                r = utils.sys.load_module(category_api['path'], self.module_cache, fail_on_error = self_fail_on_error, 
+                                          init_class="Category", cmeta=self, suffix=suffix, self_meta=category_meta)
                 if r['return'] >0: return r
 
                 category_api['code'] = r['cache']['initialized_class']

@@ -416,13 +416,21 @@ class Repos:
         return {'return': 0, 'artifacts': artifacts}
 
     ###################################################################################################
-    def find(self, cmeta_ref, add_index_file=False, tags=None, skip_uids=False, skip_non_indexed=False):
+    def find(self, 
+             cmeta_ref, 
+             add_index_file=False, 
+             tags=None, 
+             skip_uids=False, 
+             skip_non_indexed=False,
+             match=None,
+        ):
         """Find artifacts by cMeta reference.
         
         Args:
             cmeta_ref: cMeta reference string or parsed dictionary.
             add_index_file: If True, include index_file path in result.
             tags: Optional tags to filter results.
+            match: Optional match dictionary to filter results (key that ends with - is supported)
             skip_uids: If True, skip UID validation.
             
         Returns:
@@ -552,6 +560,15 @@ class Repos:
 
                 else:
                     add_artifacts = r['artifacts']
+
+                if match is not None and len(match)>0:
+                    add_artifacts2 = []
+
+                    for a in add_artifacts:
+                        if utils.common.matches_query(a['cmeta'], match):
+                            add_artifacts2.append(a)
+
+                    add_artifacts = add_artifacts2
 
                 # Adding artifacts
                 artifacts.extend(add_artifacts)

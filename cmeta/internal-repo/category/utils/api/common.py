@@ -44,28 +44,32 @@ def select_artifact_(self,
                      select_tags=None,
                      select_text='',
                      show_tags=False,
+                     artifacts=None,
+                     cmeta_params_key=None,
+                     skip_uids=False,
     ):
 
     con = state['control'].get('con', False)
     quiet = state['control'].get('quiet', False)
 
-    p = {'category':select_category,
-         'command':'find',
-         'arg1':select_artifact,
-         'tags':select_tags
-    }
+    select_category_name = select_category['artifact_alias'] if type(select_category)==dict else str(select_category)
 
-    select_category_name = select_category['artifact_alias']
+    if artifacts is None or type(artifacts) != list:
+        p = {'category':select_category,
+             'command':'find',
+             'arg1':select_artifact,
+             'tags':select_tags
+        }
 
-    r = self.cm.access(p)
-    if r['return']>0: 
-        if r['return'] != 16: return r
+        r = self.cm.access(p)
+        if r['return']>0: 
+            if r['return'] != 16: return r
 
-        xtags = '' if (select_tags == None or len(select_tags)==0) else f' with tags "{select_tags}"'
+            xtags = '' if (select_tags == None or len(select_tags)==0) else f' with tags "{select_tags}"'
 
-        return {'return':16, 'error': f'couldn\'t find "{select_category_name}" artifacts{xtags}'}
+            return {'return':16, 'error': f'couldn\'t find "{select_category_name}" artifacts{xtags}'}
 
-    artifacts = r['artifacts']
+        artifacts = r['artifacts']
 
     if len(artifacts) == 1:
         new_index_int = 0
@@ -89,36 +93,49 @@ def select_artifact_(self,
                                                               artifact['cmeta_ref_parts']['artifact_alias'],
                                                               artifact['cmeta_ref_parts']['artifact_uid']))
 
-        for a in artifacts:
-            cmeta_ref_parts = a['cmeta_ref_parts']
-            cmeta = a['cmeta']
-            path = a['path']
-
-            name = cmeta.get('name', '')
-            alias = cmeta_ref_parts['artifact_alias']
-            uid = cmeta_ref_parts['artifact_uid']
-
-            x = name if name != '' else alias
-
-            xtags = '[' + ','.join(cmeta['tags']) + '] ' if show_tags else ''
-
-            text = f'{index}) {x} {xtags}({uid})'
-
+        num_artifacts = len(artifacts)
+        for n in range(num_artifacts):
+            a = artifacts[n]
             if con:
+                cmeta_ref_parts = a['cmeta_ref_parts']
+                cmeta = a['cmeta']
+                path = a['path']
+
+                name = cmeta.get('name', '')
+                alias = cmeta_ref_parts['artifact_alias']
+                uid = cmeta_ref_parts['artifact_uid']
+
+                x = name if name != '' else alias
+
+                xtags = '[' + ','.join(cmeta['tags']) + '] ' if show_tags else ''
+
+                xuid = f'({uid})' if not skip_uids else ''
+
+                text = f'{index}) {x} {xtags}{xuid}'
+
+                if cmeta_params_key:
+                    uparams = cmeta.get(cmeta_params_key,{})
+                    if len(uparams)>0:
+                        for p in sorted(uparams):
+                            v = str(uparams[p])
+                            text += f'\n      * {p} = {v}'
+                    
                 print (text)
+
+                if n != num_artifacts-1:
+                    print ('')
 
             index += 1
 
         if quiet:
             if con:
                 print ('')
-                print ('Quietly selected 0')
+                print ('Quietly selected: 0')
 
             new_index_int = 0
 
         else:
             print ('')
-
             new_index = input('Make your selection or press Enter for 0: ').strip()
 
             new_index_int = 0 if new_index == '' else int(new_index)

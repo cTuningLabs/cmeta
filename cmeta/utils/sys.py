@@ -17,7 +17,8 @@ def load_module(
         fail_on_error: bool = False,   # If True, raise exception on error
         init_class: str = None,        # If !=None, initialize this class
         cmeta = None,                  # CMeta instance to pass to Category initialization
-        suffix: str = None             # Optional suffix for module name sanitization
+        suffix: str = None,            # Optional suffix for module name sanitization
+        self_meta: dict = None,        # Add optional self_meta to the initiaized class
 ):
     """Dynamically load a Python module from file path with caching support.
     
@@ -110,7 +111,13 @@ def load_module(
 
         if init_class:
             cls = getattr(module, init_class)
-            cache_data["initialized_class"] = cls(cm=cmeta)
+
+            obj = cls(cm=cmeta)
+
+            if self_meta is not None and type(self_meta) == dict:
+                obj.cmeta = self_meta
+
+            cache_data["initialized_class"] = obj
 
         module_cache[module_path] = cache_data
         return {"return": 0, "cache": cache_data}
@@ -394,24 +401,24 @@ def flush_input():
 
 ############################################################
 def run(
-        cmd: str,                    # Command to execute
-        work_dir: str = None,        # Working directory
-        env: dict = None,            # 2nd level env to update global ENV
-        envs: dict = None,           # 1st level of env to update global ENV
-        genv: dict = None,           # Global ENV (force in the end)
+        cmd: str,                      # Command to execute
+        work_dir: str = None,          # Working directory
+        env: dict = None,              # 2nd level env to update global ENV
+        envs: dict = None,             # 1st level of env to update global ENV
+        genv: dict = None,             # Global ENV (force in the end)
         capture_output: bool = False,  # If True, capture stdout/stderr
-        text_cmd: str = '$',         # Text prefix for command display
-        timeout: int = None,         # Timeout in seconds
-        verbose: bool = False,       # If True, print extra info
-        hide_in_cmd: list = None,    # List of keys in CMD to hide (for secrets)
-        save_script: str = '',       # Path to save script for reproducibility
-        run_script: bool = False,    # If True, run created script
-        script_prefix: str = '',     # Prefix string to add to script
-        skip_run: bool = False,      # If True, skip execution
-        print_cmd: bool = False,     # If True, force print CMD
-        con: bool = False,           # If True, enable console output
-        fail_on_error: bool = False,  # If True, raise exception on error
-        logger = None                # Optional logger for debug messages
+        text_cmd: str = 'RUN',         # Text prefix for command display
+        timeout: int = None,           # Timeout in seconds
+        verbose: bool = False,         # If True, print extra info
+        hide_in_cmd: list = None,      # List of keys in CMD to hide (for secrets)
+        save_script: str = '',         # Path to save script for reproducibility
+        run_script: bool = False,      # If True, run created script
+        script_prefix: str = '',       # Prefix string to add to script
+        skip_run: bool = False,        # If True, skip execution
+        print_cmd: bool = False,       # If True, force print CMD
+        con: bool = False,             # If True, enable console output
+        fail_on_error: bool = False,   # If True, raise exception on error
+        logger = None,                 # Optional logger for debug messages
 ):
     """
     Run CMD with environment.
@@ -549,12 +556,9 @@ def run(
         else:
             print (f'{text_cmd} {xcmd}')
 
-        print ('')
-
     elif con:
         print ('')
         print (f'{xcmd}')
-        print ('')
 
 
     if save_script is not None and save_script != '':
@@ -577,7 +581,7 @@ def run(
         if verbose:
             x = 'SKIP ' if skip_run else ''
             print('')
-            print(f'{x}RUN {cmd}')
+            print(f'{x}{text_cmd} {cmd}')
 
     if not skip_run:
         try:
@@ -850,9 +854,10 @@ def format_size(
 
 ###################################################################################################
 def get_dir_size(
-        path: str,               # Directory path to measure
-        binary: bool = False,    # If True, use binary (1024) units
-        unit: str = None         # Force specific unit for size formatting
+        path: str,                   # Directory path to measure
+        binary: bool = False,        # If True, use binary (1024) units
+        unit: str = None,            # Force specific unit for size formatting
+        skip_datetime: bool = False,
 ):
     """Calculate total size of a directory recursively.
     
@@ -873,21 +878,24 @@ def get_dir_size(
     total = 0
     total_dirs = 0
     total_files = 0
-    latest_mtime = None
-    weird_dates = []
-    current_time = datetime.now().timestamp()
+
+    if not skip_datetime:
+        latest_mtime = None
+        weird_dates = []
+        current_time = datetime.now().timestamp()
 
     for root, dirs, files in os.walk(path):
         # Count subdirectories at this level
         total_dirs += len(dirs)
         
         # Check modification time of the current directory
-        try:
-            dir_mtime = os.path.getmtime(root)
-            if latest_mtime is None or dir_mtime > latest_mtime:
-                latest_mtime = dir_mtime
-        except (OSError, PermissionError):
-            pass  # Skip directories we can't access
+        if not skip_datetime:
+            try:
+                dir_mtime = os.path.getmtime(root)
+                if latest_mtime is None or dir_mtime > latest_mtime:
+                    latest_mtime = dir_mtime
+            except (OSError, PermissionError):
+                pass  # Skip directories we can't access
 
         for f in files:
             fp = os.path.join(root, f)
@@ -897,18 +905,19 @@ def get_dir_size(
                     total_files += 1
                     
                     # Check file modification time
-                    file_mtime = os.path.getmtime(fp)
-                    
-                    # Detect files with future modification dates
-                    if file_mtime > current_time:
-                        weird_dates.append({
-                            'path': fp,
-                            'mtime': file_mtime,
-                            'mtime_dt': datetime.fromtimestamp(file_mtime).isoformat()
-                        })
-                    
-                    if latest_mtime is None or file_mtime > latest_mtime:
-                        latest_mtime = file_mtime
+                    if not skip_datetime:
+                        file_mtime = os.path.getmtime(fp)
+                        
+                        # Detect files with future modification dates
+                        if file_mtime > current_time:
+                            weird_dates.append({
+                                'path': fp,
+                                'mtime': file_mtime,
+                                'mtime_dt': datetime.fromtimestamp(file_mtime).isoformat()
+                            })
+                        
+                        if latest_mtime is None or file_mtime > latest_mtime:
+                            latest_mtime = file_mtime
                 except (OSError, PermissionError):
                     pass  # Skip files we can't access
 
@@ -918,18 +927,20 @@ def get_dir_size(
 
     nice_size = r['nice_size']
     
-    # Convert timestamp to datetime
-    latest_modification_dt = datetime.fromtimestamp(latest_mtime) if latest_mtime is not None else None
-
-    return {
+    result = {
         'return': 0,
         'size': total,
         'nice_size': nice_size,
         'total_dirs': total_dirs,
         'total_files': total_files,
-        'latest_modification_dt': latest_modification_dt,
-        'weird_dates': weird_dates
     }
+
+    # Convert timestamp to datetime
+    if not skip_datetime:
+        result['latest_modification_dt'] = datetime.fromtimestamp(latest_mtime) if latest_mtime is not None else None
+        result['weird_dates'] = weird_dates
+
+    return result
 
 ###################################################################################################
 def get_min_arch_host_info():
