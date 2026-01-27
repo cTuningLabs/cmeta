@@ -58,6 +58,7 @@ cfg = {
         "default_git_repo": "ctuninglabs",
         "default_ctuning_api": "https://cTuning.ai/api/v1",
         "url_cserver_info": "http://127.0.0.1:8004/far?hcref=",
+        "default_cmeta_repo_url": "https://cTuning.ai/project/cmeta/repos/files/cmr-",
 
         "index_dir": "index",
 

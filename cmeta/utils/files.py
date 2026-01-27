@@ -1429,3 +1429,15 @@ def ask_to_delete(con, force, path, name=None, text=None, space=False):
 
     return {'return':0, 'confirmed': confirmed}
 
+##########################################################################################
+def is_dir_empty(path, clean=False):
+    if not os.path.isdir(path):
+        return False
+
+    try:
+        empty = not any(os.scandir(path))
+        if empty and clean:
+            os.rmdir(path)  # only removes empty directories
+        return empty
+    except PermissionError:
+        return False

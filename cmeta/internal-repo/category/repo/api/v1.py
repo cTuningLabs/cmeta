@@ -109,7 +109,24 @@ class Category(InitCategory):
         if (url is not None and url != ''):
             repo_name = arg1
         else:
-            if arg1 is not None and not (arg1.startswith('https://') or arg1.startswith('git@')):
+            if arg1 and arg1.startswith('cmeta://'):
+                default_cmeta_repo_url = config_cmeta.get('default_cmeta_repo_url')
+                if not default_cmeta_repo_url:
+                    default_cmeta_repo_url = self.cm.cfg['default_cmeta_repo_url']
+
+                if not repo_name:
+                    repo_name = arg1[8:]
+
+                url = default_cmeta_repo_url + repo_name + '-'
+
+                if checkout:
+                    url += checkout
+                else:
+                    url += 'latest'
+
+                url += '.zip'
+
+            elif arg1 is not None and not (arg1.startswith('https://') or arg1.startswith('git@')):
                 repo_name = arg1
             else:
                 url = arg1
@@ -329,7 +346,8 @@ class Category(InitCategory):
             ######################################################################################################################
             # Check what to do depending on whether the path exists or not
             if os.path.isdir(path) and method != 'local':
-                return {'return':1, 'error':f'directory {path} already exists'}
+                if not self.cm.utils.files.is_dir_empty(path, clean=True):
+                    return {'return':1, 'error':f'directory {path} already exists'}
 
             if not os.path.isdir(path):
                 if method == 'git':
@@ -371,9 +389,25 @@ class Category(InitCategory):
                     if r['return'] >0: return r
 
                 elif method == 'zip':
+
+                    # Get default params
+                    r = self.cm.access({'category': 'config,cc6bfe174be847ed',
+                                        'command': 'get',
+                                        'arg1': 'ctuning_server'})
+                    if r['return'] > 0: return r
+
+                    ctuning_server_config_cmeta = r['config_cmeta']
+
+                    api_key = ctuning_server_config_cmeta.get('api_key')
+                    skip_ssl_certificate = ctuning_server_config_cmeta.get('skip_ssl_certificate', False)
+
                     # Download zip
-                    r = utils.net.download(url, path=path, show_progress=con, fail_on_error = self.fail_on_error)
-                    if r['return'] >0: return r
+                    r = utils.net.download(url, path = path, show_progress = con, fail_on_error = self.fail_on_error, 
+                                           skip_ssl_certificate = skip_ssl_certificate, api_key = api_key)
+                    if r['return'] >0: 
+                        # Clean path if empty
+                        self.cm.utils.files.is_dir_empty(path, clean=True)
+                        return r
 
                     full_path_to_zip_file = r['path']
 

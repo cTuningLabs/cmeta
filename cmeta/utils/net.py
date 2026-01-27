@@ -8,6 +8,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 
 from .common import _error
 
+##################################################################################################
 def access_api(
         url: str,         # The API endpoint URL
         params: dict,     # Dictionary of parameters to send as JSON
@@ -43,36 +44,42 @@ def access_api(
 
     return {'return': 0, 'response': output}
 
-
-
+##################################################################################################
 def download(
-        url: str,                     # URL of the file to download
-        filename: str = None,         # Name for the downloaded file
-        path: str = None,             # Directory to save the file
-        chunk_size: int = 65536,      # Size of chunks to download in bytes
-        show_progress: bool = False,  # If True, display download progress
-        fail_on_error: bool = False,  # If True, raise exception on error
-        text: str = "Downloading "   # Prefix text for progress bar
+        url: str,                           # URL of the file to download
+        filename: str = None,               # Name for the downloaded file
+        path: str = None,                   # Directory to save the file
+        chunk_size: int = 65536,            # Size of chunks to download in bytes
+        show_progress: bool = False,        # If True, display download progress
+        fail_on_error: bool = False,        # If True, raise exception on error
+        text: str = "Downloading ",         # Prefix text for progress bar
+        headers: dict = None,               # Use headers
+        api_key: str = None,                # Add API key to headers
+        skip_ssl_certificate: bool = False, # Skip SSL certificate verification
 ):
     """Download a file from URL to local filesystem.
-    
+
     Auto-detects filename from URL if not provided. Supports progress display
     with tqdm if show_progress is enabled.
-    
+
     Args:
         url (str): URL of the file to download.
         filename (str | None): Name for the downloaded file. If None, extracts from URL.
         path (str | None): Directory to save the file. If None, uses current working directory.
-        chunk_size (int): Size of chunks to download in bytes. Default is 65536 (64KB).
+        chunk_size (int): Size of chunks to download in bytes.
         show_progress (bool): If True, displays download progress using tqdm.
         fail_on_error (bool): If True, raises exception on error instead of returning error dict.
         text (str): Prefix text for progress bar description.
-        
+        headers (dict | None): Optional HTTP headers.
+        api_key (str | None): API key added as X-API-Key header.
+        skip_ssl_certificate (bool): If True, disables SSL certificate verification.
+
     Returns:
         dict: Dictionary with 'return': 0, 'filename', 'path', and 'size' on success,
               or 'return': 1 and 'error' on failure.
     """
     import os
+    import ssl
     from urllib.parse import urlparse
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
@@ -85,7 +92,11 @@ def download(
         try:
             from tqdm import tqdm as tqdm_cls
         except ImportError as e:
-            return _error('tqdm package is required when show_progress is True', exception=e, fail_on_error=fail_on_error)
+            return _error(
+                'tqdm package is required when show_progress is True',
+                exception=e,
+                fail_on_error=fail_on_error
+            )
 
     try:
         path = os.path.abspath(path) if path else os.getcwd()
@@ -96,13 +107,32 @@ def download(
             filename = os.path.basename(path_part) or 'downloaded-file'
 
         target_path = os.path.join(path, filename)
-        request = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
 
-        with urlopen(request) as response, open(target_path, 'wb') as out_file:
+        xheaders = headers.copy() if headers else {}
+        xheaders.setdefault('User-Agent', 'Mozilla/5.0')
+        if api_key:
+            xheaders['X-API-Key'] = api_key
+
+        request = Request(url, headers=xheaders)
+
+        ssl_context = None
+        if skip_ssl_certificate:
+            ssl_context = ssl._create_unverified_context()
+
+        with urlopen(request, context=ssl_context) as response, open(target_path, 'wb') as out_file:
             total_size = response.getheader('Content-Length')
             total_size = int(total_size) if total_size is not None else None
             downloaded = 0
-            progress = tqdm_cls(total=total_size, unit='B', unit_scale=True, unit_divisor=1024, desc=text+filename) if tqdm_cls else None
+
+            progress = (
+                tqdm_cls(
+                    total=total_size,
+                    unit='B',
+                    unit_scale=True,
+                    unit_divisor=1024,
+                    desc=text + filename
+                ) if tqdm_cls else None
+            )
 
             try:
                 while True:
@@ -118,10 +148,18 @@ def download(
                     progress.close()
 
     except (URLError, HTTPError, OSError) as e:
-        return _error(f'Failed to download {url}', exception=e, fail_on_error=fail_on_error)
+        return _error(
+            f'Failed to download {url}',
+            exception=e,
+            fail_on_error=fail_on_error
+        )
 
-    return {'return': 0, 'filename': filename, 'path': target_path, 'size': downloaded}
-
+    return {
+        'return': 0,
+        'filename': filename,
+        'path': target_path,
+        'size': downloaded
+    }
 
 ##################################################################################################
 async def unify_request(request):
