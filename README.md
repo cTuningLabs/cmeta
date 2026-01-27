@@ -1,6 +1,7 @@
+[![License](https://img.shields.io/badge/License-Apache%202.0-green)](LICENSE.md)
 [![PyPI version](https://badge.fury.io/py/cmeta.svg)](https://pepy.tech/project/cmeta)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://github.com/ctuninglabs/cmeta)
-[![License](https://img.shields.io/badge/License-Apache%202.0-green)](LICENSE.md)
+[![Test cMeta core](https://github.com/cTuningLabs/cmeta/actions/workflows/test-core.yml/badge.svg)](https://github.com/cTuningLabs/cmeta/actions/workflows/test-core.yml)
 
 # cMeta (Common Meta Framework)
 
