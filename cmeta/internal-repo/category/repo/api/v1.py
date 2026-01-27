@@ -93,6 +93,14 @@ class Category(InitCategory):
 
         cur_dir = os.getcwd()
 
+        # Get default config
+        r = self.cm.access({'category': 'config,cc6bfe174be847ed',
+                            'command': 'get',
+                            'arg1': self.cm.cfg['default_config_name']})
+        if r['return'] > 0: return r
+
+        config_cmeta = r['config_cmeta']
+
         # Process arg1 and URL to extract repo name and understand what to do with repositories ...
         repo_name = None
         repo_alias = None
@@ -284,9 +292,17 @@ class Category(InitCategory):
                     if method != 'local':
                         if url is None or url == '':
                             if '@' not in repo_alias:
-                                repo_alias = self.cm.cfg['default_git_repo'] + '@' + repo_alias
+                                default_git_repo = config_cmeta.get('default_git_repo')
+                                if not default_git_repo:
+                                    default_git_repo = self.cm.cfg['default_git_repo']
 
-                            url = self.cm.cfg['default_git'] + '/' + repo_alias.replace('@','/')
+                                repo_alias = default_git_repo + '@' + repo_alias
+
+                            default_git = config_cmeta.get('default_git')
+                            if not default_git:
+                                default_git = self.cm.cfg['default_git']
+
+                            url = default_git + repo_alias.replace('@','/')
 
                     if folder is None or folder == '':
                         folder = repo_alias if repo_alias is not None else repo_uid

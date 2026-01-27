@@ -54,7 +54,7 @@ cfg = {
 
         "category_repo_uid": "f4f792ab40c7498f",
 
-        "default_git": "https://github.com",
+        "default_git": "https://github.com/",
         "default_git_repo": "ctuninglabs",
         "default_ctuning_api": "https://cTuning.ai/api/v1",
         "url_cserver_info": "http://127.0.0.1:8004/far?hcref=",
