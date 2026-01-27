@@ -27,7 +27,7 @@ cfg = {
 
         "log_format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 
-        "con_error_prefix": "cMeta error: ",
+        "con_error_prefix": "cMeta notice: ",
 
         "env_var_home": "CMETA_HOME",
         "env_var_home2": "CMETA_HOME2",

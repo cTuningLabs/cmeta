@@ -814,7 +814,10 @@ class Category(InitCategory):
             arg1:                   str,                 # Repo name (alias and/or UID).
             skip_date:              bool = False,        # Skip date and time from filename
             skip_dirs:              list = None,         # Directories to skip (default: ['.venv', '__pycache__'])
+            skip_files:             list = None,         # Files to skip
             output_path:            str = None,          # Output path for zip file (current directory by default)
+            zip_name:               str = None,          # Output zip name
+            force:                  bool = False,        # Overwrite existing zip file
     ):
         """
         Zip cMeta repository.
@@ -836,8 +839,11 @@ class Category(InitCategory):
 
         con = state.get('control',{}).get('con', False)
         
-        if skip_dirs is None:
+        if not skip_dirs:
             skip_dirs = ['.venv', '__pycache__']
+
+        if not skip_files:
+            skip_files = []
 
         # Find the repository
         p = {'category': state['category'], 
@@ -868,13 +874,16 @@ class Category(InitCategory):
         repo_name = repo_alias if repo_alias else repo_uid
 
         # Generate filename
-        if skip_date:
-            zip_filename = f'cmr-{repo_name}.zip'
+        if zip_name:
+            zip_filename = zip_name
         else:
-            now = datetime.now()
-            date_str = now.strftime('%Y%m%d')
-            time_str = now.strftime('%H%M%S')
-            zip_filename = f'cmr-{repo_name}-{date_str}-{time_str}.zip'
+            if skip_date:
+                zip_filename = f'cmr-{repo_name}.zip'
+            else:
+                now = datetime.now()
+                date_str = now.strftime('%Y%m%d')
+                time_str = now.strftime('%H%M%S')
+                zip_filename = f'cmr-{repo_name}-{date_str}-{time_str}.zip'
 
         # Determine output path
         if output_path is None:
@@ -888,13 +897,29 @@ class Category(InitCategory):
             print(f'Output file: {zip_path}')
             if skip_dirs:
                 print(f'Skipping directories: {", ".join(skip_dirs)}')
+            if skip_files:
+                print(f'Skipping files: {", ".join(skip_files)}')
+
+        if os.path.isfile(zip_path):
+            r = utils.files.ask_to_delete(con, force, output_path, name=zip_filename, space=True)
+
+            if con:
+                print ('')
+
+            if r['return']>0: return r
+
+            if not r['confirmed']:
+                return {'return':1, 'error':f'zip file already exists: {zip_path}'}
+
+            os.remove(zip_path)
 
         # Zip the directory
         r = utils.files.zip_directory(
             repo_path,
             zip_path,
             skip_directories=skip_dirs,
-            fail_on_error=self.fail_on_error
+            fail_on_error=self.fail_on_error,
+            skip_files=skip_files,
         )
         if r['return']>0: return r
 

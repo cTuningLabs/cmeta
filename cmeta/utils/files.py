@@ -1028,7 +1028,8 @@ def zip_directory(
         output_path: str,               # Path where the zip file will be created
         skip_directories: list = None,  # List of directory names to skip
         fail_on_error: bool = True,     # If True, raise exceptions
-        logger = None                   # Logger instance for debug messages
+        logger = None,                  # Logger instance for debug messages
+        skip_files: list = None,        # List of file names to skip
 ):
     """
     Creates a zip archive from a directory.
@@ -1067,10 +1068,10 @@ def zip_directory(
                 # Check if any parent directory should be skipped
                 skip = False
                 for parent in file_path.relative_to(source_path).parts:
-                    if parent in skip_directories:
+                    if skip_directories and parent in skip_directories:
                         skip = True
                         break
-                
+
                 if skip:
                     if logger is not None:
                         logger.debug(f"utils.files.zip_directory - skipping {file_path}")
@@ -1079,6 +1080,12 @@ def zip_directory(
                 # Add file or directory to zip
                 if file_path.is_file():
                     arcname = file_path.relative_to(source_path)
+
+                    if skip_files and str(arcname) in skip_files:
+                        if logger is not None:
+                            logger.debug(f"utils.files.zip_directory - skipping {file_path}")
+                        continue
+
                     zip_ref.write(file_path, arcname)
                     if logger is not None:
                         logger.debug(f"utils.files.zip_directory - added {arcname}")
