@@ -122,7 +122,7 @@ class Category(InitCategory):
                 if checkout:
                     url += checkout
                 else:
-                    url += 'latest'
+                    url += 'last'
 
                 url += '.zip'
 
