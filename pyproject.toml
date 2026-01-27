@@ -64,6 +64,7 @@ all = ["cmeta[dev,async,server]"]
 cmeta = "cmeta.cli:main_cmeta"
 meta = "cmeta.cli:main_meta"
 cx = "cmeta.cli:main_cx"
+cxt = "cmeta.cli:main_cxt"
 cserver = "cmeta.cli:main_cserver"
 
 [tool.setuptools.dynamic]

@@ -309,6 +309,16 @@ def main_cx() -> int:
     caller = "cx"
     return main()
 
+def main_cxt() -> int:
+    """Entry point for the 'cx task run' command-line interface.
+    
+    Returns:
+        int: Exit code (0 for success, non-zero for errors).
+    """
+    args = ['task', 'run'] + sys.argv[1:]
+
+    return main(args = args)
+
 def main_cserver() -> int:
     """Entry point for the 'cserver' command-line interface.
     

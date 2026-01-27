@@ -162,10 +162,9 @@ def select_artifact_(self,
                         v = xparams[p]
                         text += f'\n      * {p} = {v}'
 
-
                 print (text)
 
-                if cmeta_params_key and n != num_artifacts-1:
+                if cmeta_params_keys and n != num_artifacts-1:
                     print ('')
 
             index += 1
@@ -186,8 +185,8 @@ def select_artifact_(self,
             if new_index_int < 0 or new_index_int >= index:
                 return {'return':1, 'error': 'selection out of range'}
 
-        if con:
-            print ('')
+#        if con:
+#            print ('')
 
     artifact = artifacts[new_index_int]
 
