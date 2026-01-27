@@ -6,6 +6,8 @@ cMeta author and developer: (C) 2025-2026 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
+from packaging.version import Version
+
 ###################################################################################################
 def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
     """Create error return dictionary or raise exception based on fail_on_error flag.
@@ -616,3 +618,69 @@ def value_matches(data_value, query_value):
 
     # Scalar → direct equality
     return data_value == query_value
+
+###################################################################################################
+def _get_nested(mapping, path, default=None):
+    current = mapping
+    for part in path.split("."):
+        if not isinstance(current, dict):
+            return default
+        current = current.get(part)
+        if current is None:
+            return default
+    return current
+
+
+def _normalize_value(value, *, as_version=False):
+    if value is None:
+        return value
+
+    if as_version:
+        try:
+            return Version(value)
+        except Exception:
+            return value
+
+    return value
+
+
+def _invert_value(value):
+    if value is None:
+        return value
+
+    if isinstance(value, (int, float)):
+        return -value
+
+    if isinstance(value, Version):
+        return tuple(-v for v in value.release)
+
+    return "".join(chr(0x10FFFF - ord(c)) for c in str(value))
+
+def _with_missing_flag(value):
+    if value is None:
+        return (1, None)
+    return (0, value)
+
+def build_sort_key(artifact, sort_keys):
+    key_parts = []
+
+    for raw_key in sort_keys:
+        as_version = raw_key.startswith("@")
+        descending = raw_key.endswith("-")
+
+        key = raw_key
+        if as_version:
+            key = key[1:]
+        if descending:
+            key = key[:-1]
+
+        value = _get_nested(artifact, key)
+        value = _normalize_value(value, as_version=as_version)
+
+        if descending:
+            value = _invert_value(value)
+
+        # 👇 THIS LINE FIXES THE ERROR
+        key_parts.append(_with_missing_flag(value))
+
+    return tuple(key_parts)

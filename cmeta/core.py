@@ -644,6 +644,9 @@ class CMeta:
             print (60*'-')
             utils.common.safe_print_json(result)
 
+            if result['return']>0:
+                result['skip_print_error'] = True
+
         json_file = control_params.get('json_file')
         if json_file is not None and json_file!='':
             r = utils.files.write_file(json_file, result)

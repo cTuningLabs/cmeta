@@ -16,6 +16,7 @@ import zipfile
 from pathlib import Path
 import uuid
 import hashlib
+import fnmatch
 
 from .common import _error
 
@@ -1337,3 +1338,87 @@ def gen_temp_filepath(template = None):
     temp_filepath = os.path.join(tmp_dir, template)
 
     return {'return':0, 'filepath': temp_filepath}
+
+##########################################################################################
+def _handle_remove_readonly(func, path, exc_info):
+    """
+    Error handler for shutil.rmtree that removes read-only attributes.
+    """
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception:
+        raise
+
+##########################################################################################
+def remove_files_and_dirs_in_path(path, pattern, ignore=None):
+    """
+    Recursively remove files and directories in `path` matching `pattern`,
+    while ignoring any names matching items in `ignore`.
+
+    Parameters
+    ----------
+    path : str or Path
+        Root directory to operate on.
+    pattern : str
+        Wildcard pattern (fnmatch-style) to match files/directories.
+    ignore : list[str], optional
+        List of wildcard patterns for files/directories to ignore.
+        Matching is done against the basename.
+
+    Examples
+    --------
+    remove_files_and_dirs_in_path(
+        path=".",
+        pattern="*.log",
+        ignore=["keep.log", "important_*"]
+    )
+    """
+    root = Path(path)
+    ignore = ignore or []
+
+    def is_ignored(p: Path) -> bool:
+        return any(fnmatch.fnmatch(p.name, ig) for ig in ignore)
+
+    for item in sorted(root.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if is_ignored(item):
+            continue
+
+        if fnmatch.fnmatch(item.name, pattern):
+            try:
+                if item.is_dir():
+                    shutil.rmtree(
+                        item,
+                        onerror=_handle_remove_readonly,
+                    )
+                else:
+                    os.chmod(item, stat.S_IWRITE)
+                    item.unlink()
+            except FileNotFoundError:
+                pass
+
+    return {'return':0}
+
+##########################################################################################
+def ask_to_delete(con, force, path, name=None, text=None, space=False):
+
+    confirmed = True
+    if con:
+        xname = name if name is not None else "artifact"
+        xtext = text if text is not None else f'Deleting {xname} located at "{path}" ...'
+        
+        if space:
+            print ('')
+
+        print (xtext)
+
+        if not force:
+            x = input('  Proceed (y/N)? ')
+            x = x.strip().lower()
+
+            if x not in ['y', 'yes']:
+                print ('    Skipped!')
+                confirmed = False
+
+    return {'return':0, 'confirmed': confirmed}
+

@@ -39,6 +39,9 @@ class Category(InitCategory):
             status:                 bool = False,        # Check status of git repos
             checkout:               str = None,          # git checkout to this branch or commit
 
+            keep:                   bool = False,        # preserve repository and meta even if not present during reindexing
+                                                         # (useful for USB drives)
+
             pre:                    str = '',
             post:                   str = '',
             hide:                   bool = False,        # hide git clone command print (if PAT/secret is present) 
@@ -426,6 +429,10 @@ class Category(InitCategory):
 
                     repo_update = True
 
+                if keep:
+                    repo_meta['keep'] = True
+                    repo_meta_to_index['keep'] = True
+
                 if repo_updated:
                     r = utils.files.safe_write_file(repo_meta_desc_path, repo_meta, file_lock=repo_meta_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
                     if r['return']>0: return r
@@ -458,9 +465,12 @@ class Category(InitCategory):
                 repos_paths_file_lock = r['file_lock']
                 
                 if path not in repos_paths:
+                    # I decided not to add params to avoid exposing sensitite info such as PAT in URL, 'params':state['origin']['params']}}
+                    # Unless "keep" is used for USB-like or network drives
                     repos_paths[path] = {'meta':repo_meta_to_index}
 
-                    # I decided not to add params to avoid exposing sensitite info such as PAT in URL, 'params':state['origin']['params']}}
+                    if keep:
+                        repos_paths[path]['keep_repo_meta'] = repo_meta
 
                 # Do not sort keys - preserve order!
                 r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True, 
@@ -502,7 +512,7 @@ class Category(InitCategory):
                 nice_free = r['nice_free']
 
                 print ('')
-                print (f'Free space in this repo: {nice_free}')
+                print (f'Free disk space for this repo: {nice_free}')
 
         ######################################################################################################################
         if reindex:

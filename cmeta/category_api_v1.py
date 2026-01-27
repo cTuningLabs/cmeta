@@ -617,15 +617,19 @@ class Category(InitCategory):
                 import time
                 start_time = time.perf_counter()                
 
-            if con:
-                print (f'Deleting artifact located at "{artifact_path}" ...')
-                if not force:
-                    x = input('  Proceed (y/N)? ')
-                    x = x.strip().lower()
+            r = utils.files.ask_to_delete(con, force, artifact_path)
+            if r['return']>0: return r
+            if not r['confirmed']: continue
 
-                    if x not in ['y', 'yes']:
-                        print ('    Skipped!')
-                        continue
+#            if con:
+#                print (f'Deleting artifact located at "{artifact_path}" ...')
+#                if not force:
+#                    x = input('  Proceed (y/N)? ')
+#                    x = x.strip().lower()
+#
+#                    if x not in ['y', 'yes']:
+#                        print ('    Skipped!')
+#                        continue
 
             artifact_cmeta_ref_parts = artifact['cmeta_ref_parts']
             artifact_uid = artifact_cmeta_ref_parts['artifact_uid']
@@ -773,7 +777,14 @@ class Category(InitCategory):
         artifact_repo_uid = repo_cmeta_ref_parts['artifact_uid']
 
         if not virtual:
-            os.makedirs(repo_path, exist_ok=True)
+            # Need to check detached but kept repos (such as USB)
+            keep = repo_cmeta.get('keep', False)
+            try:
+                os.makedirs(repo_path, exist_ok=True)
+            except Exception as e:
+                x = 'detachable ' if keep else ''
+                err = f'can\'t access {x}repo (please check if plugged): {repo_path}'
+                return _error(err, 1, e, self.fail_on_error)
 
         # Check category path
         category = state['category']

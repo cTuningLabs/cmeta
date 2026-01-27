@@ -256,7 +256,8 @@ def catch(
         if cmeta_init is not None and cmeta_init.get('fail_on_error', False):
             raise Exception(error_text)
 
-        print(error_text, file=sys.stderr)
+        if not result.get('skip_print_error', False):
+            print(error_text, file=sys.stderr)
 
         if pause_if_error:
             print ('')

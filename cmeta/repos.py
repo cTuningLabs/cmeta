@@ -675,7 +675,9 @@ class Repos:
         to_update = False
 
         for path in original_paths_to_repos:
-            extra_meta = original_paths_to_repos[path].get('meta', {})
+            local_meta = original_paths_to_repos[path]
+
+            extra_meta = local_meta.get('meta', {})
 
             if path.endswith('internal-repo') and os.path.normpath(path) != this_internal_repo_path:
                 path = this_internal_repo_path
@@ -684,7 +686,17 @@ class Repos:
             path_to_repo_desc = os.path.join(path, self.cfg['repo_meta_desc'])
 
             if not os.path.isfile(path_to_repo_desc):
-                to_update = True
+                if extra_meta.get('keep') and 'keep_repo_meta' in local_meta:
+                    repo_meta = local_meta['keep_repo_meta']
+
+                    repos_meta[path] = repo_meta
+
+                    paths_to_repos[path]={'meta': extra_meta,
+                                          'keep_repo_meta': repo_meta}
+                    
+                else:
+                    to_update = True
+
             else:
                 r = utils.files.safe_read_file(path_to_repo_desc, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
                 if r['return']==0: 

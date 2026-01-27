@@ -45,8 +45,9 @@ def select_artifact_(self,
                      select_text='',
                      show_tags=False,
                      artifacts=None,
-                     cmeta_params_key=None,
+                     cmeta_params_keys=None,
                      skip_uids=False,
+                     sort_keys=None,
     ):
 
     con = state['control'].get('con', False)
@@ -88,10 +89,25 @@ def select_artifact_(self,
 
         index = 0
 
-        artifacts = sorted(artifacts, key = lambda artifact: (artifact['cmeta'].get('sort', 0),
-                                                              artifact['cmeta'].get('name', ''),
-                                                              artifact['cmeta_ref_parts']['artifact_alias'],
-                                                              artifact['cmeta_ref_parts']['artifact_uid']))
+        xsort_keys = sort_keys.copy() if sort_keys else []
+
+        for k in ["cmeta.sort", "cmeta_ref_parts.artifact_alias", "cmeta_ref_parts.artifact_uid"]:
+            if k not in xsort_keys:
+                xsort_keys.append(k)
+
+#        sort_keys = [
+#            "cmeta.sort",
+#            "@cmeta.params.version-",
+#            "@cmeta.params.tag-",
+#            "cmeta.params.name",
+#            "cmeta_ref_parts.artifact_alias",
+#            "cmeta_ref_parts.artifact_uid",
+#        ]
+
+        artifacts = sorted(
+            artifacts,
+            key=lambda a: self.cm.utils.common.build_sort_key(a, xsort_keys)
+        )
 
         num_artifacts = len(artifacts)
         for n in range(num_artifacts):
@@ -107,19 +123,46 @@ def select_artifact_(self,
 
                 x = name if name != '' else alias
 
-                xtags = '[' + ','.join(cmeta['tags']) + '] ' if show_tags else ''
+                xtags = '' #'[' + ','.join(cmeta['tags']) + '] ' if show_tags else ''
 
                 xuid = f'({uid})' if not skip_uids else ''
 
                 text = f'{index}) {x} {xtags}{xuid}'
 
-                if cmeta_params_key:
-                    uparams = cmeta.get(cmeta_params_key,{})
-                    if len(uparams)>0:
-                        for p in sorted(uparams):
-                            v = str(uparams[p])
-                            text += f'\n      * {p} = {v}'
-                    
+#                if cmeta_params_keys:
+#                    xparams = {}
+#                    for cmeta_params_key in cmeta_params_keys:
+#                        if cmeta_params_key in cmeta:
+#                            uparams = cmeta[cmeta_params_key]
+#                            if type(uparams) == dict:
+#                                for p in sorted(uparams):
+#                                    xparams[p] = str(uparams[p])
+#                            else:
+#                                xparams[cmeta_params_key] = str(uparams)
+#                    
+#                    if len(xparams)>0:
+#                        for p in sorted(xparams):
+#                            v = xparams[p]
+#                            text += f'\n      * {p} = {v}'
+
+                xparams = {}
+                for cmeta_params_key in ['params', 'tags', 'path']:
+                    if cmeta_params_key in cmeta:
+                        uparams = cmeta[cmeta_params_key]
+                        if type(uparams) == dict:
+                            for p in sorted(uparams):
+                                xparams[cmeta_params_key+'.'+p] = str(uparams[p])
+                        elif type(uparams) == list:
+                            xparams[cmeta_params_key] = ','.join(uparams)
+                        else:
+                            xparams[cmeta_params_key] = str(uparams)
+                
+                if len(xparams)>0:
+                    for p in sorted(xparams):
+                        v = xparams[p]
+                        text += f'\n      * {p} = {v}'
+
+
                 print (text)
 
                 if cmeta_params_key and n != num_artifacts-1:
