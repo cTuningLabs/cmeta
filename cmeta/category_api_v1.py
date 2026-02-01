@@ -149,6 +149,7 @@ class Category(InitCategory):
             add_index_file: bool = False,  # Add index file information
             skip_uids: bool = False,       # Skip UIDs when using wildcards
             match: dict = None,            # Filter artifacts by this match dict (if key ends with -, do not include value)
+            all_tags: str = None,          # Comma-separated string or iterable of all tags to have exact match
     ):
         """
         Find artifacts.
@@ -186,7 +187,8 @@ class Category(InitCategory):
         if self.cm.debug:
             self.logger.debug(f"  self.cm.repos.find({artifact_ref_parts})")
 
-        r = self.cm.repos.find(artifact_ref_parts, add_index_file = add_index_file, tags = tags, skip_uids = skip_uids, match = match)
+        r = self.cm.repos.find(artifact_ref_parts, add_index_file = add_index_file, tags = tags,
+                               skip_uids = skip_uids, match = match, all_tags = all_tags)
         if r['return']>0: return r
 
         artifacts = r['artifacts']

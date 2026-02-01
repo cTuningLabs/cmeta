@@ -66,9 +66,20 @@ def select_artifact_(self,
         if r['return']>0: 
             if r['return'] != 16: return r
 
-            xtags = '' if (select_tags == None or len(select_tags)==0) else f' with tags "{select_tags}"'
+            r = self.cm.utils.names.parse_cmeta_name(select_category_name)
+            if r['return']>0: return r
 
-            return {'return':16, 'error': f'couldn\'t find "{select_category_name}" artifacts{xtags}'}
+            select_category_name = r['name']['alias']
+
+            x = '' 
+
+            if select_artifact:
+                x += f' "{select_artifact}"'
+
+            if select_tags is not None and len(selet_tags)>0: 
+                x += f' with tags "{select_tags}"'
+
+            return {'return':16, 'error': f'couldn\'t find "{select_category_name}" artifact(s){x}'}
 
         artifacts = r['artifacts']
 

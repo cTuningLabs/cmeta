@@ -417,12 +417,13 @@ class Repos:
 
     ###################################################################################################
     def find(self, 
-             cmeta_ref, 
-             add_index_file=False, 
-             tags=None, 
-             skip_uids=False, 
-             skip_non_indexed=False,
-             match=None,
+             cmeta_ref: str, 
+             add_index_file: bool = False, 
+             tags: str = None, 
+             skip_uids: bool = False, 
+             skip_non_indexed: bool = False,
+             match: bool = None,
+             all_tags: str = None,          # Comma-separated string or iterable of all tags to have exact match
         ):
         """Find artifacts by cMeta reference.
         
@@ -432,6 +433,7 @@ class Repos:
             tags: Optional tags to filter results.
             match: Optional match dictionary to filter results (key that ends with - is supported)
             skip_uids: If True, skip UID validation.
+            all_tags: match all tags in cmeta
             
         Returns:
             dict: Dictionary with 'return': 0 and 'artifacts' list on success,
@@ -452,6 +454,13 @@ class Repos:
             if r['return'] >0: return r
 
             tags = r['tags']
+
+        # Check all tags
+        if all_tags != None:
+            r = utils.common.normalize_tags(all_tags, fail_on_error = self.fail_on_error)
+            if r['return'] >0: return r
+
+            all_tags = r['tags']
 
         # Unpack to search
         category_alias = cmeta_ref_parts.get('category_alias')
@@ -521,6 +530,14 @@ class Repos:
                 # Check conditions
                 add_artifacts = []
 
+                if all_tags is not None and len(all_tags)>0:
+                    tmp_artifacts = []
+                    for a in r['artifacts']:
+                        if set(a['cmeta'].get('tags',[])) == set(all_tags):
+                            tmp_artifacts.append(a)
+                else:
+                    tmp_artifacts = r['artifacts']
+
                 if tags != None and len(tags)>0:
                     # Split tags into inclusion and exclusion sets
                     inclusion_tags = []
@@ -534,7 +551,7 @@ class Repos:
                         else:
                             inclusion_tags.append(tag_str.lower())
                     
-                    for a in r['artifacts']:
+                    for a in tmp_artifacts:
                         cmeta = a['cmeta']
                         ctags = cmeta.get('tags', [])
 
@@ -559,7 +576,7 @@ class Repos:
                             add_artifacts.append(a)
 
                 else:
-                    add_artifacts = r['artifacts']
+                    add_artifacts = tmp_artifacts
 
                 if match is not None and len(match)>0:
                     add_artifacts2 = []
