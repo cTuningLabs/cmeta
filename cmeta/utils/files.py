@@ -1441,3 +1441,31 @@ def is_dir_empty(path, clean=False):
         return empty
     except PermissionError:
         return False
+
+############################################################
+def load_files(path, load_files, fail_on_error = False):
+
+    loaded_files = {}
+
+    for filename in load_files:
+
+        file_path = os.path.join(path, filename)
+
+        # If filename has no extension, try .json then .yaml if those files exist
+        if os.path.splitext(filename)[1] == '':
+            json_path = os.path.join(path, filename + '.json')
+            yaml_path = os.path.join(path, filename + '.yaml')
+            if os.path.isfile(json_path):
+                file_path = json_path
+            elif os.path.isfile(yaml_path):
+                file_path = yaml_path
+        
+        loaded_files[filename] = {'path': file_path}
+        
+        if os.path.isfile(file_path):
+            r = safe_read_file(file_path, fail_on_error = fail_on_error)
+            if r['return']>0: return r
+
+            loaded_files[filename]['data'] = r['data']
+
+    return {'return':0, 'loaded_files': loaded_files}

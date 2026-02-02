@@ -46,8 +46,10 @@ def select_artifact_(self,
                      show_tags=False,
                      artifacts=None,
                      cmeta_params_keys=None,
-                     skip_uids=False,
-                     sort_keys=None,
+                     skip_uids: bool = False,
+                     sort_keys: list = None,
+                     load_files: list = [],         # Attempt to load files in the selected artifact
+
     ):
 
     con = state['control'].get('con', False)
@@ -201,7 +203,16 @@ def select_artifact_(self,
 
     artifact = artifacts[new_index_int]
 
-    return {'return':0, 
-            'artifacts': artifacts, 
-            'artifact': artifact,
-            'index':new_index_int}
+    result = {'return':0, 
+              'artifacts': artifacts, 
+              'artifact': artifact,
+              'index':new_index_int,
+    }
+
+    if len(load_files) > 0:
+        r = self.cm.utils.files.load_files(artifact['path'], load_files, self.cm.fail_on_error)
+        if r['return']>0: return r
+
+        result['loaded_files'] = r['loaded_files']
+
+    return result

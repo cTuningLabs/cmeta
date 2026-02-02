@@ -528,17 +528,12 @@ class Category(InitCategory):
         result = {'return':0, 'artifact': artifact, 'cmeta': сmeta}
 
         if len(load_files) > 0:
-            loaded_files = {}
             path = artifact['path']
-            for filename in load_files:
-                file_path = os.path.join(path, filename)
-                loaded_files[filename] = {'path': file_path}
-                if os.path.isfile(file_path):
-                    r = self.cm.utils.files.safe_read_file(file_path, fail_on_error=self.fail_on_error)
-                    if r['return']>0: return r
-                    loaded_files[filename]['data'] = r['data']
 
-            result['loaded_files'] = loaded_files
+            r = utils.files.load_files(path, load_files, self.fail_on_error)
+            if r['return']>0: return r
+
+            result['loaded_files'] = r['loaded_files']
 
         if con:
             data = artifact if extra else сmeta

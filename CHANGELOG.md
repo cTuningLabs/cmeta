@@ -1,5 +1,8 @@
-﻿cMeta (0.21.0):
-  * various bug fixes and important extensions
+﻿cMeta (0.22.0):
+  * major fix and extension of 'load_files' in artifact read/find logic
+
+cMeta (0.21.0):
+  * many various bug fixes and important extensions
 
 cMeta (0.20.0):
   * many regular improvements and some serious bug fixes
