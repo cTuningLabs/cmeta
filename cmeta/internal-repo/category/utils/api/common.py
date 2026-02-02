@@ -49,6 +49,7 @@ def select_artifact_(self,
                      skip_uids: bool = False,
                      sort_keys: list = None,
                      load_files: list = [],         # Attempt to load files in the selected artifact
+                     space: str = '',
 
     ):
 
@@ -92,7 +93,7 @@ def select_artifact_(self,
     if len(artifacts) > 1:
 
         if select_text == '':
-            select_text = f'Select {select_category_name}'
+            select_text = f'{space}Select {select_category_name}'
 
         select_text += ':'
 
@@ -140,7 +141,7 @@ def select_artifact_(self,
 
                 xuid = f'({uid})' if not skip_uids else ''
 
-                text = f'{index}) {x} {xtags}{xuid}'
+                text = f'{space}{index}) {x} {xtags}{xuid}'
 
 #                if cmeta_params_keys:
 #                    xparams = {}
@@ -173,7 +174,7 @@ def select_artifact_(self,
                 if len(xparams)>0:
                     for p in sorted(xparams):
                         v = xparams[p]
-                        text += f'\n      * {p} = {v}'
+                        text += f'\n{space}      * {p} = {v}'
 
                 print (text)
 
@@ -185,13 +186,13 @@ def select_artifact_(self,
         if quiet:
             if con:
                 print ('')
-                print ('Quietly selected: 0')
+                print (f'{space}Quietly selected: 0')
 
             new_index_int = 0
 
         else:
             print ('')
-            new_index = input('Make your selection or press Enter for 0: ').strip()
+            new_index = input(f'{space}Make your selection or press Enter for 0: ').strip()
 
             new_index_int = 0 if new_index == '' else int(new_index)
 

@@ -242,6 +242,11 @@ class CMeta:
             params['state'] = {}
         state = params.get('state', {})
 
+        # Prepare filtered params for reproducibility
+        params_reproduce = request.copy()
+        if 'state' in params_reproduce: del(params_reproduce['state'])
+        state['params'] = params_reproduce
+
         # If origin(al) call is not in the state, add it for further
         # reuse, debugging and reproducibility
         if 'origin' not in state:
@@ -629,7 +634,9 @@ class CMeta:
                         if r['return']>0: return r
                         category_str = r['obj']
 
-                        err = f'API call "{category_str} {command}" failed - {ste}.\n\nAdd --help to view API usage and options'
+                        extra_flags_help = category_meta.get('extra_flags_help', '')
+
+                        err = f'API call "{category_str} {command}" failed - {ste}.\n\nRerun with {extra_flags_help}--help to view API usage and options'
 
 #                        if '() got an unexpected keyword argument' in ste:
 #                            r = utils.sys.get_api_info(category_api_code, command_func_name, f'{category_str} {command}', control_params_desc)

@@ -419,6 +419,7 @@ def run(
         con: bool = False,             # If True, enable console output
         fail_on_error: bool = False,   # If True, raise exception on error
         logger = None,                 # Optional logger for debug messages
+        space = '',                    # Space when printing (for nested calls) 
 ):
     """
     Run CMD with environment.
@@ -552,13 +553,13 @@ def run(
         print('')
 
         if skip_run:
-            print (f'SKIP {xcmd}')
+            print (f'{space}SKIP {xcmd}')
         else:
-            print (f'{text_cmd} {xcmd}')
+            print (f'{space}{text_cmd} {xcmd}')
 
     elif con:
         print ('')
-        print (f'{xcmd}')
+        print (f'{space}{xcmd}')
 
 
     if save_script is not None and save_script != '':
@@ -581,9 +582,12 @@ def run(
         if verbose:
             x = 'SKIP ' if skip_run else ''
             print('')
-            print(f'{x}{text_cmd} {cmd}')
+            print(f'{space}{x}{text_cmd} {cmd}')
 
     if not skip_run:
+#        if verbose:
+#            print ('')
+
         try:
             is_windows = os.name == 'nt'
             use_popen = (timeout is not None and not is_windows)
@@ -643,7 +647,7 @@ def run(
 
         if returncode>0 and stderr != '' and verbose:
              print ('')
-             print (f'Command failed: {stderr}')
+             print (f'{space}Command failed: {stderr}')
 
     if work_dir is not None:
         os.chdir(cur_dir)
@@ -1015,6 +1019,7 @@ def get_min_host_info(
         con: bool = False,          # If True, print information to console
         line: int = 0,
         self_time: bool = False,    # If True, print self-time
+        space = '',                    # Space when printing (for nested calls) 
 ):
     """Get minimal host system information including CPU and memory.
     
@@ -1078,19 +1083,19 @@ def get_min_host_info(
         x += '='*line + '\n'
 
     if not only_memory:
-        x += (f"Host physical cores: {physical_cores}\n"
-              f"Host logical cores: {logical_cores}\n")
+        x += (f"{space}Host physical cores: {physical_cores}\n"
+              f"{space}Host logical cores: {logical_cores}\n")
 
-    x += (f"Host total memory: {nice_total_memory}\n"
-        f"Host free memory: {nice_free_memory}\n"
-        f"Memory used by current process: {nice_memory_used}\n")
+    x += (f"{space}Host total memory: {nice_total_memory}\n"
+        f"{space}Host free memory: {nice_free_memory}\n"
+        f"{space}Memory used by current process: {nice_memory_used}\n")
 
     end_time = time.time()
     self_time = end_time - start_time
     nice_self_time = f"{self_time:.3f} sec."
 
     if self_time:
-        x += f"Time to obtain system info: {nice_self_time}\n"
+        x += f"{space}Time to obtain system info: {nice_self_time}\n"
 
     if con:
         print (x)
@@ -1114,6 +1119,7 @@ def get_disk_space(
         unit: str = None,         # Force specific unit for size formatting
         line: int = 0,
         self_time: bool = False,  # If True, print self-time
+        space = '',                    # Space when printing (for nested calls) 
 ):
     """Get disk space information for a given path.
     
@@ -1157,9 +1163,9 @@ def get_disk_space(
         x = ''
 
         if line>0:
-            x += '='*line + '\n'
+            x += space + '='*line + '\n'
 
-        x += f'Path: {path}\n'
+        x += f'{space}Path: {path}\n'
         for key in ['total', 'used', 'free']:
             size = result[key]
 
@@ -1170,14 +1176,14 @@ def get_disk_space(
 
             result['nice_'+key] = nice_size
 
-            x += key.capitalize() + f' size: {nice_size}\n'
+            x += space + key.capitalize() + f' size: {nice_size}\n'
 
         end_time = time.time()
         self_time = end_time - start_time
         nice_self_time = f"{self_time:.3f} sec."
 
         if self_time:
-            x += f"Time to obtain disk space: {nice_self_time}\n"
+            x += f"{space}Time to obtain disk space: {nice_self_time}\n"
 
         result['string'] = x
 
@@ -1186,7 +1192,7 @@ def get_disk_space(
     nice_self_time = f"{self_time:.3f} sec."
 
     if nice:
-        x += f"Self time: {nice_self_time}\n"
+        x += f"{space}Self time: {nice_self_time}\n"
 
     result['self_time'] = self_time
     result['nice_self_time'] = nice_self_time

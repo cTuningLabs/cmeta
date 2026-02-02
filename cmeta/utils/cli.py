@@ -86,6 +86,7 @@ def parse_cmd(
         # Handle invalid triple-dash flags
         elif argument.startswith('---'):
             return _error(f'Flag "{argument}" has unknown prefix "---"', 1, None, fail_on_error)
+
         # Handle double-dash flags (--key=value)
         elif argument.startswith('-'):
             flag_content = argument[2:] if argument.startswith('--') else argument[1:]
