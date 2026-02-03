@@ -37,6 +37,7 @@ class Packages:
         allow_install=True,
         timeout: float = None,   # global default timeout
         deps: dict = None,
+        add_install_args: str = None,
     ):
 
         self.cache = cache or {}
@@ -47,6 +48,7 @@ class Packages:
         self.allow_install = allow_install
         self.default_timeout = timeout  # seconds or None
         self.deps = deps or {}
+        self.add_install_args = add_install_args
 
     # ------------------------------------------------------------------
     # Logging wrapper
@@ -429,7 +431,7 @@ class Packages:
             self.log("error", f"[sync] {e} in {__name__}")
             if self.fail_on_error:
                 raise
-            return {"return": 1, "error": f'internal error "{e}" in {__name__}'}
+            return {"return": 1, "error": f'pip install failed for {name}: {e}'}
 
     # ------------------------------------------------------------------
     # PUBLIC ASYNC GET
@@ -511,3 +513,55 @@ class Packages:
             if self.fail_on_error:
                 raise
             return {"return": 1, "error": f'internal error "{e}" in {__name__}'}
+
+    # ------------------------------------------------------------------
+    # PUBLIC SYNC GET ALL
+    # ------------------------------------------------------------------
+
+    def get_all(self, pip_packages, con = False):
+
+        pkg = {}
+        mpkg = {}
+
+        for pip_package in pip_packages:
+            pip_package_params = pip_packages[pip_package]
+            if not pip_package_params: 
+                pip_package_params = {}
+            if self.add_install_args:
+                x = pip_package_params.get('install_args')
+                x = '' if not x else x + ' '
+                pip_package_params['install_args'] = x + self.add_install_args
+
+            r = self.get(pip_package, con = con, **pip_package_params)
+            if r['return']>0: return r
+
+            pkg[pip_package] = r['package']
+            mpkg[pip_package] = r['package'].module
+
+        return {'return':0, 'pkg': pkg, 'mpkg': mpkg}
+
+    # ------------------------------------------------------------------
+    # PUBLIC ASYNC GET ALL
+    # ------------------------------------------------------------------
+
+    async def get_async_all(self, pip_packages, con = False):
+
+        pkg = {}
+        mpkg = {}
+
+        for pip_package in pip_packages:
+            pip_package_params = pip_packages[pip_package]
+            if not pip_package_params: 
+                pip_package_params = {}
+            if self.add_install_args:
+                x = pip_package_params.get('install_args')
+                x = '' if not x else x + ' '
+                pip_package_params['install_args'] = x + self.add_install_args
+
+            r = await self.get_async(pip_package, con = con, **pip_package_params)
+            if r['return']>0: return r
+
+            pkg[pip_package] = r['package']
+            mpkg[pip_package] = r['package'].module
+
+        return {'return':0, 'pkg': pkg, 'mpkg': mpkg}

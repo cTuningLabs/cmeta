@@ -1,5 +1,8 @@
 ﻿cMeta (0.22.0):
-  * major fix and extension of 'load_files' in artifact read/find logic
+  * added state extensions for reproducibility
+  * fixed and extended 'load_files' in artifact read/find logic
+  * improved sub-package installation
+  * added needs_categories to cmeta
 
 cMeta (0.21.0):
   * many various bug fixes and important extensions

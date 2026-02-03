@@ -147,6 +147,7 @@ class CMeta:
             fail_on_error=self.fail_on_error,
             allow_install=package_allow_install,
             timeout=package_timeout,
+            add_install_args=os.environ.get(cfg['env_var_pip_install_args']), 
         )
 
         #################################################################################

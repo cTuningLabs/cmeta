@@ -1,11 +1,14 @@
 artifact: f4f792ab40c7498f
 authors: '[Grigori Fursin](https://cKnowledge.org/gfursin)'
 category: category,dd9ea50e7f76467f
-copyright: 2025-2026 Grigori Fursin and cTuning Labs. See the cMeta COPYRIGHT and LICENSE
-  files for details.
+copyright: 2025-2026 Grigori Fursin and cTuning Labs. See the cMeta COPYRIGHT and
+  LICENSE files for details.
 find_sort: false
 last_api_version: 1
+needs_categories:
+  config: config,cc6bfe174be847ed
 permanent: true
 tags:
 - category
 - repo
+

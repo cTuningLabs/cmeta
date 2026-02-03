@@ -42,6 +42,7 @@ cfg = {
         "env_var_cmeta_authors": "CMETA_AUTHORS",
         "env_var_cmeta_copyright": "CMETA_COPYRIGHT",
         "env_var_cmeta_server_info_url": "CMETA_SERVER_INFO_URL",
+        "env_var_pip_install_args": "CMETA_PIP_INSTALL_ARGS",
         
         "repos_config_filename": "repos.json",
         "repos_dir": "repos",

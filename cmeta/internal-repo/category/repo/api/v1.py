@@ -94,7 +94,7 @@ class Category(InitCategory):
         cur_dir = os.getcwd()
 
         # Get default config
-        r = self.cm.access({'category': 'config,cc6bfe174be847ed',
+        r = self.cm.access({'category': self.cmeta['needs_categories']['config'],
                             'command': 'get',
                             'arg1': self.cm.cfg['default_config_name']})
         if r['return'] > 0: return r
@@ -391,7 +391,7 @@ class Category(InitCategory):
                 elif method == 'zip':
 
                     # Get default params
-                    r = self.cm.access({'category': 'config,cc6bfe174be847ed',
+                    r = self.cm.access({'category': self.cmeta['needs_categories']['config'],
                                         'command': 'get',
                                         'arg1': 'ctuning_server'})
                     if r['return'] > 0: return r

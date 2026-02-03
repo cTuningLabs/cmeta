@@ -46,7 +46,7 @@ class Category(InitCategory):
         p = self._prepare_input_from_params(params, base = False)
 
         p['from_category'] = p['category']
-        p['category'] = 'utils,234ce5e3262e4d52'
+        p['category'] = self.cmeta['needs_categories']['utils']
         p['command'] = 'create_artifact_with_date'
 
         return self.cm.access(p)
