@@ -115,7 +115,7 @@ class Category(InitCategory):
         config_name = cmeta.get('config_name', '')
         config_cmeta = {}
         if config_name != '':
-            r = self.cm.access({'category': self.cmeta['needs_categories']['config'],
+            r = self.cm.access({'category': self.cmeta['uses_categories']['config'],
                                 'command': 'get',
                                 'arg1': config_name})
             if r['return']>0: return r

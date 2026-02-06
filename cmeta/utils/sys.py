@@ -450,6 +450,7 @@ def run(
 
     import subprocess
     import os
+    import platform
 
     if work_dir is not None:
         if not os.path.isdir(work_dir):
@@ -479,6 +480,9 @@ def run(
 
     print_env = {}
 
+    env1 = '%' if platform.system() == "Windows" else '${'
+    env2 = '%' if platform.system() == "Windows" else '}'
+
     for e in [envs, env, genv]:
         for k in e:
             v = e[k]
@@ -495,6 +499,7 @@ def run(
                     if v1 != '':
                         if not v.endswith(os.pathsep):
                             v += os.pathsep
+                        print_env[k] = v + env1 + k + env2
                         v += v1
                 else:
                     v = None
@@ -502,7 +507,7 @@ def run(
             if v is not None:
                 cur_env[k] = v
 
-                if con:
+                if con and k not in print_env:
                     print_env[k] = v
 
     if save_script != '':
@@ -645,9 +650,13 @@ def run(
             stderr = format(e)
             returncode = -1
 
-        if returncode>0 and stderr != '' and verbose:
+        if returncode<0 and verbose:
              print ('')
-             print (f'{space}Command failed: {stderr}')
+             print (f'{space}WARNING: Command timeout after {timeout} secs.')
+             
+        elif returncode>0 and stderr != '' and verbose:
+             print ('')
+             print (f'{space}WARNING: Command failed: {stderr}')
 
     if work_dir is not None:
         os.chdir(cur_dir)

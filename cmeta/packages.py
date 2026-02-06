@@ -36,7 +36,7 @@ class Packages:
         fail_on_error=False,
         allow_install=True,
         timeout: float = None,   # global default timeout
-        deps: dict = None,
+#        deps: dict = None,
         add_install_args: str = None,
     ):
 
@@ -47,7 +47,7 @@ class Packages:
         self.fail_on_error = fail_on_error
         self.allow_install = allow_install
         self.default_timeout = timeout  # seconds or None
-        self.deps = deps or {}
+#        self.deps = deps or {}
         self.add_install_args = add_install_args
 
     # ------------------------------------------------------------------
@@ -420,9 +420,9 @@ class Packages:
                 with self.cache_lock:
                     self.cache[key] = result
 
-            deps_name = 'python-' + name
-            dep = self.deps.setdefault(deps_name, {})
-            dep['package'] = result
+#            deps_name = 'python-' + name
+#            dep = self.deps.setdefault(deps_name, {})
+#            dep['package'] = result
 
             ### RETURN #############################################################
             return {"return": 0, "package": result}
@@ -501,9 +501,9 @@ class Packages:
                 with self.cache_lock:
                     self.cache[key] = result
 
-            deps_name = 'python-' + name
-            dep = self.deps.setdefault(deps_name, {})
-            dep['package'] = result
+#            deps_name = 'python-' + name
+#            dep = self.deps.setdefault(deps_name, {})
+#            dep['package'] = result
 
             ### RETURN #############################################################
             return {"return": 0, "package": result}

@@ -1247,19 +1247,34 @@ class Repos:
 
                 path_to_artifact = os.path.join(path_to_category, long_artifact)
 
+                tt1 = time.perf_counter()
+
                 artifact_meta_desc_file_json = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.json')
                 artifact_meta_desc_file_yaml = os.path.join(path_to_artifact, self.cfg['meta_filename_base'] + '.yaml')
 
                 artifact_meta = {}
 
                 if os.path.isfile(artifact_meta_desc_file_yaml):
+#                    import yaml
+ 
+#                    with open(artifact_meta_desc_file_yaml, "r") as f:
+#                         artifact_meta = yaml.safe_load(f)
+
                     r = utils.files.safe_read_file(artifact_meta_desc_file_yaml, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
                     if r['return']==0: 
                         artifact_meta = r['data']
+
                 elif os.path.isfile(artifact_meta_desc_file_json):
+#                    import json
+
+#                    with open(artifact_meta_desc_file_json, "r") as f:
+#                        artifact_meta = json.load(f)
+
                     r = utils.files.safe_read_file(artifact_meta_desc_file_json, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
                     if r['return']==0: 
                         artifact_meta = r['data']
+
+                tt2 = time.perf_counter()
 
                 if artifact_meta:
                     if index_artifacts is None:
@@ -1348,6 +1363,10 @@ class Repos:
                             if len(name_uids)>1:
                                 print ('', flush=True)
                                 print (f'      Warning: Conflict for {category_alias}:{alias} - multiple UIDs: "{name_uids} ..."')
+
+                tt3 = time.perf_counter()
+
+#                print (f'  time1 = {tt2-tt1:.4f} ; time2 = {tt3-tt2:.4f}')
 
         return {'return':0, 'artifact_num': artifact_num, 'artifacts': artifacts}
 

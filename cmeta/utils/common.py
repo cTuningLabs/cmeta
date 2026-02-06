@@ -684,3 +684,44 @@ def build_sort_key(artifact, sort_keys):
         key_parts.append(_with_missing_flag(value))
 
     return tuple(key_parts)
+
+###################################################################################################
+def expand_string(template: str, values: dict) -> str:
+    out = []
+    i = 0
+
+    while i < len(template):
+        start = template.find("{{", i)
+        if start == -1:
+            out.append(template[i:])
+            break
+
+        out.append(template[i:start])
+        end = template.find("}}", start + 2)
+        if end == -1:
+            return {'return':1, 'error':f'Unclosed "{{" in "{str}"'}
+
+        expr = template[start + 2:end].strip()
+        i = end + 2
+
+        # default handling
+        if "|" in expr:
+            key, default = expr.split("|", 1)
+            key, default = key.strip(), default.strip()
+        else:
+            key, default = expr, None
+
+        # nested lookup
+        cur = values
+        for part in key.split("."):
+            if isinstance(cur, dict) and part in cur:
+                cur = cur[part]
+            else:
+                if default is not None:
+                    cur = default
+                    break
+                return {'return':1, 'error':f'Missing key "{key}" in "{str}"'}
+
+        out.append(str(cur))
+
+    return {'return':0, 'string': "".join(out)}

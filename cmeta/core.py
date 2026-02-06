@@ -194,6 +194,8 @@ class CMeta:
             Dictionary with {"return": 0, ...} for success or {"return": >0, "error": "error text"} for errors
         """
 
+        self_time_start = time.perf_counter()
+
         if self.print_host_info:
             utils.sys.get_min_host_info(only_memory=True, con=True, line=80)
 
@@ -646,6 +648,18 @@ class CMeta:
 #                            err += '\n\nSee ' + r['api_info']
 
                         return {'return':1, 'error':err}
+
+        # Get self timing
+        self_time = time.perf_counter() - self_time_start
+        state['last_self_time'] = self_time
+
+        state['nested_call'] -= 1
+
+        if self_debug:
+
+            self.logger.debug('')
+            self.logger.debug(f'SELF TIME: {self_time:.3f} sec.')
+            self.logger.debug('')
 
         # Finalize call
         if control_params.get('json', False):

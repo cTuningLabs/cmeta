@@ -647,7 +647,7 @@ class Category(InitCategory):
             skip_categories = ['repo', 'log', 'result', 'cache']
 
         # First, find all categories
-        p = {'category': self.cmeta['needs_categories']['category'],
+        p = {'category': self.cmeta['uses_categories']['category'],
              'command':'find',
              'arg1': arg1}     
         
@@ -749,7 +749,7 @@ class Category(InitCategory):
         p = self._prepare_input_from_params(params, base = True)
 
         # Check config if need to do something with a path, i.e. open it with some application
-        r = self.cm.access({'category': self.cmeta['needs_categories']['config'],
+        r = self.cm.access({'category': self.cmeta['uses_categories']['config'],
                             'command': 'get',
                             'arg1': self.cm.cfg['default_config_name']})
         if r['return'] > 0: return r
@@ -833,7 +833,7 @@ class Category(InitCategory):
         con = state['control'].get('con', False)
 
         # Check config if need to do something with a path, i.e. open it with some application
-        r = self.cm.access({'category': self.cmeta['needs_categories']['config'],
+        r = self.cm.access({'category': self.cmeta['uses_categories']['config'],
                             'command': 'get',
                             'arg1': 'ctuning_server'})
         if r['return'] > 0: return r

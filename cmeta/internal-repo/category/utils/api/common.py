@@ -50,11 +50,20 @@ def select_artifact_(self,
                      sort_keys: list = None,
                      load_files: list = [],         # Attempt to load files in the selected artifact
                      space: str = '',
-
+                     load_api: bool = False,
+                     load_api_ver: int = 0,
+                     load_api_class: str = None,
     ):
+
+    import os
+
+    if load_api and not load_api_class:
+        err = f'load_api == True but load_api_class is not defined in {__name__}'
+        return self.cm._error(err, 1, None, self.cm.fail_on_error)
 
     con = state['control'].get('con', False)
     quiet = state['control'].get('quiet', False)
+    inside_cli = 'cli' in state.get('origin',{})
 
     select_category_name = select_category['artifact_alias'] if type(select_category)==dict else str(select_category)
 
@@ -210,10 +219,82 @@ def select_artifact_(self,
               'index':new_index_int,
     }
 
+    # Check if need to load files
     if len(load_files) > 0:
         r = self.cm.utils.files.load_files(artifact['path'], load_files, self.cm.fail_on_error)
         if r['return']>0: return r
 
         result['loaded_files'] = r['loaded_files']
+
+    # Check if min version
+    artifact_path = artifact['path']
+
+    cmeta = artifact['cmeta']
+
+    cmeta_ref_parts = artifact['cmeta_ref_parts']
+
+    artifact_alias = cmeta_ref_parts.get('artifact_alias', '')
+    artifact_uid = cmeta_ref_parts['artifact_uid']
+    artifact_au = artifact_alias if artifact_alias is not None and artifact_alias != '' else artifact_uid
+
+    category_uid = cmeta_ref_parts['category_uid']
+    category_alias = cmeta_ref_parts.get('category_alias', '')
+    category_au = category_alias if category_alias is not None and category_alias != '' else category_uid
+
+    result['artifact_alias'] = artifact_au
+    result['artifact_uid'] = artifact_uid
+    result['artifact_au'] = artifact_au
+
+    result['category_alias'] = category_au
+    result['category_uid'] = category_uid
+    result['category_au'] = category_au
+
+    # Check min cMeta versions
+
+    xver = '1'
+    if load_api_ver is not None and str(load_api_ver) != '0':
+        xver = load_api_ver
+    elif inside_cli or str(load_api_ver) == '0':
+        if cmeta.get('last_api_version') is not None:
+            xver = str(cmeta['last_api_version'])
+
+    min_cmeta_version = cmeta.get('min_cmeta_version_api')
+    if min_cmeta_version is None:
+        min_cmeta_version = cmeta.get('min_cmeta_version',{}).get(xver)
+   
+    if min_cmeta_version is not None:
+        cm_version = self.cm.__version__
+        r = self.cm.utils.common.compare_versions(min_cmeta_version, cm_version)
+        if r['return']>0: return r
+        if r['comparison'] == '>':
+            err = f'the artifact "{category_au}::{artifact_au}" requires min cMeta version "{min_cmeta_version}" but "{cm_version}" is installed'
+            return self.cm._error(err, 1, None, self.cm.fail_on_error)
+
+    # Check if need to load API
+    if load_api:
+        # Check version
+        artifact_api_path = os.path.join(artifact_path, f'api_v{xver}.py')
+        result['api_path'] = artifact_api_path
+
+        if load_api_ver is not None and not os.path.isfile(artifact_api_path):
+            err = f'customization module not found in "{artifact_api_path}"'
+            return self.cm._error(err, 1, None, self.cm.fail_on_error)
+
+        artifact_api_code = None
+        if os.path.isfile(artifact_api_path):
+            r = self.cm.utils.sys.load_module(artifact_api_path, 
+                                              self.cm.module_cache, 
+                                              fail_on_error = self.fail_on_error, 
+                                              init_class=load_api_class, 
+                                              cmeta=self.cm, 
+                                              suffix=category_uid, 
+                                              self_meta=cmeta
+            )
+            if r['return'] >0: 
+                return self.cm._error2(r, self)
+
+            artifact_api_code = r['cache']['initialized_class']
+
+        result['api_code'] = artifact_api_code
 
     return result

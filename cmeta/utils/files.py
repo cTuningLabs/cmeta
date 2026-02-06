@@ -279,14 +279,15 @@ def read_file(
 
 ##########################################################################################
 def safe_read_file(
-        filepath: str,                  # Path to the file to read
-        encoding: str = None,           # Character encoding for text files
-        lock: bool = False,             # If True, use file locking
-        keep_locked: bool = False,      # If True, keep lock after read
-        timeout: int = 3,               # Lock timeout in seconds
-        retry_if_not_found: int = 0,    # Number of retries if file not found
-        fail_on_error: bool = False,    # If True, raise exception on error
-        logger = None                   # Optional logger for debug messages
+        filepath: str,                   # Path to the file to read
+        encoding: str = None,            # Character encoding for text files
+        lock: bool = False,              # If True, use file locking
+        keep_locked: bool = False,       # If True, keep lock after read
+        timeout: int = 3,                # Lock timeout in seconds
+        retry_if_not_found: int = 0,     # Number of retries if file not found
+        fail_on_error: bool = False,     # If True, raise exception on error
+        logger = None,                   # Optional logger for debug messages
+        get_last_modified: bool = False,
 ):
     """Safely read file with optional locking and retry logic.
     
@@ -334,17 +335,19 @@ def safe_read_file(
     retry_not_found_file = RETRY_NOT_FOUND_FILE + 1 if retry_if_not_found == 0 else retry_if_not_found
     for attempt in range(retry_not_found_file):
         if path.exists():
-            try:
-                last_modified = path.stat().st_mtime
-            except Exception:
-                last_modified = None
+            if get_last_modified:
+                try:
+                    last_modified = path.stat().st_mtime
+                except Exception:
+                    last_modified = None
             break
+
         if attempt < retry_not_found_file:  # Don't delay after last attempt
             if logger is not None:
                 logger.debug(f"utils.files.safe_read_file - retrying existence check for '{filepath}' (attempt {attempt + 1}) ...")
             time.sleep(RETRY_DELAY)
 
-    if not path.exists() or last_modified is None:
+    if not path.exists():
         if lock:
             try:
                 _release_lock(filepath, file_lock, logger)
