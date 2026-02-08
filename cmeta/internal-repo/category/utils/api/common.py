@@ -176,7 +176,7 @@ def select_artifact_(self,
                             for p in sorted(uparams):
                                 xparams[cmeta_params_key+'.'+p] = str(uparams[p])
                         elif type(uparams) == list:
-                            xparams[cmeta_params_key] = ','.join(uparams)
+                            xparams[cmeta_params_key] = ','.join(str(x) for x in uparams)
                         else:
                             xparams[cmeta_params_key] = str(uparams)
                 
@@ -221,7 +221,7 @@ def select_artifact_(self,
 
     # Check if need to load files
     if len(load_files) > 0:
-        r = self.cm.utils.files.load_files(artifact['path'], load_files, self.cm.fail_on_error)
+        r = self.cm.utils.files.load_files(artifact['path'], load_files, self.cm.fail_on_error, logger = self.logger)
         if r['return']>0: return r
 
         result['loaded_files'] = r['loaded_files']

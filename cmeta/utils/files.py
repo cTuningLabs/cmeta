@@ -283,7 +283,7 @@ def safe_read_file(
         encoding: str = None,            # Character encoding for text files
         lock: bool = False,              # If True, use file locking
         keep_locked: bool = False,       # If True, keep lock after read
-        timeout: int = 3,                # Lock timeout in seconds
+        timeout: int = 3,                # Lock or retry timeout in seconds
         retry_if_not_found: int = 0,     # Number of retries if file not found
         fail_on_error: bool = False,     # If True, raise exception on error
         logger = None,                   # Optional logger for debug messages
@@ -1446,7 +1446,7 @@ def is_dir_empty(path, clean=False):
         return False
 
 ############################################################
-def load_files(path, load_files, fail_on_error = False):
+def load_files(path, load_files, fail_on_error = False, logger = None, timeout = 1):
 
     loaded_files = {}
 
@@ -1466,7 +1466,7 @@ def load_files(path, load_files, fail_on_error = False):
         loaded_files[filename] = {'path': file_path}
         
         if os.path.isfile(file_path):
-            r = safe_read_file(file_path, fail_on_error = fail_on_error)
+            r = safe_read_file(file_path, fail_on_error = fail_on_error, logger = logger, timeout = timeout)
             if r['return']>0: return r
 
             loaded_files[filename]['data'] = r['data']

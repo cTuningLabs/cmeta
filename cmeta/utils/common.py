@@ -725,3 +725,79 @@ def expand_string(template: str, values: dict) -> str:
         out.append(str(cur))
 
     return {'return':0, 'string': "".join(out)}
+
+###################################################################################################
+def expand_strings_in_dict(data: dict, values: dict) -> dict:
+    """
+    Recursively expand template strings in a dictionary structure.
+    
+    Traverses dictionaries and lists, calling expand_string on any string values found.
+    Updates the original dictionary in-place if expansion succeeds.
+    
+    Args:
+        data: Dictionary to process (modified in-place)
+        values: Dictionary of values for template expansion
+        
+    Returns:
+        dict: {'return': 0} on success, or {'return': 1, 'error': str} on failure
+    """
+    
+    def process_value(value):
+        """Recursively process a value (dict, list, or string)."""
+        if isinstance(value, dict):
+            r = expand_string_in_dict(value, values)
+            if r['return'] > 0:
+                return r
+            return {'return': 0, 'value': value}
+            
+        elif isinstance(value, list):
+            for i, item in enumerate(value):
+                r = process_value(item)
+                if r['return'] > 0:
+                    return r
+                value[i] = r['value']
+            return {'return': 0, 'value': value}
+            
+        elif isinstance(value, str):
+            r = expand_string(value, values)
+            if r['return'] > 0:
+                return r
+            return {'return': 0, 'value': r['string']}
+            
+        else:
+            # Non-string, non-dict, non-list values pass through unchanged
+            return {'return': 0, 'value': value}
+    
+    # Process each key-value pair in the dictionary
+    for key, value in data.items():
+        r = process_value(value)
+        if r['return'] > 0:
+            return r
+        data[key] = r['value']
+    
+    return {'return': 0}
+
+###################################################################################################
+def restricted_bool_eval(expression: str, variables: dict | None = None) -> bool:
+    """
+    Safely evaluate a boolean expression using restricted eval.
+
+    :param expression: Boolean expression as a string
+    :param variables: Allowed variables (name -> value)
+    :return: True or False (False on any error)
+    """
+    if variables is None:
+        variables = {}
+
+    result = None
+
+    try:
+        result = bool(eval(
+            expression,
+            {"__builtins__": {}},  # Disable built-ins
+            variables
+        ))
+    except Exception as e :
+        return {'return':1, 'error':f'can\'t evaluate expression "{str}": {e}'}
+
+    return {'return':0, 'result': result}
