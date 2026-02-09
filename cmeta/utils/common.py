@@ -778,7 +778,7 @@ def expand_strings_in_dict(data: dict, values: dict) -> dict:
     return {'return': 0}
 
 ###################################################################################################
-def restricted_bool_eval(expression: str, variables: dict | None = None) -> bool:
+def restricted_bool_eval(expression: str, variables: dict = None) -> bool:
     """
     Safely evaluate a boolean expression using restricted eval.
 
