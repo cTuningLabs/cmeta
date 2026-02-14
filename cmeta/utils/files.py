@@ -54,6 +54,13 @@ def _get_lockfile_path(
     return f"{filepath}{LOCK_SUFFIX}"
 
 ##########################################################################################
+def is_dir_within_path(
+        base: str,
+        directory: str,
+):
+    target = os.path.join(base, directory)
+    return is_path_within(base, target)
+
 def is_path_within(
         base: str,   # Base path to check
         target: str  # Target path to check against
@@ -1361,7 +1368,7 @@ def _handle_remove_readonly(func, path, exc_info):
         raise
 
 ##########################################################################################
-def remove_files_and_dirs_in_path(path, pattern, ignore=None):
+def remove_files_and_dirs_in_path(path, pattern='*', ignore=None):
     """
     Recursively remove files and directories in `path` matching `pattern`,
     while ignoring any names matching items in `ignore`.
@@ -1472,3 +1479,37 @@ def load_files(path, load_files, fail_on_error = False, logger = None, timeout =
             loaded_files[filename]['data'] = r['data']
 
     return {'return':0, 'loaded_files': loaded_files}
+
+############################################################
+def md5sum(path, chunk_size = 100000):
+    """
+    Calculate md5sum
+
+    Args:
+
+    Returns:
+       (CM return dict):
+
+       * return (int): return code == 0 if no error and >0 if error
+       * (error) (str): error string if return>0
+
+       * md5sum (str): md5sum of the give file
+
+    """
+
+    import sys
+    import hashlib
+
+    try:
+        with open(path, "rb") as f:
+            file_hash = hashlib.md5()
+            while chunk := f.read(chunk_size):
+                file_hash.update(chunk)
+
+        md5sum = file_hash.hexdigest()
+    
+    except Exception as e:
+        err = f'problem calculating md5sum for "{path}" ({e})'
+        return {'return':1, 'error': err}
+
+    return {'return':0, 'md5sum': md5sum}

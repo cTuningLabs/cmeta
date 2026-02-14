@@ -61,10 +61,33 @@ def _error2(r, cm = None):
     return _error(r.get('error'), r['return'], exception=None, fail_on_error=fail_on_error)
 
 ###################################################################################################
+def _catch_error2(r, cm = None):
+    """Catches error and creates return dictionary or raise exception based on fail_on_error flag.
+    
+    Args:
+        r: cMeta access return dict
+        cm: object with fail_on_error: If True, raises exception instead of returning error dict.
+        
+    Returns:
+        dict: Dictionary with 'return' and 'error' keys.
+        
+    Raises:
+        Exception: If fail_on_error is True and return_code != 16.
+    """
+
+    fail_on_error = True if cm is not None and cm.fail_on_error else False
+
+    if r.get('return',0)>0:
+        return _error(r.get('error'), r['return'], exception=None, fail_on_error=fail_on_error)
+    
+    return r
+
+###################################################################################################
 def deep_merge(
         target: dict,                   # Original dictionary to be updated
         source: dict,                   # New dictionary with updates
         append_lists: bool = False,     # If True, append lists instead of overwrite
+        prepend_lists: bool = False,    # If True with append_lists, insert at start instead of end
         ignore_root_keys: list = []     # Keys to ignore at root level
 ):
     """
@@ -74,6 +97,8 @@ def deep_merge(
         target (dict): The original dictionary to be updated.
         source (dict): The new dictionary with updates.
         append_lists (bool): If True, lists will be appended instead of overwritten.
+        prepend_lists (bool): If True and append_lists is True, insert new items at the 
+                             start of existing lists instead of appending at the end.
         ignore_root_keys (list): List of keys to ignore from source at the root level.
     """
     from collections.abc import Mapping
@@ -83,10 +108,13 @@ def deep_merge(
             continue
             
         if isinstance(value, Mapping):
-            target[key] = deep_merge(target.get(key, {}), value, append_lists=append_lists)
+            target[key] = deep_merge(target.get(key, {}), value, append_lists=append_lists, prepend_lists=prepend_lists)
         elif isinstance(value, list):
             if append_lists and isinstance(target.get(key), list):
-                target[key] += value
+                if prepend_lists:
+                    target[key] = value + target[key]
+                else:
+                    target[key] += value
             else:
                 target[key] = value[:]
         else:
@@ -580,19 +608,37 @@ def flatten_dict(d, parent_key="", sep="."):
     return dict(items)
 
 ###################################################################################################
-def matches_query(data, query):
+def matches_query(data, query, match_version_func = None, match_empty_version = False):
     for key, q_value in query.items():
         negate = key.endswith("-")
         actual_key = key[:-1] if negate else key
 
+        is_version_key = isinstance(actual_key, str) and actual_key.startswith('@')
+        actual_key = key[1:] if is_version_key else actual_key
+
         if actual_key not in data:
             if negate:
                 continue  # key doesn't exist → OK for negation
+
+            if is_version_key and match_empty_version:
+                continue  # if version key doesn't exist and match_empty_version is on -> OK
+
             return False
 
         d_value = data[actual_key]
 
-        matched = value_matches(d_value, q_value)
+        # Check if the data key starts with '@' (version comparison indicator)
+        if is_version_key and match_version_func is not None:
+            # Call match_version_func with query value first, then data value
+            result = match_version_func(q_value, d_value)
+            
+            # Expect cMeta dict with 'return': 0 and 'match': bool
+            if result.get('return') != 0:
+                return False
+            
+            matched = result.get('matched', False)
+        else:
+            matched = value_matches(d_value, q_value, match_version_func, match_empty_version)
 
         if negate and matched:
             return False
@@ -603,12 +649,12 @@ def matches_query(data, query):
 
 
 ###################################################################################################
-def value_matches(data_value, query_value):
+def value_matches(data_value, query_value, match_version_func = None, match_empty_version = False):
     # Dict → recursive match
     if isinstance(query_value, dict):
         if not isinstance(data_value, dict):
             return False
-        return matches_query(data_value, query_value)
+        return matches_query(data_value, query_value, match_version_func, match_empty_version)
 
     # List → query list must be subset of data list
     if isinstance(query_value, list):

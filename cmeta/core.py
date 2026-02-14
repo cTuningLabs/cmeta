@@ -117,6 +117,7 @@ class CMeta:
 
         self._error = utils.common._error
         self._error2 = utils.common._error2
+        self._catch_error2 = utils.common._catch_error2
 
         self.module_cache = {}
 
@@ -159,6 +160,7 @@ class CMeta:
             repos_config_path=self.repos_config_path,
             logger=self.logger,
             fail_on_error=self.fail_on_error,
+            match_version_func=self.packages.match_version
         )
 
 
@@ -306,12 +308,15 @@ class CMeta:
         if r['return'] >0: return r
 
         if category_obj is None:
-            if control_params.get('version', False):
+            if params.get('version', False) or params.get('V', False):
                 from .version import __version__
                 result['version'] = __version__
 
                 if con:
                     print (self.cfg['name'] + f' version {__version__}')
+
+                    print ('')
+                    print (self.cfg['copyright'])
 
                 if con:
                     print ('')
@@ -483,73 +488,93 @@ class CMeta:
             ###################################################################################################
             # If empty command, print help
             if command == '':
-                caller = params.get('_cli', {}).get('caller')
-                if caller is None:
-                    caller = os.path.basename(sys.executable) + f" -m {__package__}"
+                if params.get('version', False) or params.get('V', False):
+                    if con:
+                        category_version = category_meta.get('version', None)
+                        result['version'] = category_version
+                        print (f'Category version: {category_version}')
 
-                if not con:
-                    return {'return':1, 'error':f'"command" key is missing in the request {request}'}
+                        category_copyright = category_meta.get('copyright', None)
+                        result['copyright'] = category_copyright
+                        print (f'Category copyright: {category_copyright}')
+
+                        print ('')
+                        from .version import __version__
+                        result['cmeta_version'] = __version__
+
+                        print (self.cfg['name'] + f' version: {__version__}')
+                        print (self.cfg['name'] + ' copyright: ' + self.cfg['copyright'])
 
                 else:
-                    print('<Command> is missing!')
 
-                    print('')
-                    print(f'{caller} {category_obj} <command> --help | <flags>')
+                    caller = params.get('_cli', {}).get('caller')
+                    if caller is None:
+                        caller = os.path.basename(sys.executable) + f" -m {__package__}"
 
-                    for category_api in category_apis:
-                        names = []
+                    if not con:
+                        return {'return':1, 'error':f'"command" key is missing in the request {request}'}
 
-                        category_api_code = category_api['code']
+                    else:
+                        if not control_params.get('help', False):
+                            print(self.cfg['con_error_prefix'] + '<command> is missing after <category>!')
+                            print('')
 
-                        x1 = ''
-                        x2 = ''
-                        if category_api.get('base', False):
-                            x1 = ' base (common)'
-                            x2 = ' for all categories'
+                        print(f'{caller} {category_obj} <command> --help | <flags>')
 
-                        for name in sorted(dir(category_api_code)):
-                            if callable(getattr(category_api_code, name)) and not name.startswith('_'):
-                                nname = name
+                        for category_api in category_apis:
+                            names = []
 
-                                if name.endswith('___'):
-                                    nname = name[:-3]
-                                elif name.endswith('__'):
-                                    nname = name[:-2]
-                                elif name.endswith('_'):
-                                    nname = name[:-1]
+                            category_api_code = category_api['code']
 
-                                r = utils.sys.find_func_definition(category_api_code, name)
-                                if r['return']>0: return r
+                            x1 = ''
+                            x2 = ''
+                            if category_api.get('base', False):
+                                x1 = ' base (common)'
+                                x2 = ' for all categories'
 
-                                filename = r['filename']
-                                start_line = r['start_line']
-                                end_line = r['end_line']
-                                short_func_desc = r['short_func_desc']
+                            for name in sorted(dir(category_api_code)):
+                                if callable(getattr(category_api_code, name)) and not name.startswith('_'):
+                                    nname = name
 
-                                short_func_desc += f'    ({filename}:{start_line}-{end_line})'
+                                    if name.endswith('___'):
+                                        nname = name[:-3]
+                                    elif name.endswith('__'):
+                                        nname = name[:-2]
+                                    elif name.endswith('_'):
+                                        nname = name[:-1]
 
-                                # Check aliases
-                                nname_aliases = []
-                                for where in [category_artifact['cmeta'], self.cfg]:
-                                    command_aliases = where.get('command_aliases',{})
-                                    for command_alias in command_aliases:
-                                        real_command = command_aliases[command_alias]
-                                        if real_command == nname:
-                                            nname_aliases.append(command_alias)
+                                    r = utils.sys.find_func_definition(category_api_code, name)
+                                    if r['return']>0: return r
 
-                                if len(nname_aliases)>0:
-                                    nname += ' (' + '|'.join(nname_aliases) + ')'
+                                    filename = r['filename']
+                                    start_line = r['start_line']
+                                    end_line = r['end_line']
+                                    short_func_desc = r['short_func_desc']
 
-                                names.append((f'{nname}', short_func_desc))
+                                    short_func_desc += f'    ({filename}:{start_line}-{end_line})'
 
-                        if len(names)>0:
-                            longest_name = max((len(item[0]) for item in names), default=0)
+                                    # Check aliases
+                                    nname_aliases = []
+                                    for where in [category_artifact['cmeta'], self.cfg]:
+                                        command_aliases = where.get('command_aliases',{})
+                                        for command_alias in command_aliases:
+                                            real_command = command_aliases[command_alias]
+                                            if real_command == nname:
+                                                nname_aliases.append(command_alias)
 
-                            print ('')
-                            print(f"Available{x1} commands{x2}:")
+                                    if len(nname_aliases)>0:
+                                        nname += ' (' + '|'.join(nname_aliases) + ')'
 
-                            for name in names:
-                                print(f'   {name[0]:<{longest_name}}    {name[1]}')
+                                    names.append((f'{nname}', short_func_desc))
+
+                            if len(names)>0:
+                                longest_name = max((len(item[0]) for item in names), default=0)
+
+                                print ('')
+                                print(f"Available{x1} commands{x2}:")
+
+                                for name in names:
+                                    print(f'   {name[0]:<{longest_name}}    {name[1]}')
 
             ###################################################################################################
             else:

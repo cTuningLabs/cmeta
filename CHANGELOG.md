@@ -2,7 +2,8 @@
   * added state extensions for reproducibility
   * fixed and extended 'load_files' in artifact read/find logic
   * improved sub-package installation
-  * added needs_categories to cmeta
+  * added uses_categories to cmeta
+  * added advanced match_version to packages for tools
 
 cMeta (0.21.0):
   * many various bug fixes and important extensions

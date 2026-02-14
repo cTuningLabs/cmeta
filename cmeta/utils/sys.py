@@ -406,6 +406,8 @@ def run(
         env: dict = None,              # 2nd level env to update global ENV
         envs: dict = None,             # 1st level of env to update global ENV
         genv: dict = None,             # Global ENV (force in the end)
+        os_env: dict = os.environ,       # Initial OS environ to start with 
+                                       # (PATHs and LIBs will be lost if None - careful)
         capture_output: bool = False,  # If True, capture stdout/stderr
         text_cmd: str = 'RUN',         # Text prefix for command display
         timeout: int = None,           # Timeout in seconds
@@ -476,12 +478,7 @@ def run(
         if save_script == '':
             save_script = 'cmeta-run.bat' if os.name == 'nt' else 'cmeta-run.sh'
 
-    cur_env = os.environ.copy()
-
-    print_env = {}
-
-    env1 = '%' if platform.system() == "Windows" else '${'
-    env2 = '%' if platform.system() == "Windows" else '}'
+    cur_env = {} if not os_env else os_env.copy()
 
     for e in [envs, env, genv]:
         for k in e:
@@ -499,7 +496,6 @@ def run(
                     if v1 != '':
                         if not v.endswith(os.pathsep):
                             v += os.pathsep
-                        print_env[k] = v + env1 + k + env2
                         v += v1
                 else:
                     v = None
@@ -507,8 +503,20 @@ def run(
             if v is not None:
                 cur_env[k] = v
 
-                if con and k not in print_env:
-                    print_env[k] = v
+
+    env1 = '%' if platform.system() == "Windows" else '${'
+    env2 = '%' if platform.system() == "Windows" else '}'
+
+    print_env = {}
+    for k in cur_env:
+        v = str(cur_env[k])
+        if k not in os_env or os_env[k] != v:
+           if k in os_env:
+              vv = str(os_env[k])
+              j = v.find(vv)
+              if j>=0:
+                 v = v[:j] + env1 + k + env2
+           print_env[k] = v
 
     if save_script != '':
         script = '@echo off\n' if os.name == 'nt' else '#!/bin/bash\n'

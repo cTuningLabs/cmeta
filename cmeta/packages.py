@@ -95,13 +95,31 @@ class Packages:
             str: PEP 440 compatible version specifier.
         """
         spec = spec.strip()
+        
+        # Handle space-separated multiple conditions like ">=3.14 <3.15"
+        # Convert to comma-separated format ">=3.14,<3.15"
+        if ' ' in spec and any(op in spec for op in ['==', '!=', '>=', '<=', '>', '<']):
+            # Split on spaces and filter out empty strings
+            parts = [p.strip() for p in spec.split() if p.strip()]
+            # Join with commas
+            spec = ','.join(parts)
+        
         if spec.startswith("^"):
             base = pkg_version.parse(spec[1:])
             upper = f"{base.major + 1}.0"
             return f">={base},<{upper}"
         if spec.startswith("~"):
             base = pkg_version.parse(spec[1:])
-            upper = f"{base.major}.{base.minor + 1}"
+            # If only major version specified (e.g., "~2"), match entire major version
+            # by incrementing major version for upper bound (e.g., ">=2,<3")
+            # If major.minor specified (e.g., "~2.3"), match by incrementing minor (e.g., ">=2.3,<2.4")
+            version_parts = spec[1:].split('.')
+            if len(version_parts) == 1:
+                # Only major version, like "~2" -> ">=2,<3"
+                upper = f"{base.major + 1}.0"
+            else:
+                # Has minor version, like "~2.3" -> ">=2.3,<2.4"
+                upper = f"{base.major}.{base.minor + 1}"
             return f">={base},<{upper}"
         if spec.endswith(".*"):
             major = int(spec.split(".")[0])
@@ -566,3 +584,344 @@ class Packages:
             mpkg[pip_package] = r['package'].module
 
         return {'return':0, 'pkg': pkg, 'mpkg': mpkg}
+
+    # ------------------------------------------------------------------
+    # VERSION MATCHING
+    # ------------------------------------------------------------------
+    
+    def normalize_detected_version(self, version_str):
+        """Normalize non-standard version strings to PEP 440 compatible format.
+        
+        Args:
+            version_str: Version string that may contain platform identifiers,
+                        dashes, underscores, etc. (e.g., '2.49.0.windows.1', 
+                        '2.49-win-3', '3.12_5').
+        
+        Returns:
+            str: Normalized version string compatible with packaging library.
+        """
+        import re
+        
+        version_str = version_str.strip()
+        
+        # Handle platform identifiers like ".windows.", ".linux.", ".darwin.", etc.
+        # Convert them to local version identifiers with '+'
+        # e.g., "2.49.0.windows.1" -> "2.49.0+windows.1"
+        #      "2.49.0.windows" -> "2.49.0+windows"
+        # First, handle with trailing digits
+        platform_pattern = r'\.(windows|linux|darwin|macos|win|mac|unix)\.(\d+)'
+        if re.search(platform_pattern, version_str, re.IGNORECASE):
+            version_str = re.sub(platform_pattern, r'+\1.\2', version_str, flags=re.IGNORECASE)
+        else:
+            # Handle platform identifiers at the end without trailing digits
+            platform_pattern_end = r'\.(windows|linux|darwin|macos|win|mac|unix)$'
+            if re.search(platform_pattern_end, version_str, re.IGNORECASE):
+                version_str = re.sub(platform_pattern_end, r'+\1', version_str, flags=re.IGNORECASE)
+        
+        # Handle versions with dashes before text (like "2.49-win-3")
+        # Convert to local version identifier: "2.49-win-3" -> "2.49+win.3"
+        # But preserve standard pre-release identifiers (alpha, beta, rc, a, b, etc.)
+        if '-' in version_str:
+            # Check if it's a standard pre-release format (e.g., "1.0.0-alpha1", "2.0-rc1")
+            prerelease_pattern = r'-?(alpha|beta|rc|a|b|c|pre|preview)(\d+)?'
+            if not re.search(prerelease_pattern, version_str, re.IGNORECASE):
+                # Not a standard pre-release, treat as local version
+                # Split on first dash that's followed by non-numeric
+                match = re.match(r'^([\d\.]+)[-_](.+)$', version_str)
+                if match:
+                    base_version = match.group(1)
+                    local_part = match.group(2).replace('-', '.').replace('_', '.')
+                    version_str = f"{base_version}+{local_part}"
+        
+        # Handle underscores in version numbers (e.g., "3.12_5" -> "3.12.5")
+        # But only in the numeric part
+        if '_' in version_str and '+' not in version_str:
+            # Replace underscores with dots in the main version part
+            version_str = version_str.replace('_', '.')
+        
+        return version_str
+    
+    def match_version(self, requested_version, detected_version):
+        """Check if a detected version matches a requested version specifier.
+        
+        Args:
+            requested_version: Version requirement in Poetry or PyPI format 
+                              (e.g., '~2.3', '>=3.9 <3.15', '>=3.9,<3.15', '2.3', '^1.2.0').
+                              If no operator is provided (e.g., '2.3'), it's treated 
+                              as near match '~2.3' (matching '2.3.*').
+            detected_version: Installed version string (e.g., '2.3.1', '2.3.windows.1', 
+                             '3.12.5-test', '2.49-win-3').
+            
+        Returns:
+            dict: {'return': 0, 'matched': bool} on success,
+                  {'return': 1, 'error': str} on error.
+        """
+        if not requested_version or not detected_version:
+            return {'return':0, 'matched': False}
+        
+        try:
+            requested = requested_version.strip()
+            detected = detected_version.strip()
+            
+            # Check if requested version has no operator
+            has_operator = any(op in requested for op in ['==', '!=', '>=', '<=', '>', '<', '^', '~', '*'])
+            
+            # Check if requested version has platform identifiers (local versions)
+            # We'll use this later to determine if we should strip local versions from detected
+            requested_has_local = False
+            
+            # Quick check: if no operator and strings match exactly, return immediately
+            if not has_operator and requested == detected:
+                return {'return':0, 'matched': True}
+            
+            # Normalize and parse detected version
+            detected_clean = self.normalize_detected_version(detected)
+            
+            # Try to parse the detected version
+            try:
+                detected_parsed = pkg_version.parse(detected_clean)
+            except Exception as e:
+                err = f"Error parsing detected version: {e}"
+                return {'return':1, 'error':err}
+            
+            # Handle requested version
+            if not has_operator:
+                # Plain version number - normalize it too (handles platform identifiers)
+                requested_clean = self.normalize_detected_version(requested)
+                
+                # Try to parse the normalized requested version
+                try:
+                    requested_parsed = pkg_version.parse(requested_clean)
+                    
+                    # Track if requested has local versions
+                    if requested_parsed.local:
+                        requested_has_local = True
+                    
+                    # Check for exact match after normalization
+                    if requested_parsed == detected_parsed:
+                        return {'return':0, 'matched': True}
+                    
+                    # If both have local versions (platform identifiers), check platform match
+                    if requested_parsed.local and detected_parsed.local:
+                        # Extract platform name (first part before any dot in local)
+                        req_platform = requested_parsed.local.split('.')[0]
+                        det_platform = detected_parsed.local.split('.')[0]
+                        
+                        # If platforms don't match, fail immediately
+                        if req_platform != det_platform:
+                            return {'return':0, 'matched': False}
+                        
+                        # Platforms match, do prefix matching
+                        if (requested_parsed.public == detected_parsed.public and
+                            detected_parsed.local.startswith(requested_parsed.local)):
+                            return {'return':0, 'matched': True}
+                    
+                    # For versions with local identifiers, we can't use them in specifiers
+                    # Strip the local part and use base version for near match
+                    # e.g., "2.49.0+windows" -> use "~2.49.0" to match "2.49.0+windows.1"
+                    if requested_parsed.local:
+                        # Use the public (base) version for specifier matching
+                        requested = f"~{requested_parsed.public}"
+                    else:
+                        # No local version, safe to use as-is
+                        requested = f"~{requested_clean}"
+                except:
+                    # If parsing fails, try treating as near match with original value
+                    requested = f"~{requested}"
+            else:
+                # Has operator - need to handle operators with platform identifiers
+                import re
+                
+                # First, extract and check platform identifiers from the requested version
+                # Pattern to match operator + version
+                pattern = r'(==|!=|>=|<=|>|<|\^|~)([^\s,]+)'
+                matches = re.findall(pattern, requested)
+                
+                # Check if any version part has a platform identifier that conflicts
+                # Also track if requested has any local versions
+                for operator, version_part in matches:
+                    # Normalize the requested version part
+                    normalized = self.normalize_detected_version(version_part)
+                    try:
+                        parsed = pkg_version.parse(normalized)
+                        
+                        # Track if requested has local versions
+                        if parsed.local:
+                            requested_has_local = True
+                        
+                        # If both have platform identifiers, they must match
+                        if parsed.local and detected_parsed.local:
+                            # Extract platform name (first part before any dot in local)
+                            req_platform = parsed.local.split('.')[0]
+                            det_platform = detected_parsed.local.split('.')[0]
+                            
+                            # If platforms don't match, fail immediately
+                            if req_platform != det_platform:
+                                return {'return':0, 'matched': False}
+                    except:
+                        pass  # Continue if parsing fails
+                
+                # Special handling for == and != with platform identifiers
+                # These should do exact/prefix matching on the full version including local parts
+                if requested.startswith('==') or requested.startswith('!='):
+                    # Extract the version part after the operator
+                    operator = requested[:2]
+                    version_part = requested[2:].strip()
+                    
+                    # Normalize the requested version
+                    requested_clean = self.normalize_detected_version(version_part)
+                    try:
+                        requested_parsed = pkg_version.parse(requested_clean)
+                        
+                        if operator == '==':
+                            # Check for exact match
+                            if requested_parsed == detected_parsed:
+                                return {'return':0, 'matched': True}
+                            
+                            # If both have local versions, do prefix matching
+                            if requested_parsed.local and detected_parsed.local:
+                                if (requested_parsed.public == detected_parsed.public and
+                                    detected_parsed.local.startswith(requested_parsed.local)):
+                                    return {'return':0, 'matched': True}
+                            
+                            return {'return':0, 'matched': False}
+                        else:  # !=
+                            # Check for non-equality
+                            if requested_parsed == detected_parsed:
+                                return {'return':0, 'matched': False}
+                            
+                            # If both have local versions, check prefix
+                            if requested_parsed.local and detected_parsed.local:
+                                if (requested_parsed.public == detected_parsed.public and
+                                    detected_parsed.local.startswith(requested_parsed.local)):
+                                    return {'return':0, 'matched': False}
+                            
+                            return {'return':0, 'matched': True}
+                    except Exception as e:
+                        err = f"Error parsing requested version in == or !=: {e}"
+                        return {'return':1, 'error':err}
+                
+                # For inequality operators (>=, <=, >, <) with local versions,
+                # we need to do manual comparison because SpecifierSet doesn't support local versions
+                # Check if we need manual comparison
+                inequality_pattern = r'(>=|<=|>|<)([^\s,]+)'
+                inequality_matches = re.findall(inequality_pattern, requested)
+                
+                needs_manual_comparison = False
+                for op, ver_part in inequality_matches:
+                    normalized = self.normalize_detected_version(ver_part)
+                    try:
+                        parsed = pkg_version.parse(normalized)
+                        if parsed.local and detected_parsed.local:
+                            needs_manual_comparison = True
+                            break
+                    except:
+                        pass
+                
+                # If manual comparison is needed for inequality operators with local versions
+                if needs_manual_comparison:
+                    # Parse and evaluate each condition manually
+                    # Handle space-separated conditions like ">=2.49.0.windows.2 <2.50"
+                    conditions = requested.replace(',', ' ').split()
+                    
+                    for condition in conditions:
+                        condition = condition.strip()
+                        if not condition:
+                            continue
+                        
+                        # Extract operator and version
+                        match = re.match(r'^(==|!=|>=|<=|>|<|\^|~)(.+)$', condition)
+                        if not match:
+                            continue
+                        
+                        op = match.group(1)
+                        ver_part = match.group(2)
+                        
+                        # Normalize and parse
+                        normalized = self.normalize_detected_version(ver_part)
+                        try:
+                            cond_parsed = pkg_version.parse(normalized)
+                        except:
+                            continue
+                        
+                        # Perform comparison based on operator
+                        if op == '>=':
+                            if not (detected_parsed >= cond_parsed):
+                                return {'return':0, 'matched': False}
+                        elif op == '<=':
+                            if not (detected_parsed <= cond_parsed):
+                                return {'return':0, 'matched': False}
+                        elif op == '>':
+                            if not (detected_parsed > cond_parsed):
+                                return {'return':0, 'matched': False}
+                        elif op == '<':
+                            if not (detected_parsed < cond_parsed):
+                                return {'return':0, 'matched': False}
+                        elif op == '~':
+                            # Near match - check if base version matches
+                            if cond_parsed.public != detected_parsed.public:
+                                return {'return':0, 'matched': False}
+                        elif op == '^':
+                            # Caret operator - convert to range and check
+                            spec_str = self.poetry_to_pep440(f"^{cond_parsed.public}")
+                            try:
+                                spec_set = SpecifierSet(spec_str)
+                                if not spec_set.contains(detected_parsed, prereleases=True):
+                                    return {'return':0, 'matched': False}
+                            except:
+                                return {'return':0, 'matched': False}
+                    
+                    return {'return':0, 'matched': True}
+                
+                # For other operators (>=, <=, >, <, ^, ~), strip local versions for the specifier
+                # Platform check was already done above
+                def normalize_version_in_spec(match):
+                    operator = match.group(1)
+                    version_part = match.group(2)
+                    # Normalize and strip local version
+                    normalized = self.normalize_detected_version(version_part)
+                    try:
+                        parsed = pkg_version.parse(normalized)
+                        # Use public (base) version without local part
+                        return f"{operator}{parsed.public}"
+                    except:
+                        # If parsing fails, return as-is
+                        return match.group(0)
+                
+                # Pattern to match operator + version
+                pattern = r'(>=|<=|>|<|\^|~)([^\s,]+)'
+                requested = re.sub(pattern, normalize_version_in_spec, requested)
+            
+            # Convert Poetry format to PEP 440 if needed
+            spec_string = self.poetry_to_pep440(requested)
+            
+            # Create specifier set and check if detected version matches
+            spec_set = SpecifierSet(spec_string)
+            
+            # If requested version doesn't have platform identifiers but detected does,
+            # use only the base (public) version for comparison
+            if not requested_has_local and detected_parsed.local:
+                # Use public version only (e.g., "2.49.0" instead of "2.49.0+windows.2")
+                version_to_check = pkg_version.parse(str(detected_parsed.public))
+            else:
+                version_to_check = detected_parsed
+            
+            # Include pre-releases (alpha, beta, rc, etc.) in version matching
+            # This allows "3.14" to match "3.14.0b2" or similar pre-release versions
+            matched = spec_set.contains(version_to_check, prereleases=True)
+            
+            # Special handling for pre-releases: if detected is a pre-release and didn't match,
+            # check if the base version (without pre-release tag) would match
+            # This handles cases like "3.14" matching "3.14.0b2" where b2 < final 3.14.0
+            if not matched and version_to_check.is_prerelease:
+                # Check if the base release version (without pre-release tag) matches
+                # For "3.14.0b2", the base is "3.14.0"
+                base_version_str = f"{version_to_check.major}.{version_to_check.minor}.{version_to_check.micro}"
+                base_version = pkg_version.parse(base_version_str)
+                matched = spec_set.contains(base_version, prereleases=True)
+            
+            return {'return':0, 'matched': matched}
+            
+        except Exception as e:
+            err = f"Error matching version '{requested_version}' with '{detected_version}': {e}"
+            return {'return':1, 'error':err}

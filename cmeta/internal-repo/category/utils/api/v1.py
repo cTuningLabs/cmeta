@@ -878,6 +878,22 @@ class Category(InitCategory):
         return self.access_ctuning_server_(**params)
 
     ############################################################
+    def test_public_server(self, params):
+        """
+        @self.access_ctuning_server_
+        """
+
+        tmp_params = params.copy()
+
+        if 'url' not in tmp_params:
+            tmp_params['url'] = self.cm.cfg['default_ctuning_api']
+
+        if 'query' not in tmp_params:
+           tmp_params['query'] = {'command':'test-api'}
+
+        return self.access_ctuning_server_(**tmp_params)
+
+    ############################################################
     def select_artifact(self, params):
         """
         """

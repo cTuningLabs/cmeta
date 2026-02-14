@@ -142,14 +142,16 @@ class Category(InitCategory):
     ############################################################
     def find_(
             self,
-            state: dict,                   # cMeta state
-            arg1: str = None,              # Artifact alias or UID
-            tags: str = None,              # Comma-separated string or iterable of tags to match
-            sort: bool = None,             # Sort by path
-            add_index_file: bool = False,  # Add index file information
-            skip_uids: bool = False,       # Skip UIDs when using wildcards
-            match: dict = None,            # Filter artifacts by this match dict (if key ends with -, do not include value)
-            all_tags: str = None,          # Comma-separated string or iterable of all tags to have exact match
+            state: dict,                       # cMeta state
+            arg1: str = None,                  # Artifact alias or UID
+            tags: str = None,                  # Comma-separated string or iterable of tags to match
+            sort: bool = None,                 # Sort by path
+            add_index_file: bool = False,      # Add index file information
+            skip_uids: bool = False,           # Skip UIDs when using wildcards
+            match: dict = None,                # Filter artifacts by this match dict (if key ends with -, do not include value)
+            match_empty_version: bool = False, # If version in match (starting from @) and it doesn't exist in the artifact
+                                               # consider as matched
+            all_tags: str = None,              # Comma-separated string or iterable of all tags to have exact match
     ):
         """
         Find artifacts.
@@ -188,7 +190,7 @@ class Category(InitCategory):
             self.logger.debug(f"  self.cm.repos.find({artifact_ref_parts})")
 
         r = self.cm.repos.find(artifact_ref_parts, add_index_file = add_index_file, tags = tags,
-                               skip_uids = skip_uids, match = match, all_tags = all_tags)
+                               skip_uids = skip_uids, match = match, match_empty_version = match_empty_version, all_tags = all_tags)
         if r['return']>0: return r
 
         artifacts = r['artifacts']

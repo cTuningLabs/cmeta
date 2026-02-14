@@ -31,7 +31,8 @@ class Repos:
             repos_config_path: Path,         # Path to repositories config file
             logger: logging.Logger = None,   # Logger instance (optional)
             index_extension: str = '.pkl',   # Index file extension
-            fail_on_error: bool = False      # If True, raise exception on error
+            fail_on_error: bool = False,     # If True, raise exception on error
+            match_version_func = None,       # Function from packages to match versions (fuzzy, conditions) during search
     ):
         """
         Initialize Repos manager.
@@ -56,7 +57,8 @@ class Repos:
         self.repos_config_path = repos_config_path
         self._repositories = []
         self.fail_on_error = fail_on_error
-        
+        self.match_version_func = match_version_func
+
         # Create a child logger that inherits CMeta's configuration
         self.logger = logging.getLogger(__name__) if logger is None else logger.getChild("repos")
         self.logger.debug("Initializing Repos class ...")
@@ -423,6 +425,7 @@ class Repos:
              skip_uids: bool = False, 
              skip_non_indexed: bool = False,
              match: bool = None,
+             match_empty_version: bool = False,
              all_tags: str = None,          # Comma-separated string or iterable of all tags to have exact match
         ):
         """Find artifacts by cMeta reference.
@@ -582,7 +585,10 @@ class Repos:
                     add_artifacts2 = []
 
                     for a in add_artifacts:
-                        if utils.common.matches_query(a['cmeta'], match):
+                        if utils.common.matches_query(a['cmeta'], 
+                                                      match, 
+                                                      match_version_func = self.match_version_func, 
+                                                      match_empty_version = match_empty_version):
                             add_artifacts2.append(a)
 
                     add_artifacts = add_artifacts2

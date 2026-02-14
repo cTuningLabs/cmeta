@@ -21,7 +21,7 @@ fail_on_error = False
 
 caller = None
 
-cli_params_desc = config.params_desc + config.params_command_desc
+cli_params_desc = config.params_desc + config.params_command3_desc + config.params_command_desc
 cli_init_params_desc = config.params_init_desc
 params_command2_desc = config.params_command2_desc
 
@@ -240,11 +240,13 @@ def catch(
     if not isinstance(result, dict):
         if logger is not None:
             logger.debug(f"CLI Result is not dictionary: {result}")
+
         result = {"return":99, "error": f"Result must be a dictionary"}
     
     if "return" not in result:
         if logger is not None:
             logger.debug(f"CLI  Result doesn't have 'return' key: {result}")
+
         result = {"return":99, "error": f"Result dictionary must contain 'return' key"}
     
     return_code = result.get("return", 0)
@@ -254,10 +256,12 @@ def catch(
         error_text = config.cfg['con_error_prefix'] + error_msg + '!'
 
         if cmeta_init is not None and cmeta_init.get('fail_on_error', False):
+            print ('')
             raise Exception(error_text)
 
         if not result.get('skip_print_error', False):
-            print(error_text, file=sys.stderr)
+            print ('')
+            print (error_text, file=sys.stderr)
 
         if pause_if_error:
             print ('')

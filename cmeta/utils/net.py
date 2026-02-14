@@ -56,6 +56,7 @@ def download(
         headers: dict = None,               # Use headers
         api_key: str = None,                # Add API key to headers
         skip_ssl_certificate: bool = False, # Skip SSL certificate verification
+        space: str = "",                    # Print space before text
 ):
     """Download a file from URL to local filesystem.
 
@@ -109,7 +110,12 @@ def download(
         target_path = os.path.join(path, filename)
 
         xheaders = headers.copy() if headers else {}
-        xheaders.setdefault('User-Agent', 'Mozilla/5.0')
+        xheaders.setdefault('User-Agent', 'Wget/1.21.3')
+#        xheaders.setdefault('User-Agent', 'Mozilla/5.0')
+        xheaders.setdefault('Connection', 'keep-alive')
+        xheaders.setdefault('Accept', '*/*')
+        xheaders.setdefault('Accept-Encoding', 'identity')
+
         if api_key:
             xheaders['X-API-Key'] = api_key
 
@@ -130,7 +136,7 @@ def download(
                     unit='B',
                     unit_scale=True,
                     unit_divisor=1024,
-                    desc=text + filename
+                    desc=space + text + filename
                 ) if tqdm_cls else None
             )
 
@@ -147,12 +153,13 @@ def download(
                 if progress:
                     progress.close()
 
-    except (URLError, HTTPError, OSError) as e:
+    except Exception as e:
         return _error(
             f'Failed to download {url}',
             exception=e,
             fail_on_error=fail_on_error
         )
+
 
     return {
         'return': 0,

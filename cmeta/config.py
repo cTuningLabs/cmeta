@@ -29,6 +29,8 @@ cfg = {
 
         "con_error_prefix": "cMeta notice: ",
 
+        "copyright": "Copyright (c) 2025-2026 Grigori Fursin and cTuning Labs",
+
         "env_var_home": "CMETA_HOME",
         "env_var_home2": "CMETA_HOME2",
         "env_var_virtual_env": "VIRTUAL_ENV",
@@ -43,7 +45,7 @@ cfg = {
         "env_var_cmeta_copyright": "CMETA_COPYRIGHT",
         "env_var_cmeta_server_info_url": "CMETA_SERVER_INFO_URL",
         "env_var_pip_install_args": "CMETA_PIP_INSTALL_ARGS",
-        
+
         "repos_config_filename": "repos.json",
         "repos_dir": "repos",
         "repo_meta_desc": "_cmr.yaml",
@@ -86,7 +88,6 @@ cfg = {
 
 params_desc = [
   {'key':'help', 'aliases':['h'], 'type': bool, 'desc': 'Show help' },
-  {'key':'version', 'aliases':['V'], 'type': bool, 'desc': 'Show version'},
   {'key':'reindex', 'type': bool, 'desc': 'Reindex all artifacts'},
   {'key':'verbose', 'aliases':['v'], 'type': bool, 'desc': 'Use verbose output'},
   {'key':'quiet', 'aliases':['q'], 'type': bool, 'desc': 'Quetly select default answer to questions'},
@@ -105,6 +106,10 @@ params_command2_desc = [
   {'key':'con', 'type': bool, 'desc': 'Force output to console', 'space_before':True },
   {'key':'json', 'aliases':['j'], 'type': bool, 'desc': 'Print command output as JSON' },
   {'key':'json_file', 'aliases':['json-file', 'jf'], 'type': str, 'desc': 'Specify json file to save command output' },
+]
+
+params_command3_desc = [
+  {'key':'version', 'aliases':['V'], 'desc': 'Show version'},
 ]
 
 params_init_desc = [
