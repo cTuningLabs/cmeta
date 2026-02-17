@@ -463,7 +463,6 @@ def write_file(
                 f.write("\n")
             elif file_format == "yaml":
                 yaml.safe_dump(data, f, sort_keys=sort_keys)
-                f.write("\n")
             elif file_format == "pickle":
                 pickle.dump(data, f)
             else:
@@ -1513,3 +1512,94 @@ def md5sum(path, chunk_size = 100000):
         return {'return':1, 'error': err}
 
     return {'return':0, 'md5sum': md5sum}
+
+############################################################
+def cpath(path):
+
+    if path:
+        path = path.strip()
+        if ' ' in path:
+            if not path.startswith('"') and not path.endswith('"'):
+                path = f'"{path}"'
+
+    return path
+
+############################################################
+def parse_env_dump(data: str) -> dict[str, str]:
+    env = {}
+
+    for line in data.splitlines():
+        line = line.strip()
+
+        # skip empty lines
+        if not line:
+            continue
+
+        # skip invalid lines (rare but safe)
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)  # IMPORTANT: split once
+        env[key] = value
+
+    return {'return':0, 'env': env}
+
+############################################################
+def diff_env(old: dict[str, str], new: dict[str, str]):
+    """Diff two environment dicts and return added/removed variables.
+    
+    Args:
+        old (dict[str, str]): Old environment dictionary.
+        new (dict[str, str]): New environment dictionary.
+        
+    Returns:
+        dict: Dictionary with 'env_added' and 'env_removed' keys containing
+              usable environment dictionaries with fuzzy PATH expansion.
+    """
+    env_added = {}
+    env_removed = {}
+
+    all_keys = set(old) | set(new)
+
+    for key in all_keys:
+        old_val = old.get(key)
+        new_val = new.get(key)
+
+        # Variable was added
+        if old_val is None:
+            env_added[key] = new_val
+            continue
+
+        # Variable was removed
+        if new_val is None:
+            env_removed[key] = old_val
+            continue
+
+        # unchanged
+        if old_val == new_val:
+            continue
+
+        # --- fuzzy PATH-like diff ---
+        if os.pathsep in old_val or os.pathsep in new_val:
+            old_parts = set(filter(None, old_val.split(os.pathsep)))
+            new_parts = set(filter(None, new_val.split(os.pathsep)))
+
+            added = sorted(new_parts - old_parts)
+            removed = sorted(old_parts - new_parts)
+
+            if added:
+                env_added[key] = os.pathsep.join(added)
+            if removed:
+                env_removed[key] = os.pathsep.join(removed)
+
+        else:
+            # normal value changed - store new as added, old as removed
+            env_added[key] = new_val
+            env_removed[key] = old_val
+
+    return {
+        'return': 0,
+        'env_added': env_added,
+        'env_removed': env_removed
+    }
+

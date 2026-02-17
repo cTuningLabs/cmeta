@@ -160,3 +160,22 @@ class Category(InitCategory):
 
         return {'return':0}
 
+    ############################################################
+    def clean(
+            self,
+            params: dict  # cMeta parameters
+    ):
+        """
+        Args:
+            params (dict): cMeta parameters.
+            
+        Returns:
+            dict: Dictionary with 'return': 0.
+        """
+
+        # p will be deep copied from params
+        p = self._prepare_input_from_params(params, base = True)
+
+        p['command'] = 'rm'
+
+        return self.cm.access(p)

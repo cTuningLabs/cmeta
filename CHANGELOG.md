@@ -1,4 +1,7 @@
-﻿cMeta (0.22.0):
+﻿cMeta (0.23.0):
+  * many improvements and minor bug fixes
+
+cMeta (0.22.0):
   * added state extensions for reproducibility
   * fixed and extended 'load_files' in artifact read/find logic
   * improved sub-package installation

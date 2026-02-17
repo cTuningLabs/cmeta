@@ -9,6 +9,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 import os
 from .common import _error
 from .cli import print_params_help
+from . import files
 
 ###################################################################################################
 def load_module(
@@ -401,27 +402,30 @@ def flush_input():
 
 ############################################################
 def run(
-        cmd: str,                      # Command to execute
-        work_dir: str = None,          # Working directory
-        env: dict = None,              # 2nd level env to update global ENV
-        envs: dict = None,             # 1st level of env to update global ENV
-        genv: dict = None,             # Global ENV (force in the end)
+        cmd: str,                        # Command to execute
+        work_dir: str = None,            # Working directory
+        env: dict = None,                # 2nd level env to update global ENV
+        envs: dict = None,               # 1st level of env to update global ENV
+        genv: dict = None,               # Global ENV (force in the end)
         os_env: dict = os.environ,       # Initial OS environ to start with 
-                                       # (PATHs and LIBs will be lost if None - careful)
-        capture_output: bool = False,  # If True, capture stdout/stderr
-        text_cmd: str = 'RUN',         # Text prefix for command display
-        timeout: int = None,           # Timeout in seconds
-        verbose: bool = False,         # If True, print extra info
-        hide_in_cmd: list = None,      # List of keys in CMD to hide (for secrets)
-        save_script: str = '',         # Path to save script for reproducibility
-        run_script: bool = False,      # If True, run created script
-        script_prefix: str = '',       # Prefix string to add to script
-        skip_run: bool = False,        # If True, skip execution
-        print_cmd: bool = False,       # If True, force print CMD
-        con: bool = False,             # If True, enable console output
-        fail_on_error: bool = False,   # If True, raise exception on error
-        logger = None,                 # Optional logger for debug messages
-        space = '',                    # Space when printing (for nested calls) 
+                                         # (PATHs and LIBs will be lost if None - careful)
+        capture_output: bool = False,    # If True, capture stdout/stderr
+        text_cmd: str = 'RUN',           # Text prefix for command display
+        timeout: int = None,             # Timeout in seconds
+        verbose: bool = False,           # If True, print extra info
+        hide_in_cmd: list = None,        # List of keys in CMD to hide (for secrets)
+        save_script: str = '',           # Path to save script for reproducibility
+        run_script: bool = False,        # If True, run created script
+        script_prefix: str = '',         # Prefix string to add to script
+        skip_run: bool = False,          # If True, skip execution
+        print_cmd: bool = False,         # If True, force print CMD
+        con: bool = False,               # If True, enable console output
+        fail_on_error: bool = False,     # If True, raise exception on error
+        logger = None,                   # Optional logger for debug messages
+        space = '',                      # Space when printing (for nested calls) 
+        capture_env: bool = False,       # Capture env at the end of the command with diff
+        print_env_keys: list = None,     # Use these keys if/when printing ENV
+        print_extra_line: bool = False,  # Print extra new line before running command
 ):
     """
     Run CMD with environment.
@@ -503,20 +507,35 @@ def run(
             if v is not None:
                 cur_env[k] = v
 
+    temp_file_to_collect_env = None
+    if capture_env:
+        r = files.gen_temp_filepath()
+        if r['return']>0: return self.cm._error2(r, self.cm)
+
+        temp_file_to_collect_env = r['filepath']
+
+        x = 'set' if os.name == 'nt' else 'env'
+
+        cmd += f' && {x} > {temp_file_to_collect_env}'
+
 
     env1 = '%' if platform.system() == "Windows" else '${'
     env2 = '%' if platform.system() == "Windows" else '}'
 
     print_env = {}
-    for k in cur_env:
-        v = str(cur_env[k])
-        if k not in os_env or os_env[k] != v:
-           if k in os_env:
-              vv = str(os_env[k])
-              j = v.find(vv)
-              if j>=0:
-                 v = v[:j] + env1 + k + env2
-           print_env[k] = v
+    if print_env_keys is None:
+        print_env_keys = cur_env.keys()
+
+    for k in print_env_keys:
+        if k in cur_env:
+            v = str(cur_env[k])
+            if k not in os_env or os_env[k] != v:
+               if k in os_env:
+                  vv = str(os_env[k])
+                  j = v.find(vv)
+                  if j>=0:
+                     v = v[:j] + env1 + k + env2
+               print_env[k] = v
 
     if save_script != '':
         script = '@echo off\n' if os.name == 'nt' else '#!/bin/bash\n'
@@ -552,7 +571,6 @@ def run(
 
     # Hide secrets from CMD
     xcmd = cmd
-
     for h in hide_in_cmd:
         j = xcmd.find(h)
         if j >= 0:
@@ -580,7 +598,6 @@ def run(
 
         # Note: This assumes utils.save_txt exists in your codebase
         # You may need to import or implement this function
-        from . import files
         r=files.write_file(save_script, script, fail_on_error=fail_on_error, logger=logger, file_format="text")
         if r['return'] > 0:
             return r
@@ -598,8 +615,8 @@ def run(
             print(f'{space}{x}{text_cmd} {cmd}')
 
     if not skip_run:
-#        if verbose:
-#            print ('')
+        if con and print_extra_line:
+            print ('')
 
         try:
             is_windows = os.name == 'nt'
@@ -669,7 +686,32 @@ def run(
     if work_dir is not None:
         os.chdir(cur_dir)
 
-    return {'return': 0, 'returncode': returncode, 'stdout': stdout, 'stderr': stderr}
+    result = {'return': 0, 'returncode': returncode, 'stdout': stdout, 'stderr': stderr, 'cur_env': cur_env}
+
+    # Check if collect env
+    if capture_env:
+        r = files.read_file(temp_file_to_collect_env, fail_on_error = fail_on_error, logger = logger)
+        try:
+            os.remove(temp_file_to_collect_env)
+        except Exception as e:
+            pass
+
+        if r['return']>0: return r
+
+        r = files.parse_env_dump(r['data'])
+        if r['return']>0: return r
+
+        collected_env = r['env']
+
+        result['collected_env'] = collected_env
+
+        r = files.diff_env(cur_env, collected_env)
+        if r['return']>0: return r
+
+        result['env_added'] = r['env_added']
+        result['env_removed'] = r['env_removed']
+
+    return result
 
 ###################################################################################################
 def run_command_with_timeout_tree_kill_on_windows(

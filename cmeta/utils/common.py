@@ -745,7 +745,7 @@ def expand_string(template: str, values: dict) -> str:
         out.append(template[i:start])
         end = template.find("}}", start + 2)
         if end == -1:
-            return {'return':1, 'error':f'Unclosed "{{" in "{str}"'}
+            return {'return':1, 'error':f'Unclosed "{{" in "{template}"'}
 
         expr = template[start + 2:end].strip()
         i = end + 2
@@ -757,6 +757,16 @@ def expand_string(template: str, values: dict) -> str:
         else:
             key, default = expr, None
 
+        # check if cName (if key startswith $$, use UID, elif startswith $, use alias)
+        use_alias = False
+        use_uid = False
+        if key.startswith('$$'):
+            use_uid = True
+            key = key[2:]
+        elif key.startswith('$'):
+            use_alias = True
+            key = key[1:]
+
         # nested lookup
         cur = values
         for part in key.split("."):
@@ -766,9 +776,26 @@ def expand_string(template: str, values: dict) -> str:
                 if default is not None:
                     cur = default
                     break
-                return {'return':1, 'error':f'Missing key "{key}" in "{str}"'}
+                return {'return':1, 'error':f'Missing key "{key}" in context dict'}
 
-        out.append(str(cur))
+        v = str(cur)
+
+        if use_uid or use_alias:
+            from .names import parse_cmeta_name
+
+            r = parse_cmeta_name(v)
+            if r['return']>0: return r
+
+            name = r['name']
+
+            if use_alias:
+                v = name.get('alias', name.get('uid'))
+            else:
+                v = name.get('uid')
+
+            v = str(v).lower()
+
+        out.append(v)
 
     return {'return':0, 'string': "".join(out)}
 

@@ -53,6 +53,7 @@ def select_artifact_(self,
                      load_api: bool = False,
                      load_api_ver: int = 0,
                      load_api_class: str = None,
+                     print_extra_line: bool = False,
     ):
 
     import os
@@ -107,6 +108,8 @@ def select_artifact_(self,
         select_text += ':'
 
         if con:
+            if print_extra_line:
+                print ('')
             print (select_text)
             print ('')
 
