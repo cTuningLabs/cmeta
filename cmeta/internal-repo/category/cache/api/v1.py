@@ -177,5 +177,7 @@ class Category(InitCategory):
         p = self._prepare_input_from_params(params, base = True)
 
         p['command'] = 'rm'
+        p['tags'] = 'tmp'
+        p['force'] = True
 
         return self.cm.access(p)

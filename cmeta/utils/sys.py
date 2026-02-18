@@ -1257,3 +1257,17 @@ def get_disk_space(
     result['nice_self_time'] = nice_self_time
 
     return result
+
+##########################################################################################
+def plus_env(env):
+    """
+    If key starts with + and value is not list, convert to list as path
+    """
+
+    for k in list(env.keys()):
+        if k.startswith('+'):
+            v = env[k]
+            if type(v) != list:
+                env[k] = v.split(os.pathsep)
+
+    return {'return':0}

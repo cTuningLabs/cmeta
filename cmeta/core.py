@@ -118,6 +118,7 @@ class CMeta:
         self._error = utils.common._error
         self._error2 = utils.common._error2
         self._catch_error2 = utils.common._catch_error2
+        self._check_params = utils.common._check_params
 
         self.module_cache = {}
 

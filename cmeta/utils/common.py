@@ -83,6 +83,17 @@ def _catch_error2(r, cm = None):
     return r
 
 ###################################################################################################
+def _check_params(params, keys, name = None):
+
+    for k in list(params.keys()):
+        if k not in keys:
+            x = f' in "{name}"' if name else ''
+            err = f'unknown input parameter "{k}"{x}'
+            return {'return':1, 'error': err}
+
+    return {'return':0}
+
+###################################################################################################
 def deep_merge(
         target: dict,                   # Original dictionary to be updated
         source: dict,                   # New dictionary with updates

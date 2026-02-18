@@ -130,9 +130,17 @@ def select_artifact_(self,
 #            "cmeta_ref_parts.artifact_uid",
 #        ]
 
+#        artifacts = sorted(
+#            artifacts,
+#            key=lambda a: self.cm.utils.common.build_sort_key(a, xsort_keys)
+#        )
+
         artifacts = sorted(
             artifacts,
-            key=lambda a: self.cm.utils.common.build_sort_key(a, xsort_keys)
+            key=lambda a: (
+                type(self.cm.utils.common.build_sort_key(a, xsort_keys)).__name__,
+                self.cm.utils.common.build_sort_key(a, xsort_keys)
+            )
         )
 
         num_artifacts = len(artifacts)
