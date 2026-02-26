@@ -10,22 +10,26 @@ from .common import _error
 
 ##################################################################################################
 def access_api(
-        url: str,         # The API endpoint URL
-        params: dict,     # Dictionary of parameters to send as JSON
-        headers: dict = {},  # Optional dictionary of HTTP headers
-        timeout: int = 30    # Request timeout in seconds
+    url: str,  # The API endpoint URL.
+    params: dict,  # Dictionary of parameters to send as JSON in the POST request body.
+    headers: dict = {},  # Optional dictionary of HTTP headers to include in the request.
+    timeout: int = 30,  # Request timeout in seconds. Default is 30 seconds.
 ):
-    """Send POST request to FastAPI endpoint with JSON params and return response.
-    
-    Args:
-        url (str): The API endpoint URL.
-        params (dict): Dictionary of parameters to send as JSON in the POST request body.
-        headers (dict): Optional dictionary of HTTP headers to include in the request.
-        timeout (int): Request timeout in seconds. Default is 30 seconds.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'response' containing parsed JSON response,
-              or 'return': 1 and 'error' message on failure.
+    """
+        Send POST request to FastAPI endpoint with JSON params and return response.
+
+        Args:
+            url (str): The API endpoint URL.
+            params (dict): Dictionary of parameters to send as JSON in the POST request body.
+            headers (dict): Optional dictionary of HTTP headers to include in the request.
+            timeout (int): Request timeout in seconds. Default is 30 seconds.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'response' containing parsed JSON response,
+                  or 'return': 1 and 'error' message on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import requests
 
@@ -46,38 +50,43 @@ def access_api(
 
 ##################################################################################################
 def download(
-        url: str,                           # URL of the file to download
-        filename: str = None,               # Name for the downloaded file
-        path: str = None,                   # Directory to save the file
-        chunk_size: int = 65536,            # Size of chunks to download in bytes
-        show_progress: bool = False,        # If True, display download progress
-        fail_on_error: bool = False,        # If True, raise exception on error
-        text: str = "Downloading ",         # Prefix text for progress bar
-        headers: dict = None,               # Use headers
-        api_key: str = None,                # Add API key to headers
-        skip_ssl_certificate: bool = False, # Skip SSL certificate verification
-        space: str = "",                    # Print space before text
+    url: str,  # URL of the file to download.
+    filename: str = None,  # Name for the downloaded file. If None, extracts from URL.
+    path: str = None,  # Directory to save the file. If None, uses current working directory.
+    chunk_size: int = 65536,  # Size of chunks to download in bytes.
+    show_progress: bool = False,  # If True, displays download progress using tqdm.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
+    text: str = 'Downloading ',  # Prefix text for progress bar description.
+    headers: dict = None,  # Optional HTTP headers.
+    api_key: str = None,  # API key added as X-API-Key header.
+    skip_ssl_certificate: bool = False,  # If True, disables SSL certificate verification.
+    space: str = '',  # Optional indentation prefix for console output formatting.
 ):
-    """Download a file from URL to local filesystem.
+    """
+        Download a file from URL to local filesystem.
 
-    Auto-detects filename from URL if not provided. Supports progress display
-    with tqdm if show_progress is enabled.
+        Auto-detects filename from URL if not provided. Supports progress display
+        with tqdm if show_progress is enabled.
 
-    Args:
-        url (str): URL of the file to download.
-        filename (str | None): Name for the downloaded file. If None, extracts from URL.
-        path (str | None): Directory to save the file. If None, uses current working directory.
-        chunk_size (int): Size of chunks to download in bytes.
-        show_progress (bool): If True, displays download progress using tqdm.
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        text (str): Prefix text for progress bar description.
-        headers (dict | None): Optional HTTP headers.
-        api_key (str | None): API key added as X-API-Key header.
-        skip_ssl_certificate (bool): If True, disables SSL certificate verification.
+        Args:
+            url (str): URL of the file to download.
+            filename (str | None): Name for the downloaded file. If None, extracts from URL.
+            path (str | None): Directory to save the file. If None, uses current working directory.
+            chunk_size (int): Size of chunks to download in bytes.
+            show_progress (bool): If True, displays download progress using tqdm.
+            fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+            text (str): Prefix text for progress bar description.
+            headers (dict | None): Optional HTTP headers.
+            api_key (str | None): API key added as X-API-Key header.
+            skip_ssl_certificate (bool): If True, disables SSL certificate verification.
 
-    Returns:
-        dict: Dictionary with 'return': 0, 'filename', 'path', and 'size' on success,
-              or 'return': 1 and 'error' on failure.
+            space (str): Optional indentation prefix for console output formatting.
+        Returns:
+            dict: Dictionary with 'return': 0, 'filename', 'path', and 'size' on success,
+                  or 'return': 1 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import os
     import ssl
@@ -169,8 +178,18 @@ def download(
     }
 
 ##################################################################################################
-async def unify_request(request):
+async def unify_request(
+    request,  # Value for request.
+):
     """
+        Merge query and JSON-body parameters into one normalized dictionary.
+
+        Args:
+            request: Value for request.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     # Get query parameters

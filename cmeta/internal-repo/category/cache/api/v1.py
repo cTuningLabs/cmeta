@@ -14,27 +14,47 @@ class Category(InitCategory):
     """
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     ############################################################
     def test_(
-            self,
-            state: dict,             # cMeta state
-            arg1: str = None,        # Test argument 1
-            flag1: bool = False      # Test flag 1
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # Test argument 1.
+        flag1: bool = False,  # Test flag 1.
     ):
         """
-        Test function.
-        
-        Args:
-            state (dict): cMeta state.
-            arg1 (str | None): Test argument 1.
-            flag1 (bool): Test flag 1.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str | None): Test argument 1.
+                flag1 (bool): Test flag 1.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test_")
@@ -46,17 +66,20 @@ class Category(InitCategory):
 
     ############################################################
     def test2(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Test function 2.
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function 2.
+
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test2")
@@ -68,32 +91,42 @@ class Category(InitCategory):
 
     ############################################################
     def show_(
-            self,
-            state: dict,
-            arg1: str = None,              # Artifact alias or UID
-            tags: str = None,              # Comma-separated string or iterable of tags to match
-            sort: bool = None,             # Sort by path
-            match: dict = None,            # Filter artifacts by this match dict (if key ends with -, do not include value)
-            sort_keys: list = None,
-            show_tags: bool = False,
-            skip_uids: bool = False,
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # Artifact alias or UID filter.
+        tags: str = None,  # Comma-separated tags to match.
+        sort: bool = None,  # If True, request sorted lookup from find.
+        match: dict = None,  # Additional key-value match filter.
+        sort_keys: list = None,  # Keys used to sort displayed artifacts.
+        show_tags: bool = False,  # If True, print artifact tags in output.
+        skip_uids: bool = False,  # If True, omit UIDs from printed entries.
     ):
         """
-        Show cache
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Show cache
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Artifact alias or UID filter.
+                tags (str): Comma-separated tags to match.
+                sort (bool): If True, request sorted lookup from find.
+                match (dict): Additional key-value match filter.
+                sort_keys (list): Keys used to sort displayed artifacts.
+                show_tags (bool): If True, print artifact tags in output.
+                skip_uids (bool): If True, omit UIDs from printed entries.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING cache show API v1")
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         # Call base find function to find an artifact with a website
-        p = {'category':state['category'],
+        p = {'category':ctx['category'],
              'command':'find',
              'arg1':arg1,
              'tags':tags,
@@ -101,8 +134,7 @@ class Category(InitCategory):
              'match':match}
 
         r = self.cm.access(p)
-        if r['return']>0 and r['return'] != 16: 
-            return self.cm._error2(r, self.cm.fail_on_error)
+        if self.cm.catch_error(r): return r
 
         artifacts = r.get('artifacts', [])
 
@@ -162,15 +194,18 @@ class Category(InitCategory):
 
     ############################################################
     def clean(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         # p will be deep copied from params

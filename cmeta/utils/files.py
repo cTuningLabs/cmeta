@@ -41,40 +41,59 @@ RETRY_DELETE_ATTEMPTS = 5
 
 ##########################################################################################
 def _get_lockfile_path(
-        filepath: str  # Path to the file that needs locking
+    filepath: str,  # Path to the file that needs locking.
 ):
-    """Get the lock file path for a given file path.
-    
-    Args:
-        filepath (str): Path to the file that needs locking.
-        
-    Returns:
-        str: Path to the corresponding lock file (filepath + .lock suffix).
+    """
+        Get the lock file path for a given file path.
+
+        Args:
+            filepath (str): Path to the file that needs locking.
+
+        Returns:
+            str: Path to the corresponding lock file (filepath + .lock suffix).
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     return f"{filepath}{LOCK_SUFFIX}"
 
 ##########################################################################################
 def is_dir_within_path(
-        base: str,
-        directory: str,
+    base: str,  # Value for base.
+    directory: str,  # Directory path.
 ):
+    """
+        Check whether a child directory name resolves under a base path.
+
+        Args:
+            base: Value for base.
+            directory: Directory path.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     target = os.path.join(base, directory)
     return is_path_within(base, target)
 
 def is_path_within(
-        base: str,   # Base path to check
-        target: str  # Target path to check against
+    base: str,  # Base path to check.
+    target: str,  # Target path to check against.
 ):
-    """Check if base path is within target path.
-    
-    Determines if the base path is a subdirectory or file within the target path.
-    
-    Args:
-        base (str): Base path to check.
-        target (str): Target path to check against.
-        
-    Returns:
-        bool: True if base is within target, False otherwise.
+    """
+        Check if base path is within target path.
+
+        Determines if the base path is a subdirectory or file within the target path.
+
+        Args:
+            base (str): Base path to check.
+            target (str): Target path to check against.
+
+        Returns:
+            bool: True if base is within target, False otherwise.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     base = os.path.abspath(base)
@@ -90,25 +109,26 @@ def is_path_within(
 
 ##########################################################################################
 def _acquire_lock(
-        filepath: str,       # Path to the file to lock
-        timeout: int = 3,    # Maximum seconds to wait for lock
-        logger = None        # Optional logger for debug messages
+    filepath: str,  # Path to the file to lock.
+    timeout: int = 3,  # Maximum seconds to wait for lock acquisition. Default is 3.
+    logger = None,  # Optional logger for debug messages.
 ):
-    """Acquire a file lock for cross-platform thread/process-safe file operations.
-    
-    Uses FileLock library to create and acquire a lock file. Blocks until lock
-    is acquired or timeout expires.
-    
-    Args:
-        filepath (str): Path to the file to lock.
-        timeout (int): Maximum seconds to wait for lock acquisition. Default is 3.
-        logger: Optional logger for debug messages.
-        
-    Returns:
-        FileLock: Acquired lock object that must be released later.
-        
-    Raises:
-        TimeoutError: If lock cannot be acquired within timeout period.
+    """
+        Acquire a file lock for cross-platform thread/process-safe file operations.
+
+        Uses FileLock library to create and acquire a lock file. Blocks until lock
+        is acquired or timeout expires.
+
+        Args:
+            filepath (str): Path to the file to lock.
+            timeout (int): Maximum seconds to wait for lock acquisition. Default is 3.
+            logger: Optional logger for debug messages.
+
+        Returns:
+            FileLock: Acquired lock object that must be released later.
+
+        Raises:
+            TimeoutError: If lock cannot be acquired within timeout period.
     """
     lockfile = _get_lockfile_path(filepath)
     if logger is not None:
@@ -127,19 +147,23 @@ def _acquire_lock(
 
 ##########################################################################################
 def _check_lock(
-        filepath: str,  # Path to the locked file
-        file_lock,      # FileLock object to check
-        logger = None   # Optional logger for debug messages
+    filepath: str,  # Path to the locked file.
+    file_lock,  # FileLock object to check.
+    logger = None,  # Optional logger for debug messages.
 ):
-    """Verify that a file lock is still valid.
-    
-    Args:
-        filepath (str): Path to the locked file.
-        file_lock: FileLock object to check.
-        logger: Optional logger for debug messages.
-        
-    Raises:
-        TimeoutError: If lock has expired or is no longer valid.
+    """
+        Verify that a file lock is still valid.
+
+        Args:
+            filepath (str): Path to the locked file.
+            file_lock: FileLock object to check.
+            logger: Optional logger for debug messages.
+
+        Raises:
+            TimeoutError: If lock has expired or is no longer valid.
+
+        Returns:
+            dict: Operation result.
     """
     if not file_lock.is_locked:
         if logger is not None:
@@ -150,16 +174,22 @@ def _check_lock(
 
 ##########################################################################################
 def _release_lock(
-        filepath: str,  # Path to the locked file
-        file_lock,      # FileLock object to release
-        logger = None   # Optional logger for debug messages
+    filepath: str,  # Path to the locked file.
+    file_lock,  # FileLock object to release.
+    logger = None,  # Optional logger for debug messages.
 ):
-    """Release a previously acquired file lock.
-    
-    Args:
-        filepath (str): Path to the locked file.
-        file_lock: FileLock object to release.
-        logger: Optional logger for debug messages.
+    """
+        Release a previously acquired file lock.
+
+        Args:
+            filepath (str): Path to the locked file.
+            file_lock: FileLock object to release.
+            logger: Optional logger for debug messages.
+
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     lockfile = _get_lockfile_path(filepath)
     
@@ -185,17 +215,23 @@ def _release_lock(
 
 ##########################################################################################
 def _cleanup_lock_file(
-        lockfile_path: str,  # Path to the lock file to remove
-        logger = None        # Optional logger for debug messages
+    lockfile_path: str,  # Path to the lock file to remove.
+    logger = None,  # Optional logger for debug messages.
 ):
-    """Manually remove lock file if it exists.
-    
-    Ensures cleanup on systems where filelock doesn't auto-cleanup.
-    Errors are logged but not raised since this is a cleanup operation.
-    
-    Args:
-        lockfile_path (str): Path to the lock file to remove.
-        logger: Optional logger for debug messages.
+    """
+        Manually remove lock file if it exists.
+
+        Ensures cleanup on systems where filelock doesn't auto-cleanup.
+        Errors are logged but not raised since this is a cleanup operation.
+
+        Args:
+            lockfile_path (str): Path to the lock file to remove.
+            logger: Optional logger for debug messages.
+
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     try:
         if os.path.exists(lockfile_path):
@@ -209,15 +245,19 @@ def _cleanup_lock_file(
 
 ##########################################################################################
 def _detect_file_format(
-        filepath: str  # Path to the file
+    filepath: str,  # Path to the file.
 ):
-    """Detect file format based on file extension.
-    
-    Args:
-        filepath (str): Path to the file.
-        
-    Returns:
-        str: File format ('json', 'yaml', 'pickle', or 'text').
+    """
+        Detect file format based on file extension.
+
+        Args:
+            filepath (str): Path to the file.
+
+        Returns:
+            str: File format ('json', 'yaml', 'pickle', or 'text').
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     suffix = Path(filepath).suffix.lower()
     if suffix == ".json":
@@ -231,20 +271,24 @@ def _detect_file_format(
 
 ##########################################################################################
 def _read_file_data(
-        filepath: str,        # Path to the file to read
-        encoding: str = None  # Character encoding for text files
+    filepath: str,  # Path to the file to read.
+    encoding: str = None,  # Character encoding for text files. If None, uses binary mode for pickle.
 ):
-    """Read file data with format-specific parsing.
-    
-    Automatically detects file format and uses appropriate parser
-    (JSON, YAML, pickle, or plain text).
-    
-    Args:
-        filepath (str): Path to the file to read.
-        encoding (str | None): Character encoding for text files. If None, uses binary mode for pickle.
-        
-    Returns:
-        Parsed file content (dict for JSON/YAML, bytes/str for text/pickle).
+    """
+        Read file data with format-specific parsing.
+
+        Automatically detects file format and uses appropriate parser
+        (JSON, YAML, pickle, or plain text).
+
+        Args:
+            filepath (str): Path to the file to read.
+            encoding (str | None): Character encoding for text files. If None, uses binary mode for pickle.
+
+        Returns:
+            Parsed file content (dict for JSON/YAML, bytes/str for text/pickle).
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     file_format = _detect_file_format(filepath)
 
@@ -265,59 +309,68 @@ def _read_file_data(
 
 ##########################################################################################
 def read_file(
-        filepath: str,             # Path to the file to read
-        fail_on_error: bool = False,  # If True, raise exception on error
-        logger = None,             # Optional logger for debug messages
-        encoding: str = None       # Character encoding for text files
+    filepath: str,  # Path to the file to read.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
+    logger = None,  # Optional logger for debug messages.
+    encoding: str = None,  # Character encoding for text files.
 ):
-    """Read file without locking (convenience wrapper for safe_read_file).
-    
-    Args:
-        filepath (str): Path to the file to read.
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        logger: Optional logger for debug messages.
-        encoding (str | None): Character encoding for text files.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'data', or 'return' > 0 and 'error'.
+    """
+        Read file without locking (convenience wrapper for safe_read_file).
+
+        Args:
+            filepath (str): Path to the file to read.
+            fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+            logger: Optional logger for debug messages.
+            encoding (str | None): Character encoding for text files.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'data', or 'return' > 0 and 'error'.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     return safe_read_file(filepath, encoding=encoding, timeout=0, retry_if_not_found=1, fail_on_error=fail_on_error, logger=logger)
 
 
 ##########################################################################################
 def safe_read_file(
-        filepath: str,                   # Path to the file to read
-        encoding: str = None,            # Character encoding for text files
-        lock: bool = False,              # If True, use file locking
-        keep_locked: bool = False,       # If True, keep lock after read
-        timeout: int = 3,                # Lock or retry timeout in seconds
-        retry_if_not_found: int = 0,     # Number of retries if file not found
-        fail_on_error: bool = False,     # If True, raise exception on error
-        logger = None,                   # Optional logger for debug messages
-        get_last_modified: bool = False,
+    filepath: str,  # Path to the file to read.
+    encoding: str = None,  # Character encoding for text files. If None, auto-detected.
+    lock: bool = False,  # If True, acquires file lock before reading.
+    keep_locked: bool = False,  # If True with lock=True, keeps lock after read (returns in result).
+    timeout: int = 3,  # Seconds to wait for lock acquisition. Default is 3.
+    retry_if_not_found: int = 0,  # Number of retry attempts if file not found.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
+    logger = None,  # Optional logger for debug messages.
+    get_last_modified: bool = False,  # If True, include file modification timestamp in the result.
 ):
-    """Safely read file with optional locking and retry logic.
-    
-    Provides thread/process-safe file reading with file locking support.
-    Cleans up lock on error. If keep_locked=True and lock=True, maintains
-    the lock after successful read (caller must release).
-    
-    WARNING: This function uses blocking I/O operations. Not suitable for
-    async contexts - use aiofiles and async locking instead.
-    
-    Args:
-        filepath: Path to the file to read.
-        encoding: Character encoding for text files. If None, auto-detected.
-        lock: If True, acquires file lock before reading.
-        keep_locked: If True with lock=True, keeps lock after read (returns in result).
-        timeout: Seconds to wait for lock acquisition. Default is 3.
-        retry_if_not_found: Number of retry attempts if file not found.
-        fail_on_error: If True, raises exception on error instead of returning error dict.
-        logger: Optional logger for debug messages.
-        
-    Returns:
-        dict: Dictionary with 'return': 0, 'data', 'filepath', and optionally 'last_modified'
-              and 'file_lock' (if keep_locked=True). Returns 'return' > 0 and 'error' on failure.
+    """
+        Safely read file with optional locking and retry logic.
+
+        Provides thread/process-safe file reading with file locking support.
+        Cleans up lock on error. If keep_locked=True and lock=True, maintains
+        the lock after successful read (caller must release).
+
+        WARNING: This function uses blocking I/O operations. Not suitable for
+        async contexts - use aiofiles and async locking instead.
+
+        Args:
+            filepath: Path to the file to read.
+            encoding: Character encoding for text files. If None, auto-detected.
+            lock: If True, acquires file lock before reading.
+            keep_locked: If True with lock=True, keeps lock after read (returns in result).
+            timeout: Seconds to wait for lock acquisition. Default is 3.
+            retry_if_not_found: Number of retry attempts if file not found.
+            fail_on_error: If True, raises exception on error instead of returning error dict.
+            logger: Optional logger for debug messages.
+
+            get_last_modified (bool): If True, include file modification timestamp in the result.
+        Returns:
+            dict: Dictionary with 'return': 0, 'data', 'filepath', and optionally 'last_modified'
+                  and 'file_lock' (if keep_locked=True). Returns 'return' > 0 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if logger is not None:
         logger.debug(f"utils.files.safe_read_file - preparing to read {filepath} ...")
@@ -421,31 +474,36 @@ def safe_read_file(
 
 ##########################################################################################
 def write_file(
-        filepath: str,              # Path where file should be written
-        data,                       # Data to write
-        encoding: str = None,       # Character encoding for text files
-        fail_on_error: bool = False,  # If True, raise exception on error
-        logger = None,              # Optional logger for debug messages
-        sort_keys: bool = True,     # If True, sort dictionary keys in JSON/YAML
-        file_format: str = None,    # Force specific format (json/yaml/pickle/text)
-        newline: str = '\n'         # Newline character for text files
+    filepath: str,  # Path where file should be written.
+    data,  # Data to write (dict/list for JSON/YAML, any object for pickle/text).
+    encoding: str = None,  # Character encoding for text files. If None, auto-detected.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
+    logger = None,  # Optional logger for debug messages.
+    sort_keys: bool = True,  # If True, sorts dictionary keys in JSON/YAML output.
+    file_format: str = None,  # Force specific format ('json', 'yaml', 'pickle', 'text'). If None, auto-detected.
+    newline: str = '\n',  # Newline character for text files. Default is '
 ):
-    """Write data to file with format-specific serialization.
-    
-    Automatically serializes data based on file format (JSON, YAML, pickle, or text).
-    
-    Args:
-        filepath (str): Path where file should be written.
-        data: Data to write (dict/list for JSON/YAML, any object for pickle/text).
-        encoding (str | None): Character encoding for text files. If None, auto-detected.
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        logger: Optional logger for debug messages.
-        sort_keys (bool): If True, sorts dictionary keys in JSON/YAML output.
-        file_format (str | None): Force specific format ('json', 'yaml', 'pickle', 'text'). If None, auto-detected.
-        newline (str): Newline character for text files. Default is '\n'.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+    """
+        Write data to file with format-specific serialization.
+
+            Automatically serializes data based on file format (JSON, YAML, pickle, or text).
+
+            Args:
+                filepath (str): Path where file should be written.
+                data: Data to write (dict/list for JSON/YAML, any object for pickle/text).
+                encoding (str | None): Character encoding for text files. If None, auto-detected.
+                fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+                logger: Optional logger for debug messages.
+                sort_keys (bool): If True, sorts dictionary keys in JSON/YAML output.
+                file_format (str | None): Force specific format ('json', 'yaml', 'pickle', 'text'). If None, auto-detected.
+                newline (str): Newline character for text files. Default is '
+        '.
+
+            Returns:
+                dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     if file_format is None:
@@ -477,37 +535,41 @@ def write_file(
 
 ##########################################################################################
 def safe_write_file(
-        filepath: str,              # Path where file should be written
-        data,                       # Data to write
-        timeout: int = 3,           # Seconds to wait for lock acquisition
-        file_lock = None,           # Existing lock to use
-        atomic: bool = False,       # If True, use temp file + rename
-        encoding: str = None,       # Character encoding for text files
-        fail_on_error: bool = False,  # If True, raise exception on error
-        logger = None,              # Optional logger for debug messages
-        sort_keys: bool = True      # If True, sort dictionary keys in JSON/YAML
+    filepath: str,  # Path where file should be written.
+    data,  # Data to write (dict/list for JSON/YAML, any object for pickle/text).
+    timeout: int = 3,  # Seconds to wait for lock acquisition. Default is 3.
+    file_lock = None,  # Existing lock to use. If None, acquires new lock.
+    atomic: bool = False,  # If True, writes to temp file then renames for atomicity.
+    encoding: str = None,  # Character encoding for text files. If None, auto-detected.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
+    logger = None,  # Optional logger for debug messages.
+    sort_keys: bool = True,  # If True, sorts dictionary keys in JSON/YAML output.
 ):
-    """Safely write data to file with locking and optional atomic write.
-    
-    Provides thread/process-safe file writing with file locking support.
-    Supports atomic writes via temp file + rename for data integrity.
-    
-    WARNING: This function uses blocking I/O operations. Not suitable for
-    async contexts - use aiofiles and async locking instead.
-    
-    Args:
-        filepath (str): Path where file should be written.
-        data: Data to write (dict/list for JSON/YAML, any object for pickle/text).
-        timeout (int): Seconds to wait for lock acquisition. Default is 3.
-        file_lock: Existing lock to use. If None, acquires new lock.
-        atomic (bool): If True, writes to temp file then renames for atomicity.
-        encoding (str | None): Character encoding for text files. If None, auto-detected.
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        logger: Optional logger for debug messages.
-        sort_keys (bool): If True, sorts dictionary keys in JSON/YAML output.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+    """
+        Safely write data to file with locking and optional atomic write.
+
+        Provides thread/process-safe file writing with file locking support.
+        Supports atomic writes via temp file + rename for data integrity.
+
+        WARNING: This function uses blocking I/O operations. Not suitable for
+        async contexts - use aiofiles and async locking instead.
+
+        Args:
+            filepath (str): Path where file should be written.
+            data: Data to write (dict/list for JSON/YAML, any object for pickle/text).
+            timeout (int): Seconds to wait for lock acquisition. Default is 3.
+            file_lock: Existing lock to use. If None, acquires new lock.
+            atomic (bool): If True, writes to temp file then renames for atomicity.
+            encoding (str | None): Character encoding for text files. If None, auto-detected.
+            fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+            logger: Optional logger for debug messages.
+            sort_keys (bool): If True, sorts dictionary keys in JSON/YAML output.
+
+        Returns:
+            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if logger is not None:
         logger.debug(f"utils.files.safe_write_file - preparing to write {filepath} ...")
@@ -568,26 +630,29 @@ def safe_write_file(
 
 ##########################################################################################
 def safe_delete_directory(
-        dirpath: str,               # Full path to directory to delete
-        timeout: int = 3,           # Lock timeout in seconds
-        fail_on_error: bool = False,  # If True, raise exceptions
-        logger = None               # Logger instance for debug messages
+    dirpath: str,  # Full path to directory to delete.
+    timeout: int = 3,  # Lock timeout in seconds.
+    fail_on_error: bool = False,  # Whether to raise exceptions or return error dict.
+    logger = None,  # Logger instance for debug messages.
 ):
     """
-    Safely and recursively deletes a directory with all its contents.
-    Works cross-platform (Windows, Linux, MacOS) and handles special cases like
-    .git directories with read-only attributes.
-    
-    If lock acquisition fails but directory doesn't exist, returns success.
-    
-    Args:
-        dirpath (str): Full path to directory to delete.
-        timeout (int): Lock timeout in seconds.
-        fail_on_error (bool): Whether to raise exceptions or return error dict.
-        logger: Logger instance for debug messages.
-    
-    Returns:
-        Dict with 'return' (0=success, non-zero=error) and optional 'error'.
+        Safely and recursively deletes a directory with all its contents.
+        Works cross-platform (Windows, Linux, MacOS) and handles special cases like
+        .git directories with read-only attributes.
+
+        If lock acquisition fails but directory doesn't exist, returns success.
+
+        Args:
+            dirpath (str): Full path to directory to delete.
+            timeout (int): Lock timeout in seconds.
+            fail_on_error (bool): Whether to raise exceptions or return error dict.
+            logger: Logger instance for debug messages.
+
+        Returns:
+            Dict with 'return' (0=success, non-zero=error) and optional 'error'.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if logger is not None:
         logger.debug(f"utils.files.self_delete_directory - preparing to delete {dirpath} ...")
@@ -627,16 +692,26 @@ def safe_delete_directory(
                 logger.debug(f"utils.files.self_delete_directory - directory {dirpath} disappeared after lock, returning success")
             return {'return': 0}
         
-        def handle_remove_readonly(func, path, exc):
-            """Error handler for shutil.rmtree to handle read-only files.
-            
-            Clears readonly bit and retries deletion. Important for .git
-            directories on Windows.
-            
-            Args:
-                func: Function that failed (e.g., os.remove, os.rmdir).
-                path: Path to the file/directory that couldn't be removed.
-                exc: Exception information.
+        def handle_remove_readonly(
+            func,  # Function that failed (e.g., os.remove, os.rmdir).
+            path,  # Path to the file/directory that couldn't be removed.
+            exc,  # Exception information.
+        ):
+            """
+                Error handler for shutil.rmtree to handle read-only files.
+
+                Clears readonly bit and retries deletion. Important for .git
+                directories on Windows.
+
+                Args:
+                    func: Function that failed (e.g., os.remove, os.rmdir).
+                    path: Path to the file/directory that couldn't be removed.
+                    exc: Exception information.
+
+                Returns:
+                    dict: Operation result.
+                Raises:
+                    Exception: Propagated runtime errors, if any.
             """
             if logger is not None:
                 logger.debug(f"utils.files.self_delete_directory - handling read-only file: {path}")
@@ -705,15 +780,21 @@ def safe_delete_directory(
 
 ##########################################################################################
 def safe_delete_directory_if_empty(
-        dirpath: str  # Path to the directory to potentially delete
+    dirpath: str,  # Path to the directory to potentially delete.
 ):
-    """Delete directory only if it's empty (no files or subdirectories).
-    
-    Quickly checks if directory is empty and removes it. Ignores all errors
-    (permissions, race conditions, etc.) for safe cleanup operations.
-    
-    Args:
-        dirpath (str): Path to the directory to potentially delete.
+    """
+        Delete directory only if it's empty (no files or subdirectories).
+
+        Quickly checks if directory is empty and removes it. Ignores all errors
+        (permissions, race conditions, etc.) for safe cleanup operations.
+
+        Args:
+            dirpath (str): Path to the directory to potentially delete.
+
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     try:
         if os.path.isdir(dirpath):
@@ -727,22 +808,26 @@ def safe_delete_directory_if_empty(
 
 ##########################################################################################
 def lock_path(
-        path: str,                  # Path to lock (file or directory)
-        timeout: int = 3,           # Seconds to wait for lock acquisition
-        fail_on_error: bool = False,  # If True, raise exception on error
-        logger = None               # Optional logger for debug messages
+    path: str,  # Path to lock (file or directory).
+    timeout: int = 3,  # Seconds to wait for lock acquisition. Default is 3.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
+    logger = None,  # Optional logger for debug messages.
 ):
-    """Acquire a lock on a file or directory path.
-    
-    Args:
-        path (str): Path to lock (file or directory).
-        timeout (int): Seconds to wait for lock acquisition. Default is 3.
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        logger: Optional logger for debug messages.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'file_lock' on success,
-              or 'return' > 0 and 'error' on failure.
+    """
+        Acquire a lock on a file or directory path.
+
+        Args:
+            path (str): Path to lock (file or directory).
+            timeout (int): Seconds to wait for lock acquisition. Default is 3.
+            fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+            logger: Optional logger for debug messages.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'file_lock' on success,
+                  or 'return' > 0 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if logger is not None:
         logger.debug(f"utils.files.lock_path - preparing to lock path {path} ...")
@@ -755,21 +840,25 @@ def lock_path(
 
 ##########################################################################################
 def unlock_path(
-        path: str,                  # Path to unlock (file or directory)
-        file_lock,                  # FileLock object from lock_path()
-        fail_on_error: bool = False,  # If True, raise exception on error
-        logger = None               # Optional logger for debug messages
+    path: str,  # Path to unlock (file or directory).
+    file_lock,  # FileLock object from lock_path().
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
+    logger = None,  # Optional logger for debug messages.
 ):
-    """Release a lock on a file or directory path.
-    
-    Args:
-        path (str): Path to unlock (file or directory).
-        file_lock: FileLock object from lock_path().
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        logger: Optional logger for debug messages.
-        
-    Returns:
-        dict: Error dict with 'return' > 0 and 'error' on failure, None on success.
+    """
+        Release a lock on a file or directory path.
+
+        Args:
+            path (str): Path to unlock (file or directory).
+            file_lock: FileLock object from lock_path().
+            fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+            logger: Optional logger for debug messages.
+
+        Returns:
+            dict: Error dict with 'return' > 0 and 'error' on failure, None on success.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     if logger is not None:
@@ -784,28 +873,31 @@ def unlock_path(
 
 ##########################################################################################
 def safe_read_file_via_cache(
-        filepath: str,              # Path to the file to read
-        cache: dict,                # Dictionary to store cached data
-        timeout: int = 10,          # Lock timeout for file operations
-        fail_on_error: bool = False,  # If True, raise exceptions
-        logger = None               # Optional logger for debug messages
+    filepath: str,  # Path to the file to read.
+    cache: dict,  # Dictionary to store cached data (modified in-place).
+    timeout: int = 10,  # Lock timeout for file operations.
+    fail_on_error: bool = False,  # Whether to raise exceptions or return error dict.
+    logger = None,  # Optional logger for debug messages
 ):
     """
-    Reads a file with caching based on file modification timestamp.
-    Automatically reloads if file has been modified since last cache.
-    
-    WARNING: This function is NOT thread-safe for async usage. The cache dictionary
-    can be corrupted by concurrent access, and it uses blocking I/O operations.
-    
-    Args:
-        filepath (str): Path to the file to read.
-        cache (dict): Dictionary to store cached data (modified in-place).
-        timeout (int): Lock timeout for file operations.
-        fail_on_error (bool): Whether to raise exceptions or return error dict.
-        logger: Optional logger for debug messages
-    
-    Returns:
-        Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'.
+        Reads a file with caching based on file modification timestamp.
+        Automatically reloads if file has been modified since last cache.
+
+        WARNING: This function is NOT thread-safe for async usage. The cache dictionary
+        can be corrupted by concurrent access, and it uses blocking I/O operations.
+
+        Args:
+            filepath (str): Path to the file to read.
+            cache (dict): Dictionary to store cached data (modified in-place).
+            timeout (int): Lock timeout for file operations.
+            fail_on_error (bool): Whether to raise exceptions or return error dict.
+            logger: Optional logger for debug messages
+
+        Returns:
+            Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     path = Path(filepath)
     
@@ -861,30 +953,33 @@ def safe_read_file_via_cache(
 
 ##########################################################################################
 def safe_read_yaml_or_json(
-        filepath: str,              # Path to file (extension ignored)
-        lock: bool = False,         # If True, use file locking
-        keep_locked: bool = False,  # If True, keep lock after read
-        timeout: int = 3,           # Lock timeout in seconds
-        fail_on_error: bool = False,  # If True, raise exceptions
-        retry_if_not_found: int = 0,  # Number of retries if file not found
-        logger = None               # Logger instance for debug messages
+    filepath: str,  # Path to file (extension will be ignored/removed).
+    lock: bool = False,  # Whether to use file locking.
+    keep_locked: bool = False,  # Whether to keep lock after successful read.
+    timeout: int = 3,  # Lock timeout.
+    fail_on_error: bool = False,  # Whether to raise exceptions or return error dict.
+    retry_if_not_found: int = 0,  # Number of retries if file not found.
+    logger = None,  # Logger instance for debug messages.
 ):
     """
-    Safely reads a YAML or JSON file by trying YAML first, then JSON.
-    Removes any existing extension from filepath and tries .yaml, then .json.
-    
-    Args:
-        filepath (str): Path to file (extension will be ignored/removed).
-        lock (bool): Whether to use file locking.
-        keep_locked (bool): Whether to keep lock after successful read.
-        timeout (int): Lock timeout.
-        fail_on_error (bool): Whether to raise exceptions or return error dict.
-        retry_if_not_found (int): Number of retries if file not found.
-        logger: Logger instance for debug messages.
-    
-    Returns:
-        Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'.
-        If keep_locked=True and lock=True, also returns 'file_lock'.
+        Safely reads a YAML or JSON file by trying YAML first, then JSON.
+        Removes any existing extension from filepath and tries .yaml, then .json.
+
+        Args:
+            filepath (str): Path to file (extension will be ignored/removed).
+            lock (bool): Whether to use file locking.
+            keep_locked (bool): Whether to keep lock after successful read.
+            timeout (int): Lock timeout.
+            fail_on_error (bool): Whether to raise exceptions or return error dict.
+            retry_if_not_found (int): Number of retries if file not found.
+            logger: Logger instance for debug messages.
+
+        Returns:
+            Dict with 'return' (0=success, non-zero=error) and 'data' or 'error'.
+            If keep_locked=True and lock=True, also returns 'file_lock'.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if yaml is None:
         return _error("YAML library not available. Install with: pip install pyyaml", 1, None, fail_on_error)
@@ -917,17 +1012,21 @@ def safe_read_yaml_or_json(
 
 ##########################################################################################
 def _get_encoding(
-        encoding: str = None,  # User-provided encoding
-        file_format: str = None  # File format (json/yaml/pickle/binary)
+    encoding: str = None,  # User-provided encoding (None, '', or specific encoding string).
+    file_format: str = None,  # File format (e.g., 'json', 'yaml', 'pickle', 'binary').
 ):
-    """Determine the appropriate encoding for file operations.
-    
-    Args:
-        encoding (str | None): User-provided encoding (None, '', or specific encoding string).
-        file_format (str | None): File format (e.g., 'json', 'yaml', 'pickle', 'binary').
-        
-    Returns:
-        str or None: Encoding to use ('utf-8' for text formats, None for binary).
+    """
+        Determine the appropriate encoding for file operations.
+
+        Args:
+            encoding (str | None): User-provided encoding (None, '', or specific encoding string).
+            file_format (str | None): File format (e.g., 'json', 'yaml', 'pickle', 'binary').
+
+        Returns:
+            str or None: Encoding to use ('utf-8' for text formats, None for binary).
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if encoding == '': 
         encoding = None
@@ -940,27 +1039,31 @@ def _get_encoding(
 
 ##########################################################################################
 def unzip(
-        filename: str,                    # Path to ZIP file to extract
-        path: str = None,                 # Destination directory
-        remove_directories: int = 0,      # Number of leading directory levels to strip
-        skip_directories: list = None,    # List of directory names to skip
-        overwrite: bool = True,           # If True, overwrite existing files
-        clean: bool = False,              # If True, delete ZIP after extraction
-        fail_on_error: bool = False       # If True, raise exception on error
+    filename: str,  # Path to ZIP file to extract.
+    path: str = None,  # Destination directory (defaults to current directory).
+    remove_directories: int = 0,  # Number of leading directory levels to strip from paths.
+    skip_directories: list = None,  # List of directory names to skip during extraction.
+    overwrite: bool = True,  # If True, overwrite existing files.
+    clean: bool = False,  # If True, delete ZIP file after successful extraction.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
 ):
-    """Extract a ZIP archive to a directory.
-    
-    Args:
-        filename (str): Path to ZIP file to extract.
-        path (str | None): Destination directory (defaults to current directory).
-        remove_directories (int): Number of leading directory levels to strip from paths.
-        skip_directories (list | None): List of directory names to skip during extraction.
-        overwrite (bool): If True, overwrite existing files.
-        clean (bool): If True, delete ZIP file after successful extraction.
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+    """
+        Extract a ZIP archive to a directory.
+
+        Args:
+            filename (str): Path to ZIP file to extract.
+            path (str | None): Destination directory (defaults to current directory).
+            remove_directories (int): Number of leading directory levels to strip from paths.
+            skip_directories (list | None): List of directory names to skip during extraction.
+            overwrite (bool): If True, overwrite existing files.
+            clean (bool): If True, delete ZIP file after successful extraction.
+            fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+
+        Returns:
+            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     
     if skip_directories is None:
@@ -1033,25 +1136,29 @@ def unzip(
 
 ##########################################################################################
 def zip_directory(
-        source_dir: str,                # Path to the directory to zip
-        output_path: str,               # Path where the zip file will be created
-        skip_directories: list = None,  # List of directory names to skip
-        fail_on_error: bool = True,     # If True, raise exceptions
-        logger = None,                  # Logger instance for debug messages
-        skip_files: list = None,        # List of file names to skip
+    source_dir: str,  # Path to the directory to zip.
+    output_path: str,  # Path where the zip file will be created.
+    skip_directories: list = None,  # List of directory names to skip (e.g., ['.git', '__pycache__']).
+    fail_on_error: bool = True,  # Whether to raise exceptions or return error dict.
+    logger = None,  # Logger instance for debug messages
+    skip_files: list = None,  # List of file names or glob patterns to exclude from the archive.
 ):
     """
-    Creates a zip archive from a directory.
-    
-    Args:
-        source_dir (str): Path to the directory to zip.
-        output_path (str): Path where the zip file will be created.
-        skip_directories (list | None): List of directory names to skip (e.g., ['.git', '__pycache__']).
-        fail_on_error (bool): Whether to raise exceptions or return error dict.
-        logger: Logger instance for debug messages
-    
-    Returns:
-        Dict with 'return' (0=success, non-zero=error) and optional 'error'.
+        Creates a zip archive from a directory.
+
+        Args:
+            source_dir (str): Path to the directory to zip.
+            output_path (str): Path where the zip file will be created.
+            skip_directories (list | None): List of directory names to skip (e.g., ['.git', '__pycache__']).
+            fail_on_error (bool): Whether to raise exceptions or return error dict.
+            logger: Logger instance for debug messages
+
+            skip_files (list): List of file names or glob patterns to exclude from the archive.
+        Returns:
+            Dict with 'return' (0=success, non-zero=error) and optional 'error'.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if skip_directories is None:
         skip_directories = []
@@ -1108,21 +1215,28 @@ def zip_directory(
     return {'return': 0, 'output_path': output_path}
 
 ##########################################################################################
-def shard_name(name: str, slices=None):
-    """Apply sharding to a single path component.
-    
-    Generates shard directory names from a name string based on specified slice lengths.
-    If the name is shorter than required, uses underscore-filled placeholders to ensure
-    predictable directory structure.
-    
-    Args:
-        name: Name to shard (file or directory name).
-        slices: List of integers specifying shard lengths (e.g., [2, 2] creates 2-char shards).
-                None means no sharding.
-    
-    Returns:
-        list: List containing shard directory names followed by the original name.
-              Example: shard_name('example', [2, 2]) -> ['ex', 'am', 'example']
+def shard_name(
+    name: str,  # Name to shard (file or directory name).
+    slices = None,  # List of integers specifying shard lengths (e.g., [2, 2] creates 2-char shards).
+):
+    """
+        Apply sharding to a single path component.
+
+        Generates shard directory names from a name string based on specified slice lengths.
+        If the name is shorter than required, uses underscore-filled placeholders to ensure
+        predictable directory structure.
+
+        Args:
+            name: Name to shard (file or directory name).
+            slices: List of integers specifying shard lengths (e.g., [2, 2] creates 2-char shards).
+                    None means no sharding.
+
+        Returns:
+            list: List containing shard directory names followed by the original name.
+                  Example: shard_name('example', [2, 2]) -> ['ex', 'am', 'example']
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if not slices:
         parts = [name]
@@ -1157,19 +1271,27 @@ def shard_name(name: str, slices=None):
 
 
 ##########################################################################################
-def apply_sharding_to_path(path: str, name: str, slices: list):
-    """Apply sharding to construct a full sharded directory path.
-    
-    Combines a base path with sharded directory components generated from a name.
-    
-    Args:
-        path: Base directory path to prepend to sharded path.
-        name: Name to shard.
-        slices: List of integers specifying shard lengths (e.g., [2, 2]).
-    
-    Returns:
-        dict: Dictionary with 'return': 0, 'sharded_parts': list of path components,
-              and 'sharded_path': full sharded path string. On error, 'return' > 0.
+def apply_sharding_to_path(
+    path: str,  # Base directory path to prepend to sharded path.
+    name: str,  # Name to shard.
+    slices: list,  # List of integers specifying shard lengths (e.g., [2, 2]).
+):
+    """
+        Apply sharding to construct a full sharded directory path.
+
+        Combines a base path with sharded directory components generated from a name.
+
+        Args:
+            path: Base directory path to prepend to sharded path.
+            name: Name to shard.
+            slices: List of integers specifying shard lengths (e.g., [2, 2]).
+
+        Returns:
+            dict: Dictionary with 'return': 0, 'sharded_parts': list of path components,
+                  and 'sharded_path': full sharded path string. On error, 'return' > 0.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     r = shard_name(name, slices)
     if r['return']>0: return r
@@ -1190,20 +1312,23 @@ def apply_sharding_to_path(path: str, name: str, slices: list):
 
 ##########################################################################################
 def safe_delete_directory_if_empty_with_sharding(
-        artifact_path: str,
-        sharding_slices: list = None
-    ):
+    artifact_path: str,  # Path to the artifact directory.
+    sharding_slices: list = None,  # Sharding configuration from category meta.
+):
     """
-    Safely delete empty directories up the hierarchy based on sharding configuration.
+        Safely delete empty directories up the hierarchy based on sharding configuration.
 
-    Args:
-        artifact_path (str): Path to the artifact directory.
-        sharding_slices (list | None): Sharding configuration from category meta.
+        Args:
+            artifact_path (str): Path to the artifact directory.
+            sharding_slices (list | None): Sharding configuration from category meta.
 
-    Returns:
-        dict: A cMeta dictionary with the following keys
-            - **return** (int): 0 if success, >0 if error.
-            - **error** (str): Error message if `return > 0`.
+        Returns:
+            dict: A cMeta dictionary with the following keys
+                - **return** (int): 0 if success, >0 if error.
+                - **error** (str): Error message if `return > 0`.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     current_path = os.path.dirname(artifact_path)
     extra_levels = 1 if sharding_slices is None else len(sharding_slices) + 1
@@ -1219,11 +1344,20 @@ def safe_delete_directory_if_empty_with_sharding(
     return {'return': 0}
 
 ##########################################################################################
-def get_latest_tree_modification_time(path):
+def get_latest_tree_modification_time(
+    path,  # Filesystem path.
+):
     """
-    Return the maximum modification time (mtime) of the directory
-    or any file/directory inside it (recursively).
-    Works on Linux, macOS, and Windows.
+        Return the maximum modification time (mtime) of the directory
+        or any file/directory inside it (recursively).
+        Works on Linux, macOS, and Windows.
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     latest = os.path.getmtime(path)
 
@@ -1254,11 +1388,23 @@ def get_latest_tree_modification_time(path):
     return {'return':0, 'latest': latest}
 
 ##########################################################################################
-def get_latest_modification_time(path):
+def get_latest_modification_time(
+    path,  # Filesystem path.
+):
     """
+        Return last modification timestamp for a path as a datetime object.
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
-    mtime = os.path.getmtime(directory)
+    from datetime import datetime
+
+    mtime = os.path.getmtime(path)
     modified_dt = datetime.fromtimestamp(mtime)
 
     return {'return':0, 'last': modified_dt}
@@ -1266,8 +1412,18 @@ def get_latest_modification_time(path):
 
 
 ##########################################################################################
-def get_creation_time(path):
+def get_creation_time(
+    path,  # Filesystem path.
+):
     """
+        Return creation (or closest available) timestamp for a path.
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import sys
@@ -1287,7 +1443,19 @@ def get_creation_time(path):
     return datetime.fromtimestamp(stat.st_mtime)
 
 ##########################################################################################
-def quote_path(path):
+def quote_path(
+    path,  # Filesystem path.
+):
+    """
+        Add double quotes around a path when it contains spaces.
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
 
     if not path.startswith('"') and ' ' in path:
         path = '"' + path + '"'
@@ -1295,10 +1463,19 @@ def quote_path(path):
     return path
 
 ##########################################################################################
-def files_encode(files):
+def files_encode(
+    files,  # Value for files.
+):
     """
-    files: list of file paths
-    returns: dict {filename: base64_string}
+        files: list of file paths
+        returns: dict {filename: base64_string}
+
+        Args:
+            files: Value for files.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import base64
 
@@ -1317,10 +1494,19 @@ def files_encode(files):
     return {'return':0, 'files_base64': files_base64}
 
 ##########################################################################################
-def files_decode(files_base64):
+def files_decode(
+    files_base64,  # Value for files base64.
+):
     """
-    files_base64: dict {filename: base64_string}
-    returns: dict {filename: binary_bytes}
+        files_base64: dict {filename: base64_string}
+        returns: dict {filename: binary_bytes}
+
+        Args:
+            files_base64: Value for files base64.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import base64
 
@@ -1336,8 +1522,18 @@ def files_decode(files_base64):
     return {'return':0, 'files': files}
 
 ##########################################################################################
-def gen_temp_filepath(template = None):
+def gen_temp_filepath(
+    template = None,  # Value for template.
+):
     """
+        Generate a temporary file path using an optional template.
+
+        Args:
+            template: Value for template.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import tempfile
@@ -1356,9 +1552,22 @@ def gen_temp_filepath(template = None):
     return {'return':0, 'filepath': temp_filepath}
 
 ##########################################################################################
-def _handle_remove_readonly(func, path, exc_info):
+def _handle_remove_readonly(
+    func,  # Value for func.
+    path,  # Filesystem path.
+    exc_info,  # Value for exc info.
+):
     """
-    Error handler for shutil.rmtree that removes read-only attributes.
+        Error handler for shutil.rmtree that removes read-only attributes.
+
+        Args:
+            func: Value for func.
+            path: Filesystem path.
+            exc_info: Value for exc info.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     try:
         os.chmod(path, stat.S_IWRITE)
@@ -1367,33 +1576,58 @@ def _handle_remove_readonly(func, path, exc_info):
         raise
 
 ##########################################################################################
-def remove_files_and_dirs_in_path(path, pattern='*', ignore=None):
+def remove_files_and_dirs_in_path(
+    path,  # Filesystem path.
+    pattern = '*',  # Value for pattern.
+    ignore = None,  # Value for ignore.
+):
     """
-    Recursively remove files and directories in `path` matching `pattern`,
-    while ignoring any names matching items in `ignore`.
+        Recursively remove files and directories in `path` matching `pattern`,
+        while ignoring any names matching items in `ignore`.
 
-    Parameters
-    ----------
-    path : str or Path
-        Root directory to operate on.
-    pattern : str
-        Wildcard pattern (fnmatch-style) to match files/directories.
-    ignore : list[str], optional
-        List of wildcard patterns for files/directories to ignore.
-        Matching is done against the basename.
+        Parameters
+        ----------
+        path : str or Path
+            Root directory to operate on.
+        pattern : str
+            Wildcard pattern (fnmatch-style) to match files/directories.
+        ignore : list[str], optional
+            List of wildcard patterns for files/directories to ignore.
+            Matching is done against the basename.
 
-    Examples
-    --------
-    remove_files_and_dirs_in_path(
-        path=".",
-        pattern="*.log",
-        ignore=["keep.log", "important_*"]
-    )
+        Examples
+        --------
+        remove_files_and_dirs_in_path(
+            path=".",
+            pattern="*.log",
+            ignore=["keep.log", "important_*"]
+        )
+
+        Args:
+            path: Filesystem path.
+            pattern: Value for pattern.
+            ignore: Value for ignore.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     root = Path(path)
     ignore = ignore or []
 
-    def is_ignored(p: Path) -> bool:
+    def is_ignored(
+        p: Path,  # Value for p.
+    ) -> bool:
+        """
+            Return True when a path basename matches any ignore pattern.
+
+            Args:
+                p: Value for p.
+            Returns:
+                bool: Result value.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
         return any(fnmatch.fnmatch(p.name, ig) for ig in ignore)
 
     for item in sorted(root.rglob("*"), key=lambda p: len(p.parts), reverse=True):
@@ -1416,7 +1650,29 @@ def remove_files_and_dirs_in_path(path, pattern='*', ignore=None):
     return {'return':0}
 
 ##########################################################################################
-def ask_to_delete(con, force, path, name=None, text=None, space=False):
+def ask_to_delete(
+    con,  # If True, print output to console.
+    force,  # If True, force operation.
+    path,  # Filesystem path.
+    name = None,  # Object or artifact name.
+    text = None,  # Value for text.
+    space = False,  # Indentation prefix for console output.
+):
+    """
+        Prompt for deletion confirmation in console mode.
+
+        Args:
+            con: If True, print output to console.
+            force: If True, force operation.
+            path: Filesystem path.
+            name: Object or artifact name.
+            text: Value for text.
+            space: Indentation prefix for console output.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
 
     confirmed = True
     if con:
@@ -1439,7 +1695,21 @@ def ask_to_delete(con, force, path, name=None, text=None, space=False):
     return {'return':0, 'confirmed': confirmed}
 
 ##########################################################################################
-def is_dir_empty(path, clean=False):
+def is_dir_empty(
+    path,  # Filesystem path.
+    clean = False,  # Value for clean.
+):
+    """
+        Check if a directory is empty and optionally remove it.
+
+        Args:
+            path: Filesystem path.
+            clean: Value for clean.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     if not os.path.isdir(path):
         return False
 
@@ -1452,7 +1722,27 @@ def is_dir_empty(path, clean=False):
         return False
 
 ############################################################
-def load_files(path, load_files, fail_on_error = False, logger = None, timeout = 1):
+def load_files(
+    path,  # Filesystem path.
+    load_files,  # Value for load files.
+    fail_on_error = False,  # Value for fail on error.
+    logger = None,  # Value for logger.
+    timeout = 1,  # Timeout value in seconds.
+):
+    """
+        Load selected files from a directory using safe readers.
+
+        Args:
+            path: Filesystem path.
+            load_files: Value for load files.
+            fail_on_error: Value for fail on error.
+            logger: Value for logger.
+            timeout: Timeout value in seconds.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
 
     loaded_files = {}
 
@@ -1480,20 +1770,27 @@ def load_files(path, load_files, fail_on_error = False, logger = None, timeout =
     return {'return':0, 'loaded_files': loaded_files}
 
 ############################################################
-def md5sum(path, chunk_size = 100000):
+def md5sum(
+    path,  # Filesystem path.
+    chunk_size = 100000,  # Number of bytes to read per iteration when hashing file content.
+):
     """
-    Calculate md5sum
+        Calculate md5sum
 
-    Args:
+        Args:
 
-    Returns:
-       (CM return dict):
+            path: Filesystem path.
+            chunk_size: Number of bytes to read per iteration when hashing file content.
+        Returns:
+           (CM return dict):
 
-       * return (int): return code == 0 if no error and >0 if error
-       * (error) (str): error string if return>0
+           * return (int): return code == 0 if no error and >0 if error
+           * (error) (str): error string if return>0
 
-       * md5sum (str): md5sum of the give file
+           * md5sum (str): md5sum of the give file
 
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import sys
@@ -1514,7 +1811,19 @@ def md5sum(path, chunk_size = 100000):
     return {'return':0, 'md5sum': md5sum}
 
 ############################################################
-def cpath(path):
+def cpath(
+    path,  # Filesystem path.
+):
+    """
+        Normalize and quote a path string for shell usage.
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
 
     if path:
         path = path.strip()
@@ -1525,7 +1834,19 @@ def cpath(path):
     return path
 
 ############################################################
-def parse_env_dump(data: str) -> dict[str, str]:
+def parse_env_dump(
+    data: str,  # Input data object.
+) -> dict[str, str]:
+    """
+        Parse KEY=VALUE lines into an environment dictionary.
+
+        Args:
+            data: Input data object.
+        Returns:
+            dict[str, str]: Result value.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     env = {}
 
     for line in data.splitlines():
@@ -1545,16 +1866,23 @@ def parse_env_dump(data: str) -> dict[str, str]:
     return {'return':0, 'env': env}
 
 ############################################################
-def diff_env(old: dict[str, str], new: dict[str, str]):
-    """Diff two environment dicts and return added/removed variables.
-    
-    Args:
-        old (dict[str, str]): Old environment dictionary.
-        new (dict[str, str]): New environment dictionary.
-        
-    Returns:
-        dict: Dictionary with 'env_added' and 'env_removed' keys containing
-              usable environment dictionaries with fuzzy PATH expansion.
+def diff_env(
+    old: dict[str, str],  # Old environment dictionary.
+    new: dict[str, str],  # New environment dictionary.
+):
+    """
+        Diff two environment dicts and return added/removed variables.
+
+        Args:
+            old (dict[str, str]): Old environment dictionary.
+            new (dict[str, str]): New environment dictionary.
+
+        Returns:
+            dict: Dictionary with 'env_added' and 'env_removed' keys containing
+                  usable environment dictionaries with fuzzy PATH expansion.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     env_added = {}
     env_removed = {}

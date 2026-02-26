@@ -14,27 +14,47 @@ class Category(InitCategory):
     """
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     ############################################################
     def test_(
-            self,
-            state: dict,             # cMeta state
-            arg1: str = None,        # Test argument 1
-            flag1: bool = False      # Test flag 1
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # Test argument 1.
+        flag1: bool = False,  # Test flag 1.
     ):
         """
-        Test function.
-        
-        Args:
-            state (dict): cMeta state.
-            arg1 (str | None): Test argument 1.
-            flag1 (bool): Test flag 1.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str | None): Test argument 1.
+                flag1 (bool): Test flag 1.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test_")
@@ -46,17 +66,20 @@ class Category(InitCategory):
 
     ############################################################
     def test2(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Test function 2.
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function 2.
+
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test2")
@@ -67,11 +90,21 @@ class Category(InitCategory):
         return {'return':0}
 
     ############################################################
-    def create(self, params):
+    def create(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Create note
+            Create note
 
-        @base.create_
+            @base.create_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         self.logger.debug("RUNNING note api v1 create")
 

@@ -1,4 +1,8 @@
-﻿cMeta (0.23.0):
+﻿cMeta (0.24.0):
+  * simplified error and logging handling logic
+  * updated state -> ctx (context)
+   
+cMeta (0.23.0):
   * many improvements and minor bug fixes
 
 cMeta (0.22.0):

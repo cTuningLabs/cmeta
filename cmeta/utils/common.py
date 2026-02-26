@@ -9,25 +9,35 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 from packaging.version import Version
 
 ###################################################################################################
-def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
-    """Create error return dictionary or raise exception based on fail_on_error flag.
-    
-    Args:
-        error_msg: Error message string. If None, uses exception string.
-        return_code: Error return code. Default is 1. Code 16 is for file not found warnings.
-        exception: Optional exception object to include in error message.
-        fail_on_error: If True, raises exception instead of returning error dict.
-        
-    Returns:
-        dict: Dictionary with 'return' and 'error' keys.
-        
-    Raises:
-        Exception: If fail_on_error is True and return_code != 16.
+def _error(
+    error_msg,  # Error message string. If None, uses exception string.
+    return_code = 1,  # Error return code. Default is 1. Code 16 is for
+    exception = None,  # Optional exception object to include in error message.
+    fail_on_error = False,  # If True, raises exception instead of returning error dict.
+    fail_on_16 = False,  # If True, treat return code 16 as a fatal error when fail_on_error is enabled.
+):
+    """
+        Create error return dictionary or raise exception based on fail_on_error flag.
+
+        Args:
+            error_msg: Error message string. If None, uses exception string.
+            return_code: Error return code. Default is 1. Code 16 is for
+                           "file not found" or other warnings - it should not
+                           fail during debugging.
+            exception: Optional exception object to include in error message.
+            fail_on_error: If True, raises exception instead of returning error dict.
+
+            fail_on_16: If True, treat return code 16 as a fatal error when fail_on_error is enabled.
+        Returns:
+            dict: Dictionary with 'return' and 'error' keys.
+
+        Raises:
+            Exception: If fail_on_error is True and return_code != 16.
     """
 
     # Return code 16 is a special one - it's more a warning to handle files that are not found
     # but it's not critical for the system
-    if return_code != 16 and fail_on_error:
+    if (return_code != 16 or fail_on_16) and fail_on_error:
         if exception:
             raise exception
         else:
@@ -42,48 +52,23 @@ def _error(error_msg, return_code=1, exception=None, fail_on_error=False):
     return {'return': return_code, 'error': err}
 
 ###################################################################################################
-def _error2(r, cm = None):
-    """Create error return dictionary or raise exception based on fail_on_error flag.
-    
-    Args:
-        r: cMeta access return dict
-        cm: object with fail_on_error: If True, raises exception instead of returning error dict.
-        
-    Returns:
-        dict: Dictionary with 'return' and 'error' keys.
-        
-    Raises:
-        Exception: If fail_on_error is True and return_code != 16.
+def check_params(
+    params,  # Input parameters dictionary.
+    keys,  # Collection of dictionary keys.
+    name = None,  # Object or artifact name.
+):
     """
+        Validate that input dictionary contains only expected keys.
 
-    fail_on_error = True if cm is not None and cm.fail_on_error else False
-
-    return _error(r.get('error'), r['return'], exception=None, fail_on_error=fail_on_error)
-
-###################################################################################################
-def _catch_error2(r, cm = None):
-    """Catches error and creates return dictionary or raise exception based on fail_on_error flag.
-    
-    Args:
-        r: cMeta access return dict
-        cm: object with fail_on_error: If True, raises exception instead of returning error dict.
-        
-    Returns:
-        dict: Dictionary with 'return' and 'error' keys.
-        
-    Raises:
-        Exception: If fail_on_error is True and return_code != 16.
+        Args:
+            params: Input parameters dictionary.
+            keys: Collection of dictionary keys.
+            name: Object or artifact name.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
-
-    fail_on_error = True if cm is not None and cm.fail_on_error else False
-
-    if r.get('return',0)>0:
-        return _error(r.get('error'), r['return'], exception=None, fail_on_error=fail_on_error)
-    
-    return r
-
-###################################################################################################
-def _check_params(params, keys, name = None):
 
     for k in list(params.keys()):
         if k not in keys:
@@ -95,22 +80,27 @@ def _check_params(params, keys, name = None):
 
 ###################################################################################################
 def deep_merge(
-        target: dict,                   # Original dictionary to be updated
-        source: dict,                   # New dictionary with updates
-        append_lists: bool = False,     # If True, append lists instead of overwrite
-        prepend_lists: bool = False,    # If True with append_lists, insert at start instead of end
-        ignore_root_keys: list = []     # Keys to ignore at root level
+    target: dict,  # The original dictionary to be updated.
+    source: dict,  # The new dictionary with updates.
+    append_lists: bool = False,  # If True, lists will be appended instead of overwritten.
+    prepend_lists: bool = False,  # If True and append_lists is True, insert new items at the
+    ignore_root_keys: list = [],  # List of keys to ignore from source at the root level.
 ):
     """
-    Recursively updates the target dictionary with values from the source dictionary.
-    
-    Args:
-        target (dict): The original dictionary to be updated.
-        source (dict): The new dictionary with updates.
-        append_lists (bool): If True, lists will be appended instead of overwritten.
-        prepend_lists (bool): If True and append_lists is True, insert new items at the 
-                             start of existing lists instead of appending at the end.
-        ignore_root_keys (list): List of keys to ignore from source at the root level.
+        Recursively updates the target dictionary with values from the source dictionary.
+
+        Args:
+            target (dict): The original dictionary to be updated.
+            source (dict): The new dictionary with updates.
+            append_lists (bool): If True, lists will be appended instead of overwritten.
+            prepend_lists (bool): If True and append_lists is True, insert new items at the
+                                 start of existing lists instead of appending at the end.
+            ignore_root_keys (list): List of keys to ignore from source at the root level.
+
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     from collections.abc import Mapping
 
@@ -135,21 +125,24 @@ def deep_merge(
 
 ###################################################################################################
 def deep_remove(
-        target: dict,                   # Dictionary to remove keys/values from
-        source: dict                    # Dictionary specifying what to remove
+    target: dict,  # The dictionary to remove keys/values from (modified in place).
+    source: dict,  # The dictionary specifying what to remove.
 ):
     """
-    Recursively removes keys/values from target dictionary based on source dictionary.
-    
-    Args:
-        target (dict): The dictionary to remove keys/values from (modified in place).
-        source (dict): The dictionary specifying what to remove.
-                      - If value is a dict, recursively remove nested keys
-                      - If value is a list, remove list elements from target list
-                      - Otherwise, remove the entire key from target
-                      
-    Returns:
-        dict: The modified target dictionary
+        Recursively removes keys/values from target dictionary based on source dictionary.
+
+        Args:
+            target (dict): The dictionary to remove keys/values from (modified in place).
+            source (dict): The dictionary specifying what to remove.
+                          - If value is a dict, recursively remove nested keys
+                          - If value is a list, remove list elements from target list
+                          - Otherwise, remove the entire key from target
+
+        Returns:
+            dict: The modified target dictionary
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     from collections.abc import Mapping
 
@@ -177,21 +170,25 @@ def deep_remove(
 
 ###################################################################################################
 def safe_serialize_json(
-        obj,                                    # Python object to serialize
-        non_serializable_text: str = None       # Text for non-serializable objects
+    obj,  # Python object to serialize.
+    non_serializable_text: str = None,  # Text to use for non-serializable objects.
 ):
-    """Recursively serialize Python objects to JSON-compatible format.
-    
-    Handles objects that are not JSON serializable by converting them to strings
-    or nested structures. Sets, tuples, and non-serializable objects are handled.
-    
-    Args:
-        obj: Python object to serialize.
-        non_serializable_text (str | None): Text to use for non-serializable objects. 
-                              Default is "#NON-SERIALIZABLE#".
-        
-    Returns:
-        JSON-serializable version of obj (dict, list, str, int, float, bool, None).
+    """
+        Recursively serialize Python objects to JSON-compatible format.
+
+        Handles objects that are not JSON serializable by converting them to strings
+        or nested structures. Sets, tuples, and non-serializable objects are handled.
+
+        Args:
+            obj: Python object to serialize.
+            non_serializable_text (str | None): Text to use for non-serializable objects.
+                                  Default is "#NON-SERIALIZABLE#".
+
+        Returns:
+            JSON-serializable version of obj (dict, list, str, int, float, bool, None).
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import json
 
@@ -215,23 +212,27 @@ def safe_serialize_json(
 
 ###################################################################################################
 def safe_print_json(
-        obj,                                    # Python object to print as JSON
-        indent: int = 2,                        # Number of spaces for indentation
-        non_serializable_text: str = None,      # Text for non-serializable objects
-        ignore_keys: list = [],                 # Top-level keys to exclude
-        sort: bool = True                       # If True, sort dictionary keys
+    obj,  # Python object to print as JSON.
+    indent: int = 2,  # Number of spaces for indentation. Default is 2.
+    non_serializable_text: str = None,  # Text to use for non-serializable objects.
+    ignore_keys: list = [],  # List of top-level keys to exclude from output.
+    sort: bool = True,  # If True, sort dictionary keys. Default is True.
 ):
-    """Print object as JSON with safe serialization of non-serializable objects.
-    
-    Args:
-        obj: Python object to print as JSON.
-        indent (int): Number of spaces for indentation. Default is 2.
-        non_serializable_text (str | None): Text to use for non-serializable objects.
-        ignore_keys (list): List of top-level keys to exclude from output.
-        sort (bool): If True, sort dictionary keys. Default is True.
-        
-    Returns:
-        dict: Dictionary with 'return': 0.
+    """
+        Print object as JSON with safe serialization of non-serializable objects.
+
+        Args:
+            obj: Python object to print as JSON.
+            indent (int): Number of spaces for indentation. Default is 2.
+            non_serializable_text (str | None): Text to use for non-serializable objects.
+            ignore_keys (list): List of top-level keys to exclude from output.
+            sort (bool): If True, sort dictionary keys. Default is True.
+
+        Returns:
+            dict: Dictionary with 'return': 0.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     print(safe_print_json_to_str(obj, indent=indent, non_serializable_text=non_serializable_text, ignore_keys=ignore_keys, sort=sort))
 
@@ -239,23 +240,27 @@ def safe_print_json(
 
 ###################################################################################################
 def safe_print_json_to_str(
-        obj,                                    # Python object to convert to JSON string
-        indent: int = 2,                        # Number of spaces for indentation
-        non_serializable_text: str = None,      # Text for non-serializable objects
-        ignore_keys: list = [],                 # Top-level keys to exclude
-        sort: bool = True                       # If True, sort dictionary keys
+    obj,  # Python object to convert to JSON string.
+    indent: int = 2,  # Number of spaces for indentation. Default is 2.
+    non_serializable_text: str = None,  # Text to use for non-serializable objects.
+    ignore_keys: list = [],  # List of top-level keys to exclude from output.
+    sort: bool = True,  # If True, sort dictionary keys. Default is True.
 ):
-    """Convert object to JSON string with safe serialization.
-    
-    Args:
-        obj: Python object to convert to JSON string.
-        indent (int): Number of spaces for indentation. Default is 2.
-        non_serializable_text (str | None): Text to use for non-serializable objects.
-        ignore_keys (list): List of top-level keys to exclude from output.
-        sort (bool): If True, sort dictionary keys. Default is True.
-        
-    Returns:
-        str: JSON string representation of obj.
+    """
+        Convert object to JSON string with safe serialization.
+
+        Args:
+            obj: Python object to convert to JSON string.
+            indent (int): Number of spaces for indentation. Default is 2.
+            non_serializable_text (str | None): Text to use for non-serializable objects.
+            ignore_keys (list): List of top-level keys to exclude from output.
+            sort (bool): If True, sort dictionary keys. Default is True.
+
+        Returns:
+            str: JSON string representation of obj.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import json
 
@@ -267,19 +272,23 @@ def safe_print_json_to_str(
 
 ###################################################################################################
 def normalize_tags(
-        tags,                           # Tags as comma-separated string or list
-        fail_on_error: bool = False     # If True, raise exception on error
+    tags,  # Tags as comma-separated string or list of strings.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
 ):
-    """Normalize tags from string or list format to clean list of strings.
-    
-    Converts comma-separated string to list and strips whitespace from each tag.
-    
-    Args:
-        tags (str | list): Tags as comma-separated string or list of strings.
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'tags' list, or 'return' > 0 and 'error' on failure.
+    """
+        Normalize tags from string or list format to clean list of strings.
+
+        Converts comma-separated string to list and strips whitespace from each tag.
+
+        Args:
+            tags (str | list): Tags as comma-separated string or list of strings.
+            fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'tags' list, or 'return' > 0 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
  
     if type(tags) == str:
@@ -296,30 +305,34 @@ def normalize_tags(
 
 ###################################################################################################
 def detect_cid_in_the_current_directory(
-        cmeta,                      # CMeta instance
-        path: str = None,           # Directory path to check
-        debug: bool = False,        # If True, enable debug logging
-        logger = None               # Logger instance for debug output
+    cmeta,  # CMeta instance.
+    path: str = None,  # Directory path to check. If None, uses current working directory.
+    debug: bool = False,  # If True, enables debug logging.
+    logger = None,  # Logger instance for debug output.
 ):
-    """Detect CMeta repository, category, and artifact from current or specified directory.
-    
-    Traverses the directory tree to find CMeta repository information and determine
-    which artifact the current path corresponds to.
-    
-    Args:
-        cmeta: CMeta instance.
-        path (str | None): Directory path to check. If None, uses current working directory.
-        debug (bool): If True, enables debug logging.
-        logger: Logger instance for debug output.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and detected information including:
-            - artifact_repo_name: Name of the artifact repository
-            - artifact_path: Relative path within repository
-            - category_alias, category_uid: Category identifiers
-            - category_obj: Category object string
-            - artifact_alias, artifact_uid, artifact_name: Artifact identifiers
-            Or 'return' > 0 and 'error' on failure.
+    """
+        Detect CMeta repository, category, and artifact from current or specified directory.
+
+        Traverses the directory tree to find CMeta repository information and determine
+        which artifact the current path corresponds to.
+
+        Args:
+            cmeta: CMeta instance.
+            path (str | None): Directory path to check. If None, uses current working directory.
+            debug (bool): If True, enables debug logging.
+            logger: Logger instance for debug output.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and detected information including:
+                - artifact_repo_name: Name of the artifact repository
+                - artifact_path: Relative path within repository
+                - category_alias, category_uid: Category identifiers
+                - category_obj: Category object string
+                - artifact_alias, artifact_uid, artifact_name: Artifact identifiers
+                Or 'return' > 0 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import os
@@ -435,19 +448,23 @@ def detect_cid_in_the_current_directory(
 
 ###################################################################################################
 def copy_text_to_clipboard(
-        text: str = '',             # Text string to copy to clipboard
-        add_quotes: bool = False,   # If True, wrap text in quotes
-        do_not_fail: bool = False   # If True, return warning instead of error
+    text: str = '',  # Text string to copy to clipboard.
+    add_quotes: bool = False,  # If True, wraps text in double quotes before copying.
+    do_not_fail: bool = False,  # If True, returns warning instead of error if pyperclip not installed.
 ):
-    """Copy text to system clipboard using pyperclip.
-    
-    Args:
-        text (str): Text string to copy to clipboard.
-        add_quotes (bool): If True, wraps text in double quotes before copying.
-        do_not_fail (bool): If True, returns warning instead of error if pyperclip not installed.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error'/'warning' on failure.
+    """
+        Copy text to system clipboard using pyperclip.
+
+        Args:
+            text (str): Text string to copy to clipboard.
+            add_quotes (bool): If True, wraps text in double quotes before copying.
+            do_not_fail (bool): If True, returns warning instead of error if pyperclip not installed.
+
+        Returns:
+            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error'/'warning' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import sys
@@ -471,22 +488,25 @@ def copy_text_to_clipboard(
 
 ###################################################################################################
 def compare_versions(
-        version1: str,  # First version string (e.g., "0.3.1", "1.2", "3.2.0-dev")
-        version2: str   # Second version string
+    version1: str,  # First version string (e.g., "0.3.1", "1.2", "3.2.0-dev")
+    version2: str,  # Second version string
 ):
     """
-    Compare two version strings.
-    
-    Args:
-        version1 (str): First version string (e.g., "0.3.1", "1.2", "3.2.0-dev")
-        version2 (str): Second version string
-        
-    Returns:
-        dict: {'return': 0, 'comparison': '<' | '=' | '>'}
-              where '<' means version1 < version2
-                    '=' means version1 == version2
-                    '>' means version1 > version2
-              or {'return': 1, 'error': str} on error
+        Compare two version strings.
+
+        Args:
+            version1 (str): First version string (e.g., "0.3.1", "1.2", "3.2.0-dev")
+            version2 (str): Second version string
+
+        Returns:
+            dict: {'return': 0, 'comparison': '<' | '=' | '>'}
+                  where '<' means version1 < version2
+                        '=' means version1 == version2
+                        '>' means version1 > version2
+                  or {'return': 1, 'error': str} on error
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import re
     
@@ -494,7 +514,19 @@ def compare_versions(
 
     try:
         # Split version into numeric parts and suffix (e.g., "3.2.0-dev" -> ["3", "2", "0"], "dev")
-        def parse_version(version):
+        def parse_version(
+            version,  # Value for version.
+        ):
+            """
+                Parse version into numeric parts and optional suffix.
+
+                Args:
+                    version: Value for version.
+                Returns:
+                    dict: Operation result.
+                Raises:
+                    Exception: Propagated runtime errors, if any.
+            """
             # Match numeric parts and optional suffix
             match = re.match(r'^([\d.]+)(-.*)?$', version.strip())
             if not match:
@@ -544,20 +576,24 @@ def compare_versions(
 
 ###################################################################################################
 def generate_timestamp(
-        cut: int = None,     # If specified, truncate timestamp to this many characters
-        slices: list = None  # List of slice sizes for creating sharded path
+    cut: int = None,  # If specified, truncates timestamp to this many characters.
+    slices: list = None,  # List of slice sizes for creating sharded path.
 ):
-    """Generate timestamp string and optionally create sharded path.
-    
-    Creates a timestamp in format YYYYMMDD-MMSS and optionally creates a sharded
-    directory path from it.
-    
-    Args:
-        cut (int | None): If specified, truncates timestamp to this many characters.
-        slices (list | None): List of slice sizes for creating sharded path.
-        
-    Returns:
-        dict: Dictionary with 'return': 0, 'timestamp' (string), and 'path' (sharded if slices provided).
+    """
+        Generate timestamp string and optionally create sharded path.
+
+        Creates a timestamp in format YYYYMMDD-MMSS and optionally creates a sharded
+        directory path from it.
+
+        Args:
+            cut (int | None): If specified, truncates timestamp to this many characters.
+            slices (list | None): List of slice sizes for creating sharded path.
+
+        Returns:
+            dict: Dictionary with 'return': 0, 'timestamp' (string), and 'path' (sharded if slices provided).
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     from datetime import datetime
 
@@ -580,8 +616,34 @@ def generate_timestamp(
     return {'return':0, 'timestamp': timestamp, 'path': path}
 
 ###################################################################################################
-def sort_versions(versions, reverse=False):
-    def parse_version(v):
+def sort_versions(
+    versions,  # Value for versions.
+    reverse = False,  # Value for reverse.
+):
+    """
+        Sort version-like strings using numeric-aware comparison.
+
+        Args:
+            versions: Value for versions.
+            reverse: Value for reverse.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    def parse_version(
+        v,  # Value for v.
+    ):
+        """
+            Convert a version-like string to a sortable tuple.
+
+            Args:
+                v: Value for v.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
         import re
 
         # Remove leading 'v' if present
@@ -601,7 +663,23 @@ def sort_versions(versions, reverse=False):
     return sorted(versions, key=parse_version, reverse=reverse)
 
 ###################################################################################################
-def flatten_dict(d, parent_key="", sep="."):
+def flatten_dict(
+    d,  # Value for d.
+    parent_key = '',  # Value for parent key.
+    sep = '.',  # Value for sep.
+):
+    """
+        Flatten a nested dictionary into dotted keys.
+
+        Args:
+            d: Value for d.
+            parent_key: Value for parent key.
+            sep: Value for sep.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     items = []
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -619,7 +697,25 @@ def flatten_dict(d, parent_key="", sep="."):
     return dict(items)
 
 ###################################################################################################
-def matches_query(data, query, match_version_func = None, match_empty_version = False):
+def matches_query(
+    data,  # Input data object.
+    query,  # Value for query.
+    match_version_func = None,  # Value for match version func.
+    match_empty_version = False,  # Value for match empty version.
+):
+    """
+        Check whether input data satisfies a query dictionary.
+
+        Args:
+            data: Input data object.
+            query: Value for query.
+            match_version_func: Value for match version func.
+            match_empty_version: Value for match empty version.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     for key, q_value in query.items():
         negate = key.endswith("-")
         actual_key = key[:-1] if negate else key
@@ -660,7 +756,25 @@ def matches_query(data, query, match_version_func = None, match_empty_version = 
 
 
 ###################################################################################################
-def value_matches(data_value, query_value, match_version_func = None, match_empty_version = False):
+def value_matches(
+    data_value,  # Value for data value.
+    query_value,  # Value for query value.
+    match_version_func = None,  # Value for match version func.
+    match_empty_version = False,  # Value for match empty version.
+):
+    """
+        Evaluate a single query value against a data value.
+
+        Args:
+            data_value: Value for data value.
+            query_value: Value for query value.
+            match_version_func: Value for match version func.
+            match_empty_version: Value for match empty version.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     # Dict → recursive match
     if isinstance(query_value, dict):
         if not isinstance(data_value, dict):
@@ -677,7 +791,23 @@ def value_matches(data_value, query_value, match_version_func = None, match_empt
     return data_value == query_value
 
 ###################################################################################################
-def _get_nested(mapping, path, default=None):
+def _get_nested(
+    mapping,  # Value for mapping.
+    path,  # Filesystem path.
+    default = None,  # Value for default.
+):
+    """
+        Get a nested dictionary value using dot-separated path.
+
+        Args:
+            mapping: Value for mapping.
+            path: Filesystem path.
+            default: Value for default.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     current = mapping
     for part in path.split("."):
         if not isinstance(current, dict):
@@ -688,7 +818,22 @@ def _get_nested(mapping, path, default=None):
     return current
 
 
-def _normalize_value(value, *, as_version=False):
+def _normalize_value(
+    value,  # Input value.
+    *,
+    as_version = False,  # Value for as version.
+):
+    """
+        Normalize sortable values and optionally parse semantic versions.
+
+        Args:
+            value: Input value.
+            as_version: Value for as version.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     if value is None:
         return value
 
@@ -701,7 +846,19 @@ def _normalize_value(value, *, as_version=False):
     return value
 
 
-def _invert_value(value):
+def _invert_value(
+    value,  # Input value.
+):
+    """
+        Invert a sortable value for descending ordering.
+
+        Args:
+            value: Input value.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     if value is None:
         return value
 
@@ -713,12 +870,38 @@ def _invert_value(value):
 
     return "".join(chr(0x10FFFF - ord(c)) for c in str(value))
 
-def _with_missing_flag(value):
+def _with_missing_flag(
+    value,  # Input value.
+):
+    """
+        Tag values so missing entries sort after present entries.
+
+        Args:
+            value: Input value.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     if value is None:
         return (1, None)
     return (0, value)
 
-def build_sort_key(artifact, sort_keys):
+def build_sort_key(
+    artifact,  # Artifact reference.
+    sort_keys,  # Sort key definitions.
+):
+    """
+        Build a stable tuple key for artifact sorting rules.
+
+        Args:
+            artifact: Artifact reference.
+            sort_keys: Sort key definitions.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     key_parts = []
 
     for raw_key in sort_keys:
@@ -743,7 +926,21 @@ def build_sort_key(artifact, sort_keys):
     return tuple(key_parts)
 
 ###################################################################################################
-def expand_string(template: str, values: dict) -> str:
+def expand_string(
+    template: str,  # Value for template.
+    values: dict,  # Input values.
+) -> str:
+    """
+        Expand template placeholders from a values dictionary.
+
+        Args:
+            template: Value for template.
+            values: Input values.
+        Returns:
+            str: Result value.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     out = []
     i = 0
 
@@ -811,23 +1008,40 @@ def expand_string(template: str, values: dict) -> str:
     return {'return':0, 'string': "".join(out)}
 
 ###################################################################################################
-def expand_strings_in_dict(data: dict, values: dict) -> dict:
+def expand_strings_in_dict(
+    data: dict,  # Dictionary to process (modified in-place)
+    values: dict,  # Dictionary of values for template expansion
+) -> dict:
     """
-    Recursively expand template strings in a dictionary structure.
-    
-    Traverses dictionaries and lists, calling expand_string on any string values found.
-    Updates the original dictionary in-place if expansion succeeds.
-    
-    Args:
-        data: Dictionary to process (modified in-place)
-        values: Dictionary of values for template expansion
-        
-    Returns:
-        dict: {'return': 0} on success, or {'return': 1, 'error': str} on failure
+        Recursively expand template strings in a dictionary structure.
+
+        Traverses dictionaries and lists, calling expand_string on any string values found.
+        Updates the original dictionary in-place if expansion succeeds.
+
+        Args:
+            data: Dictionary to process (modified in-place)
+            values: Dictionary of values for template expansion
+
+        Returns:
+            dict: {'return': 0} on success, or {'return': 1, 'error': str} on failure
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     
-    def process_value(value):
-        """Recursively process a value (dict, list, or string)."""
+    def process_value(
+        value,  # Input value.
+    ):
+        """
+            Recursively process a value (dict, list, or string).
+
+            Args:
+                value: Input value.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
         if isinstance(value, dict):
             r = expand_string_in_dict(value, values)
             if r['return'] > 0:
@@ -862,13 +1076,24 @@ def expand_strings_in_dict(data: dict, values: dict) -> dict:
     return {'return': 0}
 
 ###################################################################################################
-def restricted_bool_eval(expression: str, variables: dict = None) -> bool:
+def restricted_bool_eval(
+    expression: str,  # Value for expression.
+    variables: dict = None,  # Value for variables.
+) -> bool:
     """
-    Safely evaluate a boolean expression using restricted eval.
+        Safely evaluate a boolean expression using restricted eval.
 
-    :param expression: Boolean expression as a string
-    :param variables: Allowed variables (name -> value)
-    :return: True or False (False on any error)
+        :param expression: Boolean expression as a string
+        :param variables: Allowed variables (name -> value)
+        :return: True or False (False on any error)
+
+        Args:
+            expression: Value for expression.
+            variables: Value for variables.
+        Returns:
+            bool: Result value.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if variables is None:
         variables = {}

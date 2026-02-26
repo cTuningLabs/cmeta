@@ -24,27 +24,32 @@ class Repos:
     
     ###################################################################################################
     def __init__(
-            self,
-            cfg: Dict[str, Any],             # Configuration dictionary
-            home_path: Path,                 # Path to repositories directory
-            index_path: Path,                # Path to index directory
-            repos_config_path: Path,         # Path to repositories config file
-            logger: logging.Logger = None,   # Logger instance (optional)
-            index_extension: str = '.pkl',   # Index file extension
-            fail_on_error: bool = False,     # If True, raise exception on error
-            match_version_func = None,       # Function from packages to match versions (fuzzy, conditions) during search
+        self,
+        cfg: Dict[str, Any],  # Configuration dictionary.
+        home_path: Path,  # Path to repositories directory.
+        index_path: Path,  # Path to index directory.
+        repos_config_path: Path,  # Path to repositories config file.
+        logger: logging.Logger = None,  # Logger instance (optional).
+        index_extension: str = '.pkl',  # Index file extension.
+        fail_on_error: bool = False,  # If True, raise exception on error.
+        match_version_func = None,  # Callback used to evaluate version matching rules.
     ):
         """
-        Initialize Repos manager.
-        
-        Args:
-            cfg (Dict[str, Any]): Configuration dictionary.
-            home_path (Path): Path to repositories directory.
-            index_path (Path): Path to index directory.
-            repos_config_path (Path): Path to repositories config file.
-            logger (logging.Logger | None): Logger instance (optional).
-            index_extension (str): Index file extension.
-            fail_on_error (bool): If True, raise exception on error.
+            Initialize Repos manager.
+
+            Args:
+                cfg (Dict[str, Any]): Configuration dictionary.
+                home_path (Path): Path to repositories directory.
+                index_path (Path): Path to index directory.
+                repos_config_path (Path): Path to repositories config file.
+                logger (logging.Logger | None): Logger instance (optional).
+                index_extension (str): Index file extension.
+                fail_on_error (bool): If True, raise exception on error.
+                match_version_func: Callback used to evaluate version matching rules.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         self.cfg = cfg
         self.home_path = home_path
@@ -68,20 +73,23 @@ class Repos:
 
     ###################################################################################################
     def init(
-            self,
-            con: bool = False,      # Console mode flag (for compatibility)
-            verbose: bool = False   # Enable verbose output (for compatibility)
+        self,
+        con: bool = False,  # Console mode flag (for compatibility).
+        verbose: bool = False,  # Enable verbose output (for compatibility).
     ):
-        """Initialize repositories and index if running for the first time.
-        
-        Creates repos directory, local repository, and triggers reindexing if needed.
-        
-        Args:
-            con (bool): Console mode flag (for compatibility).
-            verbose (bool): Enable verbose output (for compatibility).
-            
-        Returns:
-            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+        """
+            Initialize repositories and index if running for the first time.
+
+            Creates repos directory, local repository, and triggers reindexing if needed.
+
+            Args:
+                con (bool): Console mode flag (for compatibility).
+                verbose (bool): Enable verbose output (for compatibility).
+            Returns:
+                dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         trigger_reindex = False
@@ -135,8 +143,27 @@ class Repos:
         return {'return':0}
 
     ###################################################################################################
-    def add_to_index(self, cmeta, cmeta_ref_parts, path, original_alias = None, original_uid = None):
+    def add_to_index(
+        self,
+        cmeta,  # Artifact metadata dictionary.
+        cmeta_ref_parts,  # Parsed cMeta reference components.
+        path,  # Filesystem path.
+        original_alias = None,  # Previous artifact alias before update.
+        original_uid = None,  # Previous artifact UID before update.
+    ):
         """
+            Insert or update an artifact record in the category index.
+
+            Args:
+                cmeta: Artifact metadata dictionary.
+                cmeta_ref_parts: Parsed cMeta reference components.
+                path: Filesystem path.
+                original_alias: Previous artifact alias before update.
+                original_uid: Previous artifact UID before update.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         category_alias = cmeta_ref_parts['category_alias'].lower()
@@ -197,16 +224,24 @@ class Repos:
 
 
     ###################################################################################################
-    def remove_from_index(self, index_file, artifact_uid, artifact_alias_lowercase):
-        """Remove an artifact from the repository index.
-        
-        Args:
-            index_file: Path to index file.
-            artifact_uid: UID of artifact to remove.
-            artifact_alias_lowercase: Lowercase alias of artifact to remove from alias index.
-            
-        Returns:
-            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+    def remove_from_index(
+        self,
+        index_file,  # Path to index file.
+        artifact_uid,  # UID of artifact to remove.
+        artifact_alias_lowercase,  # Lowercase alias of artifact to remove from alias index.
+    ):
+        """
+            Remove an artifact from the repository index.
+
+            Args:
+                index_file: Path to index file.
+                artifact_uid: UID of artifact to remove.
+                artifact_alias_lowercase: Lowercase alias of artifact to remove from alias index.
+            Returns:
+                dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         r = utils.files.safe_read_file(index_file, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
         if r['return']>0: 
@@ -240,22 +275,35 @@ class Repos:
         return {'return':0}
 
     ###################################################################################################
-    def find_in_index(self, category_alias, category_uid, artifact_alias = None, artifact_uid = None, repos = [], only_uids=False, add_index_file=False, skip_uids=False):
-        """Find artifacts in the repository index.
-        
-        Args:
-            category_alias: Lowercase category alias.
-            category_uid: Category UID.
-            artifact_alias: Artifact alias to search for.
-            artifact_uid: Artifact UID to search for.
-            repos: List of repository names to search in.
-            only_uids: If True, return only UIDs without full metadata.
-            add_index_file: If True, include index_file path in result.
-            skip_uids: If True, skip UID validation.
-            
-        Returns:
-            dict: Dictionary with 'return': 0 and 'lst' containing found artifacts,
-                  or 'return' > 0 and 'error' on failure.
+    def find_in_index(
+        self,
+        category_alias,  # Lowercase category alias.
+        category_uid,  # Category UID.
+        artifact_alias = None,  # Artifact alias to search for.
+        artifact_uid = None,  # Artifact UID to search for.
+        repos = [],  # List of repository names to search in.
+        only_uids = False,  # If True, return only UIDs without full metadata.
+        add_index_file = False,  # If True, include index_file path in result.
+        skip_uids = False,  # If True, skip UID validation.
+    ):
+        """
+            Find artifacts in the repository index.
+
+            Args:
+                category_alias: Lowercase category alias.
+                category_uid: Category UID.
+                artifact_alias: Artifact alias to search for.
+                artifact_uid: Artifact UID to search for.
+                repos: List of repository names to search in.
+                only_uids: If True, return only UIDs without full metadata.
+                add_index_file: If True, include index_file path in result.
+                skip_uids: If True, skip UID validation.
+            Returns:
+                dict: Dictionary with 'return': 0 and 'lst' containing found artifacts,
+                      or 'return' > 0 and 'error' on failure.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         category_alias = category_alias.lower()
 
@@ -353,19 +401,31 @@ class Repos:
         return result
 
     ###################################################################################################
-    def find_in_file_system(self, category_meta, category_alias, category_uid, artifact_alias = None, artifact_uid = None, repo_uids = []):
+    def find_in_file_system(
+        self,
+        category_meta,  # Category metadata dictionary used for file-system search.
+        category_alias,  # Category alias (lowercase)
+        category_uid,  # Category UID
+        artifact_alias = None,  # Optional artifact alias (supports wildcards)
+        artifact_uid = None,  # Optional artifact UID
+        repo_uids = [],  # List of repository UIDs to limit file-system search.
+    ):
         """
-        Find artifacts by scanning directories instead of using index.
-        Used for categories with no_index flag.
-        
-        Args:
-            category_alias: Category alias (lowercase)
-            category_uid: Category UID
-            artifact_alias: Optional artifact alias (supports wildcards)
-            artifact_uid: Optional artifact UID
-           
-        Returns:
-            dict: {'return': 0, 'artifacts': [...]} or error
+            Find artifacts by scanning directories instead of using index.
+            Used for categories with no_index flag.
+
+            Args:
+                category_meta: Category metadata dictionary used for file-system search.
+                category_alias: Category alias (lowercase)
+                category_uid: Category UID
+                artifact_alias: Optional artifact alias (supports wildcards)
+                artifact_uid: Optional artifact UID
+                repo_uids: List of repository UIDs to limit file-system search.
+            Returns:
+                dict: {'return': 0, 'artifacts': [...]} or error
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         # Get repo artifacts
@@ -418,29 +478,35 @@ class Repos:
         return {'return': 0, 'artifacts': artifacts}
 
     ###################################################################################################
-    def find(self, 
-             cmeta_ref: str, 
-             add_index_file: bool = False, 
-             tags: str = None, 
-             skip_uids: bool = False, 
-             skip_non_indexed: bool = False,
-             match: bool = None,
-             match_empty_version: bool = False,
-             all_tags: str = None,          # Comma-separated string or iterable of all tags to have exact match
-        ):
-        """Find artifacts by cMeta reference.
-        
-        Args:
-            cmeta_ref: cMeta reference string or parsed dictionary.
-            add_index_file: If True, include index_file path in result.
-            tags: Optional tags to filter results.
-            match: Optional match dictionary to filter results (key that ends with - is supported)
-            skip_uids: If True, skip UID validation.
-            all_tags: match all tags in cmeta
-            
-        Returns:
-            dict: Dictionary with 'return': 0 and 'artifacts' list on success,
-                  or 'return' > 0 and 'error' on failure.
+    def find(
+        self,
+        cmeta_ref: str,  # cMeta reference string or parsed dictionary.
+        add_index_file: bool = False,  # If True, include index_file path in result.
+        tags: str = None,  # Optional tags to filter results.
+        skip_uids: bool = False,  # If True, skip UID validation.
+        skip_non_indexed: bool = False,  # Value for skip non indexed.
+        match: bool = None,  # Optional match dictionary to filter results (key that ends with - is supported)
+        match_empty_version: bool = False,  # Value for match empty version.
+        all_tags: str = None,  # match all tags in cmeta
+    ):
+        """
+            Find artifacts by cMeta reference.
+
+            Args:
+                cmeta_ref (str): cMeta reference string or parsed dictionary.
+                add_index_file (bool): If True, include index_file path in result.
+                tags (str): Optional tags to filter results.
+                skip_uids (bool): If True, skip UID validation.
+                skip_non_indexed (bool): Value for skip non indexed.
+                match (bool): Optional match dictionary to filter results (key that ends with - is supported)
+                match_empty_version (bool): Value for match empty version.
+                all_tags (str): match all tags in cmeta
+            Returns:
+                dict: Dictionary with 'return': 0 and 'artifacts' list on success,
+                      or 'return' > 0 and 'error' on failure.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         # Parse cMeta ref
@@ -606,25 +672,50 @@ class Repos:
 
 
     ######################################################################################################################
-    def reindex(self, con=False, verbose=False):
-        """Clean index and reindex all repositories.
-        
-        Removes existing index files and rebuilds them by scanning all repositories.
-        
-        Args:
-            con: If True, print console messages during reindexing.
-            verbose: If True, print detailed progress information.
-            
-        Returns:
-            dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+    def reindex(
+        self,
+        con = False,  # If True, print console messages during reindexing.
+        verbose = False,  # If True, print detailed progress information.
+    ):
+        """
+            Clean index and reindex all repositories.
+
+            Removes existing index files and rebuilds them by scanning all repositories.
+
+            Args:
+                con: If True, print console messages during reindexing.
+                verbose: If True, print detailed progress information.
+            Returns:
+                dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.index(clean=True, con=con, verbose=verbose)
     
 
-    def index(self, clean=False, con=False, verbose=False, add_repo_paths=[], delete_repo_paths=[]):
+    def index(
+        self,
+        clean = False,  # If True, clear and rebuild index artifacts from scratch.
+        con = False,  # If True, print output to console.
+        verbose = False,  # If True, enable verbose output.
+        add_repo_paths = [],  # Repository paths to add before indexing.
+        delete_repo_paths = [],  # Repository paths to remove before indexing.
+    ):
         """
-        Index repos
+            Index repos
+
+            Args:
+                clean: If True, clear and rebuild index artifacts from scratch.
+                con: If True, print output to console.
+                verbose: If True, enable verbose output.
+                add_repo_paths: Repository paths to add before indexing.
+                delete_repo_paths: Repository paths to remove before indexing.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         from tqdm import tqdm
@@ -1160,29 +1251,45 @@ class Repos:
 
 
     ################################################################################
-    def _find_artifacts(self, repo_meta, repo_alias, repo_uid, category_meta, category_alias, category_uid, path_to_category, 
-                              con, conx, index_artifacts, artifact_num,
-                              artifact_alias = None, artifact_uid = None):
-        """Find and index artifacts in a category directory.
-        
-        Args:
-            repo_meta: Repository metadata dictionary.
-            repo_alias: Repository alias.
-            repo_uid: Repository UID.
-            category_meta: Category metadata dictionary.
-            category_alias: Category alias.
-            category_uid: Category UID.
-            path_to_category: Path to category directory.
-            con: If True, enable console output.
-            conx: If True, enable extended console output.
-            index_artifacts: Dictionary to populate with found artifacts (None for searching without indexing).
-            artifact_num: Current artifact count.
-            artifact_alias: Optional artifact alias to filter results (supports wildcards).
-            artifact_uid: Optional artifact UID to filter results.
-            
-        Returns:
-            dict: Dictionary with 'return': 0, 'artifacts' list, and 'artifact_num' on success,
-                  or 'return' > 0 and 'error' on failure.
+    def _find_artifacts(
+        self,
+        repo_meta,  # Repository metadata dictionary.
+        repo_alias,  # Repository alias.
+        repo_uid,  # Repository UID.
+        category_meta,  # Category metadata dictionary.
+        category_alias,  # Category alias.
+        category_uid,  # Category UID.
+        path_to_category,  # Path to category directory.
+        con,  # If True, enable console output.
+        conx,  # If True, enable extended console output.
+        index_artifacts,  # Dictionary to populate with found artifacts (None for searching without indexing).
+        artifact_num,  # Current artifact count.
+        artifact_alias = None,  # Optional artifact alias to filter results (supports wildcards).
+        artifact_uid = None,  # Optional artifact UID to filter results.
+    ):
+        """
+            Find and index artifacts in a category directory.
+
+            Args:
+                repo_meta: Repository metadata dictionary.
+                repo_alias: Repository alias.
+                repo_uid: Repository UID.
+                category_meta: Category metadata dictionary.
+                category_alias: Category alias.
+                category_uid: Category UID.
+                path_to_category: Path to category directory.
+                con: If True, enable console output.
+                conx: If True, enable extended console output.
+                index_artifacts: Dictionary to populate with found artifacts (None for searching without indexing).
+                artifact_num: Current artifact count.
+                artifact_alias: Optional artifact alias to filter results (supports wildcards).
+                artifact_uid: Optional artifact UID to filter results.
+            Returns:
+                dict: Dictionary with 'return': 0, 'artifacts' list, and 'artifact_num' on success,
+                      or 'return' > 0 and 'error' on failure.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         from tqdm import tqdm
@@ -1377,16 +1484,21 @@ class Repos:
         return {'return':0, 'artifact_num': artifact_num, 'artifacts': artifacts}
 
 ################################################################################
-def _get_full_path(path, repo_meta):
+def _get_full_path(
+    path,  # Base repository path
+    repo_meta,  # Repository metadata dictionary
+):
     """
-    Get path with prefix if specified in repo metadata
-    
-    Args:
-        path: Base repository path
-        repo_meta: Repository metadata dictionary
-        
-    Returns:
-        str: Path with prefix applied if exists, otherwise original path
+        Get path with prefix if specified in repo metadata
+
+        Args:
+            path: Base repository path
+            repo_meta: Repository metadata dictionary
+        Returns:
+            str: Path with prefix applied if exists, otherwise original path
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     full_path = path
     
@@ -1400,17 +1512,23 @@ def _get_full_path(path, repo_meta):
     return full_path
 
 ################################################################################
-def _get_artifacts_from_sharded_path(base_path, slices, artifact_alias=None):
+def _get_artifacts_from_sharded_path(
+    base_path,  # Base path to search
+    slices,  # List of slice lengths (e.g. [2] or [3,2])
+    artifact_alias = None,  # Optional alias to filter (supports wildcards)
+):
     """
-    Get list of artifact directories from sharded path structure.
-    
-    Args:
-        base_path: Base path to search
-        slices: List of slice lengths (e.g. [2] or [3,2])
-        artifact_alias: Optional alias to filter (supports wildcards)
-        
-    Returns:
-        list: List of relative paths to artifact directories
+        Get list of artifact directories from sharded path structure.
+
+        Args:
+            base_path: Base path to search
+            slices: List of slice lengths (e.g. [2] or [3,2])
+            artifact_alias: Optional alias to filter (supports wildcards)
+        Returns:
+            list: List of relative paths to artifact directories
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if not os.path.isdir(base_path):
         return []
@@ -1425,17 +1543,23 @@ def _get_artifacts_from_sharded_path(base_path, slices, artifact_alias=None):
     # Calculate total depth from slices
     total_depth = sum(slices)
     
-    def _recursive_traverse(current_path, current_depth, rel_path_parts):
+    def _recursive_traverse(
+        current_path,  # Current directory path
+        current_depth,  # Current depth in the shard structure
+        rel_path_parts,  # List of path components for building relative path
+    ):
         """
-        Recursively traverse sharded structure and collect matching artifacts.
-        
-        Args:
-            current_path: Current directory path
-            current_depth: Current depth in the shard structure
-            rel_path_parts: List of path components for building relative path
-            
-        Returns:
-            list: Matched artifact paths
+            Recursively traverse sharded structure and collect matching artifacts.
+
+            Args:
+                current_path: Current directory path
+                current_depth: Current depth in the shard structure
+                rel_path_parts: List of path components for building relative path
+            Returns:
+                list: Matched artifact paths
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         matches = []
         

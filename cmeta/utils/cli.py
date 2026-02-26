@@ -12,33 +12,36 @@ from .files import safe_read_file
 from .common import deep_merge, _error
 
 def parse_cmd(
-        cmd,                      # Command string to parse, list of arguments, or None
-        fail_on_error: bool = False  # If True, raise exception on error
+    cmd,  # Command string to parse, list of arguments, or None.
+    fail_on_error: bool = False,  # If True, raise exception on error.
 ):
     """
-    Parse command line string or argument list into a structured dictionary.
-    
-    Supports various argument formats:
+        Parse command line string or argument list into a structured dictionary.
 
-    - Positional arguments: stored in 'positional_arguments' list
-    - Flags: --key=value, -key=value, key=value
-    - Boolean flags: --key (True), --key- (False), --no-key (False)
-    - List flags: --key, (creates list)
-    - Nested keys: --parent.child=value
-    - File inclusion: @filename (loads JSON/YAML)
-      Note: On Windows, wrap file paths in double quotes if they contain backslashes (\\) 
-      to prevent shlex.split() from interpreting them as escape characters.
-    - Argument separator: -- (remaining args go to 'unparsed')
-    
-    Args:
-        cmd: Command string to parse, list of arguments, or None.
-        fail_on_error (bool): If True, raise exception on error.
-        
-    Returns:
-        dict: Dictionary with keys:
-        - 'return': 0 for success, >0 for error
-        - 'params': Dictionary of parsed flags and values (may include "args" and "unparsed")
-        - 'error': Error message (only present if return > 0).
+        Supports various argument formats:
+
+        - Positional arguments: stored in 'positional_arguments' list
+        - Flags: --key=value, -key=value, key=value
+        - Boolean flags: --key (True), --key- (False), --no-key (False)
+        - List flags: --key, (creates list)
+        - Nested keys: --parent.child=value
+        - File inclusion: @filename (loads JSON/YAML)
+          Note: On Windows, wrap file paths in double quotes if they contain backslashes (\)
+          to prevent shlex.split() from interpreting them as escape characters.
+        - Argument separator: -- (remaining args go to 'unparsed')
+
+        Args:
+            cmd: Command string to parse, list of arguments, or None.
+            fail_on_error (bool): If True, raise exception on error.
+
+        Returns:
+            dict: Dictionary with keys:
+            - 'return': 0 for success, >0 for error
+            - 'params': Dictionary of parsed flags and values (may include "args" and "unparsed")
+            - 'error': Error message (only present if return > 0).
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     if cmd is None:
@@ -123,17 +126,21 @@ def parse_cmd(
 
 
 def split_flag(
-        *args,   # Positional arguments passed to _split_flag
-        **params  # Keyword arguments passed to _split_flag
+    *args,  # Positional arguments passed to _split_flag.
+    **params,  # Keyword arguments passed to _split_flag.
 ):
-    """Wrapper for _split_flag that handles exceptions.
-    
-    Args:
-        *args: Positional arguments passed to _split_flag.
-        **params: Keyword arguments passed to _split_flag.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'split_flag' tuple, or 'return' > 0 and 'error'.
+    """
+        Wrapper for _split_flag that handles exceptions.
+
+        Args:
+            *args: Positional arguments passed to _split_flag.
+            **params: Keyword arguments passed to _split_flag.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'split_flag' tuple, or 'return' > 0 and 'error'.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     try:
         key, value, updated_array = _split_flag(*args,**params)
@@ -143,25 +150,34 @@ def split_flag(
     return {'return': 0, 'split_flag': (key, value, updated_array)}
 
 
-def _split_flag(flag: str, array: dict, value: Optional[str] = None, fix_keys = False) -> tuple[str, any, dict]:
+def _split_flag(
+    flag: str,  # Command-line flag string to parse
+    array: dict,  # Dictionary to store the parsed key-value pair
+    value: Optional[str] = None,  # Optional pre-determined value (for "-key value" style flags or --no-key format)
+    fix_keys = False,  # If True, normalize parsed key names for downstream compatibility.
+) -> tuple[str, any, dict]:
     """
-    Parse a command-line flag and add it to the given dictionary.
-    
-    Supports multiple formats:
+        Parse a command-line flag and add it to the given dictionary.
 
-    - key=value: Sets key to value
-    - key: Sets key to True
-    - key-: Sets key to False (trailing dash)
-    - key,: Creates a list value (trailing comma)
-    - nested.key: Creates nested dictionary structure
-    
-    Args:
-        flag: Command-line flag string to parse
-        array: Dictionary to store the parsed key-value pair
-        value: Optional pre-determined value (for "-key value" style flags or --no-key format)
-    
-    Returns:
-        tuple: (parsed_key, parsed_value, updated_array)
+        Supports multiple formats:
+
+        - key=value: Sets key to value
+        - key: Sets key to True
+        - key-: Sets key to False (trailing dash)
+        - key,: Creates a list value (trailing comma)
+        - nested.key: Creates nested dictionary structure
+
+        Args:
+            flag: Command-line flag string to parse
+            array: Dictionary to store the parsed key-value pair
+            value: Optional pre-determined value (for "-key value" style flags or --no-key format)
+
+            fix_keys: If True, normalize parsed key names for downstream compatibility.
+        Returns:
+            tuple: (parsed_key, parsed_value, updated_array)
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     
     # Parse key=value format
@@ -220,21 +236,29 @@ def _split_flag(flag: str, array: dict, value: Optional[str] = None, fix_keys = 
     return key, parsed_value, array
 
 
-def check_params(params, params_description, fail_on_error = False) -> Dict[str, Any]:
+def check_params(
+    params,  # Input dictionary to validate
+    params_description,  # List of configuration dictionaries with keys, types, etc.
+    fail_on_error = False,  # If True, raise exceptions instead of returning error dictionaries.
+) -> Dict[str, Any]:
     """
-    Check and validate input dictionary based on input description.
-    Convert aliases to keys and validate types.
-    
-    Args:
-        params: Input dictionary to validate
-        params_description: List of configuration dictionaries with keys, types, etc.
-        
-    Returns:
-        Dictionary with:
-        - return: 0 for success, >0 for error
-        - checked_params: Dictionary with validated and converted values for the group
-        - remaining_params: Dictionary with remaining keys not in the group
-        - error: Error message (only present if return > 0)
+        Check and validate input dictionary based on input description.
+        Convert aliases to keys and validate types.
+
+        Args:
+            params: Input dictionary to validate
+            params_description: List of configuration dictionaries with keys, types, etc.
+
+            fail_on_error: If True, raise exceptions instead of returning error dictionaries.
+        Returns:
+            Dictionary with:
+            - return: 0 for success, >0 for error
+            - checked_params: Dictionary with validated and converted values for the group
+            - remaining_params: Dictionary with remaining keys not in the group
+            - error: Error message (only present if return > 0)
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     
     # Build lookup for keys and their aliases
@@ -334,19 +358,23 @@ def check_params(params, params_description, fail_on_error = False) -> Dict[str,
 
 
 def print_params_help(
-        params_description: list  # List of parameter dictionaries
+    params_description: list,  # List of parameter dictionaries containing 'key', 'type',
 ):
-    """Generate formatted help text for command-line parameters.
-    
-    Creates a formatted string displaying parameter flags, types, and descriptions
-    with proper column alignment.
-    
-    Args:
-        params_description (list): List of parameter dictionaries containing 'key', 'type',
-                                   'desc', 'aliases', etc.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'params_info' containing formatted help text.
+    """
+        Generate formatted help text for command-line parameters.
+
+        Creates a formatted string displaying parameter flags, types, and descriptions
+        with proper column alignment.
+
+        Args:
+            params_description (list): List of parameter dictionaries containing 'key', 'type',
+                                       'desc', 'aliases', etc.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'params_info' containing formatted help text.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     params_info = ''

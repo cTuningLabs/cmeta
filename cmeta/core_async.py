@@ -23,18 +23,23 @@ _cmeta_instance = None
 _cmeta_index = 0
 
 
-def _get_cmeta(**kwargs):
-    """Lazy initialization of CMeta per multiprocessing worker.
-    
-    Creates a single CMeta instance per process worker. This function is called
-    by worker processes to initialize their own CMeta instance, mirroring the
-    pattern used in FastAPI where instances are created once per process.
-    
-    Args:
-        **kwargs: Keyword arguments to pass to CMeta constructor.
-        
-    Returns:
-        CMeta: The initialized CMeta instance for this worker process.
+def _get_cmeta(
+    **kwargs,  # Keyword arguments to pass to CMeta constructor.
+):
+    """
+        Lazy initialization of CMeta per multiprocessing worker.
+
+        Creates a single CMeta instance per process worker. This function is called
+        by worker processes to initialize their own CMeta instance, mirroring the
+        pattern used in FastAPI where instances are created once per process.
+
+        Args:
+            **kwargs: Keyword arguments to pass to CMeta constructor.
+        Returns:
+            CMeta: The initialized CMeta instance for this worker process.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     global _cmeta_instance, _cmeta_index
 
@@ -53,19 +58,25 @@ def _get_cmeta(**kwargs):
     return _cmeta_instance
 
 
-def _access_worker(params, kwargs):
-    """Standalone function executed inside the ProcessPool worker.
-    
-    This function must be a standalone function (not a bound method) to avoid
-    pickling errors when being passed to worker processes. It initializes or
-    retrieves the worker's CMeta instance and executes the access request.
-    
-    Args:
-        params: Dictionary of parameters to pass to cmeta.access().
-        kwargs: Keyword arguments for CMeta initialization.
-        
-    Returns:
-        dict: Result dictionary from cmeta.access().
+def _access_worker(
+    params,  # Dictionary of parameters to pass to cmeta.access().
+    kwargs,  # Keyword arguments for CMeta initialization.
+):
+    """
+        Standalone function executed inside the ProcessPool worker.
+
+        This function must be a standalone function (not a bound method) to avoid
+        pickling errors when being passed to worker processes. It initializes or
+        retrieves the worker's CMeta instance and executes the access request.
+
+        Args:
+            params: Dictionary of parameters to pass to cmeta.access().
+            kwargs: Keyword arguments for CMeta initialization.
+        Returns:
+            dict: Result dictionary from cmeta.access().
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     cmeta = _get_cmeta(**kwargs)
     return cmeta.access(params)
@@ -82,15 +93,25 @@ class CMetaAsync(CMeta):
     Inherits all CMeta methods while providing async wrappers for blocking operations.
     """
 
-    def __init__(self, max_workers=None, logger=None, loop=None, **kwargs):
-        """Initialize CMetaAsync with process pool executor.
-        
-        Args:
-            max_workers: Maximum number of worker processes in the pool.
-                        If None, defaults to ProcessPoolExecutor's default.
-            logger: Custom logger instance. If None, uses parent CMeta's logger.
-            loop: Event loop to use. If None, gets the current event loop.
-            **kwargs: Additional keyword arguments passed to CMeta constructor.
+    def __init__(
+        self,
+        max_workers = None,  # Maximum number of worker processes in the pool.
+        logger = None,  # Custom logger instance. If None, uses parent CMeta's logger.
+        loop = None,  # Event loop to use. If None, gets the current event loop.
+        **kwargs,  # Additional keyword arguments passed to CMeta constructor.
+    ):
+        """
+            Initialize CMetaAsync with process pool executor.
+
+            Args:
+                max_workers: Maximum number of worker processes in the pool.
+                logger: Custom logger instance. If None, uses parent CMeta's logger.
+                loop: Event loop to use. If None, gets the current event loop.
+                **kwargs: Additional keyword arguments passed to CMeta constructor.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         # Initialize parent CMeta
         super().__init__(**kwargs)
@@ -109,16 +130,22 @@ class CMetaAsync(CMeta):
             f"[PID {os.getpid()}] CMetaAsync initialized | max_workers={max_workers}"
         )
 
-    async def access(self, params):
-        """Asynchronous non-blocking wrapper for CMeta.access().
-        
-        Runs CMeta.access() in a worker process to avoid blocking the event loop.
-        
-        Args:
-            params: Dictionary of parameters to pass to CMeta.access().
-            
-        Returns:
-            dict: Result dictionary from CMeta.access() with 'return' and other keys.
+    async def access(
+        self,
+        params,  # Dictionary of parameters to pass to CMeta.access().
+    ):
+        """
+            Asynchronous non-blocking wrapper for CMeta.access().
+
+            Runs CMeta.access() in a worker process to avoid blocking the event loop.
+
+            Args:
+                params: Dictionary of parameters to pass to CMeta.access().
+            Returns:
+                dict: Result dictionary from CMeta.access() with 'return' and other keys.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         func = partial(_access_worker, params, self._cmeta_kwargs)
 
@@ -130,25 +157,39 @@ class CMetaAsync(CMeta):
             self._logger.exception("Error executing CMetaAsync access")
             return {"return": 99, "error": f"CMetaAsync internal error: {e}\n{tb}"}
 
-    def access_sync(self, params):
-        """Synchronous access using the inherited CMeta.access() method.
-        
-        Use this method when already executing in a worker thread or process
-        where blocking is acceptable.
-        
-        Args:
-            params: Dictionary of parameters to pass to CMeta.access().
-            
-        Returns:
-            dict: Result dictionary from CMeta.access().
+    def access_sync(
+        self,
+        params,  # Dictionary of parameters to pass to CMeta.access().
+    ):
+        """
+            Synchronous access using the inherited CMeta.access() method.
+
+            Use this method when already executing in a worker thread or process
+            where blocking is acceptable.
+
+            Args:
+                params: Dictionary of parameters to pass to CMeta.access().
+            Returns:
+                dict: Result dictionary from CMeta.access().
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         return super().access(params)
 
     def shutdown(self):
-        """Gracefully shutdown the process pool executor.
-        
-        Waits for all pending tasks to complete before shutting down the executor.
-        This method can be tied to FastAPI or other framework shutdown events.
+        """
+            Gracefully shutdown the process pool executor.
+
+            Waits for all pending tasks to complete before shutting down the executor.
+            This method can be tied to FastAPI or other framework shutdown events.
+
+            Args:
+                None.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         self._logger.info("Shutting down CMetaAsync executor...")
         self._executor.shutdown(wait=True)

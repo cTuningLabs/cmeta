@@ -18,12 +18,44 @@ class Category(InitCategory):
     Various Utils
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
     ############################################################
-    def test(self, params):
+    def test(
+        self,
+        params,  # Input dictionary used by this function.
+    ):
 
+        """
+        test function.
+
+        Args:
+            params: Input dictionary used by this function.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         print ('Params:')
         self.cm.j(params)
 
@@ -35,18 +67,23 @@ class Category(InitCategory):
     ############################################################
     def uid_(
         self,
-        state           # [dict] cMeta state object
+        ctx,  # cMeta context object.
     ):
         """
-        Generate UID
+            Generate UID
 
-        Args:
-            state (dict): cMeta state object.
+            Args:
+                ctx (dict): cMeta context object.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("running utils.uid")
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         uid = names.generate_cmeta_uid()
 
@@ -58,20 +95,25 @@ class Category(InitCategory):
     ############################################################
     def uuid_(
         self,
-        state           # [dict] cMeta state object
+        ctx,  # cMeta context
     ):
         """
-        Generate UUID
+            Generate UUID
 
-        Args:
-            state (dict): cMeta state object.
+            Args:
+                ctx (dict): cMeta context
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import uuid
 
         self.logger.debug("running utils.uuid")
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         uuid = str(uuid.uuid4())
 
@@ -83,25 +125,34 @@ class Category(InitCategory):
     ############################################################
     def find_by_cid_(
         self,
-        state,          # [dict] cMeta state object
-        arg1,           # [str] Standard CID
-        tags = None,    # [str] tags
-        far = False,        # [bool] If True, open FAR in found artifact
-        web = False,        # [bool] If True, remove cmeta:///? from CID (web request)
-        ask = False,    # [bool] If True, ask for CID in console
-        skip_non_indexed = False,
+        ctx,  # cMeta context.
+        arg1,  # Standard CID.
+        tags = None,  # Optional tags filter for repository lookup.
+        far = False,  # If True, open FAR manager in found artifact path.
+        web = False,  # If True, decode web-style `cmeta:///?` CID input.
+        ask = False,  # If True, ask for CID in console.
+        skip_non_indexed = False,  # If True, skip non-indexed repositories.
     ):
         """
-        Find artifacts by standard CID
+            Find artifacts by standard CID
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): Standard CID.
-            ask (bool): If True, ask for CID in console.
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Standard CID.
+                tags (str): Optional tags filter for repository lookup.
+                far (bool): If True, open FAR manager in found artifact path.
+                web (bool): If True, decode web-style `cmeta:///?` CID input.
+                ask (bool): If True, ask for CID in console.
+                skip_non_indexed (bool): If True, skip non-indexed repositories.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         self.logger.debug("running utils.find_by_cid")
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         if ask:
             arg1 = input('Enter CID: ')
@@ -141,27 +192,32 @@ class Category(InitCategory):
     ############################################################
     def smart_find_by_cid_(
         self,
-        state,              # [dict] cMeta state object
-        arg1 = None,        # [str] CID that can be wrapped with some text
-        far = False,        # [bool] If True, open FAR in found artifact
-        web = False,        # [bool] If True, remove cmeta:///? from CID (web request)
-        ask = False,        # [bool] If True, ask for CID in console
-        cid = None          # [str] Direct CID to use
+        ctx,  # cMeta context.
+        arg1 = None,  # CID that can be wrapped with some text.
+        far = False,  # If True, open FAR in found artifact.
+        web = False,  # If True, remove cmeta:///? from CID (web request).
+        ask = False,  # If True, ask for CID in console.
+        cid = None,  # Direct CID to use.
     ):
         """
-        Find artifacts by wrapped CID
+            Find artifacts by wrapped CID
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): CID that can be wrapped with some text.
-            far (bool): If True, open FAR in found artifact.
-            web (bool): If True, remove cmeta:///? from CID (web request).
-            ask (bool): If True, ask for CID in console.
-            cid (str): Direct CID to use.
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): CID that can be wrapped with some text.
+                far (bool): If True, open FAR in found artifact.
+                web (bool): If True, remove cmeta:///? from CID (web request).
+                ask (bool): If True, ask for CID in console.
+                cid (str): Direct CID to use.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         self.logger.debug("running utils.find_by_cid_smart")
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         if ask:
             arg1 = input('Enter complex CID: ')
@@ -184,7 +240,7 @@ class Category(InitCategory):
         if cid is None:
             return {'return':1, 'error':f'Could not extract CID from the input string (arg1)'}
 
-        r = self.find_by_cid_(state, cid)
+        r = self.find_by_cid_(ctx, cid)
         if r['return']>0: return r
 
         artifacts = r['artifacts']
@@ -199,19 +255,24 @@ class Category(InitCategory):
     ############################################################
     def copy_text_to_clipboard_(
         self,
-        state,                  # [dict] cMeta state object
-        arg1 = "",              # [str] Text to copy to clipboard
-        add_quotes = False,     # [bool] Add quotes to the text if True
-        do_not_fail = True      # [bool] Do not fail on error if True
+        ctx,  # cMeta context object.
+        arg1 = '',  # Text to copy to clipboard.
+        add_quotes = False,  # Add quotes to the text if True.
+        do_not_fail = True,  # Do not fail on error if True.
     ):
         """
-        Copy text to clipboard
+            Copy text to clipboard
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): Text to copy to clipboard.
-            add_quotes (bool): Add quotes to the text if True.
-            do_not_fail (bool): Do not fail on error if True.
+            Args:
+                ctx (dict): cMeta context object.
+                arg1 (str): Text to copy to clipboard.
+                add_quotes (bool): Add quotes to the text if True.
+                do_not_fail (bool): Do not fail on error if True.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.cm.utils.common.copy_text_to_clipboard(arg1, add_quotes)
@@ -220,28 +281,33 @@ class Category(InitCategory):
     ############################################################
     def json2yaml_(
         self,
-        state,                  # [dict] cMeta state object
-        arg1,                   # [str] Input JSON file
-        arg2 = None,            # [str] Output YAML file (if None, use {input file without ext}.yaml)
-        force = False,          # [bool] If True and output file exists, overwrite it
-        f = False,              # [bool] If True and output file exists, overwrite it
-        sort_keys = False       # [bool] Sort keys in output if True
+        ctx,  # cMeta context.
+        arg1,  # Input JSON file.
+        arg2 = None,  # Output YAML file (if None, use {input file without ext}.yaml).
+        force = False,  # If True and output file exists, overwrite it.
+        f = False,  # If True and output file exists, overwrite it.
+        sort_keys = False,  # Sort keys in output if True.
     ):
         """
-        Convert JSON file to YAML file
+            Convert JSON file to YAML file
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): Input JSON file.
-            arg2 (str): Output YAML file (if None, use {input file without ext}.yaml).
-            force (bool): If True and output file exists, overwrite it.
-            f (bool): If True and output file exists, overwrite it.
-            sort_keys (bool): Sort keys in output if True.
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Input JSON file.
+                arg2 (str): Output YAML file (if None, use {input file without ext}.yaml).
+                force (bool): If True and output file exists, overwrite it.
+                f (bool): If True and output file exists, overwrite it.
+                sort_keys (bool): Sort keys in output if True.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("running utils json2yaml")
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         r = self.cm.utils.files.safe_read_file(arg1)
         if r['return'] > 0: return r
@@ -263,28 +329,33 @@ class Category(InitCategory):
     ############################################################
     def yaml2json_(
         self,
-        state,                  # [dict] cMeta state object
-        arg1,                   # [str] Input YAML file
-        arg2 = None,            # [str] Output JSON file (if None, use {input file without ext}.json)
-        force = False,          # [bool] If True and output file exists, overwrite it
-        f = False,              # [bool] If True and output file exists, overwrite it
-        sort_keys = False       # [bool] Sort keys in output if True
+        ctx,  # cMeta context.
+        arg1,  # Input YAML file.
+        arg2 = None,  # Output JSON file (if None, use {input file without ext}.json).
+        force = False,  # If True and output file exists, overwrite it.
+        f = False,  # If True and output file exists, overwrite it.
+        sort_keys = False,  # Sort keys in output if True.
     ):
         """
-        Convert YAML file to JSON file
+            Convert YAML file to JSON file
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): Input YAML file.
-            arg2 (str): Output JSON file (if None, use {input file without ext}.json).
-            force (bool): If True and output file exists, overwrite it.
-            f (bool): If True and output file exists, overwrite it.
-            sort_keys (bool): Sort keys in output if True.
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Input YAML file.
+                arg2 (str): Output JSON file (if None, use {input file without ext}.json).
+                force (bool): If True and output file exists, overwrite it.
+                f (bool): If True and output file exists, overwrite it.
+                sort_keys (bool): Sort keys in output if True.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("running utils yaml2json")
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         r = self.cm.utils.files.safe_read_file(arg1)
         if r['return'] > 0: return r
@@ -304,9 +375,19 @@ class Category(InitCategory):
 
 
     ############################################################
-    def pkl2json(self, params):
+    def pkl2json(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        @self.pickle2json_
+            @self.pickle2json_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.pickle2json_(**params)
@@ -315,26 +396,31 @@ class Category(InitCategory):
     ############################################################
     def pickle2json_(
         self,
-        state,                  # [dict] cMeta state object
-        arg1,                   # [str] Pickle file
-        arg2 = None,            # [str] JSON file (if not specified, use base of pickle file with .json)
-        sort_keys = False       # [bool] Sort keys in output if True
+        ctx,  # cMeta context.
+        arg1,  # Pickle file.
+        arg2 = None,  # JSON file (if not specified, use base of pickle file with .json).
+        sort_keys = False,  # Sort keys in output if True.
     ):
         """
-        Convert pickle file to JSON file
+            Convert pickle file to JSON file
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): Pickle file.
-            arg2 (str): JSON file (if not specified, use base of pickle file with .json).
-            sort_keys (bool): Sort keys in output if True.
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Pickle file.
+                arg2 (str): JSON file (if not specified, use base of pickle file with .json).
+                sort_keys (bool): Sort keys in output if True.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import os
         import pickle
         import json
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         # Check if pickle file exists
         if not os.path.isfile(arg1):
@@ -368,24 +454,29 @@ class Category(InitCategory):
     ############################################################
     def json2pickle_(
         self,
-        state,              # [dict] cMeta state object
-        arg1,               # [str] JSON file
-        arg2 = None         # [str] Pickle file (if not specified, use base of json file with .pkl)
+        ctx,  # cMeta context.
+        arg1,  # JSON file.
+        arg2 = None,  # Pickle file (if not specified, use base of json file with .pkl).
     ):
         """
-        Convert JSON file to pickle file
+            Convert JSON file to pickle file
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): JSON file.
-            arg2 (str): Pickle file (if not specified, use base of json file with .pkl).
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): JSON file.
+                arg2 (str): Pickle file (if not specified, use base of json file with .pkl).
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import os
         import pickle
         import json
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         # Check if json file exists
         if not os.path.isfile(arg1):
@@ -418,23 +509,28 @@ class Category(InitCategory):
     ############################################################
     def utf8sig_to_utf8_(
         self,
-        state,              # [dict] cMeta state object
-        arg1,               # [str] Input file (UTF-8 with BOM)
-        arg2 = None         # [str] Output file (if None, overwrites input file and creates .bak backup)
+        ctx,  # cMeta context.
+        arg1,  # Input file (UTF-8 with BOM).
+        arg2 = None,  # Output file (if None, overwrites input file and creates .bak backup).
     ):
         """
-        Convert UTF-8 with BOM (utf-8-sig) file to standard UTF-8
+            Convert UTF-8 with BOM (utf-8-sig) file to standard UTF-8
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): Input file (UTF-8 with BOM).
-            arg2 (str): Output file (if None, overwrites input file and creates .bak backup).
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Input file (UTF-8 with BOM).
+                arg2 (str): Output file (if None, overwrites input file and creates .bak backup).
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import os
         import shutil
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         # Check if input file exists
         if not os.path.isfile(arg1):
@@ -477,22 +573,27 @@ class Category(InitCategory):
     ############################################################
     def convert_old_entries_(
         self,
-        state,              # [dict] cMeta state object
-        arg1 = '.',         # [str] path to entries to convert
-        meta = {},          # [dict] Merge this meta
+        ctx,  # cMeta context.
+        arg1 = '.',  # Path to search for entries to convert.
+        meta = {},  # Merge this meta with existing _cmeta files.
     ):
         """
-        Convert legacy CK/CM/CMX entries in a path (arg1) by merging _cmeta.json or _cmeta.yaml with meta
+            Convert legacy CK/CM/CMX entries in a path (arg1) by merging _cmeta.json or _cmeta.yaml with meta
 
-        Args:
-            state (dict): cMeta state object.
-            arg1 (str): Path to search for entries to convert.
-            meta (dict): Merge this meta with existing _cmeta files.
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Path to search for entries to convert.
+                meta (dict): Merge this meta with existing _cmeta files.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import os
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         # Check if path exists
         if not os.path.exists(arg1):
@@ -624,16 +725,36 @@ class Category(InitCategory):
         return result
 
     ############################################################
-    def artifacts_(self, state, arg1 = None, arg2 = None, skip_categories = None, func = None, func_params = {}):
+    def artifacts_(
+        self,
+        ctx,  # Execution context dictionary with category, command, and control data.
+        arg1 = None,  # First positional argument from command input.
+        arg2 = None,  # Second positional argument from command input.
+        skip_categories = None,  # Input parameter used by this function.
+        func = None,  # Input parameter used by this function.
+        func_params = {},  # Input parameter used by this function.
+    ):
         """
-        Analyze all artifacts for all categories
+            Analyze all artifacts for all categories
 
-        arg1: categories
-        arg2: artifacts
-        top_num: number of top artifacts to show in rankings (default: 30)
-        slow: if False (default), use cached results when artifact hasn't changed; if True, always perform deep analysis
+            arg1: categories
+            arg2: artifacts
+            top_num: number of top artifacts to show in rankings (default: 30)
+            slow: if False (default), use cached results when artifact hasn't changed; if True, always perform deep analysis
 
-        @base.find_
+            @base.find_
+
+            Args:
+                ctx: Execution context dictionary with category, command, and control data.
+                arg1: First positional argument from command input.
+                arg2: Second positional argument from command input.
+                skip_categories: Input parameter used by this function.
+                func: Input parameter used by this function.
+                func_params: Input parameter used by this function.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import time
@@ -641,7 +762,7 @@ class Category(InitCategory):
 
         start_time = time.time()
 
-        con = state.get('control',{}).get('con', False)
+        con = ctx.get('control',{}).get('con', False)
 
         if skip_categories is None:
             skip_categories = ['repo', 'log', 'result', 'cache']
@@ -728,11 +849,21 @@ class Category(InitCategory):
 
 
     ############################################################
-    def create_artifact_with_date(self, params):
+    def create_artifact_with_date(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Create artifact with date
+            Create artifact with date
 
-        @base.create_
+            @base.create_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         from_category = params['from_category']
@@ -741,7 +872,7 @@ class Category(InitCategory):
 
         self.logger.debug(f"From category: {category_alias}")
 
-        con = params['state']['control'].get('con', False)
+        con = params['ctx']['control'].get('con', False)
 
         from datetime import datetime
         yyyymmdd = datetime.now().strftime("%Y%m%d")
@@ -822,15 +953,36 @@ class Category(InitCategory):
 
 
     ############################################################
-    def access_ctuning_server_(self, state, query={}, headers={}, timeout=30, url=None, api_key=None, files={}):
+    def access_ctuning_server_(
+        self,
+        ctx,  # Execution context dictionary with category, command, and control data.
+        query = {},  # Input parameter used by this function.
+        headers = {},  # Input parameter used by this function.
+        timeout = 30,  # Timeout value in seconds.
+        url = None,  # Input parameter used by this function.
+        api_key = None,  # Input parameter used by this function.
+        files = {},  # Input parameter used by this function.
+    ):
         """
-        Access cTuning server
+            Access cTuning server
 
+            Args:
+                ctx: Execution context dictionary with category, command, and control data.
+                query: Input parameter used by this function.
+                headers: Input parameter used by this function.
+                timeout: Timeout value in seconds.
+                url: Input parameter used by this function.
+                api_key: Input parameter used by this function.
+                files: Input parameter used by this function.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import copy
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         # Check config if need to do something with a path, i.e. open it with some application
         r = self.cm.access({'category': self.cmeta['uses_categories']['config'],
@@ -871,16 +1023,36 @@ class Category(InitCategory):
         return r
 
     ############################################################
-    def x(self, params):
+    def x(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        @self.access_ctuning_server_
+            @self.access_ctuning_server_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         return self.access_ctuning_server_(**params)
 
     ############################################################
-    def test_public_server(self, params):
+    def test_public_server(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        @self.access_ctuning_server_
+            @self.access_ctuning_server_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         tmp_params = params.copy()
@@ -894,8 +1066,17 @@ class Category(InitCategory):
         return self.access_ctuning_server_(**tmp_params)
 
     ############################################################
-    def select_artifact(self, params):
+    def select_artifact(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         from . import common
@@ -903,13 +1084,22 @@ class Category(InitCategory):
         return common.select_artifact_(self, **params)
 
     ############################################################
-    def get_datetime_(self, state):
+    def get_datetime_(
+        self,
+        ctx,  # Execution context dictionary with category, command, and control data.
+    ):
         """
+            Args:
+                ctx: Execution context dictionary with category, command, and control data.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         from datetime import datetime, timezone
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         # UTC time WITH timezone (+00:00)
         utc_with_tz = datetime.now(timezone.utc).isoformat()

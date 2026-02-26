@@ -13,34 +13,54 @@ from . import files
 
 ###################################################################################################
 def load_module(
-        module_path: str,              # Absolute path to the Python module file
-        module_cache: dict,            # Dictionary to store cached module information
-        fail_on_error: bool = False,   # If True, raise exception on error
-        init_class: str = None,        # If !=None, initialize this class
-        cmeta = None,                  # CMeta instance to pass to Category initialization
-        suffix: str = None,            # Optional suffix for module name sanitization
-        self_meta: dict = None,        # Add optional self_meta to the initiaized class
+    module_path: str,  # Absolute path to the Python module file.
+    module_cache: dict,  # Dictionary to store cached module information.
+    fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
+    init_class: str = None,  # Class name to instantiate from the loaded module, if provided.
+    cmeta = None,  # CMeta instance to pass to Category initialization.
+    suffix: str = None,  # Optional suffix for module name sanitization.
+    self_meta: dict = None,  # Optional metadata dictionary to attach to the initialized object.
 ):
-    """Dynamically load a Python module from file path with caching support.
-    
-    Loads category API modules and manages them in a cache. Handles module naming
-    sanitization and creates proper package structures for category modules.
-    
-    Args:
-        module_path (str): Absolute path to the Python module file.
-        module_cache (dict): Dictionary to store cached module information.
-        fail_on_error (bool): If True, raises exception on error instead of returning error dict.
-        category (bool): If True, initializes the Category class from the module.
-        cmeta: CMeta instance to pass to Category initialization.
-        suffix (str | None): Optional suffix for module name sanitization.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'cache' containing module info,
-              or 'return' > 0 and 'error' on failure.
+    """
+        Dynamically load a Python module from file path with caching support.
+
+        Loads category API modules and manages them in a cache. Handles module naming
+        sanitization and creates proper package structures for category modules.
+
+        Args:
+            module_path (str): Absolute path to the Python module file.
+            module_cache (dict): Dictionary to store cached module information.
+            fail_on_error (bool): If True, raises exception on error instead of returning error dict.
+            category (bool): If True, initializes the Category class from the module.
+            cmeta: CMeta instance to pass to Category initialization.
+            suffix (str | None): Optional suffix for module name sanitization.
+
+            init_class (str): Class name to instantiate from the loaded module, if provided.
+            self_meta (dict): Optional metadata dictionary to attach to the initialized object.
+        Returns:
+            dict: Dictionary with 'return': 0 and 'cache' containing module info,
+                  or 'return' > 0 and 'error' on failure.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import os, sys, importlib.util, importlib.machinery, re, hashlib
 
-    def sanitize(name, suffix=None):
+    def sanitize(
+        name,  # Object or artifact name.
+        suffix = None,  # Value for suffix.
+    ):
+        """
+            Sanitize dynamic module/package names for safe Python imports.
+
+            Args:
+                name: Object or artifact name.
+                suffix: Value for suffix.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
         cleaned = re.sub(r'[^0-9a-zA-Z_]', '_', name)
 
         if re.match(r'^\d', cleaned):
@@ -128,21 +148,25 @@ def load_module(
 
 ###################################################################################################
 def find_command_func(
-        category_api,  # Category API object instance
-        command: str   # Command name string to search for
+    category_api,  # Category API object instance.
+    command: str,  # Command name string to search for.
 ):
-    """Find command function in category API object.
-    
-    Searches for the command function using standard naming conventions:
-    command_, command__, or command (in that order).
-    
-    Args:
-        category_api: Category API object instance.
-        command (str): Command name string to search for.
-        
-    Returns:
-        dict: Dictionary with 'return': 0, 'func' (function object or None),
-              and 'func_name' (actual function name if found).
+    """
+        Find command function in category API object.
+
+        Searches for the command function using standard naming conventions:
+        command_, command__, or command (in that order).
+
+        Args:
+            category_api: Category API object instance.
+            command (str): Command name string to search for.
+
+        Returns:
+            dict: Dictionary with 'return': 0, 'func' (function object or None),
+                  and 'func_name' (actual function name if found).
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     func = None
@@ -163,19 +187,23 @@ def find_command_func(
 
 ###################################################################################################
 def get_func_properties(
-        f  # Function object to inspect
+    f,  # Function object to inspect.
 ):
-    """Extract source code properties from a function object.
-    
-    Gets the source file path, line numbers, and API documentation text
-    for a given function.
-    
-    Args:
-        f: Function object to inspect.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and properties including 'filename',
-              'start_line', 'end_line', and 'api_text'.
+    """
+        Extract source code properties from a function object.
+
+        Gets the source file path, line numbers, and API documentation text
+        for a given function.
+
+        Args:
+            f: Function object to inspect.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and properties including 'filename',
+                  'start_line', 'end_line', and 'api_text'.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import inspect
@@ -212,21 +240,25 @@ def get_func_properties(
 
 ###################################################################################################
 def find_func_definition(
-        obj,        # Object instance to search for the function
-        name: str   # Name of the function to find
+    obj,  # Object instance to search for the function.
+    name: str,  # Name of the function to find.
 ):
-    """Find function definition in an object by name.
-    
-    Locates a function by name in an object's class, unwraps decorators,
-    and extracts its source code properties.
-    
-    Args:
-        obj: Object instance to search for the function.
-        name (str): Name of the function to find.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and function properties on success,
-              or 'return': 1 and 'error' if function not found.
+    """
+        Find function definition in an object by name.
+
+        Locates a function by name in an object's class, unwraps decorators,
+        and extracts its source code properties.
+
+        Args:
+            obj: Object instance to search for the function.
+            name (str): Name of the function to find.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and function properties on success,
+                  or 'return': 1 and 'error' if function not found.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import inspect
 
@@ -243,24 +275,28 @@ def find_func_definition(
 
 ###################################################################################################
 def get_api_info(
-        category_api,                  # The category API object
-        command: str,                  # The command name
-        full_command: str,             # Full command string
-        control_params_desc = None,    # Control parameters description
-        category_apis: list = []       # List of category APIs
+    category_api,  # The category API object.
+    command: str,  # The command name.
+    full_command: str,  # Full command string.
+    control_params_desc = None,  # Control parameters description.
+    category_apis: list = [],  # List of category APIs.
 ):
-    """Extract function definition and docstring for API information.
-    
-    Args:
-        category_api: The category API object.
-        command (str): The command name.
-        full_command (str): Full command string.
-        control_params_desc: Control parameters description.
-        category_apis (list): List of category APIs.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'api_info' string for success,
-              or 'return' > 0 and 'error' for errors.
+    """
+        Extract function definition and docstring for API information.
+
+        Args:
+            category_api: The category API object.
+            command (str): The command name.
+            full_command (str): Full command string.
+            control_params_desc: Control parameters description.
+            category_apis (list): List of category APIs.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'api_info' string for success,
+                  or 'return' > 0 and 'error' for errors.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     
     r = find_func_definition(category_api, command)
@@ -319,19 +355,23 @@ def get_api_info(
 
 ###################################################################################################
 def get_api_text(
-        lines: list,      # List of source code lines
-        start_line: int   # Starting line number
+    lines: list,  # List of source code lines.
+    start_line: int,  # Starting line number.
 ):
-    """Extract API text from function source lines.
-    
-    Parses function definition and docstring from source code lines.
-    
-    Args:
-        lines (list): List of source code lines.
-        start_line (int): Starting line number.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'api_info' containing formatted text.
+    """
+        Extract API text from function source lines.
+
+        Parses function definition and docstring from source code lines.
+
+        Args:
+            lines (list): List of source code lines.
+            start_line (int): Starting line number.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'api_info' containing formatted text.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     api_info = ''
@@ -384,9 +424,17 @@ def get_api_text(
 
 ###################################################################################################
 def flush_input():
-    """Flush stdin buffer on Unix/Linux/Mac and Windows.
-    
-    Clears any pending keyboard input from the stdin buffer.
+    """
+        Flush stdin buffer on Unix/Linux/Mac and Windows.
+
+        Clears any pending keyboard input from the stdin buffer.
+
+        Args:
+            None.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     import os, sys
 
@@ -402,56 +450,63 @@ def flush_input():
 
 ############################################################
 def run(
-        cmd: str,                        # Command to execute
-        work_dir: str = None,            # Working directory
-        env: dict = None,                # 2nd level env to update global ENV
-        envs: dict = None,               # 1st level of env to update global ENV
-        genv: dict = None,               # Global ENV (force in the end)
-        os_env: dict = os.environ,       # Initial OS environ to start with 
-                                         # (PATHs and LIBs will be lost if None - careful)
-        capture_output: bool = False,    # If True, capture stdout/stderr
-        text_cmd: str = 'RUN',           # Text prefix for command display
-        timeout: int = None,             # Timeout in seconds
-        verbose: bool = False,           # If True, print extra info
-        hide_in_cmd: list = None,        # List of keys in CMD to hide (for secrets)
-        save_script: str = '',           # Path to save script for reproducibility
-        run_script: bool = False,        # If True, run created script
-        script_prefix: str = '',         # Prefix string to add to script
-        skip_run: bool = False,          # If True, skip execution
-        print_cmd: bool = False,         # If True, force print CMD
-        con: bool = False,               # If True, enable console output
-        fail_on_error: bool = False,     # If True, raise exception on error
-        logger = None,                   # Optional logger for debug messages
-        space = '',                      # Space when printing (for nested calls) 
-        capture_env: bool = False,       # Capture env at the end of the command with diff
-        print_env_keys: list = None,     # Use these keys if/when printing ENV
-        print_extra_line: bool = False,  # Print extra new line before running command
+    cmd: str,  # Command to execute.
+    work_dir: str = None,  # Working directory.
+    env: dict = None,  # 2nd (current) env to update global ENV.
+    envs: dict = None,  # 1st level of env to update global ENV.
+    genv: dict = None,  # Global ENV (force in the end).
+    os_env: dict = os.environ,  # Environment variables to inject into the subprocess.
+    capture_output: bool = False,  # False by default.
+    text_cmd: str = 'RUN',  # Text prefix for command display.
+    timeout: int = None,  # None by default. TBD: Current timeout doesn't terminate subprocesses.
+    verbose: bool = False,  # If True, print extra info.
+    hide_in_cmd: list = None,  # List of keys in CMD to hide (for secrets).
+    save_script: str = '',  # Save script for reproducibility.
+    run_script: bool = False,  # Run created script (useful for pipes).
+    script_prefix: str = '',  # Add prefix string to script.
+    skip_run: bool = False,  # If True, skip run.
+    print_cmd: bool = False,  # If True, force print CMD.
+    con: bool = False,  # If True, enable console output.
+    fail_on_error: bool = False,  # If True, raise exception on error.
+    logger = None,  # Optional logger for debug messages.
+    space = '',  # Optional indentation prefix for console output formatting.
+    capture_env: bool = False,  # If True, capture and return environment changes produced by the command.
+    print_env_keys: list = None,  # Environment variable keys to print after execution.
+    print_extra_line: bool = False,  # If True, print an extra blank line in console output.
 ):
     """
-    Run CMD with environment.
+        Run CMD with environment.
 
-    Args:
-        cmd (str): Command to execute.
-        work_dir (str | None): Working directory.
-        env (dict | None): 2nd (current) env to update global ENV.
-        envs (dict | None): 1st level of env to update global ENV.
-        genv (dict | None): Global ENV (force in the end).
-        capture_output (bool): False by default.
-        text_cmd (str): Text prefix for command display.
-        timeout (int | None): None by default. TBD: Current timeout doesn't terminate subprocesses.
-        verbose (bool): If True, print extra info.
-        hide_in_cmd (list | None): List of keys in CMD to hide (for secrets).
-        save_script (str): Save script for reproducibility.
-        run_script (bool): Run created script (useful for pipes).
-        script_prefix (str): Add prefix string to script.
-        skip_run (bool): If True, skip run.
-        print_cmd (bool): If True, force print CMD.
-        con (bool): If True, enable console output.
-        fail_on_error (bool): If True, raise exception on error.
-        logger: Optional logger for debug messages.
+        Args:
+            cmd (str): Command to execute.
+            work_dir (str | None): Working directory.
+            env (dict | None): 2nd (current) env to update global ENV.
+            envs (dict | None): 1st level of env to update global ENV.
+            genv (dict | None): Global ENV (force in the end).
+            capture_output (bool): False by default.
+            text_cmd (str): Text prefix for command display.
+            timeout (int | None): None by default. TBD: Current timeout doesn't terminate subprocesses.
+            verbose (bool): If True, print extra info.
+            hide_in_cmd (list | None): List of keys in CMD to hide (for secrets).
+            save_script (str): Save script for reproducibility.
+            run_script (bool): Run created script (useful for pipes).
+            script_prefix (str): Add prefix string to script.
+            skip_run (bool): If True, skip run.
+            print_cmd (bool): If True, force print CMD.
+            con (bool): If True, enable console output.
+            fail_on_error (bool): If True, raise exception on error.
+            logger: Optional logger for debug messages.
 
-    Returns:
-        dict: Unified output with 'return', 'returncode', 'stdout', 'stderr'.
+            os_env (dict): Environment variables to inject into the subprocess.
+            space: Optional indentation prefix for console output formatting.
+            capture_env (bool): If True, capture and return environment changes produced by the command.
+            print_env_keys (list): Environment variable keys to print after execution.
+            print_extra_line (bool): If True, print an extra blank line in console output.
+        Returns:
+            dict: Unified output with 'return', 'returncode', 'stdout', 'stderr'.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import subprocess
@@ -510,7 +565,7 @@ def run(
     temp_file_to_collect_env = None
     if capture_env:
         r = files.gen_temp_filepath()
-        if r['return']>0: return self.cm._error2(r, self.cm)
+        if r['return']>0: return r
 
         temp_file_to_collect_env = r['filepath']
 
@@ -715,30 +770,31 @@ def run(
 
 ###################################################################################################
 def run_command_with_timeout_tree_kill_on_windows(
-        cmd: str,                    # Command string to execute
-        capture_output: bool,        # If True, capture stdout and stderr
-        cur_env: dict,               # Environment variables dictionary
-        timeout: float,              # Timeout in seconds
-        shell: bool = True,          # If True, run command through shell
-        text: bool = True            # If True, decode output as text
+    cmd: str,  # Command string to execute.
+    capture_output: bool,  # If True, capture stdout and stderr.
+    cur_env: dict,  # Environment variables dictionary.
+    timeout: float,  # Timeout in seconds.
+    shell: bool = True,  # If True, run command through shell.
+    text: bool = True,  # If True, decode output as text.
 ):
-    """Run command on Windows with timeout and process tree termination.
-    
-    Uses Windows Job Objects to ensure entire process tree is killed on timeout.
-    
-    Args:
-        cmd (str): Command string to execute.
-        capture_output (bool): If True, capture stdout and stderr.
-        cur_env (dict): Environment variables dictionary.
-        timeout (float): Timeout in seconds.
-        shell (bool): If True, run command through shell.
-        text (bool): If True, decode output as text.
-        
-    Returns:
-        tuple: (returncode, stdout, stderr).
-        
-    Raises:
-        OSError: If Windows API calls fail.
+    """
+        Run command on Windows with timeout and process tree termination.
+
+        Uses Windows Job Objects to ensure entire process tree is killed on timeout.
+
+        Args:
+            cmd (str): Command string to execute.
+            capture_output (bool): If True, capture stdout and stderr.
+            cur_env (dict): Environment variables dictionary.
+            timeout (float): Timeout in seconds.
+            shell (bool): If True, run command through shell.
+            text (bool): If True, decode output as text.
+
+        Returns:
+            tuple: (returncode, stdout, stderr).
+
+        Raises:
+            OSError: If Windows API calls fail.
     """
     import subprocess
     import ctypes
@@ -858,23 +914,24 @@ def run_command_with_timeout_tree_kill_on_windows(
 
 ###################################################################################################
 def format_size(
-        size: int,               # Size in bytes to format
-        binary: bool = True,     # If True, use 1024 base with IEC units
-        unit: str = None         # Force specific unit (e.g., 'MB', 'MiB')
+    size: int,  # Size in bytes to format.
+    binary: bool = True,  # If True, use 1024 base with IEC units (KiB, MiB, GiB).
+    unit: str = None,  # Force specific unit (e.g., 'MB', 'MiB'). If None, auto-select.
 ):
-    """Convert size in bytes to a human-readable string.
-    
-    Args:
-        size (int): Size in bytes to format.
-        binary (bool): If True, use 1024 base with IEC units (KiB, MiB, GiB).
-                       If False, use 1000 base with SI units (KB, MB, GB).
-        unit (str | None): Force specific unit (e.g., 'MB', 'MiB'). If None, auto-select.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and 'nice_size' containing formatted string.
-        
-    Raises:
-        ValueError: If unit is not valid.
+    """
+        Convert size in bytes to a human-readable string.
+
+        Args:
+            size (int): Size in bytes to format.
+            binary (bool): If True, use 1024 base with IEC units (KiB, MiB, GiB).
+                           If False, use 1000 base with SI units (KB, MB, GB).
+            unit (str | None): Force specific unit (e.g., 'MB', 'MiB'). If None, auto-select.
+
+        Returns:
+            dict: Dictionary with 'return': 0 and 'nice_size' containing formatted string.
+
+        Raises:
+            ValueError: If unit is not valid.
     """
 
     # Choose base and unit list
@@ -917,24 +974,29 @@ def format_size(
 
 ###################################################################################################
 def get_dir_size(
-        path: str,                   # Directory path to measure
-        binary: bool = False,        # If True, use binary (1024) units
-        unit: str = None,            # Force specific unit for size formatting
-        skip_datetime: bool = False,
+    path: str,  # Directory path to measure.
+    binary: bool = False,  # If True, use binary (1024) units, else decimal (1000).
+    unit: str = None,  # Force specific unit for size formatting.
+    skip_datetime: bool = False,  # If True, skip datetime conversion fields in the result.
 ):
-    """Calculate total size of a directory recursively.
-    
-    Walks through directory tree and sums file sizes.
-    
-    Args:
-        path (str): Directory path to measure.
-        binary (bool): If True, use binary (1024) units, else decimal (1000).
-        unit (str | None): Force specific unit for size formatting.
-        
-    Returns:
-        dict: Dictionary with 'return': 0, 'size' in bytes, 'nice_size' formatted,
-              'total_dirs' count, 'total_files' count, 'latest_modification_dt',
-              and 'weird_dates' list of files with future modification dates.
+    """
+        Calculate total size of a directory recursively.
+
+        Walks through directory tree and sums file sizes.
+
+        Args:
+            path (str): Directory path to measure.
+            binary (bool): If True, use binary (1024) units, else decimal (1000).
+            unit (str | None): Force specific unit for size formatting.
+
+            skip_datetime (bool): If True, skip datetime conversion fields in the result.
+        Returns:
+            dict: Dictionary with 'return': 0, 'size' in bytes, 'nice_size' formatted,
+                  'total_dirs' count, 'total_files' count, 'latest_modification_dt',
+                  and 'weird_dates' list of files with future modification dates.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     from datetime import datetime
     
@@ -1007,6 +1069,16 @@ def get_dir_size(
 
 ###################################################################################################
 def get_min_arch_host_info():
+    """
+        Collect lightweight OS and architecture metadata.
+
+        Args:
+            None.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     import os
     import platform
     import struct
@@ -1039,6 +1111,16 @@ def get_min_arch_host_info():
 
 ###################################################################################################
 def get_min_raw_host_info():
+    """
+        Collect minimal host hardware information including CPU and memory.
+
+        Args:
+            None.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
     import psutil
     import os
     import platform
@@ -1072,38 +1154,45 @@ def get_min_raw_host_info():
 
 ###################################################################################################
 def get_min_host_info(
-        only_memory: bool = False,  # If True, only return memory information
-        binary: bool = False,       # If True, use binary (1024) units for memory
-        unit: str = "GB",           # Unit for memory size formatting
-        con: bool = False,          # If True, print information to console
-        line: int = 0,
-        self_time: bool = False,    # If True, print self-time
-        space = '',                    # Space when printing (for nested calls) 
+    only_memory: bool = False,  # If True, only return memory information.
+    binary: bool = False,  # If True, use binary (1024) units for memory sizes.
+    unit: str = 'GB',  # Unit for memory size formatting (default: 'GB').
+    con: bool = False,  # If True, print information to console.
+    line: int = 0,  # Prefix line index used for structured console output.
+    self_time: bool = False,  # If True, include self-timing information in console output.
+    space = '',  # Optional indentation prefix for console output formatting.
 ):
-    """Get minimal host system information including CPU and memory.
-    
-    Retrieves system information including CPU core counts, total memory,
-    free memory, and current process memory usage.
-    
-    Args:
-        only_memory (bool): If True, only return memory information.
-        binary (bool): If True, use binary (1024) units for memory sizes.
-        unit (str): Unit for memory size formatting (default: 'GB').
-        con (bool): If True, print information to console.
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and host information including:
-              'physical_cores' (int): Number of physical CPU cores.
-              'logical_cores' (int): Number of logical CPU cores.
-              'total_memory' (int): Total system memory in bytes.
-              'nice_total_memory' (str): Formatted total memory string.
-              'free_memory' (int): Free system memory in bytes.
-              'nice_free_memory' (str): Formatted free memory string.
-              'memory_used' (int): Memory used by current process in bytes.
-              'nice_memory_used' (str): Formatted process memory string.
-              'self_time' (float): Execution time in seconds.
-              'nice_self_time' (str): Formatted execution time.
-              'string' (str): Formatted output for display.
+    """
+        Get minimal host system information including CPU and memory.
+
+        Retrieves system information including CPU core counts, total memory,
+        free memory, and current process memory usage.
+
+        Args:
+            only_memory (bool): If True, only return memory information.
+            binary (bool): If True, use binary (1024) units for memory sizes.
+            unit (str): Unit for memory size formatting (default: 'GB').
+            con (bool): If True, print information to console.
+
+            line (int): Prefix line index used for structured console output.
+            self_time (bool): If True, include self-timing information in console output.
+            space: Optional indentation prefix for console output formatting.
+        Returns:
+            dict: Dictionary with 'return': 0 and host information including:
+                  'physical_cores' (int): Number of physical CPU cores.
+                  'logical_cores' (int): Number of logical CPU cores.
+                  'total_memory' (int): Total system memory in bytes.
+                  'nice_total_memory' (str): Formatted total memory string.
+                  'free_memory' (int): Free system memory in bytes.
+                  'nice_free_memory' (str): Formatted free memory string.
+                  'memory_used' (int): Memory used by current process in bytes.
+                  'nice_memory_used' (str): Formatted process memory string.
+                  'self_time' (float): Execution time in seconds.
+                  'nice_self_time' (str): Formatted execution time.
+                  'string' (str): Formatted output for display.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import time
@@ -1172,36 +1261,43 @@ def get_min_host_info(
 
 ##########################################################################################
 def get_disk_space(
-        path: str,                # Path to check disk space for
-        nice: bool = False,       # If True, return human-readable sizes
-        binary: bool = False,     # If True, use binary (1024) units
-        unit: str = None,         # Force specific unit for size formatting
-        line: int = 0,
-        self_time: bool = False,  # If True, print self-time
-        space = '',                    # Space when printing (for nested calls) 
+    path: str,  # Path to check disk space for.
+    nice: bool = False,  # If True, return human-readable sizes with 'nice_*' keys.
+    binary: bool = False,  # If True, use binary (1024) units, else decimal (1000).
+    unit: str = None,  # Force specific unit for size formatting (e.g., 'GB', 'GiB').
+    line: int = 0,  # Prefix line index used for structured console output.
+    self_time: bool = False,  # If True, include self-timing information in console output.
+    space = '',  # Optional indentation prefix for console output formatting.
 ):
-    """Get disk space information for a given path.
-    
-    Retrieves total, used, and free disk space for the filesystem containing
-    the specified path.
-    
-    Args:
-        path (str): Path to check disk space for.
-        nice (bool): If True, return human-readable sizes with 'nice_*' keys.
-        binary (bool): If True, use binary (1024) units, else decimal (1000).
-        unit (str | None): Force specific unit for size formatting (e.g., 'GB', 'GiB').
-        
-    Returns:
-        dict: Dictionary with 'return': 0 and:
-              'total' (int): Total disk space in bytes.
-              'used' (int): Used disk space in bytes.
-              'free' (int): Free disk space in bytes.
-              'self_time' (float): Execution time in seconds.
-              'nice_self_time' (str): Formatted execution time.
-              If nice=True, also includes:
-              'nice_total' (str): Formatted total size.
-              'nice_used' (str): Formatted used size.
-              'nice_free' (str): Formatted free size.
+    """
+        Get disk space information for a given path.
+
+        Retrieves total, used, and free disk space for the filesystem containing
+        the specified path.
+
+        Args:
+            path (str): Path to check disk space for.
+            nice (bool): If True, return human-readable sizes with 'nice_*' keys.
+            binary (bool): If True, use binary (1024) units, else decimal (1000).
+            unit (str | None): Force specific unit for size formatting (e.g., 'GB', 'GiB').
+
+            line (int): Prefix line index used for structured console output.
+            self_time (bool): If True, include self-timing information in console output.
+            space: Optional indentation prefix for console output formatting.
+        Returns:
+            dict: Dictionary with 'return': 0 and:
+                  'total' (int): Total disk space in bytes.
+                  'used' (int): Used disk space in bytes.
+                  'free' (int): Free disk space in bytes.
+                  'self_time' (float): Execution time in seconds.
+                  'nice_self_time' (str): Formatted execution time.
+                  If nice=True, also includes:
+                  'nice_total' (str): Formatted total size.
+                  'nice_used' (str): Formatted used size.
+                  'nice_free' (str): Formatted free size.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     from shutil import disk_usage
@@ -1259,9 +1355,18 @@ def get_disk_space(
     return result
 
 ##########################################################################################
-def plus_env(env):
+def plus_env(
+    env,  # Environment variable mapping.
+):
     """
-    If key starts with + and value is not list, convert to list as path
+        If key starts with + and value is not list, convert to list as path
+
+        Args:
+            env: Environment variable mapping.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     for k in list(env.keys()):

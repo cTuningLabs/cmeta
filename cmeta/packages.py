@@ -1,4 +1,4 @@
-﻿"""
+"""
 Package Manager class
 
 cMeta author and developer: (C) 2025-2026 Grigori Fursin
@@ -30,15 +30,30 @@ class PackageResult:
 class Packages:
     def __init__(
         self,
-        cfg=None,
-        cache=None,
-        logger=None,
-        fail_on_error=False,
-        allow_install=True,
-        timeout: float = None,   # global default timeout
-#        deps: dict = None,
-        add_install_args: str = None,
+        cfg = None,  # Framework configuration dictionary.
+        cache = None,  # Cache dictionary used to store resolved data.
+        logger = None,  # Logger instance used for diagnostic messages.
+        fail_on_error = False,  # If True, raise exceptions instead of returning error dictionaries.
+        allow_install = True,  # If True, allow automatic package installation.
+        timeout: float = None,  # Timeout value in seconds.
+        add_install_args: str = None,  # Value for add install args.
     ):
+        """
+            Initialize package manager state and install/runtime options.
+
+            Args:
+                cfg: Framework configuration dictionary.
+                cache: Cache dictionary used to store resolved data.
+                logger: Logger instance used for diagnostic messages.
+                fail_on_error: If True, raise exceptions instead of returning error dictionaries.
+                allow_install: If True, allow automatic package installation.
+                timeout (float): Timeout value in seconds.
+                add_install_args (str): Value for add install args.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
 
         self.cache = cache or {}
         self.cfg = cfg or {}
@@ -53,12 +68,21 @@ class Packages:
     # ------------------------------------------------------------------
     # Logging wrapper
     # ------------------------------------------------------------------
-    def log(self, level, msg):
-        """Log a message using the configured logger.
-        
-        Args:
-            level: Log level string (e.g., 'debug', 'info', 'warning', 'error').
-            msg: Message to log.
+    def log(
+        self,
+        level,  # Log level string (e.g., 'debug', 'info', 'warning', 'error').
+        msg,  # Message to log.
+    ):
+        """
+            Log a message using the configured logger.
+
+            Args:
+                level: Log level string (e.g., 'debug', 'info', 'warning', 'error').
+                msg: Message to log.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         if self.logger:
             fn = getattr(self.logger, level, None)
@@ -68,14 +92,20 @@ class Packages:
     # ------------------------------------------------------------------
     # Version helpers
     # ------------------------------------------------------------------
-    def get_version(self, module):
-        """Get version string from a Python module.
-        
-        Args:
-            module: Python module object.
-            
-        Returns:
-            str or None: Version string if available, None otherwise.
+    def get_version(
+        self,
+        module,  # Python module object.
+    ):
+        """
+            Get version string from a Python module.
+
+            Args:
+                module: Python module object.
+            Returns:
+                str or None: Version string if available, None otherwise.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         if hasattr(module, "__version__"):
             return module.__version__
@@ -85,14 +115,20 @@ class Packages:
         except Exception:
             return None
 
-    def poetry_to_pep440(self, spec):
-        """Convert Poetry-style version specifier to PEP 440 format.
-        
-        Args:
-            spec: Poetry version specifier (e.g., '^1.2.0', '~1.2.0', '1.*').
-            
-        Returns:
-            str: PEP 440 compatible version specifier.
+    def poetry_to_pep440(
+        self,
+        spec,  # Poetry version specifier (e.g., '^1.2.0', '~1.2.0', '1.*').
+    ):
+        """
+            Convert Poetry-style version specifier to PEP 440 format.
+
+            Args:
+                spec: Poetry version specifier (e.g., '^1.2.0', '~1.2.0', '1.*').
+            Returns:
+                str: PEP 440 compatible version specifier.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         spec = spec.strip()
         
@@ -126,17 +162,26 @@ class Packages:
             return f">={major},<{major + 1}"
         return spec
 
-    def build_spec(self, v, vmin, vmax, specifier):
-        """Build a version specifier string from version constraints.
-        
-        Args:
-            v: Exact version string (e.g., '1.2.0').
-            vmin: Minimum version string.
-            vmax: Maximum version string.
-            specifier: Poetry or PEP 440 version specifier.
-            
-        Returns:
-            str or None: Combined version specifier, or None if no constraints provided.
+    def build_spec(
+        self,
+        v,  # Exact version string (e.g., '1.2.0').
+        vmin,  # Minimum version string.
+        vmax,  # Maximum version string.
+        specifier,  # Poetry or PEP 440 version specifier.
+    ):
+        """
+            Build a version specifier string from version constraints.
+
+            Args:
+                v: Exact version string (e.g., '1.2.0').
+                vmin: Minimum version string.
+                vmax: Maximum version string.
+                specifier: Poetry or PEP 440 version specifier.
+            Returns:
+                str or None: Combined version specifier, or None if no constraints provided.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         parts = []
         if v: parts.append(f"=={v}")
@@ -145,8 +190,28 @@ class Packages:
         if specifier: parts.append(self.poetry_to_pep440(specifier))
         return ",".join(parts) if parts else None
 
-    def build_pip_requirement(self, name, version, vmin, vmax, specifier):
-        """Build a pip-compatible requirement string like 'numpy>=1.20,<2.0'"""
+    def build_pip_requirement(
+        self,
+        name,  # Name identifier.
+        version,  # Version string.
+        vmin,  # Minimum allowed version string.
+        vmax,  # Maximum allowed version string.
+        specifier,  # Version specifier string.
+    ):
+        """
+            Build a pip-compatible requirement string like 'numpy>=1.20,<2.0'
+
+            Args:
+                name: Name identifier.
+                version: Version string.
+                vmin: Minimum allowed version string.
+                vmax: Maximum allowed version string.
+                specifier: Version specifier string.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
         spec = self.build_spec(version, vmin, vmax, specifier)
         if spec:
             return f"{name}{spec}"
@@ -155,11 +220,19 @@ class Packages:
     # ------------------------------------------------------------------
     # Subprocess KILL UTILITIES (Windows / Linux / macOS)
     # ------------------------------------------------------------------
-    def kill_process_tree(self, pid):
-        """Kill a process tree (process and all its children).
-        
-        Args:
-            pid: Process ID to kill.
+    def kill_process_tree(
+        self,
+        pid,  # Process ID to kill.
+    ):
+        """
+            Kill a process tree (process and all its children).
+
+            Args:
+                pid: Process ID to kill.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         try:
             # Linux / macOS
@@ -178,18 +251,28 @@ class Packages:
     # ------------------------------------------------------------------
     # Sync Installation with per-call timeout override
     # ------------------------------------------------------------------
-    def pip_install_sync(self, pkg, silent, install_args, timeout, con):
-        """Install a Python package using pip synchronously.
-        
-        Args:
-            pkg: Package requirement string (e.g., 'numpy>=1.20').
-            silent: If True, suppress installation output.
-            install_args: Additional pip install arguments string.
-            timeout: Timeout in seconds (None for no timeout).
-            con: If True, print console messages.
-            
-        Raises:
-            RuntimeError: If installation is disabled, times out, or fails.
+    def pip_install_sync(
+        self,
+        pkg,  # Package requirement string (e.g., 'numpy>=1.20').
+        silent,  # If True, suppress installation output.
+        install_args,  # Additional pip install arguments string.
+        timeout,  # Timeout in seconds (None for no timeout).
+        con,  # If True, print console messages.
+    ):
+        """
+            Install a Python package using pip synchronously.
+
+            Args:
+                pkg: Package requirement string (e.g., 'numpy>=1.20').
+                silent: If True, suppress installation output.
+                install_args: Additional pip install arguments string.
+                timeout: Timeout in seconds (None for no timeout).
+                con: If True, print console messages.
+            Raises:
+                RuntimeError: If installation is disabled, times out, or fails.
+
+            Returns:
+                dict: Operation result.
         """
         if not self.allow_install:
             raise RuntimeError(f"Installation disabled. Cannot install '{pkg}'.")
@@ -239,15 +322,22 @@ class Packages:
         except Exception as e:
             raise
 
-    def _output(self, stdout, stderr):
-        """Combine stdout and stderr into a single output string.
-        
-        Args:
-            stdout: Standard output string.
-            stderr: Standard error string.
-            
-        Returns:
-            str: Combined output with newline separator if both present.
+    def _output(
+        self,
+        stdout,  # Standard output string.
+        stderr,  # Standard error string.
+    ):
+        """
+            Combine stdout and stderr into a single output string.
+
+            Args:
+                stdout: Standard output string.
+                stderr: Standard error string.
+            Returns:
+                str: Combined output with newline separator if both present.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         x = ''
 
@@ -265,7 +355,28 @@ class Packages:
     # ------------------------------------------------------------------
     # ASYNC Installation with timeout + logging + full process kill
     # ------------------------------------------------------------------
-    async def pip_install_async(self, pkg, silent, install_args, timeout, con):
+    async def pip_install_async(
+        self,
+        pkg,  # Package requirement name or specifier.
+        silent,  # If True, suppress installer output.
+        install_args,  # Additional arguments passed to package installer.
+        timeout,  # Timeout value in seconds.
+        con,  # If True, print output to console.
+    ):
+        """
+            Install a Python package asynchronously using pip with timeout support.
+
+            Args:
+                pkg: Package requirement name or specifier.
+                silent: If True, suppress installer output.
+                install_args: Additional arguments passed to package installer.
+                timeout: Timeout value in seconds.
+                con: If True, print output to console.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
         try:
             import asyncio
         except ImportError:
@@ -322,14 +433,20 @@ class Packages:
     # ------------------------------------------------------------------
     # IMPORT Helpers
     # ------------------------------------------------------------------
-    def try_import(self, name):
-        """Try to import a Python module by name.
-        
-        Args:
-            name: Module name to import.
-            
-        Returns:
-            module or None: Module object if import succeeds, None if not found.
+    def try_import(
+        self,
+        name,  # Module name to import.
+    ):
+        """
+            Try to import a Python module by name.
+
+            Args:
+                name: Module name to import.
+            Returns:
+                module or None: Module object if import succeeds, None if not found.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         try:
             return importlib.import_module(name)
@@ -339,19 +456,30 @@ class Packages:
     # ------------------------------------------------------------------
     # Build cache key
     # ------------------------------------------------------------------
-    def build_cache_key(self, name, version, vmin, vmax, specifier, async_flag):
-        """Build a cache key for package lookup.
-        
-        Args:
-            name: Package name.
-            version: Exact version string.
-            vmin: Minimum version string.
-            vmax: Maximum version string.
-            specifier: Version specifier string.
-            async_flag: True if async import, False otherwise.
-            
-        Returns:
-            str: Cache key string.
+    def build_cache_key(
+        self,
+        name,  # Package name.
+        version,  # Exact version string.
+        vmin,  # Minimum version string.
+        vmax,  # Maximum version string.
+        specifier,  # Version specifier string.
+        async_flag,  # True if async import, False otherwise.
+    ):
+        """
+            Build a cache key for package lookup.
+
+            Args:
+                name: Package name.
+                version: Exact version string.
+                vmin: Minimum version string.
+                vmax: Maximum version string.
+                specifier: Version specifier string.
+                async_flag: True if async import, False otherwise.
+            Returns:
+                str: Cache key string.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         return f"{name}|{version}|{vmin}|{vmax}|{specifier}|async={async_flag}"
 
@@ -361,36 +489,39 @@ class Packages:
     # ------------------------------------------------------------------
     def get(
         self,
-        name,
-        version=None,
-        version_min=None,
-        version_max=None,
-        specifier=None,
+        name,  # Package name to import.
+        version = None,  # Exact version required.
+        version_min = None,  # Minimum version required.
+        version_max = None,  # Maximum version required.
+        specifier = None,  # Version specifier (Poetry or PEP 440 format).
         *,
-        silent=False,
-        install_args="",
-        timeout=None,            # per-call override
-        use_cache=True,
-        allow_install=None,
-        con=False,
+        silent = False,  # If True, suppress installation output.
+        install_args = '',  # Additional pip install arguments.
+        timeout = None,  # Installation timeout in seconds (overrides default).
+        use_cache = True,  # If True, use cached results.
+        allow_install = None,  # If True, allow package installation (overrides instance setting).
+        con = False,  # If True, print console messages.
     ):
-        """Get or install a Python package synchronously.
-        
-        Args:
-            name: Package name to import.
-            version: Exact version required.
-            version_min: Minimum version required.
-            version_max: Maximum version required.
-            specifier: Version specifier (Poetry or PEP 440 format).
-            silent: If True, suppress installation output.
-            install_args: Additional pip install arguments.
-            timeout: Installation timeout in seconds (overrides default).
-            use_cache: If True, use cached results.
-            allow_install: If True, allow package installation (overrides instance setting).
-            con: If True, print console messages.
-            
-        Returns:
-            PackageResult: Object with module, name, version, satisfies, specifier, and installed_now fields.
+        """
+            Get or install a Python package synchronously.
+
+            Args:
+                name: Package name to import.
+                version: Exact version required.
+                version_min: Minimum version required.
+                version_max: Maximum version required.
+                specifier: Version specifier (Poetry or PEP 440 format).
+                silent: If True, suppress installation output.
+                install_args: Additional pip install arguments.
+                timeout: Installation timeout in seconds (overrides default).
+                use_cache: If True, use cached results.
+                allow_install: If True, allow package installation (overrides instance setting).
+                con: If True, print console messages.
+            Returns:
+                PackageResult: Object with module, name, version, satisfies, specifier, and installed_now fields.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         if allow_install is None:
@@ -457,19 +588,39 @@ class Packages:
     # ------------------------------------------------------------------
     async def get_async(
         self,
-        name,
-        version=None,
-        version_min=None,
-        version_max=None,
-        specifier=None,
+        name,  # Name identifier.
+        version = None,  # Version string.
+        version_min = None,  # Minimum allowed version string.
+        version_max = None,  # Maximum allowed version string.
+        specifier = None,  # Version specifier string.
         *,
-        silent=False,
-        install_args="",
-        timeout=None,       # per-call override
-        use_cache=True,
-        allow_install=None,
-        con=False,
+        silent = False,  # If True, suppress installer output.
+        install_args = '',  # Additional arguments passed to package installer.
+        timeout = None,  # Timeout value in seconds.
+        use_cache = True,  # If True, reuse cached values when available.
+        allow_install = None,  # If True, allow automatic package installation.
+        con = False,  # If True, print output to console.
     ):
+        """
+            Asynchronously resolve, optionally install, and validate a Python package.
+
+            Args:
+                name: Name identifier.
+                version: Version string.
+                version_min: Minimum allowed version string.
+                version_max: Maximum allowed version string.
+                specifier: Version specifier string.
+                silent: If True, suppress installer output.
+                install_args: Additional arguments passed to package installer.
+                timeout: Timeout value in seconds.
+                use_cache: If True, reuse cached values when available.
+                allow_install: If True, allow automatic package installation.
+                con: If True, print output to console.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
         try:
             import asyncio
         except ImportError:
@@ -537,7 +688,22 @@ class Packages:
     # PUBLIC SYNC GET ALL
     # ------------------------------------------------------------------
 
-    def get_all(self, pip_packages, con = False):
+    def get_all(
+        self,
+        pip_packages,  # Mapping of package names to resolution settings.
+        con = False,  # If True, print output to console.
+    ):
+        """
+            Resolve a mapping of packages synchronously and return module handles.
+
+            Args:
+                pip_packages: Mapping of package names to resolution settings.
+                con: If True, print output to console.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
 
         pkg = {}
         mpkg = {}
@@ -563,7 +729,22 @@ class Packages:
     # PUBLIC ASYNC GET ALL
     # ------------------------------------------------------------------
 
-    async def get_async_all(self, pip_packages, con = False):
+    async def get_async_all(
+        self,
+        pip_packages,  # Mapping of package names to resolution settings.
+        con = False,  # If True, print output to console.
+    ):
+        """
+            Resolve a mapping of packages asynchronously and return module handles.
+
+            Args:
+                pip_packages: Mapping of package names to resolution settings.
+                con: If True, print output to console.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
 
         pkg = {}
         mpkg = {}
@@ -589,16 +770,20 @@ class Packages:
     # VERSION MATCHING
     # ------------------------------------------------------------------
     
-    def normalize_detected_version(self, version_str):
-        """Normalize non-standard version strings to PEP 440 compatible format.
-        
-        Args:
-            version_str: Version string that may contain platform identifiers,
-                        dashes, underscores, etc. (e.g., '2.49.0.windows.1', 
-                        '2.49-win-3', '3.12_5').
-        
-        Returns:
-            str: Normalized version string compatible with packaging library.
+    def normalize_detected_version(
+        self,
+        version_str,  # Version string that may contain platform identifiers,
+    ):
+        """
+            Normalize non-standard version strings to PEP 440 compatible format.
+
+            Args:
+                version_str: Version string that may contain platform identifiers,
+            Returns:
+                str: Normalized version string compatible with packaging library.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         import re
         
@@ -641,20 +826,23 @@ class Packages:
         
         return version_str
     
-    def match_version(self, requested_version, detected_version):
-        """Check if a detected version matches a requested version specifier.
-        
-        Args:
-            requested_version: Version requirement in Poetry or PyPI format 
-                              (e.g., '~2.3', '>=3.9 <3.15', '>=3.9,<3.15', '2.3', '^1.2.0').
-                              If no operator is provided (e.g., '2.3'), it's treated 
-                              as near match '~2.3' (matching '2.3.*').
-            detected_version: Installed version string (e.g., '2.3.1', '2.3.windows.1', 
-                             '3.12.5-test', '2.49-win-3').
-            
-        Returns:
-            dict: {'return': 0, 'matched': bool} on success,
-                  {'return': 1, 'error': str} on error.
+    def match_version(
+        self,
+        requested_version,  # Version requirement in Poetry or PyPI format
+        detected_version,  # Installed version string (e.g., '2.3.1', '2.3.windows.1',
+    ):
+        """
+            Check if a detected version matches a requested version specifier.
+
+            Args:
+                requested_version: Version requirement in Poetry or PyPI format
+                detected_version: Installed version string (e.g., '2.3.1', '2.3.windows.1',
+            Returns:
+                dict: {'return': 0, 'matched': bool} on success,
+                      {'return': 1, 'error': str} on error.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
         if not requested_version or not detected_version:
             return {'return':0, 'matched': False}
@@ -875,7 +1063,19 @@ class Packages:
                 
                 # For other operators (>=, <=, >, <, ^, ~), strip local versions for the specifier
                 # Platform check was already done above
-                def normalize_version_in_spec(match):
+                def normalize_version_in_spec(
+                    match,  # Value for match.
+                ):
+                    """
+                        Normalize version tokens in specifiers to comparable public versions.
+
+                        Args:
+                            match: Value for match.
+                        Returns:
+                            dict: Operation result.
+                        Raises:
+                            Exception: Propagated runtime errors, if any.
+                    """
                     operator = match.group(1)
                     version_part = match.group(2)
                     # Normalize and strip local version

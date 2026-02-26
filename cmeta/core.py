@@ -28,42 +28,42 @@ class CMeta:
     """A common meta system to manage and reuse common artifacts and their automations."""
     
     ###################################################################################################
-    def __init__(self, 
-                 home: Optional[str] = None,
-                 debug: Optional[bool] = None,
-                 fail_on_error: Optional[bool] = None,
-                 log_level: Optional[str] = None,
-                 log_file: Optional[str] = None,
-                 log_format: Optional[str] = None,
-                 pause_if_error: Optional[bool] = None,
-                 package_allow_install: Optional[bool] = True,
-                 package_timeout: Optional[float] = None,
-                 print_host_info: Optional[bool] = False,
+    def __init__(
+        self,
+        home: Optional[str] = None,  # Path to cMeta home directory.
+        debug: Optional[bool] = None,  # If True, sets log_level to "DEBUG" (overrides log_level parameter).
+        fail_on_error: Optional[bool] = None,  # If True, raise error instead of returning dictionary with error
+        log_level: Optional[str] = None,  # Logging level as string (case-insensitive).
+        log_file: Optional[str] = None,  # Path to log file. If provided and not empty, logs will be written to this file.
+        log_format: Optional[str] = None,  # Logging format string.
+        pause_if_error: Optional[bool] = None,  # If True, pause before exiting after errors.
+        package_allow_install: Optional[bool] = True,  # If True, allow automatic Python package installation.
+        package_timeout: Optional[float] = None,  # Default timeout for package installation and checks, in seconds.
+        print_host_info: Optional[bool] = False,  # If True, print host system information during access calls.
     ):
 
-        """Initialize CMeta with repositories
-        
-        Args:
-            home_path: Path to cmeta-repos.json config file. If None, will search in:
-                              1. CMETA_HOME environment variable. If None or "", will search in:
-                              2. $HOME/CMETA directory
-            debug: If True, sets log_level to "DEBUG" (overrides log_level parameter).
-                  If False, logging behavior depends on log_level parameter.
-            fail_on_error: If True, raise error instead of returning dictionary with error
-            log_level: Logging level as string (case-insensitive). 
-                      Accepted values: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
-                      If None or empty string, logging is disabled.
-            log_file: Path to log file. If provided and not empty, logs will be written to this file.
-                     If None or empty string, logs will be written to console.
-                         
-        Returns:
-            None: This is a constructor that initializes the CMeta instance.
-        
-        Raises:
-            FileExistsError: If there's a race condition when creating the home directory.
-            OSError: If there's an error creating the home directory due to permissions or other OS-level issues.
-            PermissionError: If the process lacks permissions to create the home directory.
-            Exception: For any other unexpected errors during directory creation or initialization.
+        """
+            Initialize CMeta with repositories
+
+            Args:
+                home (Optional[str]): Path to cMeta home directory.
+                debug (Optional[bool]): If True, sets log_level to "DEBUG" (overrides log_level parameter).
+                fail_on_error (Optional[bool]): If True, raise error instead of returning dictionary with error
+                log_level (Optional[str]): Logging level as string (case-insensitive).
+                log_file (Optional[str]): Path to log file. If provided and not empty, logs will be written to this file.
+                log_format (Optional[str]): Logging format string.
+                pause_if_error (Optional[bool]): If True, pause before exiting after errors.
+                package_allow_install (Optional[bool]): If True, allow automatic Python package installation.
+                package_timeout (Optional[float]): Default timeout for package installation and checks, in seconds.
+                print_host_info (Optional[bool]): If True, print host system information during access calls.
+            Returns:
+                None: This is a constructor that initializes the CMeta instance.
+
+            Raises:
+                FileExistsError: If there's a race condition when creating the home directory.
+                OSError: If there's an error creating the home directory due to permissions or other OS-level issues.
+                PermissionError: If the process lacks permissions to create the home directory.
+                Exception: For any other unexpected errors during directory creation or initialization.
         """
 
         ###################################################################################################
@@ -116,9 +116,7 @@ class CMeta:
             self.logger.info(log_path)
 
         self._error = utils.common._error
-        self._error2 = utils.common._error2
-        self._catch_error2 = utils.common._catch_error2
-        self._check_params = utils.common._check_params
+        self.check_params = utils.common.check_params
 
         self.module_cache = {}
 
@@ -164,17 +162,103 @@ class CMeta:
             match_version_func=self.packages.match_version
         )
 
+    ###################################################################################################
+    def error(
+        self,
+        error_msg,  # Error message text.
+        return_code = 1,  # Numeric return code.
+        exception = None,  # Exception object associated with the error.
+        fail16 = False,  # If True, treat return code 16 as a fatal error.
+        fail_on_error = None,  # If True, raise exceptions instead of returning error dictionaries.
+    ):
+        """
+            Create or raise a cMeta error using framework-level defaults.
+
+            Args:
+                error_msg: Error message text.
+                return_code: Numeric return code.
+                exception: Exception object associated with the error.
+                fail16: If True, treat return code 16 as a fatal error.
+                fail_on_error: If True, raise exceptions instead of returning error dictionaries.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        if not fail_on_error: fail_on_error = self.fail_on_error
+
+        return utils.common._error(error_msg, return_code, exception, fail_on_error=fail_on_error, fail_on_16 = fail16)
+
+    ###################################################################################################
+    def catch_error(
+        self,
+        r,  # cMeta access return dict
+        fail16 = False,  # If True, treat return code 16 as a fatal error.
+    ):
+        """
+            Catches error and creates return dictionary or raise exception based on fail_on_error flag.
+
+            Args:
+                r: cMeta access return dict
+                fail16: If True, treat return code 16 as a fatal error.
+            Returns:
+                dict: Dictionary with 'return' and 'error' keys.
+
+            Raises:
+                Exception: If fail_on_error is True and return_code != 16.
+
+            Example:
+                if self.cm.catch_error(r): return r
+        """
+
+        ret = r['return']
+
+        if r.get('return',0)>0:
+            rr = self._error(r.get('error'), ret, exception = None, fail_on_error = self.fail_on_error, fail_on_16 = fail16)
+
+            r['error'] = rr['error']
+        
+        return ret != 0 and (ret !=16 or fail16)
+
+    ###################################################################################################
+    def catch_error_and_halt(
+        self,
+        r,  # cMeta return dictionary.
+        fail16 = False,  # If True, treat return code 16 as a fatal error.
+    ):
+        """
+            Raise or print an error and terminate execution when needed.
+
+            Args:
+                r (dict): cMeta return dictionary.
+                fail16 (bool): If True, treat return code 16 as a fatal error.
+            Returns:
+                dict: Original input dictionary.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+        if self.catch_error(r, fail16):
+            self.halt(r)
+        return r
+
 
     ############################################################
-    def halt(self, r):
+    def halt(
+        self,
+        r,  # output from CM function with "return" and "error"
+    ):
         """
-        If r['return']>0: print error and halt
+            If r['return']>0: print error and halt
 
-        Args:
-           r (dict): output from CM function with "return" and "error"
+            Args:
+                r (dict): output from CM function with "return" and "error"
+            Returns:
+               (dict): r
 
-        Returns:
-           (dict): r
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import sys
@@ -186,15 +270,53 @@ class CMeta:
 
         sys.exit(r['return'])
 
+    ############################################################
+    def dump(
+        self,
+        filename,  # File name or path string.
+        meta,  # Metadata dictionary to persist.
+        wait = False,  # If True, wait for interactive confirmation after writing data.
+    ):
+        """
+            Write metadata to a file and optionally wait for user confirmation.
+
+            Args:
+                filename: File name or path string.
+                meta: Metadata dictionary to persist.
+                wait: If True, wait for interactive confirmation after writing data.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        r = utils.files.write_file(filename, meta)
+        if self.catch_error(r): return r
+
+        if wait:
+            print ('')
+            print (f'Data was dumped to "{filename}"')
+            print ('')
+            input ('Press Enter to continue:')
+
+        return r
+
+
     ###################################################################################################
-    def access(self, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Access common meta framework in a unified way
-        
-        Args:
-            request: Dictionary containing the request data
-            
-        Returns:
-            Dictionary with {"return": 0, ...} for success or {"return": >0, "error": "error text"} for errors
+    def access(
+        self,
+        request: Dict[str, Any],  # Dictionary containing the request data
+    ) -> Dict[str, Any]:
+        """
+            Access common meta framework in a unified way
+
+            Args:
+                request (Dict[str, Any]): Dictionary containing the request data
+            Returns:
+                Dictionary with {"return": 0, ...} for success or {"return": >0, "error": "error text"} for errors
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self_time_start = time.perf_counter()
@@ -240,22 +362,22 @@ class CMeta:
 
         # Make shallow copy of top keys to avoid altering original input keys
         # It's relatively fast in comparison with deep copy 
-        # particularly for nested calls with a large "state" ...
+        # particularly for nested calls with a large "ctx" ...
         params = request.copy()
 
-        # Prepare state and origin if first run ...
-        if 'state' not in params:
-            params['state'] = {}
-        state = params.get('state', {})
+        # Prepare context and origin if first run ...
+        if 'ctx' not in params:
+            params['ctx'] = {}
+        ctx = params.get('ctx', {})
 
         # Prepare filtered params for reproducibility
         params_reproduce = request.copy()
-        if 'state' in params_reproduce: del(params_reproduce['state'])
-        state['params'] = params_reproduce
+        if 'ctx' in params_reproduce: del(params_reproduce['ctx'])
+        ctx['params'] = params_reproduce
 
-        # If origin(al) call is not in the state, add it for further
+        # If origin(al) call is not in the context, add it for further
         # reuse, debugging and reproducibility
-        if 'origin' not in state:
+        if 'origin' not in ctx:
             origin = {}
 
             if self_debug:
@@ -267,18 +389,18 @@ class CMeta:
 
             origin['params'] = request
 
-            state['origin'] = origin
+            ctx['origin'] = origin
 
-        inside_cli = 'cli' in state.get('origin',{})
+        inside_cli = 'cli' in ctx.get('origin',{})
 
         # Check nested call
-        if 'nested_call' not in state:
+        if 'nested_call' not in ctx:
             nested_call = 0
         else:
-            nested_call = state['nested_call'] + 1
+            nested_call = ctx['nested_call'] + 1
 
         self.logger.debug(f'ACCESS nested call: {nested_call}')
-        state['nested_call'] = nested_call
+        ctx['nested_call'] = nested_call
 
         # Check and extract control params
         r = utils.check_params(params, control_params_desc, fail_on_error=self_fail_on_error)
@@ -288,7 +410,7 @@ class CMeta:
         command_params = r['remaining_params']
 
         control_params = r['checked_params']
-        state['control'] = control_params
+        ctx['control'] = control_params
 
         # Continue processing request
         con = control_params.get('con', False)
@@ -304,6 +426,9 @@ class CMeta:
         if 'verbose' not in control_params and config.is_on(os.environ.get(self.cfg['env_var_cmeta_verbose'])):
             control_params['verbose'] = True
         verbose = control_params.get('verbose', False)
+
+        if 'control' not in ctx['origin']:
+            ctx['origin']['control'] = control_params
 
         r = self.repos.init(con=con, verbose=verbose)
         if r['return'] >0: return r
@@ -352,14 +477,14 @@ class CMeta:
                                     print ('')
                                     print (f'Your cMeta version is up-to-date!')
                 else:
-                    return self._error(f'Accessing latest version info failed: {r["error"]}', 1, None, self_fail_on_error)
+                    return self.error(f'Accessing latest version info failed: {r["error"]}')
 
             elif control_params.get('reindex', False):
                 r = self.repos.reindex(con=con, verbose=verbose)
                 if r['return']>0: return r
 
             else:
-                return self._error('"category" is not defined', 1, None, self_fail_on_error)
+                return self.error('"category" is not defined')
 
         else:
             # Prepare to search for category record as artifact (category_name -> artifact_name, category_name = "category")!
@@ -377,7 +502,7 @@ class CMeta:
 
             if len(category_artifacts) == 0 or len(category_artifacts)>1:
                 if len(category_artifacts) == 0:
-                    return self._error(f'category "{category_obj}" not found', 8, None, self_fail_on_error)
+                    return self.error(f'category "{category_obj}" not found', 8)
                 else:
                     err = f'Ambiguity for category "{category_obj}" - please specify the full name:'
                     for c in category_artifacts:
@@ -385,7 +510,7 @@ class CMeta:
                         if r['return']>0: return r
                         category_str = r['obj']
                         err += f"\n* {category_str} ({c['path']})"
-                    return self._error(err, 8, None, self_fail_on_error)
+                    return self.error(err, 8)
 
 
             # Prepare command
@@ -399,17 +524,17 @@ class CMeta:
             if command.endswith('_'):
                 return {'return':1, 'error': f"command shouldn't end with _ ({command})"}
 
-            state['command'] = command
+            ctx['command'] = command
 
             # Unique category found - check meta and code
             category_artifact = category_artifacts[0]
             category_meta = category_artifact['cmeta']
             category_uid = category_artifact['cmeta_ref_parts']['artifact_uid']
 
-            # Update state with some duplication for simplicity of further use ...
-            state['category_artifact'] = category_artifact
-            state['category_cmeta'] = category_meta
-            state['category'] = category_artifact['cmeta_ref_parts']
+            # Update context with some duplication for simplicity of further use ...
+            ctx['category_artifact'] = category_artifact
+            ctx['category_cmeta'] = category_meta
+            ctx['category'] = category_artifact['cmeta_ref_parts']
 
             ###################################################################################################
             # Initialize main and base categories for API unless already in cache
@@ -464,13 +589,13 @@ class CMeta:
                 if os.path.isfile(category_api_path):
                     category_apis.append({'path':category_api_path, 'suffix': category_uid})
                 elif category_api_ver is not None or category_api_module_ver != '1':
-                    return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self_fail_on_error)
+                    return self.error(f'couldn\'t find category API "{category_api_path}"')
 
             # Either base command or API file doesn't 
             if base_category_api_module_ver is not None and not category_meta.get('skip_base_category_commands', False):
                 category_api_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'category_api_v{base_category_api_module_ver}.py')
                 if not os.path.isfile(category_api_path):
-                    return self._error(f'couldn\'t find category API "{category_api_path}"', 1, None, self_fail_on_error)
+                    return self.error(f'couldn\'t find category API "{category_api_path}"')
 
                 category_apis.append({'path':category_api_path, 'base':True})
 
@@ -613,7 +738,7 @@ class CMeta:
                     if command_alias != command:
                         x += f' ({command_alias})'
                     # Shouldn't fail in debug since it's used to check multiple functions ...
-                    return self._error(f'command "{x}" doesn\'t exist in category API "{category_api_path}"', 32, None, False) # self_fail_on_error)
+                    return self.error(f'command "{x}" doesn\'t exist in category API "{category_api_path}"', 32, fail_on_error=False)
 
                 if control_params.get('help', False):
                     r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error = self_fail_on_error)
@@ -643,7 +768,7 @@ class CMeta:
                         self.logger.debug(f'  with parameters {command_params} ...')
 
                     try:
-                        command_params['state'] = state
+                        command_params['ctx'] = ctx
                         if command_func_name.endswith('_') and not command_func_name.endswith('__'):
                             result = func(**command_params)
                         else:
@@ -677,9 +802,9 @@ class CMeta:
 
         # Get self timing
         self_time = time.perf_counter() - self_time_start
-        state['last_self_time'] = self_time
+        ctx['last_self_time'] = self_time
 
-        state['nested_call'] -= 1
+        ctx['nested_call'] -= 1
 
         if self_debug:
 
@@ -698,19 +823,23 @@ class CMeta:
         json_file = control_params.get('json_file')
         if json_file is not None and json_file!='':
             r = utils.files.write_file(json_file, result)
-            if r['return'] >0: 
-                return self._error(r['error'], r['return'], None, self_fail_on_error)
+            if self.catch_error(r): return r
 
         return result
 
-def _list_paths(cmeta):
-    """Generate a list of formatted path strings for CMeta configuration.
-    
-    Args:
-        cmeta: CMeta instance.
-        
-    Returns:
-        list: List of formatted path strings for logging/display.
+def _list_paths(
+    cmeta,  # CMeta instance.
+):
+    """
+        Generate a list of formatted path strings for CMeta configuration.
+
+        Args:
+            cmeta: CMeta instance.
+        Returns:
+            list: List of formatted path strings for logging/display.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     import sys

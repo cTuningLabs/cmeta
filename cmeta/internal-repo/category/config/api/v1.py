@@ -15,27 +15,47 @@ class Category(InitCategory):
     """
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     ############################################################
     def test_(
-            self,
-            state: dict,             # cMeta state
-            arg1: str = None,        # Test argument 1
-            flag1: bool = False      # Test flag 1
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # Test argument 1.
+        flag1: bool = False,  # Test flag 1.
     ):
         """
-        Test function.
-        
-        Args:
-            state (dict): cMeta state.
-            arg1 (str | None): Test argument 1.
-            flag1 (bool): Test flag 1.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str | None): Test argument 1.
+                flag1 (bool): Test flag 1.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test_")
@@ -47,17 +67,20 @@ class Category(InitCategory):
 
     ############################################################
     def test2(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Test function 2.
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function 2.
+
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test2")
@@ -68,14 +91,24 @@ class Category(InitCategory):
         return {'return':0}
 
     ############################################################
-    def read(self, params):
+    def read(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Read config with default ['data.json']
+            Read config with default ['data.json']
 
-        @base.read_
+            @base.read_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        con = params['state']['control'].get('con', False)
+        con = params['ctx']['control'].get('con', False)
 
         p = self._prepare_input_from_params(params, base = True)
 
@@ -89,14 +122,24 @@ class Category(InitCategory):
         return r
 
     ############################################################
-    def get(self, params):
+    def get(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Get config with default ['data.json']
+            Get config with default ['data.json']
 
-        @base.get_
+            @base.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        con = params['state']['control'].get('con', False)
+        con = params['ctx']['control'].get('con', False)
 
         p = self._prepare_input_from_params(params, base = True)
 
@@ -110,16 +153,28 @@ class Category(InitCategory):
         return r
 
     ############################################################
-    def show_(self, state, arg1):
+    def show_(
+        self,
+        ctx,  # Execution context dictionary with category, command, and control data.
+        arg1,  # First positional argument from command input.
+    ):
         """
-        Show configuration
+            Show configuration
 
-        @base.create_
+            @base.create_
+
+            Args:
+                ctx: Execution context dictionary with category, command, and control data.
+                arg1: First positional argument from command input.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
-        p = self._prepare_input_from_state(state)
+        p = self._prepare_input_from_ctx(ctx)
 
         p['command'] = 'get'
         p['arg1'] = arg1
@@ -148,25 +203,37 @@ class Category(InitCategory):
         return r
 
     ############################################################
-    def set_(self, 
-             state, 
-             arg1 = None,
-             meta = {},
-             load_files = None,
-             unset = False,
-        ):
+    def set_(
+        self,
+        ctx,  # Execution context dictionary with category, command, and control data.
+        arg1 = None,  # First positional argument from command input.
+        meta = {},  # Input parameter used by this function.
+        load_files = None,  # Input parameter used by this function.
+        unset = False,  # Input parameter used by this function.
+    ):
         """
-        Set keys in configuration artifacts
+            Set keys in configuration artifacts
 
-        @base.get_
+            @base.get_
+
+            Args:
+                ctx: Execution context dictionary with category, command, and control data.
+                arg1: First positional argument from command input.
+                meta: Input parameter used by this function.
+                load_files: Input parameter used by this function.
+                unset: Input parameter used by this function.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import copy
 
-        con = state['control'].get('con', False)
+        con = ctx['control'].get('con', False)
 
         p = {
-           'category':state['category'],
+           'category':ctx['category'],
            'arg1':arg1
         }
 
@@ -210,17 +277,27 @@ class Category(InitCategory):
             r = utils.files.safe_write_file(path, config_data, file_lock=config_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
             if r['return']>0: return r
 
-            rx = self.cm.access({'category':state['category'], 'command':'show', 'arg1':arg1, 'con':con})
+            rx = self.cm.access({'category':ctx['category'], 'command':'show', 'arg1':arg1, 'con':con})
             if rx['return']>0: return rx
 
         return r
 
     ############################################################
-    def unset(self, params):
+    def unset(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Unset (delete) keys in configuration artifacts
+            Unset (delete) keys in configuration artifacts
 
-        @self.set_
+            @self.set_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.set_(**params, unset=True)

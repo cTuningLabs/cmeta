@@ -15,27 +15,47 @@ class Category(InitCategory):
     """
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     ############################################################
     def test_(
-            self,
-            state: dict,             # cMeta state
-            arg1: str = None,        # Test argument 1
-            flag1: bool = False      # Test flag 1
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # Test argument 1.
+        flag1: bool = False,  # Test flag 1.
     ):
         """
-        Test function.
-        
-        Args:
-            state (dict): cMeta state.
-            arg1 (str | None): Test argument 1.
-            flag1 (bool): Test flag 1.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str | None): Test argument 1.
+                flag1 (bool): Test flag 1.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test_")
@@ -47,17 +67,20 @@ class Category(InitCategory):
 
     ############################################################
     def test2(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Test function 2.
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function 2.
+
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test2")
@@ -69,29 +92,37 @@ class Category(InitCategory):
 
     ############################################################
     def run_(
-            self,
-            state,
-            arg1,
-            run_script = None,
-            env = {},
-            param = {},
+        self,
+        ctx,  # cMeta context.
+        arg1,  # Artifact alias or UID.
+        run_script = None,  # Script name to execute from artifact path.
+        env = {},  # Extra environment variables merged before execution.
+        param = {},  # Additional execution parameters merged with defaults.
     ):
         """
-        Simple app run.
-        
-        Args:
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Simple app run.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Artifact alias or UID.
+                run_script (str): Script name to execute from artifact path.
+                env (dict): Extra environment variables merged before execution.
+                param (dict): Additional execution parameters merged with defaults.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        con = state.get('control', {}).get('con', False)
-        verbose = state.get('control', {}).get('verbose', False)
+        con = ctx.get('control', {}).get('con', False)
+        verbose = ctx.get('control', {}).get('verbose', False)
 
         env1 = env.copy()
 
         # Call base find function to find an artifact
-        p = {'category':state['category'], 
+        p = {'category':ctx['category'], 
              'command':'find',
              'arg1':arg1,
              'base':True}

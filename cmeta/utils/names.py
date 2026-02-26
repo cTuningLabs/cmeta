@@ -52,36 +52,49 @@ from .common import _error
 
 def generate_cmeta_uid() -> str:
     """
-    Generate a new 16-character UID (from UUID4).
+        Generate a new 16-character UID (from UUID4).
 
-    Returns:
-        str: A new 16-character hexadecimal UID string.
+        Returns:
+            str: A new 16-character hexadecimal UID string.
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     return uuid.uuid4().hex[:16]
 
-def is_valid_cmeta_uid(text: str) -> bool:
+def is_valid_cmeta_uid(
+    text: str,  # The string to validate as a UID.
+) -> bool:
     """
-    Validate if UID is a valid 16-character hex string (case-insensitive).
+        Validate if UID is a valid 16-character hex string (case-insensitive).
 
-    Args:
-        text (str): The string to validate as a UID.
+        Args:
+            text (str): The string to validate as a UID.
 
-    Returns:
-        bool: True if the text is a valid 16-character hex string, False otherwise.
+        Returns:
+            bool: True if the text is a valid 16-character hex string, False otherwise.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     return len(text)==16 and all(c in set("0123456789abcdefABCDEF") for c in text)
 
 def is_valid_category_alias(
-        alias: str  # The string to validate as category alias
+    alias: str,  # The string to validate as category alias.
 ):
     """
-    Validate if category alias is valid (Windows, Linux, MacOS)
+        Validate if category alias is valid (Windows, Linux, MacOS)
 
-    Args:
-        alias (str): The string to validate as category alias.
+        Args:
+            alias (str): The string to validate as category alias.
 
-    Returns:
-        dict: Dictionary with 'return': 0 if valid, or 'return': 1 and 'error' if invalid.
+        Returns:
+            dict: Dictionary with 'return': 0 if valid, or 'return': 1 and 'error' if invalid.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     
     r = is_valid_cmeta_alias(alias)
@@ -111,18 +124,22 @@ def is_valid_category_alias(
     return {'return':0}
 
 def is_valid_cmeta_alias(
-        alias: str  # The string to validate as a CMeta alias
+    alias: str,  # The string to validate as a CMeta alias.
 ):
-    """Validate if alias is valid for Windows, Linux, and MacOS filesystems.
-    
-    Checks for invalid characters and problematic patterns that would cause
-    issues when used as directory names across different operating systems.
+    """
+        Validate if alias is valid for Windows, Linux, and MacOS filesystems.
 
-    Args:
-        alias (str): The string to validate as a CMeta alias.
+        Checks for invalid characters and problematic patterns that would cause
+        issues when used as directory names across different operating systems.
 
-    Returns:
-        dict: Dictionary with 'return': 0 if valid, or 'return': 1 and 'error' if invalid.
+        Args:
+            alias (str): The string to validate as a CMeta alias.
+
+        Returns:
+            dict: Dictionary with 'return': 0 if valid, or 'return': 1 and 'error' if invalid.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     invalid_chars = '<>:"/\\|?*'
 
@@ -136,20 +153,23 @@ def is_valid_cmeta_alias(
     return {'return':0}
 
 def parse_cmeta_name(
-        name: Optional[Union[str, Dict[str, Any]]],  # The name string or dict to parse
-        key: Optional[str] = None                    # Optional key prefix for result keys
+    name: Optional[Union[str, Dict[str, Any]]],  # The name string or dict to parse. Can be None.
+    key: Optional[str] = None,  # If provided, keys will be '{key}_alias' and '{key}_uid'.
 ) -> Dict[str, Any]:
     """
-    Parse cMeta name (alias | uid | alias,uid), returning a dict.
+        Parse cMeta name (alias | uid | alias,uid), returning a dict.
 
-    Args:
-        name (Optional[str|dict]): The name string or dict to parse. Can be None.
-        key (Optional[str]): If provided, keys will be '{key}_alias' and '{key}_uid'.
+        Args:
+            name (Optional[str|dict]): The name string or dict to parse. Can be None.
+            key (Optional[str]): If provided, keys will be '{key}_alias' and '{key}_uid'.
 
-    Returns:
-        Dict[str, Any]: {'return': 0, 'name': {keyed alias/uid or just alias/uid}}.
-                        If error, returns {'return': 1, 'error': ...}
-                        If input is dict, returns it unchanged as {'return': 0, 'name': name}
+        Returns:
+            Dict[str, Any]: {'return': 0, 'name': {keyed alias/uid or just alias/uid}}.
+                            If error, returns {'return': 1, 'error': ...}
+                            If input is dict, returns it unchanged as {'return': 0, 'name': name}
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if isinstance(name, dict):
         return {'return': 0, 'name': name}
@@ -194,21 +214,24 @@ def parse_cmeta_name(
 
 
 def restore_cmeta_name(
-        name: Dict[str, Any],        # Dict containing alias/uid or {key}_alias/{key}_uid
-        key: Optional[str] = None,   # Optional key to use for lookup
-        fail_on_error: bool = False  # If True, raise error on failure
+    name: Dict[str, Any],  # Dict containing alias/uid or {key}_alias/{key}_uid.
+    key: Optional[str] = None,  # Optional key to use for lookup.
+    fail_on_error: bool = False,  # If True, raise error on failure.
 ) -> Dict[str, Any]:
     """
-    Restore cMeta name string from canonicalized dict.
+        Restore cMeta name string from canonicalized dict.
 
-    Args:
-        name (Dict[str, Any]): Dict containing alias/uid or {key}_alias/{key}_uid.
-        key (Optional[str]): Optional key to use for lookup.
-        fail_on_error (bool): If True, raise error on failure.
+        Args:
+            name (Dict[str, Any]): Dict containing alias/uid or {key}_alias/{key}_uid.
+            key (Optional[str]): Optional key to use for lookup.
+            fail_on_error (bool): If True, raise error on failure.
 
-    Returns:
-        Dict[str, Any]: {'return': 0, 'name': restored_string}.
-                        If error, returns {'return': 1, 'error': ...}
+        Returns:
+            Dict[str, Any]: {'return': 0, 'name': restored_string}.
+                            If error, returns {'return': 1, 'error': ...}
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if key is not None:
         alias = name.get(f"{key}_alias")
@@ -231,22 +254,25 @@ def restore_cmeta_name(
 
 
 def parse_cmeta_obj(
-        obj: Optional[Union[str, Dict[str, Any]]],  # Object string or dict to parse
-        key: Optional[str] = None,                  # Optional key prefix for dict keys
-        fail_on_error: bool = False                 # If True, raise error on failure
+    obj: Optional[Union[str, Dict[str, Any]]],  # Object string or dict to parse.
+    key: Optional[str] = None,  # Optional key prefix for dict keys.
+    fail_on_error: bool = False,  # If True, raise error on failure.
 ) -> Dict[str, Any]:
     """
-    Parse cMeta object string (repo_name:cmeta_name or cmeta_name) into dict.
+        Parse cMeta object string (repo_name:cmeta_name or cmeta_name) into dict.
 
-    Args:
-        obj (Optional[str|dict]): Object string or dict to parse.
-        key (Optional[str]): Optional key prefix for dict keys.
-        fail_on_error (bool): If True, raise error on failure.
+        Args:
+            obj (Optional[str|dict]): Object string or dict to parse.
+            key (Optional[str]): Optional key prefix for dict keys.
+            fail_on_error (bool): If True, raise error on failure.
 
-    Returns:
-        Dict[str, Any]: {'return': 0, 'obj_parts': {repo/name parts}}.
-                        If error, returns {'return': 1, 'error': ...}
-                        If input is dict, returns it unchanged as {'return': 0, 'obj_parts': obj}
+        Returns:
+            Dict[str, Any]: {'return': 0, 'obj_parts': {repo/name parts}}.
+                            If error, returns {'return': 1, 'error': ...}
+                            If input is dict, returns it unchanged as {'return': 0, 'obj_parts': obj}
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if isinstance(obj, dict):
         return {'return': 0, 'obj_parts': obj}
@@ -291,21 +317,24 @@ def parse_cmeta_obj(
     return {'return': 0, 'obj_parts': result}
 
 def restore_cmeta_obj(
-        obj_parts: Dict[str, Any],   # Dict with repo/name parts
-        key: Optional[str] = None,   # Optional key prefix
-        fail_on_error: bool = False  # If True, raise error on failure
+    obj_parts: Dict[str, Any],  # Dict with repo/name parts.
+    key: Optional[str] = None,  # Optional key prefix.
+    fail_on_error: bool = False,  # If True, raise error on failure.
 ) -> Dict[str, Any]:
     """
-    Restore cMeta object string from canonicalized dict.
+        Restore cMeta object string from canonicalized dict.
 
-    Args:
-        obj_parts (Dict[str, Any]): Dict with repo/name parts.
-        key (Optional[str]): Optional key prefix.
-        fail_on_error (bool): If True, raise error on failure.
+        Args:
+            obj_parts (Dict[str, Any]): Dict with repo/name parts.
+            key (Optional[str]): Optional key prefix.
+            fail_on_error (bool): If True, raise error on failure.
 
-    Returns:
-        Dict[str, Any]: {'return': 0, 'obj': restored_string}.
-                        If error, returns {'return': 1, 'error': ...}
+        Returns:
+            Dict[str, Any]: {'return': 0, 'obj': restored_string}.
+                            If error, returns {'return': 1, 'error': ...}
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     r = restore_cmeta_name(obj_parts, key + '_repo' if key else 'repo', fail_on_error=fail_on_error)
     if r['return']>0: return r
@@ -325,20 +354,23 @@ def restore_cmeta_obj(
     return {'return':0, 'obj':obj}
 
 def parse_cmeta_ref(
-        ref: Optional[Union[str, Dict[str, Any]]],  # Ref string or dict to parse
-        fail_on_error: bool = False                 # If True, raise error on failure
+    ref: Optional[Union[str, Dict[str, Any]]],  # Ref string or dict to parse.
+    fail_on_error: bool = False,  # If True, raise error on failure.
 ) -> Dict[str, Any]:
     """
-    Parse cMeta ref string (category_obj::artifact_obj) into dict.
+        Parse cMeta ref string (category_obj::artifact_obj) into dict.
 
-    Args:
-        ref (Optional[str|dict]): Ref string or dict to parse.
-        fail_on_error (bool): If True, raise error on failure.
+        Args:
+            ref (Optional[str|dict]): Ref string or dict to parse.
+            fail_on_error (bool): If True, raise error on failure.
 
-    Returns:
-        Dict[str, Any]: {'return': 0, 'ref_parts': {category/artifact parts}}.
-                        If error, returns {'return': 1, 'error': ...}
-                        If input is dict, returns it unchanged as {'return': 0, 'ref_parts': ref}
+        Returns:
+            Dict[str, Any]: {'return': 0, 'ref_parts': {category/artifact parts}}.
+                            If error, returns {'return': 1, 'error': ...}
+                            If input is dict, returns it unchanged as {'return': 0, 'ref_parts': ref}
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     if isinstance(ref, dict):
         return {'return': 0, 'ref_parts': ref}
@@ -369,20 +401,66 @@ def parse_cmeta_ref(
     
     return {'return': 0, 'ref_parts': result}
 
-def restore_cmeta_ref(
-        ref_parts: Dict[str, Any],   # Dict with category/artifact parts
-        fail_on_error: bool = False  # If True, raise error on failure
+
+def parse_cmeta_ref_with_path(
+    ref,  # Ref string or dict to parse.
+    fail_on_error: bool = False,  # If True, raise error on failure.
 ) -> Dict[str, Any]:
     """
-    Restore cMeta ref string from canonicalized dict.
+        Parse cMeta ref string (category_obj::artifact_obj) with possible extra path / into dict.
 
-    Args:
-        ref_parts (Dict[str, Any]): Dict with category/artifact parts.
-        fail_on_error (bool): If True, raise error on failure.
+        Args:
+            ref (Optional[str|dict]): Ref string or dict to parse.
+            fail_on_error (bool): If True, raise error on failure.
 
-    Returns:
-        Dict[str, Any]: {'return': 0, 'ref': restored_string}.
-                        If error, returns {'return': 1, 'error': ...}
+        Returns:
+            Dict[str, Any]: {'return': 0, 'ref_parts': {category/artifact parts}}.
+                            If error, returns {'return': 1, 'error': ...}
+                            If input is dict, returns it unchanged as {'return': 0, 'ref_parts': ref}
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+
+    ref_path = None
+
+    ref = ref.strip()
+
+    j = ref.find('::')
+    if j<0:
+        return _error(f'cMeta ref must have :: in "{ref}"', 1, None, fail_on_error)
+
+    j1 = ref.find('/', j)
+    if j1>0:
+        ref_path = ref[j1+1:]
+        ref = ref[:j1]
+
+    result = parse_cmeta_ref(ref, fail_on_error)
+    if result['return']>0: return result
+
+    if ref_path:
+        result['path'] = ref_path
+
+    return result
+
+
+def restore_cmeta_ref(
+    ref_parts: Dict[str, Any],  # Dict with category/artifact parts.
+    fail_on_error: bool = False,  # If True, raise error on failure.
+) -> Dict[str, Any]:
+    """
+        Restore cMeta ref string from canonicalized dict.
+
+        Args:
+            ref_parts (Dict[str, Any]): Dict with category/artifact parts.
+            fail_on_error (bool): If True, raise error on failure.
+
+        Returns:
+            Dict[str, Any]: {'return': 0, 'ref': restored_string}.
+                            If error, returns {'return': 1, 'error': ...}
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     r = restore_cmeta_obj(ref_parts, key="category", fail_on_error=fail_on_error)
     if r['return']>0: return r
@@ -404,18 +482,22 @@ def restore_cmeta_ref(
     return {'return':0, 'ref':ref}
 
 def get_sort_key_cmeta_obj_alias_or_uid(
-        item: dict  # Dictionary containing 'cmeta_ref_parts' with artifact identifiers
+    item: dict,  # Dictionary containing 'cmeta_ref_parts' with artifact identifiers.
 ):
-    """Get a sort key from a CMeta object for sorting by alias or UID.
-    
-    Extracts the artifact identifier for sorting, prioritizing lowercase alias,
-    then regular alias, then UID.
-    
-    Args:
-        item (dict): Dictionary containing 'cmeta_ref_parts' with artifact identifiers.
-        
-    Returns:
-        str or None: The artifact's lowercase alias, alias, or UID for sorting.
+    """
+        Get a sort key from a CMeta object for sorting by alias or UID.
+
+        Extracts the artifact identifier for sorting, prioritizing lowercase alias,
+        then regular alias, then UID.
+
+        Args:
+            item (dict): Dictionary containing 'cmeta_ref_parts' with artifact identifiers.
+
+        Returns:
+            str or None: The artifact's lowercase alias, alias, or UID for sorting.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     cmeta_ref_parts = item.get("cmeta_ref_parts", {})
     return (

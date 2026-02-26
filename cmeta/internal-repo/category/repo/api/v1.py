@@ -19,77 +19,89 @@ class Category(InitCategory):
     Various Utils
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     ###############################################################################################
     def get_(
-            self, 
-            state:                  dict,                # cMeta state.
-            arg1:                   str = None,          # Repo name (alias and/or UID).
-            url:                    str = None,          # Repo URL (optional)
-            path:                   str = None,          # Repo path (optional. $HOME/CMETA/{repo alias} by default)
-            folder:                 str = None,          # Force this folder to store repository inside $HOME/CMETA (skiped if path is set)
-            subdir:                 str = None,          # Repository is stored in this 
-            method:                 str = None,          # Method (git, zip, local) - will be detected automatically if not specified
-            local:                  bool = False,        # If True, set method to 'local'
-            meta:                   dict = None,         # Repo meta data 
-            update:                 bool = False,        # Force update git repos
-            status:                 bool = False,        # Check status of git repos
-            checkout:               str = None,          # git checkout to this branch or commit
-
-            keep:                   bool = False,        # preserve repository and meta even if not present during reindexing
-                                                         # (useful for USB drives)
-
-            pre:                    str = '',
-            post:                   str = '',
-            hide:                   bool = False,        # hide git clone command print (if PAT/secret is present) 
-
-            skip_parent_dir_in_zip: bool = False,
-
-            zip_file:               str = None,
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # Repo alias or UID.
+        url: str = None,  # Source URL for git or zip repositories.
+        path: str = None,  # Target path for repository checkout.
+        folder: str = None,  # Folder name under repos root when `path` is not set.
+        subdir: str = None,  # Optional repository subdirectory to use.
+        method: str = None,  # Retrieval method (`git`, `zip`, or `local`).
+        local: bool = False,  # If True, force local method.
+        meta: dict = None,  # Metadata to merge into repository cmeta.
+        update: bool = False,  # If True, update existing repository.
+        status: bool = False,  # If True, only query git status.
+        checkout: str = None,  # Branch, tag, or commit to checkout.
+        keep: bool = False,  # If True, keep existing repo metadata on reindex.
+        pre: str = '',  # Command to run before repository retrieval.
+        post: str = '',  # Command to run after repository retrieval.
+        hide: bool = False,  # If True, hide sensitive command output.
+        skip_parent_dir_in_zip: bool = False,  # If True, skip parent directory in zip extraction.
+        zip_file: str = None,  # Path to a local zip file to import.
     ):
         """
-        Clone or pull CM repository.
+            Clone or pull CM repository.
 
-        Args:
-          (CM input dict): 
+            Args:
+                                ctx (dict): cMeta context.
+                                arg1 (str): Repo alias or UID.
+                                url (str): Source URL for git or zip repositories.
+                                path (str): Target path for repository checkout.
+                                folder (str): Folder name under repos root when `path` is not set.
+                                subdir (str): Optional repository subdirectory to use.
+                                method (str): Retrieval method (`git`, `zip`, or `local`).
+                                local (bool): If True, force local method.
+                                meta (dict): Metadata to merge into repository cmeta.
+                                update (bool): If True, update existing repository.
+                                status (bool): If True, only query git status.
+                                checkout (str): Branch, tag, or commit to checkout.
+                                keep (bool): If True, keep existing repo metadata on reindex.
+                                pre (str): Command to run before repository retrieval.
+                                post (str): Command to run after repository retrieval.
+                                hide (bool): If True, hide sensitive command output.
+                                skip_parent_dir_in_zip (bool): If True, skip parent directory in zip extraction.
+                                zip_file (str): Path to a local zip file to import.
 
-          (out) (str): if 'con', output to console
+            Returns:
+              (CM return dict):
 
-          (artifact) (str): repository name (alias)
-          (url) (str): URL of a repository
-          (pat) (str): Personal Access Token (if supported and url=='')
-          (branch) (str): Git branch
-          (new_branch) (str): Create new Git branch
-          (checkout) (str): Git checkout
-          (checkout_only) (bool): only checkout existing repo
-          (dir) (str): use repository in this directory
-          (dir2) (str): use repository in this "directory/directory"
-          (depth) (int): Git depth
-          (desc) (str): brief repository description (1 line)
-          (prefix) (str): extra directory to keep CM artifacts
-          (skip_zip_parent_dir) (bool): skip parent dir in CM ZIP repo (useful when 
-                                        downloading CM repo archives from GitHub)
-          (extra_cmd_git) (str): add this string to git clone
-          (extra_cmd_pip) (str): add this string to pip install when installing
-                                 requirements from CM repositories
+              * return (int): return code == 0 if no error and >0 if error
+              * (error) (str): error string if return>0
 
-        Returns:
-          (CM return dict):
-
-          * return (int): return code == 0 if no error and >0 if error
-          * (error) (str): error string if return>0
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        con = state.get('control',{}).get('con', False)
-        verbose = state.get('control',{}).get('verbose', False)
+        con = ctx.get('control',{}).get('con', False)
+        verbose = ctx.get('control',{}).get('verbose', False)
 
         repos_path = self.cm.repos_path
         repos_config_path = self.cm.repos_config_path
 
-        command = state['command']
+        command = ctx['command']
 
         cur_dir = os.getcwd()
 
@@ -154,7 +166,7 @@ class Category(InitCategory):
         if repo_name is None and url is not None and url!='':
             if path is None or path == '':
                 # Try to check if repo with this url is already registered
-                r = self.get_alias_from_url_(state, url)
+                r = self.get_alias_from_url_(ctx, url)
                 if r['return']>0: return r
 
                 xalias = r['alias']
@@ -174,7 +186,7 @@ class Category(InitCategory):
         ######################################################################################################################
         if (repo_name is not None and repo_name != '') or (path is None and url is None and zip_file is None):
             # Call base find function to find an artifact
-            p = {'category':state['category'], 
+            p = {'category':ctx['category'], 
                  'command':'find',
                  'sort':False,
                  'base':True}
@@ -211,7 +223,7 @@ class Category(InitCategory):
                 xmethod = repo_meta.get('method')
 
                 if repo_path not in repos_paths:
-                    caller = state.get('origin',{}).get('cli',{}).get('caller','')
+                    caller = ctx.get('origin',{}).get('cli',{}).get('caller','')
                     return {'return':1, 'error':f'File {repos_config_path} may be corrupted - it doesn\'t contain {repo_path}! Try "{caller} --reindex"'}
 
                 if os.path.isdir(repo_path):
@@ -325,7 +337,7 @@ class Category(InitCategory):
                         folder = repo_alias if repo_alias is not None else repo_uid
 
                 elif folder is None or folder == '':
-                    r = self.get_alias_from_url_(state, url)
+                    r = self.get_alias_from_url_(ctx, url)
                     if r['return']>0: return r
 
                     repo_alias = r['alias']
@@ -453,7 +465,7 @@ class Category(InitCategory):
                     repo_updated = True
 
                 if 'category' not in repo_meta:
-                    r = utils.names.restore_cmeta_name(state['category'], key='artifact')
+                    r = utils.names.restore_cmeta_name(ctx['category'], key='artifact')
                     if r['return']>0: return r
                     repo_meta['category'] = r['name']
                     repo_updated = True
@@ -495,7 +507,7 @@ class Category(InitCategory):
 
                 if repo_name2 is not None and repo_name2 != '':
                     # Call base find function to find an artifact with a website
-                    p = {'category':state['category'], 
+                    p = {'category':ctx['category'], 
                          'command':'find',
                          'arg1':repo_name2,
                          'sort':False,
@@ -515,7 +527,7 @@ class Category(InitCategory):
                 repos_paths_file_lock = r['file_lock']
                 
                 if path not in repos_paths:
-                    # I decided not to add params to avoid exposing sensitite info such as PAT in URL, 'params':state['origin']['params']}}
+                    # I decided not to add params to avoid exposing sensitite info such as PAT in URL, 'params':ctx['origin']['params']}}
                     # Unless "keep" is used for USB-like or network drives
                     repos_paths[path] = {'meta':repo_meta_to_index}
 
@@ -542,7 +554,7 @@ class Category(InitCategory):
                 reindex = True
 
 #                    # Add to index
-#                    p = {'category': state['category'], 
+#                    p = {'category': ctx['category'], 
 #                         'command': 'create',
 #                         'arg1': final_repo_name,
 #                         'meta': {'method':method, '_cmr':repo_meta},
@@ -577,11 +589,21 @@ class Category(InitCategory):
 
 
     ###############################################################################################
-    def list__(self, params):
+    def list__(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        List cMeta repositories
+            List cMeta repositories
 
-        @base.list_
+            @base.list_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         # p will be deep copied from params
@@ -594,33 +616,63 @@ class Category(InitCategory):
         return result
 
     ###############################################################################################
-    def create(self, params):
+    def create(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Create local cMeta repository
+            Create local cMeta repository
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.get_(**params, local=True)
 
 
     ###############################################################################################
-    def update__(self, params):
+    def update__(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Update cMeta Git repositories
+            Update cMeta Git repositories
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.get_(**params, update=True)
 
 
     ###############################################################################################
-    def find(self, params):
+    def find(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Find cMeta repositories
+            Find cMeta repositories
 
-        @base.find_
+            @base.find_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         # p will be deep copied from params
@@ -633,25 +685,33 @@ class Category(InitCategory):
         return result
 
     ###############################################################################################
-    def delete(self, params):
+    def delete(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Delete cMeta repositories
+            Delete cMeta repositories
 
-        @base.delete_
+            @base.delete_
 
-        Args:
-            (unplug) (bool): if True, only unregister repository but don't delete!
+            Args:
+                params (dict): Input parameters dictionary.
+                (unplug) (bool): if True, only unregister repository but don't delete!
 
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        state = params['state']
-        con = state.get('control',{}).get('con', False)
-        verbose = state.get('control',{}).get('verbose', False)
+        ctx = params['ctx']
+        con = ctx.get('control',{}).get('con', False)
+        verbose = ctx.get('control',{}).get('verbose', False)
 
         unplug = params.get('unplug', False)
 
         # Check if some repos exists
-        p = self._prepare_input_from_state(state, base = True)
+        p = self._prepare_input_from_ctx(ctx, base = True)
 
         p['command'] = 'find'
         p['con'] = False
@@ -709,18 +769,40 @@ class Category(InitCategory):
 
 
     ###############################################################################################
-    def move(self, params):
+    def move(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Move cMeta repositories - not supported
+            Move cMeta repositories - not supported
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return {'return':1, 'error':'moving/renaming repositories is not supported'}
 
 
     ###############################################################################################
-    def get_alias_from_url_(self, state, arg1):
+    def get_alias_from_url_(
+        self,
+        ctx,  # Execution context dictionary with category, command, and control data.
+        arg1,  # First positional argument from command input.
+    ):
         """
-        Get alias from URL
+            Get alias from URL
+
+            Args:
+                ctx: Execution context dictionary with category, command, and control data.
+                arg1: First positional argument from command input.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         url = arg1
@@ -758,41 +840,81 @@ class Category(InitCategory):
 
 
     ###############################################################################################
-    def status(self, params):
+    def status(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Update cMeta Git repositories
+            Update cMeta Git repositories
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.get_(**params, status=True)
 
     ###############################################################################################
-    def pull(self, params):
+    def pull(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Pull cMeta Git repositories
+            Pull cMeta Git repositories
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.get_(**params)
 
     ###############################################################################################
-    def clone(self, params):
+    def clone(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Clone cMeta Git repositories
+            Clone cMeta Git repositories
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.get_(**params)
 
     ###############################################################################################
-    def checkout(self, params):
+    def checkout(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Checkout cMeta Git repositories
+            Checkout cMeta Git repositories
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         if 'arg2' not in params:
@@ -806,31 +928,61 @@ class Category(InitCategory):
         return self.get_(**copy_params, update=True, checkout = checkout)
 
     ###############################################################################################
-    def clone(self, params):
+    def clone(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Clone cMeta Git repositories
+            Clone cMeta Git repositories
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.get_(**params, method='git')
 
     ###############################################################################################
-    def init(self, params):
+    def init(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Init local cMeta repository
+            Init local cMeta repository
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         return self.get_(**params, method='local')
 
     ###############################################################################################
-    def unzip(self, params):
+    def unzip(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Unzip local cMeta repository
+            Unzip local cMeta repository
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import copy
@@ -843,35 +995,41 @@ class Category(InitCategory):
 
     ###############################################################################################
     def zip_(
-            self,
-            state:                  dict,                # cMeta state.
-            arg1:                   str,                 # Repo name (alias and/or UID).
-            skip_date:              bool = False,        # Skip date and time from filename
-            skip_dirs:              list = None,         # Directories to skip (default: ['.venv', '__pycache__'])
-            skip_files:             list = None,         # Files to skip
-            output_path:            str = None,          # Output path for zip file (current directory by default)
-            zip_name:               str = None,          # Output zip name
-            force:                  bool = False,        # Overwrite existing zip file
+        self,
+        ctx: dict,  # cMeta context
+        arg1: str,  # repository name (alias and/or UID)
+        skip_date: bool = False,  # if True, skip date and time from filename
+        skip_dirs: list = None,  # directories to skip from zipping
+        skip_files: list = None,  # files to skip from zipping
+        output_path: str = None,  # output path for zip file
+        zip_name: str = None,  # explicit output zip filename
+        force: bool = False,  # if True, overwrite existing zip file
     ):
         """
-        Zip cMeta repository.
+            Zip cMeta repository.
 
-        Args:
-          state (dict): cMeta state
-          arg1 (str): repository name (alias and/or UID)
-          skip_date (bool): if True, skip date and time from filename
-          skip_dirs (list): directories to skip from zipping
-          output_path (str): output path for zip file
+            Args:
+              ctx (dict): cMeta context
+              arg1 (str): repository name (alias and/or UID)
+              skip_date (bool): if True, skip date and time from filename
+              skip_dirs (list): directories to skip from zipping
+                            skip_files (list): files to skip from zipping
+              output_path (str): output path for zip file
+                            zip_name (str): explicit output zip filename
+                            force (bool): if True, overwrite existing zip file
 
-        Returns:
-          (CM return dict):
+            Returns:
+              (CM return dict):
 
-          * return (int): return code == 0 if no error and >0 if error
-          * (error) (str): error string if return>0
-          * (zip_path) (str): path to created zip file
+              * return (int): return code == 0 if no error and >0 if error
+              * (error) (str): error string if return>0
+              * (zip_path) (str): path to created zip file
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        con = state.get('control',{}).get('con', False)
+        con = ctx.get('control',{}).get('con', False)
         
         if not skip_dirs:
             skip_dirs = ['.venv', '__pycache__']
@@ -880,7 +1038,7 @@ class Category(InitCategory):
             skip_files = []
 
         # Find the repository
-        p = {'category': state['category'], 
+        p = {'category': ctx['category'], 
              'command': 'find',
              'arg1': arg1,
              'sort': False,
@@ -963,16 +1121,26 @@ class Category(InitCategory):
         return {'return':0, 'zip_path': zip_path}
 
     ###############################################################################################
-    def plug(self, params):
+    def plug(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Plug local cMeta repository 
-        If arg1 is None, use current directory
-        If arg1 is not None:
-           If existing path -> use that path
-           If path does't exist, use as alias
+            Plug local cMeta repository
+            If arg1 is None, use current directory
+            If arg1 is not None:
+               If existing path -> use that path
+               If path does't exist, use as alias
 
 
-        @self.get_
+            @self.get_
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         arg1 = params.get('arg1', None)
@@ -990,15 +1158,25 @@ class Category(InitCategory):
         return self.get_(**p)
 
     ###############################################################################################
-    def unplug(self, params):
+    def unplug(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        UnPlug local cMeta repository 
-        If arg1 is None, use current directory
-        If arg1 is not None:
-           If existing path -> use that path
-           If path does't exist, use as alias
+            UnPlug local cMeta repository
+            If arg1 is None, use current directory
+            If arg1 is not None:
+               If existing path -> use that path
+               If path does't exist, use as alias
 
-        @self.delete
+            @self.delete
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         arg1 = params.get('arg1', None)
@@ -1022,17 +1200,27 @@ class Category(InitCategory):
         return self.delete(p)
 
     ###############################################################################################
-    def space(self, params):
+    def space(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
-        Get space of a give repo
-        @self.find
+            Get space of a give repo
+            @self.find
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        state = params['state']
-        con = state.get('control',{}).get('con', False)
+        ctx = params['ctx']
+        con = ctx.get('control',{}).get('con', False)
 
         # Check if some repos exists
-        p = self._prepare_input_from_state(state, base = True)
+        p = self._prepare_input_from_ctx(ctx, base = True)
 
         p['command'] = 'find'
         p['con'] = False

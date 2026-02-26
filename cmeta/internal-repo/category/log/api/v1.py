@@ -14,27 +14,47 @@ class Category(InitCategory):
     """
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     ############################################################
     def test_(
-            self,
-            state: dict,             # cMeta state
-            arg1: str = None,        # Test argument 1
-            flag1: bool = False      # Test flag 1
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # Test argument 1.
+        flag1: bool = False,  # Test flag 1.
     ):
         """
-        Test function.
-        
-        Args:
-            state (dict): cMeta state.
-            arg1 (str | None): Test argument 1.
-            flag1 (bool): Test flag 1.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str | None): Test argument 1.
+                flag1 (bool): Test flag 1.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test_")
@@ -46,17 +66,20 @@ class Category(InitCategory):
 
     ############################################################
     def test2(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Test function 2.
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: Dictionary with 'return': 0.
+            Test function 2.
+
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test2")
@@ -68,31 +91,31 @@ class Category(InitCategory):
 
     ############################################################
     def record_(
-            self,
-            state: dict,
-            arg1: str,
-            paths: list = None,
-            data: dict = None,
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str,  # Log name.
+        paths: list = None,  # Additional path segments.
+        data: dict = None,  # Log data to write.
     ):
         """
-        Record log.
-        
-        Args:
-            state (dict): cMeta state.
-            arg1 (str): Log name.
-            paths (list | None): Additional path segments.
-            data (dict | None): Log data to write.
-            
-        Raises:
-            Exception: If artifact access fails or file write fails.
-            
-        Returns:
-            dict: Dictionary with 'return': 0 on success, >0 on error.
+            Record log.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Log name.
+                paths (list | None): Additional path segments.
+                data (dict | None): Log data to write.
+
+            Raises:
+                Exception: If artifact access fails or file write fails.
+
+            Returns:
+                dict: Dictionary with 'return': 0 on success, >0 on error.
         """
 
         self.logger.debug("RUNNING log v1 record_")
 
-        r = self.cm.access({'category': state['category'], 
+        r = self.cm.access({'category': ctx['category'], 
                             'command': 'get', 
                             'base': True,
                             'arg1': arg1,

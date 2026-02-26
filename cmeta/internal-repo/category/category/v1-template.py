@@ -6,13 +6,43 @@ class Category(InitCategory):
     """
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     ############################################################
-    def test_(self, state, arg1=None, flag1=False):
+    def test_(
+        self,
+        ctx,  # Execution context dictionary with category, command, and control data.
+        arg1 = None,  # First positional argument from command input.
+        flag1 = False,  # Input parameter used by this function.
+    ):
         """
+            Args:
+                ctx: Execution context dictionary with category, command, and control data.
+                arg1: First positional argument from command input.
+                flag1: Input parameter used by this function.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test_")
@@ -23,8 +53,17 @@ class Category(InitCategory):
         return {'return':0}
 
     ############################################################
-    def test2(self, params):
+    def test2(
+        self,
+        params,  # Input parameters dictionary.
+    ):
         """
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         self.logger.debug("RUNNING API v1 test2")

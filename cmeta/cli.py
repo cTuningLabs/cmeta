@@ -26,22 +26,25 @@ cli_init_params_desc = config.params_init_desc
 params_command2_desc = config.params_command2_desc
 
 def process(
-        cmd: list
+    cmd: list,  # Command line arguments as a list of strings. The original list is not modified.
 ):
-    """Process command line arguments and execute CMeta operations.
-    
-    This function parses command-line arguments, initializes the CMeta framework,
-    and executes the requested category command. It handles global flags, category
-    detection, and command routing.
-    
-    Args:
-        cmd (list): Command line arguments as a list of strings. The original list is not modified.
-        
-    Returns:
-        dict: A CMeta dictionary with the following keys:
-            - return (int): 0 for success, >0 for error codes.
-            - error (str): Error message if return > 0.
-            - Other keys depend on the executed command.
+    """
+        Process command line arguments and execute CMeta operations.
+
+        This function parses command-line arguments, initializes the CMeta framework,
+        and executes the requested category command. It handles global flags, category
+        detection, and command routing.
+
+        Args:
+            cmd (list): Command line arguments as a list of strings. The original list is not modified.
+        Returns:
+            dict: A CMeta dictionary with the following keys:
+                - return (int): 0 for success, >0 for error codes.
+                - error (str): Error message if return > 0.
+                - Other keys depend on the executed command.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     global caller, cmeta_init, fail_on_error, logger, cmeta
@@ -197,7 +200,7 @@ def process(
     if 'con' not in params:
         params['con'] = True
 
-    # Adding some extra info from CLI to save to the state origin
+    # Adding some extra info from CLI to save to the context origin
     # for further debugging and reproducibility
     if '_cli' not in params:
         params['_cli'] = {}
@@ -221,16 +224,18 @@ def process(
 
 
 def catch(
-        result: dict  # Result dictionary from CMeta operation
+    result: dict,  # Dictionary that must contain a "return" key
 ):
     """
-    Check result dictionary for errors and exit if error is found.
-    
-    Args:
-        result (dict): Dictionary that must contain a "return" key
-        
-    Raises:
-        SystemExit: If return code is greater than 0, exits with that code
+        Check result dictionary for errors and exit if error is found.
+
+        Args:
+            result (dict): Dictionary that must contain a "return" key
+        Raises:
+            SystemExit: If return code is greater than 0, exits with that code
+
+        Returns:
+            dict: Operation result.
     """
 
     global logger, cmeta_init
@@ -273,75 +278,118 @@ def catch(
     return return_code
 
 def set_fail_on_error(
-        value: bool  # Boolean value for fail_on_error flag
+    value: bool,  # Boolean value to set for fail_on_error flag.
 ):
-    """Set the global fail_on_error flag for error handling behavior.
-    
-    Args:
-        value (bool): Boolean value to set for fail_on_error flag.
+    """
+        Set the global fail_on_error flag for error handling behavior.
+
+        Args:
+            value (bool): Boolean value to set for fail_on_error flag.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     global fail_on_error
     fail_on_error = value
 
 def main_cmeta() -> int:
-    """Entry point for the 'cmeta' command-line interface.
-    
-    Returns:
-        int: Exit code (0 for success, non-zero for errors).
+    """
+        Entry point for the 'cmeta' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     global caller
     caller = "cmeta"
     return main()
 
 def main_meta() -> int:
-    """Entry point for the 'meta' command-line interface.
-    
-    Returns:
-        int: Exit code (0 for success, non-zero for errors).
+    """
+        Entry point for the 'meta' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     global caller
     caller = "meta"
     return main()
 
 def main_cx() -> int:
-    """Entry point for the 'cx' command-line interface.
-    
-    Returns:
-        int: Exit code (0 for success, non-zero for errors).
+    """
+        Entry point for the 'cx' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     global caller
     caller = "cx"
     return main()
 
 def main_cxt() -> int:
-    """Entry point for the 'cx task run' command-line interface.
-    
-    Returns:
-        int: Exit code (0 for success, non-zero for errors).
+    """
+        Entry point for the 'cx task run' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     args = ['task', 'run'] + sys.argv[1:]
 
     return main(args = args)
 
 def main_cserver() -> int:
-    """Entry point for the 'cserver' command-line interface.
-    
-    Returns:
-        int: Exit code (0 for success, non-zero for errors).
+    """
+        Entry point for the 'cserver' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
 
     args = ['app', 'run', 'cserver'] + sys.argv[1:]
 
     return main(args = args)
 
-def main(args = None) -> int:
-    """Main function for CLI entry point. Processes sys.argv and calls CMeta.
-    
-    Parses command-line arguments from sys.argv, processes them through the CMeta
-    framework, and handles the results including error checking and exit codes.
-    
-    Returns:
-        int: Exit code (0 for success, non-zero for errors).
+def main(
+    args = None,  # CLI positional arguments passed to the entry point.
+) -> int:
+    """
+        Main function for CLI entry point. Processes sys.argv and calls CMeta.
+
+        Parses command-line arguments from sys.argv, processes them through the CMeta
+        framework, and handles the results including error checking and exit codes.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            args: CLI positional arguments passed to the entry point.
+        Raises:
+            Exception: Propagated runtime errors, if any.
     """
     global caller
     if caller is None:

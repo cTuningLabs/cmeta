@@ -1,4 +1,4 @@
-﻿"""
+"""
 Minimal cMeta server
 
 cMeta author and developer: (C) 2025-2026 Grigori Fursin
@@ -61,6 +61,18 @@ cfg = {}
 
 @app.on_event("startup")
 async def test_cmeta_repos():
+    """
+    test_cmeta_repos function.
+
+    Args:
+        None.
+
+    Returns:
+        dict: Operation result.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
     global cm, cfg
     r = await cm.access({'category':'config,cc6bfe174be847ed', 'command':'get', 'arg1':'cserver'})
     if r['return'] > 0: cmeta_catch(r)
@@ -69,7 +81,21 @@ async def test_cmeta_repos():
 
 ##################################################################################################
 @app.get("/")
-async def home(request: Request):
+async def home(
+    request: Request,  # Input dictionary used by this function.
+):
+    """
+    home function.
+
+    Args:
+        request (Request): Input dictionary used by this function.
+
+    Returns:
+        dict: Operation result.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
     r = await cm.utils.net.unify_request(request)
     if r['return']>0: return r
 
@@ -88,14 +114,42 @@ async def home(request: Request):
 ##################################################################################################
 @app.get("/favicon.ico")
 async def favicon():
+    """
+    favicon function.
+
+    Args:
+        None.
+
+    Returns:
+        dict: Operation result.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
     return FileResponse(os.path.join(home_dir_static, "images", "favicon.ico"))
 
 ##################################################################################################
 ##################################################################################################
 @app.api_route("/{task}", methods=["GET", "POST"], response_class=HTMLResponse)
 @app.api_route("/{task}/", methods=["GET", "POST"], response_class=HTMLResponse)
-async def task_handler(request: Request, task: str):
+async def task_handler(
+    request: Request,  # Input dictionary used by this function.
+    task: str,  # Value for task.
+):
 
+    """
+    task_handler function.
+
+    Args:
+        request (Request): Input dictionary used by this function.
+        task (str): Value for task.
+
+    Returns:
+        dict: Operation result.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
     r = await cm.utils.net.unify_request(request)
     if r['return']>0: return r
 
@@ -178,9 +232,27 @@ async def task_handler(request: Request, task: str):
 
 ##################################################################################################
 @app.get("/{task}/{file_path:path}")
-async def task_files(request: Request, task: str, file_path: str):
+async def task_files(
+    request: Request,  # Input dictionary used by this function.
+    task: str,  # Value for task.
+    file_path: str,  # Filesystem path.
+):
 
     # Forbid relative paths
+    """
+    task_files function.
+
+    Args:
+        request (Request): Input dictionary used by this function.
+        task (str): Value for task.
+        file_path (str): Filesystem path.
+
+    Returns:
+        dict: Operation result.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
     if '..' in file_path or file_path.startswith('/') or file_path.startswith('\\'):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Relative paths are not allowed")
 

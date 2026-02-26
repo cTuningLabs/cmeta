@@ -18,16 +18,24 @@ class InitCategory:
     Initialize Category without artifact management functions
     """
 
-    def __init__(self,
-                 cm = None,
-                 module_file_path = None,
-                 logger: logging.Logger = None):
-        """Initialize the category base class without artifact management functions.
-        
-        Args:
-            cm: CMeta instance. If None, creates a new one.
-            module_file_path: Path to the category module file. If None, uses base category.
-            logger: Logger instance. If None, uses CMeta's logger.
+    def __init__(
+        self,
+        cm = None,  # CMeta instance. If None, creates a new one.
+        module_file_path = None,  # Path to the category module file. If None, uses base category.
+        logger: logging.Logger = None,  # Logger instance. If None, uses CMeta's logger.
+    ):
+        """
+            Initialize the category base class without artifact management functions.
+
+            Args:
+                cm: CMeta instance. If None, creates a new one.
+                module_file_path: Path to the category module file. If None, uses base category.
+                logger: Logger instance. If None, uses CMeta's logger.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         if cm is None:
@@ -82,57 +90,74 @@ class InitCategory:
 
             self.logger.debug(f"Initializing {extra_text}category class from: {caller_frame.filename}:{caller_frame.lineno}")
 
-    def _prepare_input_from_params(self, params, extra={}, base=False):
-        """Prepare input dictionary from params for category command execution.
-        
-        Extracts relevant information from params and state, adds extra parameters,
-        and prepares a clean input dictionary for command execution.
-        
-        Args:
-            params: Dictionary containing parameters and state.
-            extra: Additional parameters to merge into the result.
-            base: If True, adds 'base': True flag to call base category commands.
-            
-        Returns:
-            dict: Prepared input dictionary with category, command, and control flags.
+    def _prepare_input_from_params(
+        self,
+        params,  # Dictionary containing parameters and ctx.
+        extra = {},  # Additional parameters to merge into the result.
+        base = False,  # If True, adds 'base': True flag to call base category commands.
+    ):
+        """
+            Prepare input dictionary from params for category command execution.
+
+            Extracts relevant information from params and ctx, adds extra parameters,
+            and prepares a clean input dictionary for command execution.
+
+            Args:
+                params: Dictionary containing parameters and ctx.
+                extra: Additional parameters to merge into the result.
+                base: If True, adds 'base': True flag to call base category commands.
+
+            Returns:
+                dict: Prepared input dictionary with category, command, and control flags.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         import copy
 
-        state = params['state']
+        ctx = params['ctx']
 
         p = copy.deepcopy(params)
 
         p.update(extra)
 
-        p['category'] = state['category']
-        p['command'] = state['command']
-        p['con'] = state['control']['con']
+        p['category'] = ctx['category']
+        p['command'] = ctx['command']
+        p['con'] = ctx['control']['con']
 
         if base:
             p['base'] = True
 
         return p
 
-    def _prepare_input_from_state(self, state, base=False):
-        """Prepare input dictionary from state for category command execution.
-        
-        Extracts category, command, and control information from state to create
-        a minimal input dictionary for command execution.
-        
-        Args:
-            state: State dictionary containing category, command, and control info.
-            base: If True, adds 'base': True flag to call base category commands.
-            
-        Returns:
-            dict: Prepared input dictionary with category, command, and control flags.
+    def _prepare_input_from_ctx(
+        self,
+        ctx,  # Context dictionary containing category, command, and control info.
+        base = False,  # If True, adds 'base': True flag to call base category commands.
+    ):
+        """
+            Prepare input dictionary from ctx for category command execution.
+
+            Extracts category, command, and control information from ctx to create
+            a minimal input dictionary for command execution.
+
+            Args:
+                ctx: Context dictionary containing category, command, and control info.
+                base: If True, adds 'base': True flag to call base category commands.
+
+            Returns:
+                dict: Prepared input dictionary with category, command, and control flags.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
         p = {}
 
-        p['category'] = state['category']
-        p['command'] = state['command']
-        p['con'] = state['control']['con']
+        p['category'] = ctx['category']
+        p['command'] = ctx['command']
+        p['con'] = ctx['control']['con']
 
         if base:
             p['base'] = True

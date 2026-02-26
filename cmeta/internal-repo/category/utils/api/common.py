@@ -1,4 +1,4 @@
-﻿"""
+"""
 CMeta common repo functions
 
 cMeta author and developer: (C) 2025-2026 Grigori Fursin
@@ -7,7 +7,21 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 ###################################################################################################
-def _extract_category_artifact(s: str) -> str:
+def _extract_category_artifact(
+    s: str,  # Value for s.
+) -> str:
+    """
+    _extract_category_artifact function.
+
+    Args:
+        s (str): Value for s.
+
+    Returns:
+        str: Result value.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
     import re
 
     # Remove leading/trailing whitespace and parentheses from the entire string
@@ -37,34 +51,61 @@ def _extract_category_artifact(s: str) -> str:
     return None
 
 ############################################################
-def select_artifact_(self, 
-                     state,
-                     select_category,
-                     select_artifact=None,
-                     select_tags=None,
-                     select_text='',
-                     show_tags=False,
-                     artifacts=None,
-                     cmeta_params_keys=None,
-                     skip_uids: bool = False,
-                     sort_keys: list = None,
-                     load_files: list = [],         # Attempt to load files in the selected artifact
-                     space: str = '',
-                     load_api: bool = False,
-                     load_api_ver: int = 0,
-                     load_api_class: str = None,
-                     print_extra_line: bool = False,
-    ):
+def select_artifact_(
+    self,
+    ctx,  # Input dictionary used by this function.
+    select_category,  # Value for select category.
+    select_artifact = None,  # Value for select artifact.
+    select_tags = None,  # Value for select tags.
+    select_text = '',  # Value for select text.
+    show_tags = False,  # Value for show tags.
+    artifacts = None,  # Value for artifacts.
+    cmeta_params_keys = None,  # Value for cmeta params keys.
+    skip_uids: bool = False,  # Value for skip uids.
+    sort_keys: list = None,  # Value for sort keys.
+    load_files: list = [],  # Value for load files.
+    space: str = '',  # Value for space.
+    load_api: bool = False,  # Value for load api.
+    load_api_ver: int = 0,  # Value for load api ver.
+    load_api_class: str = None,  # Value for load api class.
+    print_extra_line: bool = False,  # Value for print extra line.
+):
 
+    """
+    select_artifact_ function.
+
+    Args:
+        ctx: Input dictionary used by this function.
+        select_category: Value for select category.
+        select_artifact: Value for select artifact.
+        select_tags: Value for select tags.
+        select_text: Value for select text.
+        show_tags: Value for show tags.
+        artifacts: Value for artifacts.
+        cmeta_params_keys: Value for cmeta params keys.
+        skip_uids (bool): Value for skip uids.
+        sort_keys (list): Value for sort keys.
+        load_files (list): Value for load files.
+        space (str): Value for space.
+        load_api (bool): Value for load api.
+        load_api_ver (int): Value for load api ver.
+        load_api_class (str): Value for load api class.
+        print_extra_line (bool): Value for print extra line.
+
+    Returns:
+        dict: Operation result.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
     import os
 
     if load_api and not load_api_class:
-        err = f'load_api == True but load_api_class is not defined in {__name__}'
-        return self.cm._error(err, 1, None, self.cm.fail_on_error)
+        return self.cm.error(f'load_api == True but load_api_class is not defined in {__name__}')
 
-    con = state['control'].get('con', False)
-    quiet = state['control'].get('quiet', False)
-    inside_cli = 'cli' in state.get('origin',{})
+    con = ctx['control'].get('con', False)
+    quiet = ctx['control'].get('quiet', False)
+    inside_cli = 'cli' in ctx.get('origin',{})
 
     select_category_name = select_category['artifact_alias'] if type(select_category)==dict else str(select_category)
 
@@ -279,7 +320,7 @@ def select_artifact_(self,
         if r['return']>0: return r
         if r['comparison'] == '>':
             err = f'the artifact "{category_au}::{artifact_au}" requires min cMeta version "{min_cmeta_version}" but "{cm_version}" is installed'
-            return self.cm._error(err, 1, None, self.cm.fail_on_error)
+            return self.cm.error(err)
 
     # Check if need to load API
     if load_api:
@@ -288,8 +329,7 @@ def select_artifact_(self,
         result['api_path'] = artifact_api_path
 
         if load_api_ver is not None and not os.path.isfile(artifact_api_path):
-            err = f'customization module not found in "{artifact_api_path}"'
-            return self.cm._error(err, 1, None, self.cm.fail_on_error)
+            return self.cm.error(f'customization module not found in "{artifact_api_path}"')
 
         artifact_api_code = None
         if os.path.isfile(artifact_api_path):
@@ -301,8 +341,7 @@ def select_artifact_(self,
                                               suffix=category_uid, 
                                               self_meta=cmeta
             )
-            if r['return'] >0: 
-                return self.cm._error2(r, self)
+            if self.cm.catch_error(r): return r
 
             artifact_api_code = r['cache']['initialized_class']
 

@@ -16,29 +16,49 @@ class Category(InitCategory):
     Various Utils
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,  # Positional argument value.
+        **kwargs,  # Value for kwargs.
+    ):
+        """
+        __init__ function.
+
+        Args:
+            *args: Positional argument value.
+            **kwargs: Value for kwargs.
+
+        Returns:
+            dict: Operation result.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
     def delete(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Delete category.
+            Delete category.
 
-        @base.delete_
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: A cMeta dictionary with the following keys:
-                - **return** (int): 0 if success, >0 if error.
-                - **error** (str): Error message if `return > 0`.
+            @base.delete_
+
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error.
+                    - **error** (str): Error message if `return > 0`.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        control = params.get('state',{}).get('control',{})
+        control = params.get('ctx',{}).get('control',{})
 
         con = control.get('con', False)
         verbose = control.get('verbose', False)
@@ -68,25 +88,28 @@ class Category(InitCategory):
 
 
     def create(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Create new category with commands.
+            Create new category with commands.
 
-        @base.create_
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: A cMeta dictionary with the following keys:
-                - **return** (int): 0 if success, >0 if error.
-                - **error** (str): Error message if `return > 0`.
-                - **path** (str): Path to the created category.
+            @base.create_
+
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error.
+                    - **error** (str): Error message if `return > 0`.
+                    - **path** (str): Path to the created category.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        con = params.get('state',{}).get('control',{}).get('con', False)
+        con = params.get('ctx',{}).get('control',{}).get('con', False)
 
         arg1 = params.get('arg1')
 
@@ -140,24 +163,27 @@ class Category(InitCategory):
 
 
     def move(
-            self,
-            params: dict  # cMeta parameters
+        self,
+        params: dict,  # cMeta parameters.
     ):
         """
-        Move/rename category.
+            Move/rename category.
 
-        @base.move_
-        
-        Args:
-            params (dict): cMeta parameters.
-            
-        Returns:
-            dict: A cMeta dictionary with the following keys:
-                - **return** (int): 0 if success, >0 if error.
-                - **error** (str): Error message if `return > 0`.
+            @base.move_
+
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error.
+                    - **error** (str): Error message if `return > 0`.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
         """
 
-        con = params.get('state',{}).get('control',{}).get('con', False)
+        con = params.get('ctx',{}).get('control',{}).get('con', False)
 
         # Check that move and not rename!
         arg1 = params.get('arg1', None)
