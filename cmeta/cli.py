@@ -37,6 +37,7 @@ def process(
 
         Args:
             cmd (list): Command line arguments as a list of strings. The original list is not modified.
+
         Returns:
             dict: A CMeta dictionary with the following keys:
                 - return (int): 0 for success, >0 for error codes.
@@ -231,6 +232,7 @@ def catch(
 
         Args:
             result (dict): Dictionary that must contain a "return" key
+
         Raises:
             SystemExit: If return code is greater than 0, exits with that code
 
@@ -353,6 +355,9 @@ def main_cxt() -> int:
         Raises:
             Exception: Propagated runtime errors, if any.
     """
+    global caller
+    caller = "cx"
+
     args = ['task', 'run'] + sys.argv[1:]
 
     return main(args = args)
@@ -369,8 +374,105 @@ def main_cserver() -> int:
         Raises:
             Exception: Propagated runtime errors, if any.
     """
+    global caller
+    caller = "cx"
 
     args = ['app', 'run', 'cserver'] + sys.argv[1:]
+
+    return main(args = args)
+
+def main_ucmeta() -> int:
+    """
+        Entry point for the 'cx task run' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    global caller
+    caller = "cmeta"
+
+    args = ['--home'] + sys.argv[1:]
+
+    return main(args = args)
+
+def main_umeta() -> int:
+    """
+        Entry point for the 'cx task run' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    global caller
+    caller = "meta"
+
+    args = ['--home'] + sys.argv[1:]
+
+    return main(args = args)
+
+def main_ucx() -> int:
+    """
+        Entry point for the 'cx task run' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    global caller
+    caller = "cx"
+
+    args = ['--home'] + sys.argv[1:]
+
+    return main(args = args)
+
+def main_ucxt() -> int:
+    """
+        Entry point for the 'cx task run' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    global caller
+    caller = "cx"
+
+    args = ['--home', 'task', 'run'] + sys.argv[1:]
+
+    return main(args = args)
+
+def main_cserver() -> int:
+    """
+        Entry point for the 'cserver' command-line interface.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    global caller
+    caller = "cx"
+
+    args = ['--home', 'app', 'run', 'cserver'] + sys.argv[1:]
 
     return main(args = args)
 

@@ -302,6 +302,25 @@ class CMeta:
         return r
 
 
+
+    ###################################################################################################
+    def outdated(
+        slef,
+        path, 
+        meta
+    ):
+
+        msg = f'WARNING: API version 1 is outdated in {path}.'
+
+        last_api_ver = meta.get('last_api_version')
+        if last_api_ver:
+            msg += f' The last one is {last_api_ver}.'
+
+        print ('*'*80)
+        print (msg)
+
+        return {'return':0}
+
     ###################################################################################################
     def access(
         self,
@@ -327,22 +346,6 @@ class CMeta:
         # Manual override of global self.debug and self.fail_on_error
         self_fail_on_error = self.fail_on_error
         self_debug = self.debug
-
-# GF: it does't work as intended at this moment
-#        if 'debug' in request: 
-#            self_debug = request.get('debug')
-#            if self_debug is None: 
-#                self_debug = False
-#            if self_debug:
-#                self.logger.setLevel(logging.DEBUG)
-#                self_fail_on_error = True
-#
-#        for key in ['fail_on_error', 'fail-on-error', 'fail']:
-#            if key in request:
-#                self_fail_on_error = request.get(key)
-#                if self_fail_on_error is None: 
-#                    self_fail_on_error = False
-#                break
 
         # Log where this call is coming from if debug
         if self_debug:
@@ -370,18 +373,16 @@ class CMeta:
             params['ctx'] = {}
         ctx = params.get('ctx', {})
 
-        # Prepare filtered params for reproducibility
-        params_reproduce = request.copy()
-        if 'ctx' in params_reproduce: del(params_reproduce['ctx'])
-        ctx['params'] = params_reproduce
+        cur_dir = os.getcwd()
 
         # If origin(al) call is not in the context, add it for further
         # reuse, debugging and reproducibility
         if 'origin' not in ctx:
             origin = {}
 
-            if self_debug:
-                origin['pwd'] = os.getcwd()
+            # This helps deep scripts get original directory 
+            # (useful for various automations)
+            origin['pwd'] = cur_dir
 
             if '_cli' in params:
                 origin['cli'] = params['_cli']
@@ -404,12 +405,14 @@ class CMeta:
 
         # Check and extract control params
         r = utils.check_params(params, control_params_desc, fail_on_error=self_fail_on_error)
-        if r['return'] > 0: return r
+        if self.catch_error(r): return r
 
         # remaining params are command params
         command_params = r['remaining_params']
 
         control_params = r['checked_params']
+
+        saved_control = ctx.get('control')
         ctx['control'] = control_params
 
         # Continue processing request
@@ -418,8 +421,37 @@ class CMeta:
         # Force con in control_params to simplify APIs
         control_params['con'] = con
 
+        repro = control_params.get('repro', False)
+
         result = {'return':0}
 
+        ###########################################################################################
+        if repro:
+            for x in ['repro_input_file', 'repro_input_file_rt', 'repro_output_file']:
+                if os.path.isfile(self.cfg[x]):
+                    r = utils.files.remove_files_and_dirs_in_path(self.cfg[x])
+                    if self.catch_error(r): return r
+
+            request_copy = request.copy()
+
+            # Clean repro request to avoid overwriting reproducibility files
+            x_cmd = request_copy.get('_cli', {}).get('cmd',{})
+            if x_cmd:
+                for x in ['r', 'repro']:
+                    if x in request_copy:
+                        del(request_copy[x])
+                    for x1 in ['-', '--']:
+                        x2 = x1 + x
+                        if x2 in x_cmd:
+                            x_cmd.remove(x2)
+
+            r = utils.files.write_file(self.cfg['repro_input_file'], request_copy)
+            if self.catch_error(r): return r
+
+            ctx_repro = ctx.setdefault('repro', {})
+
+
+        ###########################################################################################
         category_obj = control_params.get('category')
 
         # Check if runs for the first time (there is no repos.json and index)
@@ -431,7 +463,7 @@ class CMeta:
             ctx['origin']['control'] = control_params
 
         r = self.repos.init(con=con, verbose=verbose)
-        if r['return'] >0: return r
+        if self.catch_error(r): return r
 
         if category_obj is None:
             if params.get('version', False) or params.get('V', False):
@@ -481,7 +513,7 @@ class CMeta:
 
             elif control_params.get('reindex', False):
                 r = self.repos.reindex(con=con, verbose=verbose)
-                if r['return']>0: return r
+                if self.catch_error(r): return r
 
             else:
                 return self.error('"category" is not defined')
@@ -489,14 +521,14 @@ class CMeta:
         else:
             # Prepare to search for category record as artifact (category_name -> artifact_name, category_name = "category")!
             r = utils.names.parse_cmeta_obj(category_obj, key = "artifact", fail_on_error = self_fail_on_error)
-            if r['return'] >0: return r
+            if self.catch_error(r): return r
 
             cmeta_ref_parts = r['obj_parts']
             cmeta_ref_parts['category_alias'] = 'category'
             cmeta_ref_parts['category_uid'] = 'dd9ea50e7f76467f'
 
             r = self.repos.find(cmeta_ref_parts)
-            if r['return']>0: return r
+            if self.catch_error(r, fail16=True): return r
 
             category_artifacts = r['artifacts']
 
@@ -522,7 +554,7 @@ class CMeta:
                 command = command.strip().lower().replace('-', '_')
 
             if command.endswith('_'):
-                return {'return':1, 'error': f"command shouldn't end with _ ({command})"}
+                return self.error(f"command shouldn't end with _ ({command})")
 
             ctx['command'] = command
 
@@ -548,25 +580,25 @@ class CMeta:
 
             if base_command:
                 if category_meta.get('skip_base_category_commands', False):
-                    return {'return':1, 'error':'this category doesn\'t use base commands'}
+                    return self.error('this category doesn\'t use base commands')
 
-                if category_api_ver is not None and str_category_api_ver != '0':
+                if str_category_api_ver is not None:
                     base_category_api_module_ver = str_category_api_ver
-                elif inside_cli or str_category_api_ver == '0':
-                    base_category_api_module_ver = str(self.cfg['base_category_last_api_version'])
+                elif 'base_category_last_api_version' in self.cfg:
+                    base_category_api_module_ver = self.cfg['base_category_last_api_version']
+
             else:
-                if category_api_ver is not None and str_category_api_ver != '0':
+                if category_api_ver is not None:
                     category_api_module_ver = str_category_api_ver
-                elif inside_cli or str_category_api_ver == '0':
-                    if category_meta.get('last_api_version') is not None:
-                        category_api_module_ver = str(category_meta['last_api_version'])
+                elif 'last_api_version' in category_meta:
+                    category_api_module_ver = str(category_meta['last_api_version'])
 
                 if not category_meta.get('skip_base_category_commands', False):
                     if category_meta.get('base_category_default_api_versions', {}).get(category_api_module_ver) is not None:
                         base_category_api_module_ver = str(category_meta['base_category_default_api_versions'][category_api_module_ver])
                     elif category_meta.get('base_category_default_api_version') is not None:
                         base_category_api_module_ver = str(category_meta['base_category_default_api_version'])
-           
+
             # Check min cMeta versions
             category_min_cmeta_version = category_meta.get('min_cmeta_version_api')
 
@@ -576,9 +608,12 @@ class CMeta:
             if category_min_cmeta_version is not None:
                 from .version import __version__
                 r = utils.common.compare_versions(category_min_cmeta_version, __version__)
-                if r['return']>0: return r
+                if self.catch_error(r): return r
                 if r['comparison'] == '>':
-                    return {'return':1, 'error': f'this category requires min cMeta version "{category_min_cmeta_version}" but "{__version__}" is installed'}
+                    return self.error(f'this category requires min cMeta version "{category_min_cmeta_version}" but "{__version__}" is installed')
+
+            if repro: 
+                ctx_repro['api'] = str(category_api_module_ver)
 
             # Prepare paths to APIs
             category_apis = []
@@ -587,7 +622,7 @@ class CMeta:
                 category_api_path = os.path.join(category_artifact['path'], 'api', f'v{category_api_module_ver}.py')
 
                 if os.path.isfile(category_api_path):
-                    category_apis.append({'path':category_api_path, 'suffix': category_uid})
+                    category_apis.append({'path':category_api_path, 'suffix': category_uid, 'api_version': category_api_module_ver})
                 elif category_api_ver is not None or category_api_module_ver != '1':
                     return self.error(f'couldn\'t find category API "{category_api_path}"')
 
@@ -597,18 +632,25 @@ class CMeta:
                 if not os.path.isfile(category_api_path):
                     return self.error(f'couldn\'t find category API "{category_api_path}"')
 
-                category_apis.append({'path':category_api_path, 'base':True})
+                category_apis.append({'path':category_api_path, 'base':True, 'api_version': base_category_api_module_ver})
 
             # Load categories
             for category_api in category_apis:
                 # category api path should be resolved by now
                 suffix = category_api.get('suffix')
 
-                r = utils.sys.load_module(category_api['path'], self.module_cache, fail_on_error = self_fail_on_error, 
-                                          init_class="Category", cmeta=self, suffix=suffix, self_meta=category_meta)
-                if r['return'] >0: return r
+                r = utils.sys.load_module(category_api['path'], 
+                                          self.module_cache, 
+                                          fail_on_error = self_fail_on_error, 
+                                          init_class = "Category", 
+                                          cmeta = self, 
+                                          suffix = suffix, 
+                                          self_meta = category_meta,
+                )
+                if self.catch_error(r): return r
 
                 category_api['code'] = r['cache']['initialized_class']
+                category_api['code'].api_version = category_api['api_version']
                 category_api['full_module_name'] = r['cache']['full_module_name']
 
             ###################################################################################################
@@ -638,7 +680,7 @@ class CMeta:
                         caller = os.path.basename(sys.executable) + f" -m {__package__}"
 
                     if not con:
-                        return {'return':1, 'error':f'"command" key is missing in the request {request}'}
+                        return self.error(f'"command" key is missing in the request {request}')
 
                     else:
                         if not control_params.get('help', False):
@@ -670,7 +712,7 @@ class CMeta:
                                         nname = name[:-1]
 
                                     r = utils.sys.find_func_definition(category_api_code, name)
-                                    if r['return']>0: return r
+                                    if self.catch_error(r): return r
 
                                     filename = r['filename']
                                     start_line = r['start_line']
@@ -725,7 +767,7 @@ class CMeta:
 
                     # Select which function to use (we check names with __ to differentiate from internal Python names if needed)
                     r = utils.sys.find_command_func(category_api_code, command_alias)
-                    if r['return']>0: return r
+                    if self.catch_error(r): return r
 
                     func = r['func']
 
@@ -742,11 +784,11 @@ class CMeta:
 
                 if control_params.get('help', False):
                     r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error = self_fail_on_error)
-                    if r['return']>0: return r
+                    if self.catch_error(r): return r
                     category_str = r['obj']
 
                     r = utils.sys.get_api_info(category_api_code, command_func_name, f'{category_str} {command}', control_params_desc, category_apis=category_apis)
-                    if r['return'] > 0: return r
+                    if self.catch_error(r): return r
 
                     help_text = r['api_info']
 
@@ -758,7 +800,7 @@ class CMeta:
                 else:
                     if self_debug:
                         r = utils.sys.find_func_definition(category_api_code, command_func_name)
-                        if r['return']>0: return r
+                        if self.catch_error(r): return r
 
                         filename = r['filename']
                         start_line = r['start_line']
@@ -785,7 +827,7 @@ class CMeta:
 #                            ste = ste[j:]
 
                         r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error = self_fail_on_error)
-                        if r['return']>0: return r
+                        if self.catch_error(r): return r
                         category_str = r['obj']
 
                         extra_flags_help = category_meta.get('extra_flags_help', '')
@@ -798,7 +840,7 @@ class CMeta:
 #
 #                            err += '\n\nSee ' + r['api_info']
 
-                        return {'return':1, 'error':err}
+                        return self.error(err)
 
         # Get self timing
         self_time = time.perf_counter() - self_time_start
@@ -806,11 +848,24 @@ class CMeta:
 
         ctx['nested_call'] -= 1
 
-        if self_debug:
+        if saved_control:
+            ctx['control'] = saved_control
+        else:
+            del(ctx['control'])
 
+        # Timer for debugging
+        if self_debug:
             self.logger.debug('')
             self.logger.debug(f'SELF TIME: {self_time:.3f} sec.')
             self.logger.debug('')
+
+        # Save reproducibility info (similar to json_file but with fixed file)
+        if repro:
+            r = utils.files.write_file(self.cfg['repro_input_file_rt'], ctx_repro)
+            if self.catch_error(r): return r
+
+            r = utils.files.write_file(self.cfg['repro_output_file'], result)
+            if self.catch_error(r): return r
 
         # Finalize call
         if control_params.get('json', False):
@@ -824,6 +879,16 @@ class CMeta:
         if json_file is not None and json_file!='':
             r = utils.files.write_file(json_file, result)
             if self.catch_error(r): return r
+
+        if control_params.get('dump', False):
+            cur_dir2 = os.getcwd()
+            os.chdir(cur_dir)
+
+            r = utils.files.write_file(self.cfg['dump_ctx_output_file'], ctx)
+            if self.catch_error(r): return r
+
+            os.chdir(cur_dir2)
+
 
         return result
 

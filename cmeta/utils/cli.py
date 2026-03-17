@@ -26,7 +26,7 @@ def parse_cmd(
         - List flags: --key, (creates list)
         - Nested keys: --parent.child=value
         - File inclusion: @filename (loads JSON/YAML)
-          Note: On Windows, wrap file paths in double quotes if they contain backslashes (\)
+          Note: On Windows, wrap file paths in double quotes if they contain backslashes
           to prevent shlex.split() from interpreting them as escape characters.
         - Argument separator: -- (remaining args go to 'unparsed')
 

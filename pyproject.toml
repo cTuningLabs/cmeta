@@ -67,6 +67,12 @@ cx = "cmeta.cli:main_cx"
 cxt = "cmeta.cli:main_cxt"
 cserver = "cmeta.cli:main_cserver"
 
+ucmeta = "cmeta.cli:main_ucmeta"
+umeta = "cmeta.cli:main_umeta"
+ucx = "cmeta.cli:main_ucx"
+ucxt = "cmeta.cli:main_ucxt"
+ucserver ="cmeta.cli:main_ucserver"
+
 [tool.setuptools.dynamic]
 version = {attr = "cmeta.version.__version__"}
 

@@ -66,8 +66,11 @@ def select_artifact_(
     load_files: list = [],  # Value for load files.
     space: str = '',  # Value for space.
     load_api: bool = False,  # Value for load api.
-    load_api_ver: int = 0,  # Value for load api ver.
+    load_api_ver: str = None,  # Value for load api ver.
     load_api_class: str = None,  # Value for load api class.
+    inside_cli: bool = None, # True if calls were from inside CLI,
+                             # in such case, attempt to load the last available version of code
+                             # if load_api is True
     print_extra_line: bool = False,  # Value for print extra line.
 ):
 
@@ -105,7 +108,8 @@ def select_artifact_(
 
     con = ctx['control'].get('con', False)
     quiet = ctx['control'].get('quiet', False)
-    inside_cli = 'cli' in ctx.get('origin',{})
+    if inside_cli is None:
+        inside_cli = 'cli' in ctx.get('origin',{})
 
     select_category_name = select_category['artifact_alias'] if type(select_category)==dict else str(select_category)
 
@@ -252,8 +256,11 @@ def select_artifact_(
             new_index_int = 0
 
         else:
-            print ('')
-            new_index = input(f'{space}Make your selection or press Enter for 0: ').strip()
+            if con:
+                print ('')
+                new_index = input(f'{space}Make your selection or press Enter for 0: ').strip()
+            else:
+                new_index = ''
 
             new_index_int = 0 if new_index == '' else int(new_index)
 
@@ -303,12 +310,18 @@ def select_artifact_(
 
     # Check min cMeta versions
 
+#    xver = '1'
+#    if load_api_ver is not None and str(load_api_ver) != '0':
+#        xver = load_api_ver
+#    elif inside_cli or str(load_api_ver) == '0':
+#        if cmeta.get('last_api_version') is not None:
+#            xver = str(cmeta['last_api_version'])
+
     xver = '1'
-    if load_api_ver is not None and str(load_api_ver) != '0':
-        xver = load_api_ver
-    elif inside_cli or str(load_api_ver) == '0':
-        if cmeta.get('last_api_version') is not None:
-            xver = str(cmeta['last_api_version'])
+    if load_api_ver is not None:
+        xver = str(load_api_ver)
+    elif 'last_api_version' in cmeta:
+        xver = cmeta['last_api_version']
 
     min_cmeta_version = cmeta.get('min_cmeta_version_api')
     if min_cmeta_version is None:
@@ -328,7 +341,7 @@ def select_artifact_(
         artifact_api_path = os.path.join(artifact_path, f'api_v{xver}.py')
         result['api_path'] = artifact_api_path
 
-        if load_api_ver is not None and not os.path.isfile(artifact_api_path):
+        if (load_api_ver is not None or xver != '1') and not os.path.isfile(artifact_api_path):
             return self.cm.error(f'customization module not found in "{artifact_api_path}"')
 
         artifact_api_code = None
@@ -344,6 +357,8 @@ def select_artifact_(
             if self.cm.catch_error(r): return r
 
             artifact_api_code = r['cache']['initialized_class']
+
+            result['load_api_ver_resolved'] = xver
 
         result['api_code'] = artifact_api_code
 

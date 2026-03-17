@@ -325,6 +325,7 @@ class Category(InitCategory):
         """
             Update artifact(s).
 
+            Args:
                 ctx (dict): cMeta context.
                 arg1 (str | None): cMeta artifact(s) with wildcards.
                 tags (str | list | None): Prune artifacts by tags.
@@ -346,20 +347,6 @@ class Category(InitCategory):
                     - **artifacts** (list): All matched artifacts.
                     - **updated_artifacts** (list): Updated artifacts.
 
-            Args:
-                ctx (dict): Execution context dictionary with category, command, and control data.
-                arg1 (str): First positional argument from command input.
-                tags (str): Value for tags.
-                sort (bool): Value for sort.
-                skip_uids (bool): If True, skip UID validation in wildcard lookups.
-                meta (dict): Metadata dictionary to persist.
-                new_tags (str): Value for new tags.
-                replace_lists (bool): Value for replace lists.
-                replace (bool): Value for replace.
-                ignore_errors (bool): Value for ignore errors.
-                create (bool): Value for create.
-                create_params (dict): Value for create params.
-                update_category (bool): Value for update category.
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
@@ -546,6 +533,7 @@ class Category(InitCategory):
                 skip_uids (bool): Skip UIDs when using wildcards.
                 yaml (bool): Output as YAML instead of JSON.
                 load_files: Value for load files.
+
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -623,6 +611,7 @@ class Category(InitCategory):
                 skip_uids (bool): Skip UIDs when using wildcards.
                 ignore_errors (bool): Ignore errors when deleting multiple artifacts.
                 print_time (bool): Print time per deletion.
+
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -743,6 +732,7 @@ class Category(InitCategory):
                 yaml (bool): Save metadata as YAML instead of JSON.
                 virtual (bool): Virtual artifact created only in index (such as repo).
                 path (str | None): Use this path for artifact (useful for virtual artifacts such as repo).
+
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -976,6 +966,7 @@ class Category(InitCategory):
                 skip_uids (bool): Skip UIDs when using wildcards.
                 ignore_errors (bool): Ignore errors when updating multiple artifacts.
                 copy (bool): If True, copy artifact instead of moving.
+
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -1253,6 +1244,7 @@ class Category(InitCategory):
 
             Args:
                 params (dict): cMeta params.
+
             Returns:
                 dict: A cMeta dictionary (see move_ for details).
 
@@ -1295,6 +1287,7 @@ class Category(InitCategory):
                 path (str | None): Use this path for artifact (used during creation).
                 show_path (bool): Print path instead of meta
                 load_files: Value for load files.
+
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -1370,6 +1363,7 @@ class Category(InitCategory):
                 virtual (bool): Virtual artifact created only in index (used during creation).
                 path (str | None): Use this path for artifact (used during creation).
                 show_path (bool): Print path instead of meta
+
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.

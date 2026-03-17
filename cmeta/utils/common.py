@@ -928,7 +928,7 @@ def build_sort_key(
 ###################################################################################################
 def expand_string(
     template: str,  # Value for template.
-    values: dict,  # Input values.
+    values: dict,   # Input values.
 ) -> str:
     """
         Expand template placeholders from a values dictionary.
@@ -937,10 +937,14 @@ def expand_string(
             template: Value for template.
             values: Input values.
         Returns:
-            str: Result value.
+            string: Result string value.
+            (value): Result non-string value only if only one and non string!
+                     (useful for env dict for example)
+
         Raises:
             Exception: Propagated runtime errors, if any.
     """
+
     out = []
     i = 0
 
@@ -950,7 +954,10 @@ def expand_string(
             out.append(template[i:])
             break
 
-        out.append(template[i:start])
+        x = template[i:start]
+        if x != '':
+            out.append(x)
+
         end = template.find("}}", start + 2)
         if end == -1:
             return {'return':1, 'error':f'Unclosed "{{" in "{template}"'}
@@ -982,11 +989,19 @@ def expand_string(
                 cur = cur[part]
             else:
                 if default is not None:
+                    if default.startswith('$'):
+                        import ast
+
+                        try:
+                            default = ast.literal_eval(default[1:])
+                        except (ValueError, SyntaxError):
+                            pass  # use original string 
+
                     cur = default
                     break
                 return {'return':1, 'error':f'Missing key "{key}" in context dict'}
 
-        v = str(cur)
+        v = cur
 
         if use_uid or use_alias:
             from .names import parse_cmeta_name
@@ -1005,21 +1020,26 @@ def expand_string(
 
         out.append(v)
 
-    return {'return':0, 'string': "".join(out)}
+    result = {'return':0, 'string': "".join(map(str, out))}
+
+    if len(out) == 1 and type(out[0]) != str:
+        result['value'] = out[0]
+
+    return result
 
 ###################################################################################################
 def expand_strings_in_dict(
-    data: dict,  # Dictionary to process (modified in-place)
+    data,  # Dictionary or list to process (modified in-place)
     values: dict,  # Dictionary of values for template expansion
 ) -> dict:
     """
-        Recursively expand template strings in a dictionary structure.
+        Recursively expand template strings in a dictionary/list structure.
 
         Traverses dictionaries and lists, calling expand_string on any string values found.
-        Updates the original dictionary in-place if expansion succeeds.
+        Updates the original data in-place if expansion succeeds.
 
         Args:
-            data: Dictionary to process (modified in-place)
+            data: Dictionary or list to process (modified in-place)
             values: Dictionary of values for template expansion
 
         Returns:
@@ -1043,7 +1063,7 @@ def expand_strings_in_dict(
                 Exception: Propagated runtime errors, if any.
         """
         if isinstance(value, dict):
-            r = expand_string_in_dict(value, values)
+            r = expand_strings_in_dict(value, values)
             if r['return'] > 0:
                 return r
             return {'return': 0, 'value': value}
@@ -1060,18 +1080,38 @@ def expand_strings_in_dict(
             r = expand_string(value, values)
             if r['return'] > 0:
                 return r
-            return {'return': 0, 'value': r['string']}
+
+            result = {'return': 0}
+
+            if 'value' in r:
+                result['value'] = r['value']
+            else:
+                result['value'] = r['string']
+
+            return result
             
         else:
             # Non-string, non-dict, non-list values pass through unchanged
             return {'return': 0, 'value': value}
     
-    # Process each key-value pair in the dictionary
-    for key, value in data.items():
-        r = process_value(value)
-        if r['return'] > 0:
-            return r
-        data[key] = r['value']
+    if isinstance(data, dict):
+        # Process each key-value pair in the dictionary
+        for key, value in data.items():
+            r = process_value(value)
+            if r['return'] > 0:
+                return r
+            data[key] = r['value']
+
+    elif isinstance(data, list):
+        # Process each list element in place
+        for i, value in enumerate(data):
+            r = process_value(value)
+            if r['return'] > 0:
+                return r
+            data[i] = r['value']
+
+    else:
+        return {'return': 1, 'error': f'data should be dict or list - got {type(data)}'}
     
     return {'return': 0}
 

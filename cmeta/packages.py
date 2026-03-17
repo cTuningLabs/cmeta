@@ -158,8 +158,22 @@ class Packages:
                 upper = f"{base.major}.{base.minor + 1}"
             return f">={base},<{upper}"
         if spec.endswith(".*"):
-            major = int(spec.split(".")[0])
-            return f">={major},<{major + 1}"
+            wildcard_base = spec[:-2]
+            parts = [p for p in wildcard_base.split(".") if p != ""]
+
+            if not parts:
+                return spec
+
+            try:
+                numeric_parts = [int(p) for p in parts]
+            except Exception:
+                return spec
+
+            lower = ".".join(str(x) for x in numeric_parts)
+            upper_parts = numeric_parts[:-1] + [numeric_parts[-1] + 1]
+            upper = ".".join(str(x) for x in upper_parts)
+
+            return f">={lower},<{upper}"
         return spec
 
     def build_spec(
@@ -903,19 +917,16 @@ class Packages:
                         if (requested_parsed.public == detected_parsed.public and
                             detected_parsed.local.startswith(requested_parsed.local)):
                             return {'return':0, 'matched': True}
-                    
-                    # For versions with local identifiers, we can't use them in specifiers
-                    # Strip the local part and use base version for near match
-                    # e.g., "2.49.0+windows" -> use "~2.49.0" to match "2.49.0+windows.1"
+
+                    # No operator means prefix-version intent for user convenience:
+                    # "3.9" -> "3.9.*", "3.9.3" -> "3.9.3.*"
+                    # Keep explicit local/platform handling above unchanged.
                     if requested_parsed.local:
-                        # Use the public (base) version for specifier matching
-                        requested = f"~{requested_parsed.public}"
-                    else:
-                        # No local version, safe to use as-is
-                        requested = f"~{requested_clean}"
+                        return {'return':0, 'matched': False}
+                    requested = f"{requested_clean}.*"
                 except:
-                    # If parsing fails, try treating as near match with original value
-                    requested = f"~{requested}"
+                    # If parsing fails, fall back to prefix semantics
+                    requested = f"{requested}.*"
             else:
                 # Has operator - need to handle operators with platform identifiers
                 import re

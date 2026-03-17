@@ -84,6 +84,12 @@ cfg = {
         },
 
         "default_config_name": "default",
+
+        "repro_input_file": "cmeta-repro-input.json",
+        "repro_input_file_rt": "cmeta-repro-input2.json",
+        "repro_output_file": "cmeta-repro-output.json",
+
+        "dump_ctx_output_file": "cmeta-ctx.json",
 }
 
 params_desc = [
@@ -91,6 +97,7 @@ params_desc = [
   {'key':'reindex', 'type': bool, 'desc': 'Reindex all artifacts'},
   {'key':'verbose', 'aliases':['v'], 'type': bool, 'desc': 'Use verbose output'},
   {'key':'quiet', 'aliases':['q'], 'type': bool, 'desc': 'Quetly select default answer to questions'},
+  {'key':'repro', 'aliases':['r'], 'type': bool, 'desc': 'Save input and related into to cmeta-reproduce-input.json'},
 ]
 
 params_command_desc = [
@@ -106,6 +113,7 @@ params_command2_desc = [
   {'key':'con', 'type': bool, 'desc': 'Force output to console', 'space_before':True },
   {'key':'json', 'aliases':['j'], 'type': bool, 'desc': 'Print command output as JSON' },
   {'key':'json_file', 'aliases':['json-file', 'jf'], 'type': str, 'desc': 'Specify json file to save command output' },
+  {'key':'dump', 'type': bool, 'desc': 'Dump context to cmeta-ctx.json at the end of a command' },
 ]
 
 params_command3_desc = [
@@ -256,14 +264,14 @@ def check_init_vars_from_env():
     ENV_CMETA_LOG_FILE = cfg['env_cmeta_log_file']
 
     # First check main home variable
-    home = os.environ.get(ENV_CMETA_HOME, '')
+    home = os.environ.get(ENV_CMETA_HOME, '').strip()
     if home == '':
         # Smart home - first virtual env and if not, then use this var
-        home = os.environ.get(cfg['env_var_virtual_env'], '')
+        home = os.environ.get(cfg['env_var_virtual_env'], '')       # VIRTUAL_ENV
         if home == '':
-            home = os.environ.get(cfg['env_var_virtual_env2'], '')
+            home = os.environ.get(cfg['env_var_virtual_env2'], '')  # CONDA_PREFIX
         if home == '':
-            home = os.environ.get(ENV_CMETA_HOME2, '')
+            home = os.environ.get(ENV_CMETA_HOME2, '').strip()
         else:
             home = os.path.join(home, cfg['capitalized_name'])
 
@@ -319,7 +327,18 @@ def update_init_and_setup_logger(
         init[k] = force_init[k]
 
     if is_on(init.get('home')):
-        init['home'] = str(Path.home() / cfg['capitalized_name'])
+        ENV_CMETA_HOME = cfg['env_var_home']
+        ENV_CMETA_HOME2 = cfg['env_var_home2']
+
+        # If home is specified as bool True (rather than path),
+        # Check internal vars and then USER space
+        home = os.environ.get(ENV_CMETA_HOME, '').strip()
+        if home == '':
+            home = os.environ.get(ENV_CMETA_HOME2, '').strip()
+        if home == '':
+            home = os.path.join(Path.home(), cfg['capitalized_name'])
+
+        init['home'] = home
 
     if init.get('log_file') is not None and init.get('log_level') is None:
         init['log_level'] = 'DEBUG'

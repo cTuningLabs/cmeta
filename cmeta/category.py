@@ -62,9 +62,14 @@ class InitCategory:
 
             module_name = file_path.stem
 
-            path_parts = file_path.parts
-        
-            category_module_name = '#' + path_parts[-3] + '#' + path_parts[-2] + '.' + module_name
+            if module_name.startswith('category_api_v'):
+                # Internal name
+                x = ''
+            else:
+                path_parts = file_path.parts
+                x = '___' + path_parts[-3] + '___.' + path_parts[-2] + '.'
+
+            category_module_name = x + module_name
 
             module_path = os.path.dirname(module_file_path)
             path = os.path.dirname(module_path)
@@ -124,7 +129,10 @@ class InitCategory:
 
         p['category'] = ctx['category']
         p['command'] = ctx['command']
-        p['con'] = ctx['control']['con']
+
+        for k in ['con', 'verbose', 'quiet']:
+            if k in ctx['control']: 
+                p[k] = ctx['control'][k]
 
         if base:
             p['base'] = True
@@ -157,7 +165,10 @@ class InitCategory:
 
         p['category'] = ctx['category']
         p['command'] = ctx['command']
-        p['con'] = ctx['control']['con']
+
+        for k in ['con', 'verbose', 'quiet']:
+            if k in ctx['control']: 
+                p[k] = ctx['control'][k]
 
         if base:
             p['base'] = True

@@ -1,4 +1,7 @@
-﻿cMeta (0.24.0):
+﻿cMeta (0.25.0):
+  * changed API version handling logic (now using the last one by default)
+
+cMeta (0.24.0):
   * simplified error and logging handling logic
   * updated state -> ctx (context)
    

@@ -461,6 +461,7 @@ def run(
     timeout: int = None,  # None by default. TBD: Current timeout doesn't terminate subprocesses.
     verbose: bool = False,  # If True, print extra info.
     hide_in_cmd: list = None,  # List of keys in CMD to hide (for secrets).
+    hide_in_env: list = None,  # List of keys in ENV to hide (for secrets).
     save_script: str = '',  # Save script for reproducibility.
     run_script: bool = False,  # Run created script (useful for pipes).
     script_prefix: str = '',  # Add prefix string to script.
@@ -473,6 +474,7 @@ def run(
     capture_env: bool = False,  # If True, capture and return environment changes produced by the command.
     print_env_keys: list = None,  # Environment variable keys to print after execution.
     print_extra_line: bool = False,  # If True, print an extra blank line in console output.
+    print_cur_dir: bool = False, # If True, print current directory before running command
 ):
     """
         Run CMD with environment.
@@ -488,6 +490,7 @@ def run(
             timeout (int | None): None by default. TBD: Current timeout doesn't terminate subprocesses.
             verbose (bool): If True, print extra info.
             hide_in_cmd (list | None): List of keys in CMD to hide (for secrets).
+            hide_in_env (list | None): List of keys in ENV to hide (for secrets).
             save_script (str): Save script for reproducibility.
             run_script (bool): Run created script (useful for pipes).
             script_prefix (str): Add prefix string to script.
@@ -502,6 +505,7 @@ def run(
             capture_env (bool): If True, capture and return environment changes produced by the command.
             print_env_keys (list): Environment variable keys to print after execution.
             print_extra_line (bool): If True, print an extra blank line in console output.
+            print_cur_dir (bool): If True, print current directory before running command
         Returns:
             dict: Unified output with 'return', 'returncode', 'stdout', 'stderr'.
 
@@ -513,10 +517,13 @@ def run(
     import os
     import platform
 
+    if not con: verbose = False
+
+    cur_dir = os.getcwd()
+
     if work_dir is not None:
         if not os.path.isdir(work_dir):
             return {'return':1, 'error':f'Directory doesn\'t exist: {work_dir}'}
-        cur_dir = os.getcwd()
         os.chdir(work_dir)
 
     # Initialize mutable defaults
@@ -528,6 +535,8 @@ def run(
         genv = {}
     if hide_in_cmd is None:
         hide_in_cmd = []
+    if hide_in_env is None:
+        hide_in_env = []
 
     # Just in case, check if input comes from CMD
     if timeout is not None:
@@ -566,13 +575,23 @@ def run(
     if capture_env:
         r = files.gen_temp_filepath()
         if r['return']>0: return r
+        temp_file_to_collect_env_before = r['filepath']
 
-        temp_file_to_collect_env = r['filepath']
+        r = files.gen_temp_filepath()
+        if r['return']>0: return r
+
+        temp_file_to_collect_env_after = r['filepath']
 
         x = 'set' if os.name == 'nt' else 'env'
 
-        cmd += f' && {x} > {temp_file_to_collect_env}'
+        xcmd = f'{x} > {temp_file_to_collect_env_before} && '
 
+        if cmd != '':
+            xcmd += cmd + ' && '
+
+        xcmd += f'{x} > {temp_file_to_collect_env_after}'
+
+        cmd = xcmd
 
     env1 = '%' if platform.system() == "Windows" else '${'
     env2 = '%' if platform.system() == "Windows" else '}'
@@ -609,7 +628,9 @@ def run(
             v = print_env[k]
 
             if verbose:
-                print(f'ENV {k}={v}')
+                vx = v if k not in hide_in_env else '***'
+
+                print(f'{space}ENV {k}={vx}')
 
             if save_script != '':
                 x = 'set' if os.name == 'nt' else 'export'
@@ -634,6 +655,11 @@ def run(
                 j1 = len(xcmd)
             if j1 >= 0:
                 xcmd = xcmd[:j+len(h)] + '***' + xcmd[j1:]
+
+    if verbose and print_cur_dir:
+        print('')
+        print (f'{space}PWD: {cur_dir}')
+
 
     if verbose or print_cmd:
         print('')
@@ -730,11 +756,7 @@ def run(
             stderr = format(e)
             returncode = -1
 
-        if returncode<0 and verbose:
-             print ('')
-             print (f'{space}WARNING: Command timeout after {timeout} secs.')
-             
-        elif returncode>0 and stderr != '' and verbose:
+        if returncode != 0 and stderr != '' and verbose:
              print ('')
              print (f'{space}WARNING: Command failed: {stderr}')
 
@@ -745,22 +767,38 @@ def run(
 
     # Check if collect env
     if capture_env:
-        r = files.read_file(temp_file_to_collect_env, fail_on_error = fail_on_error, logger = logger)
+        r = files.read_file(temp_file_to_collect_env_before, fail_on_error = fail_on_error, logger = logger)
+        if r['return']>0: 
+            return _error(f'Capture env output file not found (before): {temp_file_to_collect_env_before}', 1, None, fail_on_error)
+
         try:
-            os.remove(temp_file_to_collect_env)
+            os.remove(temp_file_to_collect_env_before)
         except Exception as e:
             pass
-
-        if r['return']>0: return r
 
         r = files.parse_env_dump(r['data'])
         if r['return']>0: return r
 
-        collected_env = r['env']
+        collected_env_before = r['env']
 
-        result['collected_env'] = collected_env
+        r = files.read_file(temp_file_to_collect_env_after, fail_on_error = fail_on_error, logger = logger)
+        if r['return']>0: 
+            return _error(f'Capture env output file not found (after): {temp_file_to_collect_env_after}', 1, None, fail_on_error)
 
-        r = files.diff_env(cur_env, collected_env)
+        try:
+            os.remove(temp_file_to_collect_env_after)
+        except Exception as e:
+            pass
+
+        r = files.parse_env_dump(r['data'])
+        if r['return']>0: return r
+
+        collected_env_after = r['env']
+
+        result['collected_env_before'] = collected_env_before
+        result['collected_env_after'] = collected_env_after
+
+        r = files.diff_env(collected_env_before, collected_env_after)
         if r['return']>0: return r
 
         result['env_added'] = r['env_added']
