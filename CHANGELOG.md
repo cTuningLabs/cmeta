@@ -1,5 +1,6 @@
 ﻿cMeta (0.25.0):
   * changed API version handling logic (now using the last one by default)
+  * many minor updates and improvements for cMeta tasks
 
 cMeta (0.24.0):
   * simplified error and logging handling logic

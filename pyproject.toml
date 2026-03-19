@@ -79,6 +79,7 @@ version = {attr = "cmeta.version.__version__"}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["cmeta*"]
+exclude = ["tests*", "*.tests", "*.tests.*", "cmeta.tests*"]
 
 [tool.setuptools]
 
@@ -99,6 +100,7 @@ include = ["cmeta*"]
 
 [tool.setuptools.exclude-package-data]
 "*" = [
+    "tests/**/*",
     "__pycache__",
     "*.pyc",
     "*.pyo",

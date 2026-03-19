@@ -1,0 +1,5 @@
+﻿# Remove the entire tests directory from the source distribution
+prune tests
+
+# (optional but recommended cleanup)
+global-exclude __pycache__ *.py[cod] *.pyo
