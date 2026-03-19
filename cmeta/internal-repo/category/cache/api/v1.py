@@ -216,3 +216,32 @@ class Category(InitCategory):
         p['force'] = True
 
         return self.cm.access(p)
+
+    ############################################################
+    def delete(
+        self,
+        params: dict,  # cMeta parameters.
+    ):
+        """
+            Args:
+                params (dict): cMeta parameters.
+
+            Returns:
+                dict: Dictionary with 'return': 0.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        # p will be deep copied from params
+        p = self._prepare_input_from_params(params, base = True)
+
+        arg1 = p.get('arg1', '')
+        if arg1 is None: arg1 = ''
+
+        if ':' not in arg1:
+            arg1 = 'local:' + arg1
+
+        p['arg1'] = arg1
+
+        return self.cm.access(p)
