@@ -321,6 +321,9 @@ class Category(InitCategory):
         create: bool = False,  # Value for create.
         create_params: dict = {},  # Value for create params.
         update_category: bool = False,  # Value for update category.
+        match: dict = None,  # Value for match.
+        match_empty_version: bool = False,  # Value for match empty version.
+        all_tags: str = None,  # Value for all tags.
     ):
         """
             Update artifact(s).
@@ -356,7 +359,16 @@ class Category(InitCategory):
 
         ctx['control']['con'] = False
 
-        r = self.find_(ctx, arg1, tags, sort, add_index_file=True, skip_uids=skip_uids)
+        r = self.find_(ctx, 
+                       arg1, 
+                       tags, 
+                       sort, 
+                       add_index_file=True, 
+                       skip_uids=skip_uids,
+                       match=match,
+                       match_empty_version=match_empty_version,
+                       all_tags=all_tags,
+        )
         if r['return']>0:
             if r['return']!=16 or not create: 
                 return r
@@ -364,7 +376,16 @@ class Category(InitCategory):
             r = self.create_(ctx, arg1, **create_params)
             if r['return']>0: return r
 
-            r = self.find_(ctx, arg1, tags, sort, add_index_file=True, skip_uids=skip_uids)
+            r = self.find_(ctx, 
+                           arg1, 
+                           tags, 
+                           sort, 
+                           add_index_file=True, 
+                           skip_uids=skip_uids,
+                           match=match,
+                           match_empty_version=match_empty_version,
+                           all_tags=all_tags,
+            )
             if r['return']>0: return r
 
         artifacts = r['artifacts']
@@ -597,6 +618,9 @@ class Category(InitCategory):
         skip_uids: bool = False,  # Skip UIDs when using wildcards.
         ignore_errors: bool = False,  # Ignore errors when deleting multiple artifacts.
         print_time: bool = False,  # Print time per deletion.
+        match: dict = None,  # Value for match.
+        match_empty_version: bool = False,  # Value for match empty version.
+        all_tags: str = None,  # Value for all tags.
     ):
         """
             Delete and unindex artifact(s).
@@ -628,7 +652,16 @@ class Category(InitCategory):
 
         ctx['control']['con'] = False
 
-        r = self.find_(ctx, arg1, tags, sort, add_index_file=True, skip_uids=skip_uids)
+        r = self.find_(ctx, 
+                       arg1, 
+                       tags, 
+                       sort, 
+                       add_index_file=True, 
+                       skip_uids=skip_uids,
+                       match=match,
+                       match_empty_version=match_empty_version,
+                       all_tags=all_tags,
+        )
         if r['return']>0: return r
 
         artifacts = r['artifacts']
