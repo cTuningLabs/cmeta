@@ -1020,7 +1020,10 @@ def expand_string(
 
         out.append(v)
 
-    result = {'return':0, 'string': "".join(map(str, out))}
+#   FGG: on 20260325 I changed expansion of None to ""
+    result = {'return': 0, 'string': "".join("" if x is None else str(x) for x in out)}
+
+#    result = {'return':0, 'string': "".join(map(str, out))}
 
     if len(out) == 1 and type(out[0]) != str:
         result['value'] = out[0]
