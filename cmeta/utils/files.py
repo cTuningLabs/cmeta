@@ -1457,7 +1457,7 @@ def quote_path(
             Exception: Propagated runtime errors, if any.
     """
 
-    if not path.startswith('"') and (' ' in path or ',' in path):
+    if not path.startswith('"') and (' ' in path or ',' in path or '+' in path):
         path = '"' + path + '"'
 
     return path

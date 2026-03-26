@@ -144,7 +144,7 @@ def load_module(
         return {"return": 0, "cache": cache_data}
 
     except Exception as e:
-        return _error(f"Failed to import module {full_module_name}", 1, e, fail_on_error)
+        return _error(f'Failed to import module {full_module_name} at "{module_path}"', 1, e, fail_on_error)
 
 ###################################################################################################
 def find_command_func(

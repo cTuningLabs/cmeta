@@ -72,7 +72,11 @@ def check_params(
 
     for k in list(params.keys()):
         if k not in keys:
-            x = f' in "{name}"' if name else ''
+            x = ''
+            if name:
+                import importlib.util
+                spec = importlib.util.find_spec(name)
+                x = f' in module "{spec.origin}" ({name})'
             err = f'unknown input parameter "{k}"{x}'
             return {'return':1, 'error': err}
 
