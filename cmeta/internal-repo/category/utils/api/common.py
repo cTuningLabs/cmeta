@@ -72,6 +72,7 @@ def select_artifact_(
                              # in such case, attempt to load the last available version of code
                              # if load_api is True
     print_extra_line: bool = False,  # Value for print extra line.
+    allow_skip: bool = False, # If True, add -1 to skip selection
 ):
 
     """
@@ -258,11 +259,16 @@ def select_artifact_(
         else:
             if con:
                 print ('')
-                new_index = input(f'{space}Make your selection or press Enter for 0: ').strip()
+
+                x = ', use -1 to skip selection' if allow_skip else ''
+                new_index = input(f'{space}Make your selection{x} or press Enter for 0: ').strip()
             else:
                 new_index = ''
 
             new_index_int = 0 if new_index == '' else int(new_index)
+
+            if allow_skip and new_index_int == -1:
+                return {'return':0, 'skipped': True}
 
             if new_index_int < 0 or new_index_int >= index:
                 return {'return':1, 'error': 'selection out of range'}
