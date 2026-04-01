@@ -122,6 +122,7 @@ class CMeta:
 
         # Some debug functions
         self.j = utils.common.safe_print_json
+        self.jv = utils.common.print_module_vars
         self.js = utils.common.safe_print_json_to_str
         self.utils = utils
 

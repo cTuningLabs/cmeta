@@ -119,7 +119,12 @@ def deep_merge(
                 if prepend_lists:
                     target[key] = value + target[key]
                 else:
-                    target[key] += value
+                    if type(value) == list:
+                        for v in value:
+                            if v not in target[key]:
+                                target[key].append(v)
+                    elif value not in target[key]:
+                        target[key].append(value)
             else:
                 target[key] = value[:]
         else:
@@ -241,6 +246,20 @@ def safe_print_json(
     print(safe_print_json_to_str(obj, indent=indent, non_serializable_text=non_serializable_text, ignore_keys=ignore_keys, sort=sort))
 
     return {'return':0}
+
+###################################################################################################
+def print_module_vars(
+    obj,
+    indent: int = 2,
+    sort: bool = True,
+    private: bool = True,
+):
+
+    for key, value in obj.__dict__.items():
+        if private or not key.startswith("_"):  # filter public only
+            print(f"{key} = {value}")
+
+    return
 
 ###################################################################################################
 def safe_print_json_to_str(
@@ -1157,3 +1176,58 @@ def restricted_bool_eval(
         return {'return':1, 'error':f'can\'t evaluate expression "{str}": {e}'}
 
     return {'return':0, 'result': result}
+
+###################################################################################################
+def smart_get(
+    d: dict, 
+    key: str, 
+    default = None):
+
+    """
+    Retrieve a value from a nested dictionary using a dot-separated key.
+
+    Args:
+        d (dict): The dictionary to query.
+        key (str): Dot-separated key string (e.g., "a.b.c").
+        default (Any, optional): Value to return if any key is not found.
+            Defaults to None.
+
+    Returns:
+        Any: The value found at the nested key path, or ``default`` if
+        the path does not exist.
+
+    Examples:
+        >>> data = {'x': {'y': 'z'}}
+        >>> smart_get(data, 'x.y')
+        'z'
+        >>> smart_get(data, 'x')
+        {'y': 'z'}
+        >>> smart_get(data, 'a.b', 'NA')
+        'NA'
+    """
+    keys = key.split(".")
+    current = d
+
+    for k in keys:
+        if isinstance(current, dict) and k in current:
+            current = current[k]
+        else:
+            return default
+
+    return current
+
+###################################################################################################
+def smart_set(params: dict, key: str, value):
+    parts = key.split(".")
+    cur = params
+
+    for part in parts[:-1]:
+        if part not in cur:
+            cur[part] = {}
+        elif not isinstance(cur[part], dict):
+            raise TypeError(f"Cannot descend into non-dict at key '{part}'")
+        cur = cur[part]
+
+    cur[parts[-1]] = value
+    
+    return

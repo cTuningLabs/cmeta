@@ -191,7 +191,7 @@ class Category(InitCategory):
                     - **artifacts** (list): List of matched artifacts.
 
             Raises:
-                Exception: Propagated runtime errors, if any.
+                Exception: Propagated runtime errors, if any.                           \
         """
 
         con = ctx['control'].get('con', False)
@@ -212,8 +212,15 @@ class Category(InitCategory):
         if self.cm.debug:
             self.logger.debug(f"  self.cm.repos.find({artifact_ref_parts})")
 
-        r = self.cm.repos.find(artifact_ref_parts, add_index_file = add_index_file, tags = tags,
-                               skip_uids = skip_uids, match = match, match_empty_version = match_empty_version, all_tags = all_tags)
+        r = self.cm.repos.find(
+              artifact_ref_parts, 
+              add_index_file = add_index_file, 
+              tags = tags,
+              skip_uids = skip_uids, 
+              match = match, 
+              match_empty_version = match_empty_version, 
+              all_tags = all_tags,
+           )
         if r['return']>0: return r
 
         artifacts = r['artifacts']
