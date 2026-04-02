@@ -58,6 +58,8 @@ def select_artifact_(
     select_artifact = None,  # Value for select artifact.
     select_tags = None,  # Value for select tags.
     select_text = '',  # Value for select text.
+    select_match = None, # Value for select dict.
+    select_match_empty_version = None, # Value for match empty version.
     show_tags = False,  # Value for show tags.
     artifacts = None,  # Value for artifacts.
     cmeta_params_keys = None,  # Value for cmeta params keys.
@@ -84,6 +86,8 @@ def select_artifact_(
         select_artifact: Value for select artifact.
         select_tags: Value for select tags.
         select_text: Value for select text.
+        select_match: Value for select dict.
+        select_match_empty_version: # Value for match empty version.
         show_tags: Value for show tags.
         artifacts: Value for artifacts.
         cmeta_params_keys: Value for cmeta params keys.
@@ -120,6 +124,12 @@ def select_artifact_(
              'arg1':select_artifact,
              'tags':select_tags
         }
+
+        if select_match:
+            p['match'] = select_match
+
+        if select_match_empty_version is not None:
+            p['select_match_empty_version'] = select_match_empty_version
 
         r = self.cm.access(p)
         if r['return']>0: 
