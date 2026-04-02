@@ -1231,3 +1231,15 @@ def smart_set(params: dict, key: str, value):
     cur[parts[-1]] = value
     
     return
+
+###################################################################################################
+def split_clean(s: str) -> list[str]:
+    if not s:
+        return []
+    return [item.strip() for item in s.split(",") if item.strip()]
+
+###################################################################################################
+def split(s: str) -> list[str]:
+    if not s:
+        return []
+    return [item.strip().lower() for item in s.split(",") if item.strip()]
