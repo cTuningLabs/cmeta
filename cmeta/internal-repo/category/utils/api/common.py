@@ -135,7 +135,7 @@ def select_artifact_(
             if select_artifact:
                 x += f' "{select_artifact}"'
 
-            if select_tags is not None and len(selet_tags)>0: 
+            if select_tags is not None and len(select_tags)>0: 
                 x += f' with tags "{select_tags}"'
 
             return {'return':16, 'error': f'couldn\'t find "{select_category_name}" artifact(s){x}'}
