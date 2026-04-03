@@ -16,6 +16,7 @@ class Category(InitCategory):
     Various Utils
     """
 
+    ###############################################################################################
     def __init__(
         self,
         *args,  # Positional argument value.
@@ -37,6 +38,7 @@ class Category(InitCategory):
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
 
+    ###############################################################################################
     def delete(
         self,
         params: dict,  # cMeta parameters.
@@ -87,6 +89,7 @@ class Category(InitCategory):
         return r
 
 
+    ###############################################################################################
     def create(
         self,
         params: dict,  # cMeta parameters.
@@ -159,9 +162,7 @@ class Category(InitCategory):
 
         return result
 
-
-
-
+    ###############################################################################################
     def move(
         self,
         params: dict,  # cMeta parameters.
@@ -189,6 +190,8 @@ class Category(InitCategory):
         arg1 = params.get('arg1', None)
         arg2 = params.get('arg2', None)
 
+        copy = params.get('copy', False)
+
         arg1_obj_parts = {}
         if arg1 is not None:
             r = names.parse_cmeta_obj(arg1, fail_on_error = self.fail_on_error)
@@ -204,7 +207,7 @@ class Category(InitCategory):
         arg1_alias = arg1_obj_parts.get('alias')
         arg2_alias = arg2_obj_parts.get('alias')
 
-        if arg1_alias is not None and arg2_alias is not None and arg1_alias != arg2_alias:
+        if not copy and arg1_alias is not None and arg2_alias is not None and arg1_alias != arg2_alias:
             return {'return':1, 'error':'renaming a category is not allowed for backward compatibility reasons. Please create a new category instead.'}
 
         # p will be deep copied from params
