@@ -16,7 +16,7 @@ Apache 2.0
 
 Copyright (C) 2025-2026 [Grigori Fursin](https://cTuning.ai/@gfursin) and [cTuning Labs](https://cTuning.ai).
 
-This project may include minor functionality reused from [MLCommons CK](https://github.com/mlcommons/ck), 
+This project may include minor functionality reused from [MLCommons CK/CM](https://github.com/mlcommons/ck), 
 developed by the same author and licensed under the same Apache 2.0 terms.
 
 ## Installation
