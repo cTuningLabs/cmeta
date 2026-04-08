@@ -15,6 +15,7 @@ def _error(
     exception = None,  # Optional exception object to include in error message.
     fail_on_error = False,  # If True, raises exception instead of returning error dict.
     fail_on_16 = False,  # If True, treat return code 16 as a fatal error when fail_on_error is enabled.
+    extra = {},
 ):
     """
         Create error return dictionary or raise exception based on fail_on_error flag.
@@ -49,7 +50,10 @@ def _error(
         err2 = f" ({exception})" if exception is not None else ""
         err = error_msg + err2
 
-    return {'return': return_code, 'error': err}
+    result = {'return': return_code, 'error': err}
+    result.update(extra)
+
+    return result
 
 ###################################################################################################
 def check_params(
@@ -908,6 +912,7 @@ def _with_missing_flag(
     """
     if value is None:
         return (1, None)
+
     return (0, value)
 
 def build_sort_key(
@@ -943,8 +948,13 @@ def build_sort_key(
         if descending:
             value = _invert_value(value)
 
-        # 👇 THIS LINE FIXES THE ERROR
-        key_parts.append(_with_missing_flag(value))
+        # Separate different non-compatible types for sorting
+        if value is None:
+            key_parts.append((1, None))
+        elif as_version and type(value) == str:
+            key_parts.append((2, value))
+        else:
+            key_parts.append((0, value))
 
     return tuple(key_parts)
 
@@ -1233,13 +1243,21 @@ def smart_set(params: dict, key: str, value):
     return
 
 ###################################################################################################
-def split_clean(s: str) -> list[str]:
+def split_clean(s: str, key = ',') -> list[str]:
     if not s:
         return []
     return [item.strip() for item in s.split(",") if item.strip()]
 
 ###################################################################################################
-def split(s: str) -> list[str]:
+def split(s: str, key = ',') -> list[str]:
     if not s:
         return []
     return [item.strip().lower() for item in s.split(",") if item.strip()]
+
+###################################################################################################
+def first_digit_pos(s):
+    for i, ch in enumerate(s):
+        if ch.isdigit():
+            return i
+
+    return -1  # if no digit found

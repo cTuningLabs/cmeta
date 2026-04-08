@@ -171,6 +171,7 @@ class CMeta:
         exception = None,  # Exception object associated with the error.
         fail16 = False,  # If True, treat return code 16 as a fatal error.
         fail_on_error = None,  # If True, raise exceptions instead of returning error dictionaries.
+        extra = {},
     ):
         """
             Create or raise a cMeta error using framework-level defaults.
@@ -187,9 +188,10 @@ class CMeta:
                 Exception: Propagated runtime errors, if any.
         """
 
-        if not fail_on_error: fail_on_error = self.fail_on_error
+        if not fail_on_error: 
+            fail_on_error = self.fail_on_error
 
-        return utils.common._error(error_msg, return_code, exception, fail_on_error=fail_on_error, fail_on_16 = fail16)
+        return utils.common._error(error_msg, return_code, exception, fail_on_error=fail_on_error, fail_on_16 = fail16, extra = extra)
 
     ###################################################################################################
     def catch_error(
