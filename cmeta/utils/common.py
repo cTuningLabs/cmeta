@@ -1064,6 +1064,15 @@ def expand_string(
     return result
 
 ###################################################################################################
+def expand_strings_in_list(
+    data,  # List to process (modified in-place)
+    values: dict,  # Dictionary of values for template expansion
+) -> dict:
+
+    return expand_strings_in_dict(data, values)
+
+
+###################################################################################################
 def expand_strings_in_dict(
     data,  # Dictionary or list to process (modified in-place)
     values: dict,  # Dictionary of values for template expansion

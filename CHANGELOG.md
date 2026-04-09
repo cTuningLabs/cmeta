@@ -1,5 +1,6 @@
 ﻿cMeta (0.26.0):
   * started new clean version based on 0.25.14
+  * added last_update_timestamp
 
 cMeta (0.25.0):
   * changed API version handling logic (now using the last one by default)

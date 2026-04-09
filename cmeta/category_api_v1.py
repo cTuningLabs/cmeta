@@ -465,6 +465,13 @@ class Category(InitCategory):
 
                    cmeta['tags'] = meta_tags
 
+               from datetime import datetime, timezone
+
+               if 'creation_timestamp' not in cmeta:
+                   cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
+               else:
+                   cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
+
                r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
                if r['return']>0: return r
 
@@ -933,9 +940,12 @@ class Category(InitCategory):
 
             cmeta['tags'] = meta_tags
 
+        from datetime import datetime, timezone
+
         if 'creation_timestamp' not in cmeta:
-            from datetime import datetime, timezone
             cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
+        else:
+            cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
 
         if 'authors' not in cmeta and os.environ.get(self.cm.cfg['env_var_cmeta_authors'], '') != '':
             cmeta['authors'] = os.environ[self.cm.cfg['env_var_cmeta_authors']]
@@ -1250,6 +1260,13 @@ class Category(InitCategory):
                    cmeta_file_lock = r['file_lock']
 
                    cmeta['artifact'] = target_uid
+
+                   from datetime import datetime, timezone
+
+                   if 'creation_timestamp' not in cmeta:
+                       cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
+                   else:
+                       cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
 
                    r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
                    if r['return']>0: return r
