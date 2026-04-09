@@ -892,6 +892,9 @@ class CMeta:
 
             os.chdir(cur_dir2)
 
+        if control_params.get('pause_at_the_end', False):
+            print ('')
+            input ('Press Enter to finish the command!')
 
         return result
 

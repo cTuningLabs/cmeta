@@ -114,6 +114,7 @@ params_command2_desc = [
   {'key':'json', 'aliases':['j'], 'type': bool, 'desc': 'Print command output as JSON' },
   {'key':'json_file', 'aliases':['json-file', 'jf'], 'type': str, 'desc': 'Specify json file to save command output' },
   {'key':'dump', 'type': bool, 'desc': 'Dump context to cmeta-ctx.json at the end of a command' },
+  {'key':'pause_at_the_end', 'type': bool, 'desc': 'Pause at the end of a command' },
 ]
 
 params_command3_desc = [
