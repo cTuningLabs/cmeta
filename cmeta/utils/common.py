@@ -1255,13 +1255,13 @@ def smart_set(params: dict, key: str, value):
 def split_clean(s: str, key = ',') -> list[str]:
     if not s:
         return []
-    return [item.strip() for item in s.split(",") if item.strip()]
+    return [item.strip() for item in s.split(key) if item.strip()]
 
 ###################################################################################################
 def split(s: str, key = ',') -> list[str]:
     if not s:
         return []
-    return [item.strip().lower() for item in s.split(",") if item.strip()]
+    return [item.strip().lower() for item in s.split(key) if item.strip()]
 
 ###################################################################################################
 def first_digit_pos(s):
