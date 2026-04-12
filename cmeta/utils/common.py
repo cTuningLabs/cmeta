@@ -91,8 +91,9 @@ def deep_merge(
     target: dict,  # The original dictionary to be updated.
     source: dict,  # The new dictionary with updates.
     append_lists: bool = False,  # If True, lists will be appended instead of overwritten.
-    prepend_lists: bool = False,  # If True and append_lists is True, insert new items at the
+    prepend_lists: bool = False,  # If True and append_lists is True, insert new items at the beggining of the list.
     ignore_root_keys: list = [],  # List of keys to ignore from source at the root level.
+    skip_if_exist_in_list: bool = True # Skip value if already exists in a list.
 ):
     """
         Recursively updates the target dictionary with values from the source dictionary.
@@ -117,17 +118,25 @@ def deep_merge(
             continue
             
         if isinstance(value, Mapping):
-            target[key] = deep_merge(target.get(key, {}), value, append_lists=append_lists, prepend_lists=prepend_lists)
+            target[key] = deep_merge(
+              target.get(key, {}), 
+              value, 
+              append_lists = append_lists, 
+              prepend_lists = prepend_lists,
+              skip_if_exist_in_list = skip_if_exist_in_list,
+        )
+
         elif isinstance(value, list):
             if append_lists and isinstance(target.get(key), list):
                 if prepend_lists:
-                    target[key] = value + target[key]
+                    if not skip_if_exist_in_list or value not in target[key]:
+                        target[key] = value + target[key]
                 else:
                     if type(value) == list:
                         for v in value:
-                            if v not in target[key]:
+                            if not skip_if_exist_in_list or v not in target[key]:
                                 target[key].append(v)
-                    elif value not in target[key]:
+                    elif not skip_if_exist_in_list or value not in target[key]:
                         target[key].append(value)
             else:
                 target[key] = value[:]
