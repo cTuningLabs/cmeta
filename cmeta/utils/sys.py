@@ -474,7 +474,8 @@ def run(
     capture_env: bool = False,  # If True, capture and return environment changes produced by the command.
     print_env_keys: list = None,  # Environment variable keys to print after execution.
     print_extra_line: bool = False,  # If True, print an extra blank line in console output.
-    print_cur_dir: bool = False, # If True, print current directory before running command
+    print_cur_dir: bool = False, # If True, print current directory before running command.
+    open_shell: bool = False, # Open shell instead of running command.
 ):
     """
         Run CMD with environment.
@@ -526,6 +527,8 @@ def run(
             return {'return':1, 'error':f'Directory doesn\'t exist: {work_dir}'}
         os.chdir(work_dir)
 
+    cur_dir2 = os.getcwd()
+
     # Initialize mutable defaults
     if env is None:
         env = {}
@@ -542,9 +545,14 @@ def run(
     if timeout is not None:
         timeout = int(timeout)
 
+    bat_ext = '.bat' if os.name == 'nt' else '.sh'
+
     if run_script:
         if save_script == '':
-            save_script = 'cmeta-run.bat' if os.name == 'nt' else 'cmeta-run.sh'
+            save_script = 'cmeta-run' + bat_ext
+
+    if save_script and save_script.endswith('{{file_ext_bat}}'):
+        save_script = save_script.replace('{{file_ext_bat}}', bat_ext)
 
     cur_env = {} if not os_env else os_env.copy()
 
@@ -611,8 +619,14 @@ def run(
                      v = v[:j] + env1 + k + env2
                print_env[k] = v
 
+    script = ''
     if save_script != '':
         script = '@echo off\n' if os.name == 'nt' else '#!/bin/bash\n'
+
+
+        cur_dir2 = files.quote_path(cur_dir2)
+        x = '/d ' if os.name == 'nt' else ''
+        script += f'\ncd {x}{cur_dir2}\n'
 
         if script_prefix != '':
             script += '\n' + script_prefix
@@ -633,8 +647,13 @@ def run(
                 print(f'{space}ENV {k}={vx}')
 
             if save_script != '':
-                x = 'set' if os.name == 'nt' else 'export'
-                vv = v if ' ' not in v else '"' + v + '"'
+                if os.name == 'nt':
+                    x = 'set'
+                    vv = v
+                else:
+                    x = 'export'
+                    vv = v if ' ' not in v else '"' + v + '"'
+
                 script += f'{x} {k}={vv}\n'
 
         if save_script != '':
@@ -643,7 +662,6 @@ def run(
     returncode = 0
     stdout = ''
     stderr = ''
-    script = ''
 
     # Hide secrets from CMD
     xcmd = cmd
@@ -695,12 +713,31 @@ def run(
             print('')
             print(f'{space}{x}{text_cmd} {cmd}')
 
+    is_windows = os.name == 'nt'
+
+    if open_shell:
+        if con:
+            print ('')
+            print (f'{space}INFO: Opening shell for testing and debugging. Exiting shell will resume cMeta workflow execution:')
+            print ('')
+
+        if is_windows:
+            shell_cmd = ["cmd.exe"]
+        else:
+            shell_cmd = [os.environ.get("SHELL", "/bin/sh")]
+
+        subprocess.run(shell_cmd, env = cur_env)
+
+        if con:
+            print ('')
+            print (f'{space}INFO: Returned to cMeta workflow. Continue executing ...')
+            print ('')
+
     if not skip_run:
         if con and print_extra_line:
             print ('')
 
         try:
-            is_windows = os.name == 'nt'
             use_popen = (timeout is not None and not is_windows)
 
             if use_popen:

@@ -129,7 +129,11 @@ def deep_merge(
         elif isinstance(value, list):
             if append_lists and isinstance(target.get(key), list):
                 if prepend_lists:
-                    if not skip_if_exist_in_list or value not in target[key]:
+                    if type(value) == list:
+                        for v in reversed(value):
+                            if not skip_if_exist_in_list or v not in target[key]:
+                                target[key].insert(0, v)
+                    elif not skip_if_exist_in_list or value not in target[key]:
                         target[key] = value + target[key]
                 else:
                     if type(value) == list:
