@@ -1,4 +1,7 @@
-﻿cMeta (0.26.0):
+﻿cMeta (0.27.0):
+  * fixed bug in handling repos with mixed upper and lower case characters
+
+cMeta (0.26.0):
   * started new clean version based on 0.25.14
   * added last_update_timestamp
 

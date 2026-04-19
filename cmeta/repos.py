@@ -880,7 +880,7 @@ class Repos:
                 if uid is not None and uid in index_repos[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_alias]:
                     return {'return':1, 'error': f'ambiguity - repo "{alias}" with the same UID "{uid}" alredy exists in the index - please fix it!'}
 
-            index_repos[self.KEY_INDEX_LOWERCASE_ALIASES][alias] = [uid]
+            index_repos[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_alias] = [uid]
 
             entry = {'path': path, 'full_path':full_path}
 
