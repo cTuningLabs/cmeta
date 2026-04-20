@@ -75,6 +75,7 @@ def select_artifact_(
                              # if load_api is True
     print_extra_line: bool = False,  # Value for print extra line.
     allow_skip: bool = False, # If True, add -1 to skip selection
+    allow_multiple: bool = False, # If True, allow multiple selections separated by comma
 ):
 
     """
@@ -265,6 +266,7 @@ def select_artifact_(
                 print (f'{space}Quietly selected: 0')
 
             new_index_int = 0
+            indexes = [0]
 
         else:
             if con:
@@ -275,107 +277,129 @@ def select_artifact_(
             else:
                 new_index = ''
 
-            new_index_int = 0 if new_index == '' else int(new_index)
+            if allow_multiple:
+                if new_index == '':
+                    indexes = [0]
+                else:
+                    r = self.cm.utils.common.normalize_tags(new_index)
+                    if self.cm.catch_error(r): return r
+                    
+                    indexes = r['tags']
+                    indexes_int = []
 
-            if allow_skip and new_index_int == -1:
-                return {'return':0, 'skipped': True}
+                    for new_index in indexes:
+                        new_index_int = 0 if new_index == '' else int(new_index)
+                        if new_index_int < 0 or new_index_int >= index:
+                            return {'return':1, 'error': f'selection "{new_index_int}" out of range'}
 
-            if new_index_int < 0 or new_index_int >= index:
-                return {'return':1, 'error': 'selection out of range'}
+                        indexes_int.append(new_index_int)
 
-#        if con:
-#            print ('')
+                    indexes = sorted(indexes_int)
+            else:
+                new_index_int = 0 if new_index == '' else int(new_index)
 
-    artifact = artifacts[new_index_int]
+                if allow_skip and new_index_int == -1:
+                    return {'return':0, 'skipped': True}
 
-    result = {'return':0, 
-              'artifacts': artifacts, 
-              'artifact': artifact,
-              'index':new_index_int,
+                if new_index_int < 0 or new_index_int >= index:
+                    return {'return':1, 'error': f'selection "{new_index_int}" out of range'}
+
+
+    result = {
+      'return':0, 
+      'artifacts': artifacts, 
     }
 
-    # Check if need to load files
-    if len(load_files) > 0:
-        r = self.cm.utils.files.load_files(artifact['path'], load_files, self.cm.fail_on_error, logger = self.logger)
-        if r['return']>0: return r
+    if allow_multiple:
+        result['indexes'] = indexes
 
-        result['loaded_files'] = r['loaded_files']
+    else:
+        artifact = artifacts[new_index_int]
+        result['artifact'] = artifact     
+        result['index'] = new_index_int
 
-    # Check if min version
-    artifact_path = artifact['path']
+        # Check if need to load files
+        if len(load_files) > 0:
+            r = self.cm.utils.files.load_files(artifact['path'], load_files, self.cm.fail_on_error, logger = self.logger)
+            if r['return']>0: return r
 
-    cmeta = artifact['cmeta']
+            result['loaded_files'] = r['loaded_files']
 
-    cmeta_ref_parts = artifact['cmeta_ref_parts']
+        # Check if min version
+        artifact_path = artifact['path']
 
-    artifact_alias = cmeta_ref_parts.get('artifact_alias', '')
-    artifact_uid = cmeta_ref_parts['artifact_uid']
-    artifact_au = artifact_alias if artifact_alias is not None and artifact_alias != '' else artifact_uid
+        cmeta = artifact['cmeta']
 
-    category_uid = cmeta_ref_parts['category_uid']
-    category_alias = cmeta_ref_parts.get('category_alias', '')
-    category_au = category_alias if category_alias is not None and category_alias != '' else category_uid
+        cmeta_ref_parts = artifact['cmeta_ref_parts']
 
-    result['artifact_alias'] = artifact_au
-    result['artifact_uid'] = artifact_uid
-    result['artifact_au'] = artifact_au
+        artifact_alias = cmeta_ref_parts.get('artifact_alias', '')
+        artifact_uid = cmeta_ref_parts['artifact_uid']
+        artifact_au = artifact_alias if artifact_alias is not None and artifact_alias != '' else artifact_uid
 
-    result['category_alias'] = category_au
-    result['category_uid'] = category_uid
-    result['category_au'] = category_au
+        category_uid = cmeta_ref_parts['category_uid']
+        category_alias = cmeta_ref_parts.get('category_alias', '')
+        category_au = category_alias if category_alias is not None and category_alias != '' else category_uid
 
-    # Check min cMeta versions
+        result['artifact_alias'] = artifact_au
+        result['artifact_uid'] = artifact_uid
+        result['artifact_au'] = artifact_au
 
-#    xver = '1'
-#    if load_api_ver is not None and str(load_api_ver) != '0':
-#        xver = load_api_ver
-#    elif inside_cli or str(load_api_ver) == '0':
-#        if cmeta.get('last_api_version') is not None:
-#            xver = str(cmeta['last_api_version'])
+        result['category_alias'] = category_au
+        result['category_uid'] = category_uid
+        result['category_au'] = category_au
 
-    xver = '1'
-    if load_api_ver is not None:
-        xver = str(load_api_ver)
-    elif 'last_api_version' in cmeta:
-        xver = cmeta['last_api_version']
+        # Check min cMeta versions
 
-    min_cmeta_version = cmeta.get('min_cmeta_version_api')
-    if min_cmeta_version is None:
-        min_cmeta_version = cmeta.get('min_cmeta_version',{}).get(xver)
-   
-    if min_cmeta_version is not None:
-        cm_version = self.cm.__version__
-        r = self.cm.utils.common.compare_versions(min_cmeta_version, cm_version)
-        if r['return']>0: return r
-        if r['comparison'] == '>':
-            err = f'the artifact "{category_au}::{artifact_au}" requires min cMeta version "{min_cmeta_version}" but "{cm_version}" is installed'
-            return self.cm.error(err)
+    #    xver = '1'
+    #    if load_api_ver is not None and str(load_api_ver) != '0':
+    #        xver = load_api_ver
+    #    elif inside_cli or str(load_api_ver) == '0':
+    #        if cmeta.get('last_api_version') is not None:
+    #            xver = str(cmeta['last_api_version'])
 
-    # Check if need to load API
-    if load_api:
-        # Check version
-        artifact_api_path = os.path.join(artifact_path, f'api_v{xver}.py')
-        result['api_path'] = artifact_api_path
+        xver = '1'
+        if load_api_ver is not None:
+            xver = str(load_api_ver)
+        elif 'last_api_version' in cmeta:
+            xver = cmeta['last_api_version']
 
-        if (load_api_ver is not None or xver != '1') and not os.path.isfile(artifact_api_path):
-            return self.cm.error(f'customization module not found in "{artifact_api_path}"')
+        min_cmeta_version = cmeta.get('min_cmeta_version_api')
+        if min_cmeta_version is None:
+            min_cmeta_version = cmeta.get('min_cmeta_version',{}).get(xver)
+       
+        if min_cmeta_version is not None:
+            cm_version = self.cm.__version__
+            r = self.cm.utils.common.compare_versions(min_cmeta_version, cm_version)
+            if r['return']>0: return r
+            if r['comparison'] == '>':
+                err = f'the artifact "{category_au}::{artifact_au}" requires min cMeta version "{min_cmeta_version}" but "{cm_version}" is installed'
+                return self.cm.error(err)
 
-        artifact_api_code = None
-        if os.path.isfile(artifact_api_path):
-            r = self.cm.utils.sys.load_module(artifact_api_path, 
-                                              self.cm.module_cache, 
-                                              fail_on_error = self.fail_on_error, 
-                                              init_class=load_api_class, 
-                                              cmeta=self.cm, 
-                                              suffix=category_uid, 
-                                              self_meta=cmeta
-            )
-            if self.cm.catch_error(r): return r
+        # Check if need to load API
+        if load_api:
+            # Check version
+            artifact_api_path = os.path.join(artifact_path, f'api_v{xver}.py')
+            result['api_path'] = artifact_api_path
 
-            artifact_api_code = r['cache']['initialized_class']
+            if (load_api_ver is not None or xver != '1') and not os.path.isfile(artifact_api_path):
+                return self.cm.error(f'customization module not found in "{artifact_api_path}"')
 
-            result['load_api_ver_resolved'] = xver
+            artifact_api_code = None
+            if os.path.isfile(artifact_api_path):
+                r = self.cm.utils.sys.load_module(artifact_api_path, 
+                                                  self.cm.module_cache, 
+                                                  fail_on_error = self.fail_on_error, 
+                                                  init_class=load_api_class, 
+                                                  cmeta=self.cm, 
+                                                  suffix=category_uid, 
+                                                  self_meta=cmeta
+                )
+                if self.cm.catch_error(r): return r
 
-        result['api_code'] = artifact_api_code
+                artifact_api_code = r['cache']['initialized_class']
+
+                result['load_api_ver_resolved'] = xver
+
+            result['api_code'] = artifact_api_code
 
     return result

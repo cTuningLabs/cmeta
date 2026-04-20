@@ -170,6 +170,7 @@ class Category(InitCategory):
         match: dict = None,  # Value for match.
         match_empty_version: bool = False,  # Value for match empty version.
         all_tags: str = None,  # Value for all tags.
+        load_files = [],  # Load files (omit extension to load either yaml or json)
     ):
         """
             Find artifacts.
@@ -224,6 +225,19 @@ class Category(InitCategory):
         if r['return']>0: return r
 
         artifacts = r['artifacts']
+
+        if len(load_files) > 0:
+            artifacts = artifacts.copy()
+
+            for artifact in artifacts:
+                path = artifact['path']
+
+                r = utils.files.load_files(path, load_files, self.fail_on_error)
+                if r['return']>0: return r
+
+                artifact['loaded_files'] = r['loaded_files']
+
+            r['artifacts'] = artifacts
 
         if sort is None:
             sort = category_cmeta.get('find_sort', False)
