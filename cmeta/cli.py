@@ -493,6 +493,7 @@ def main(
         Raises:
             Exception: Propagated runtime errors, if any.
     """
+
     global caller
     if caller is None:
         caller = os.path.basename(sys.executable) + f" -m {__package__}"

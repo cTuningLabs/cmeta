@@ -476,6 +476,9 @@ def run(
     print_extra_line: bool = False,  # If True, print an extra blank line in console output.
     print_cur_dir: bool = False, # If True, print current directory before running command.
     open_shell: bool = False, # Open shell instead of running command.
+    pack_existing_env_values: bool = False, # If part of new value is the same as value in existing env, 
+                                            # substitute it with new:${key}
+    print_env_with_os_sep_on_new_lines: bool = True, # If True, separate env print with os sep on new lines
 ):
     """
         Run CMD with environment.
@@ -611,8 +614,8 @@ def run(
     for k in print_env_keys:
         if k in cur_env:
             v = str(cur_env[k])
-            if k not in os_env or os_env[k] != v:
-               if k in os_env:
+            if k not in os_env or str(os_env[k]) != str(v):
+               if pack_existing_env_values and k in os_env:
                   vv = str(os_env[k])
                   j = v.find(vv)
                   if j>=0:
@@ -638,13 +641,21 @@ def run(
         if save_script != '':
             script += '\n'
 
-        for k in print_env:
+        for k in sorted(print_env):
             v = print_env[k]
 
             if verbose:
                 vx = v if k not in hide_in_env else '***'
 
-                print(f'{space}ENV {k}={vx}')
+                if print_env_with_os_sep_on_new_lines and os.pathsep in vx:
+                    print(f'{space}ENV {k}:')
+
+                    for x in vx.split(os.pathsep):
+                        if x:
+                            print (f'{space}      - {x}')
+
+                else:
+                    print(f'{space}ENV {k}={vx}')
 
             if save_script != '':
                 if os.name == 'nt':
