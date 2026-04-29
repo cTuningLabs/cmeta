@@ -479,6 +479,7 @@ def run(
     pack_existing_env_values: bool = False, # If part of new value is the same as value in existing env, 
                                             # substitute it with new:${key}
     print_env_with_os_sep_on_new_lines: bool = True, # If True, separate env print with os sep on new lines
+    skip_print_env: bool = False, # If True, skip printing ENV even in verbose
 ):
     """
         Run CMD with environment.
@@ -569,7 +570,7 @@ def run(
                 v = str(v)
 
             if k.startswith('+'):
-                if v != '':
+                if v != '' and v is not None:
                     k = k[1:].strip()
                     v1 = cur_env.get(k, '')
                     if v1 != '':
@@ -635,7 +636,7 @@ def run(
             script += '\n' + script_prefix
 
     if len(print_env) > 0:
-        if verbose:
+        if verbose and not skip_print_env:
             print('')
 
         if save_script != '':
@@ -644,7 +645,7 @@ def run(
         for k in sorted(print_env):
             v = print_env[k]
 
-            if verbose:
+            if verbose and not skip_print_env:
                 vx = v if k not in hide_in_env else '***'
 
                 if print_env_with_os_sep_on_new_lines and os.pathsep in vx:
