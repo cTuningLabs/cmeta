@@ -487,6 +487,7 @@ class Repos:
         skip_non_indexed: bool = False,  # Value for skip non indexed.
         match: bool = None,  # Optional match dictionary to filter results (key that ends with - is supported)
         match_empty_version: bool = False,  # Value for match empty version.
+        match_empty_values: bool = False,
         all_tags: str = None,  # match all tags in cmeta
     ):
         """
@@ -654,7 +655,9 @@ class Repos:
                         if utils.common.matches_query(a['cmeta'], 
                                                       match, 
                                                       match_version_func = self.match_version_func, 
-                                                      match_empty_version = match_empty_version):
+                                                      match_empty_version = match_empty_version,
+                                                      match_empty_values = match_empty_values,
+                                                     ):
                             add_artifacts2.append(a)
 
                     add_artifacts = add_artifacts2

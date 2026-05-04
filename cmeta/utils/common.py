@@ -740,8 +740,12 @@ def flatten_dict(
 def matches_query(
     data,  # Input data object.
     query,  # Value for query.
-    match_version_func = None,  # Value for match version func.
-    match_empty_version = False,  # Value for match empty version.
+    match_version_func = None,  # External function to compare versions properly 
+                                # (and not just as string)
+    match_empty_version = False,  # If True, match if target version is empty
+                                  # (usually means that can be anything)
+    match_empty_values = False,  # If True, match if target value or list are empty
+                                 # or parts of keys are not present
 ):
     """
         Check whether input data satisfies a query dictionary.
@@ -756,6 +760,7 @@ def matches_query(
         Raises:
             Exception: Propagated runtime errors, if any.
     """
+
     for key, q_value in query.items():
         negate = key.endswith("-")
         actual_key = key[:-1] if negate else key
@@ -785,7 +790,7 @@ def matches_query(
             
             matched = result.get('matched', False)
         else:
-            matched = value_matches(d_value, q_value, match_version_func, match_empty_version)
+            matched = value_matches(d_value, q_value, match_version_func, match_empty_version, match_empty_values)
 
         if negate and matched:
             return False
@@ -797,10 +802,11 @@ def matches_query(
 
 ###################################################################################################
 def value_matches(
-    data_value,  # Value for data value.
-    query_value,  # Value for query value.
-    match_version_func = None,  # Value for match version func.
-    match_empty_version = False,  # Value for match empty version.
+    data_value,
+    query_value,
+    match_version_func = None,
+    match_empty_version = False,
+    match_empty_values = False,
 ):
     """
         Evaluate a single query value against a data value.
@@ -819,7 +825,7 @@ def value_matches(
     if isinstance(query_value, dict):
         if not isinstance(data_value, dict):
             return False
-        return matches_query(data_value, query_value, match_version_func, match_empty_version)
+        return matches_query(data_value, query_value, match_version_func, match_empty_version, match_empty_values)
 
     # List → query list must be subset of data list
     if isinstance(query_value, list):

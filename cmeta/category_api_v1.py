@@ -170,6 +170,7 @@ class Category(InitCategory):
         skip_uids: bool = False,  # Skip UIDs when using wildcards.
         match: dict = None,  # Value for match.
         match_empty_version: bool = False,  # Value for match empty version.
+        match_empty_values: bool = False,  # Value for match empty version.
         all_tags: str = None,  # Value for all tags.
         load_files = [],  # Load files (omit extension to load either yaml or json)
     ):
@@ -221,6 +222,7 @@ class Category(InitCategory):
               skip_uids = skip_uids, 
               match = match, 
               match_empty_version = match_empty_version, 
+              match_empty_values = match_empty_values, 
               all_tags = all_tags,
            )
         if r['return']>0: return r
