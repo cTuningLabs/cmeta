@@ -1543,9 +1543,9 @@ def gen_temp_filepath(
     tmp_dir = tempfile.gettempdir()
 
     if template is None or template == '':
-        template = 'cmeta-{{uid}}.tmp'
+        template = 'cmeta-{uid}.tmp'
 
-    template = template.replace('{{uid}}', str(uuid.uuid4()))
+    template = template.replace('{uid}', str(uuid.uuid4()))
 
     temp_filepath = os.path.join(tmp_dir, template)
 
