@@ -333,7 +333,7 @@ def read_file(
 
     r = safe_read_file(filepath, encoding=encoding, timeout=0, retry_if_not_found=1, fail_on_error=fail_on_error, logger=logger)
 
-    if remove_after_read and os.path.isfile(remove_after_read):
+    if remove_after_read and os.path.isfile(filepath):
         try:
             os.remove(filepath)
         except Exception as e:
