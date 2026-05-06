@@ -491,6 +491,7 @@ def write_file(
     sort_keys: bool = True,  # If True, sorts dictionary keys in JSON/YAML output.
     file_format: str = None,  # Force specific format ('json', 'yaml', 'pickle', 'text'). If None, auto-detected.
     newline: str = '\n',  # Newline character for text files. Default is '
+    safe_dump: bool = False, # If True, write non-serializable vars as "#NON-SERIALIZABLE#"
 ):
     """
         Write data to file with format-specific serialization.
@@ -526,7 +527,12 @@ def write_file(
     try:
         with open(filepath, mode, encoding=encoding, newline=set_newline) as f:
             if file_format == "json":
-                json.dump(data, f, indent=2, sort_keys=sort_keys)
+                if safe_dump:
+                    from .common import safe_print_json_to_str
+                    f.write(safe_print_json_to_str(data, indent=2, sort=sort_keys))
+                    f.write("\n")
+                else:
+                    json.dump(data, f, indent=2, sort_keys=sort_keys)
                 f.write("\n")
             elif file_format == "yaml":
                 yaml.safe_dump(data, f, sort_keys=sort_keys)
