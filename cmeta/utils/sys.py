@@ -451,6 +451,7 @@ def flush_input():
 ############################################################
 def run(
     cmd: str,  # Command to execute.
+    cmds: list = None,  # Command to execute.
     work_dir: str = None,  # Working directory.
     env: dict = None,  # 2nd (current) env to update global ENV.
     envs: dict = None,  # 1st level of env to update global ENV.
@@ -584,7 +585,10 @@ def run(
                 cur_env[k] = v
 
     temp_file_to_collect_env = None
-    if capture_env:
+    if capture_env and cmds:
+        return {'return':1, 'error': 'capture env doesn\'t work with CMDs'}
+
+    if capture_env and cmd:
         r = files.gen_temp_filepath()
         if r['return']>0: return r
         temp_file_to_collect_env_before = r['filepath']
@@ -604,6 +608,9 @@ def run(
         xcmd += f'{x} > {temp_file_to_collect_env_after}'
 
         cmd = xcmd
+
+    if not cmds and cmd:
+        cmds = [cmd]
 
     env1 = '%' if platform.system() == "Windows" else '${'
     env2 = '%' if platform.system() == "Windows" else '}'
@@ -676,15 +683,21 @@ def run(
     stderr = ''
 
     # Hide secrets from CMD
-    xcmd = cmd
-    for h in hide_in_cmd:
-        j = xcmd.find(h)
-        if j >= 0:
-            j1 = xcmd.find(' ', j + len(h))
-            if j1 < 0:
-                j1 = len(xcmd)
-            if j1 >= 0:
-                xcmd = xcmd[:j+len(h)] + '***' + xcmd[j1:]
+    _cmds = []
+    for xcmd in cmds:
+        for h in hide_in_cmd:
+            j = xcmd.find(h)
+            if j >= 0:
+                j1 = xcmd.find(' ', j + len(h))
+                if j1 < 0:
+                    j1 = len(xcmd)
+                if j1 >= 0:
+                    xcmd = xcmd[:j+len(h)] + '***' + xcmd[j1:]
+
+        _cmds.append(xcmd)
+
+    cmds = _cmds
+
 
     if verbose and print_cur_dir:
         print('')
@@ -695,17 +708,13 @@ def run(
         print('')
 
         if skip_run:
-            print (f'{space}SKIP {xcmd}')
-        else:
-            print (f'{space}{text_cmd} {xcmd}')
-
-    elif con:
-        print ('')
-        print (f'{space}{xcmd}')
+            for _cmd in cmds:
+                print (f'{space}SKIP {_cmd}')
 
 
     if save_script is not None and save_script != '':
-        script += cmd + '\n'
+        for _cmd in cmds:
+            script += _cmd + '\n'
 
         # Note: This assumes utils.save_txt exists in your codebase
         # You may need to import or implement this function
@@ -745,77 +754,92 @@ def run(
             print (f'{space}INFO: Returned to cMeta workflow. Continue executing ...')
             print ('')
 
+    _result = {'return':0}
+
+    returncode = 0
+
     if not skip_run:
-        if con and print_extra_line:
-            print ('')
+        for _cmd in cmds:
+            if con and (verbose or print_cmd):
+                print (f'{space}{text_cmd} {_cmd}')
 
-        try:
-            use_popen = (timeout is not None and not is_windows)
+            if con and print_extra_line:
+                print ('')
 
-            if use_popen:
-                # ----- UNIX: custom Popen + process group handling -----
-                import signal
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE if capture_output else None,
-                    stderr=subprocess.PIPE if capture_output else None,
-                    text=True,
-                    shell=True,
-                    env=cur_env,
-                    preexec_fn=os.setsid
-                )
+            try:
+                use_popen = (timeout is not None and not is_windows)
 
-                try:
-                    stdout, stderr = process.communicate(timeout=timeout)
-                    returncode = process.returncode
-
-                except subprocess.TimeoutExpired:
-                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                    stdout, stderr = process.communicate()
-                    returncode = -1
-
-            else:
-                # ----- Windows with timeout: delegate to your wrapper -----
-                if timeout is not None and is_windows:
-                    returncode, stdout, stderr = run_command_with_timeout_tree_kill_on_windows(
-                        cmd=cmd,
-                        capture_output=capture_output,
-                        cur_env=cur_env,
-                        timeout=timeout,
-                        shell=True,
-                        text=True,
-                    )
-
-                # ----- Normal subprocess.run (any OS) -----
-                else:
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=capture_output,
+                if use_popen:
+                    # ----- UNIX: custom Popen + process group handling -----
+                    import signal
+                    process = subprocess.Popen(
+                        _cmd,
+                        stdout=subprocess.PIPE if capture_output else None,
+                        stderr=subprocess.PIPE if capture_output else None,
                         text=True,
                         shell=True,
                         env=cur_env,
-                        timeout=timeout,
+                        preexec_fn=os.setsid
                     )
-                    returncode = result.returncode
-                    stdout = result.stdout if capture_output else ''
-                    stderr = result.stderr if capture_output else ''
 
-        except Exception as e:
-            stdout = ''
-            stderr = format(e)
-            returncode = -1
+                    try:
+                        stdout, stderr = process.communicate(timeout=timeout)
+                        returncode = process.returncode
 
-        if returncode != 0 and stderr != '' and verbose:
-             print ('')
-             print (f'{space}WARNING: Command failed: {stderr}')
+                    except subprocess.TimeoutExpired:
+                        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                        stdout, stderr = process.communicate()
+                        returncode = -1
+
+                else:
+                    # ----- Windows with timeout: delegate to your wrapper -----
+                    if timeout is not None and is_windows:
+                        returncode, stdout, stderr = run_command_with_timeout_tree_kill_on_windows(
+                            cmd=_cmd,
+                            capture_output=capture_output,
+                            cur_env=cur_env,
+                            timeout=timeout,
+                            shell=True,
+                            text=True,
+                        )
+
+                    # ----- Normal subprocess.run (any OS) -----
+                    else:
+                        result = subprocess.run(
+                            _cmd,
+                            capture_output=capture_output,
+                            text=True,
+                            shell=True,
+                            env=cur_env,
+                            timeout=timeout,
+                        )
+                        returncode = result.returncode
+                        stdout = result.stdout if capture_output else ''
+                        stderr = result.stderr if capture_output else ''
+
+            except Exception as e:
+                stdout = ''
+                stderr = format(e)
+                returncode = -1
+                                   
+            if returncode != 0 and stderr != '' and verbose:
+                 print ('')
+                 print (f'{space}WARNING: Command failed: {stderr}')
+
+            _result['returncode'] = returncode
+            _result['stdout'] = stdout
+            _result['stderr'] = stderr
+            _result['cur_env'] = cur_env
+            _result['cmd'] = _cmd
+
+            if returncode != 0:
+                break
 
     if work_dir is not None:
         os.chdir(cur_dir)
 
-    result = {'return': 0, 'returncode': returncode, 'stdout': stdout, 'stderr': stderr, 'cur_env': cur_env}
-
     # Check if collect env
-    if capture_env:
+    if capture_env and cmd:
         r = files.read_file(temp_file_to_collect_env_before, fail_on_error = fail_on_error, logger = logger)
         if r['return']>0: 
             return _error(f'Capture env output file not found (before): {temp_file_to_collect_env_before}', 1, None, fail_on_error)
@@ -844,16 +868,16 @@ def run(
 
         collected_env_after = r['env']
 
-        result['collected_env_before'] = collected_env_before
-        result['collected_env_after'] = collected_env_after
+        _result['collected_env_before'] = collected_env_before
+        _result['collected_env_after'] = collected_env_after
 
         r = files.diff_env(collected_env_before, collected_env_after)
         if r['return']>0: return r
 
-        result['env_added'] = r['env_added']
-        result['env_removed'] = r['env_removed']
+        _result['env_added'] = r['env_added']
+        _result['env_removed'] = r['env_removed']
 
-    return result
+    return _result
 
 ###################################################################################################
 def run_command_with_timeout_tree_kill_on_windows(
