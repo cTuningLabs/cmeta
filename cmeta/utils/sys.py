@@ -476,7 +476,8 @@ def run(
     print_env_keys: list = None,  # Environment variable keys to print after execution.
     print_extra_line: bool = False,  # If True, print an extra blank line in console output.
     print_cur_dir: bool = False, # If True, print current directory before running command.
-    open_shell: bool = False, # Open shell instead of running command.
+    open_shell: bool = False, # Open shell instead of running a command.
+    open_shell_after: bool = False, # Open shell after running a command.
     pack_existing_env_values: bool = False, # If part of new value is the same as value in existing env, 
                                             # substitute it with new:${key}
     print_env_with_os_sep_on_new_lines: bool = True, # If True, separate env print with os sep on new lines
@@ -834,6 +835,24 @@ def run(
 
             if returncode != 0:
                 break
+
+    if open_shell_after:
+        if con:
+            print ('')
+            print (f'{space}INFO: Opening shell for testing and debugging. Exiting shell will resume cMeta workflow execution:')
+            print ('')
+
+        if is_windows:
+            shell_cmd = ["cmd.exe"]
+        else:
+            shell_cmd = [os.environ.get("SHELL", "/bin/sh")]
+
+        subprocess.run(shell_cmd, env = cur_env)
+
+        if con:
+            print ('')
+            print (f'{space}INFO: Returned to cMeta workflow. Continue executing ...')
+            print ('')
 
     if work_dir is not None:
         os.chdir(cur_dir)
