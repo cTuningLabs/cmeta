@@ -310,6 +310,84 @@ def safe_print_json_to_str(
 
     return json.dumps(safe_serialize_json(obj, non_serializable_text=non_serializable_text), indent=indent, sort_keys=sort)
 
+
+###################################################################################################
+def make_json_serializable(obj, non_serializable_obj=None, seen=None):
+    """
+    Recursively walk a Python object and replace non-JSON-serializable
+    values with `non_serializable_obj`.
+
+    Supports:
+      - dicts
+      - lists
+      - tuples (preserved as tuples)
+      - sets (converted to lists)
+      - nested structures
+      - circular references
+
+    Args:
+        obj: Object to sanitize.
+        non_serializable_obj: Replacement for non-serializable values.
+                               Defaults to None.
+        seen: Internal recursion tracking.
+
+    Returns:
+        JSON-safe version of the object.
+    """
+
+    import json
+    from collections.abc import Mapping
+
+    if seen is None:
+        seen = set()
+
+    # Primitive JSON-safe types
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+
+    obj_id = id(obj)
+
+    # Circular reference protection
+    if obj_id in seen:
+        return non_serializable_obj
+
+    seen.add(obj_id)
+
+    # Dictionaries
+    if isinstance(obj, Mapping):
+        return {
+            str(k): make_json_serializable(v, non_serializable_obj, seen)
+            for k, v in obj.items()
+        }
+
+    # Lists
+    if isinstance(obj, list):
+        return [
+            make_json_serializable(v, non_serializable_obj, seen)
+            for v in obj
+        ]
+
+    # Tuples (preserve tuple type)
+    if isinstance(obj, tuple):
+        return tuple(
+            make_json_serializable(v, non_serializable_obj, seen)
+            for v in obj
+        )
+
+    # Sets (JSON has no set type)
+    if isinstance(obj, set):
+        return [
+            make_json_serializable(v, non_serializable_obj, seen)
+            for v in obj
+        ]
+
+    # Any other object
+    try:
+        json.dumps(obj)
+        return obj
+    except (TypeError, OverflowError):
+        return non_serializable_obj
+
 ###################################################################################################
 def normalize_tags(
     tags,  # Tags as comma-separated string or list of strings.

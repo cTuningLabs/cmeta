@@ -528,9 +528,11 @@ def write_file(
         with open(filepath, mode, encoding=encoding, newline=set_newline) as f:
             if file_format == "json":
                 if safe_dump:
-                    from .common import safe_print_json_to_str
-                    f.write(safe_print_json_to_str(data, indent=2, sort=sort_keys))
-                    f.write("\n")
+                    from .common import make_json_serializable
+                    sdata = make_json_serializable(data)
+#                    f.write(safe_print_json_to_str(data, indent=2, sort=sort_keys))
+#                    f.write("\n")
+                    json.dump(sdata, f, indent=2, sort_keys=sort_keys)
                 else:
                     json.dump(data, f, indent=2, sort_keys=sort_keys)
                 f.write("\n")

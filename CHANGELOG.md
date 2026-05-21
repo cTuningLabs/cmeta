@@ -1,4 +1,7 @@
-﻿cMeta (0.27.0):
+﻿cMeta (0.28.0):
+  * fixed bug and added safe dump of agents/tasks context 
+
+cMeta (0.27.0):
   * fixed bug in handling repos with mixed upper and lower case characters
 
 cMeta (0.26.0):
