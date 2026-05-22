@@ -125,6 +125,7 @@ class CMeta:
         self.jv = utils.common.print_module_vars
         self.js = utils.common.safe_print_json_to_str
         self.q = utils.files.quote_path
+        self.qq = utils.files.quote_path2
         self.utils = utils
 
 

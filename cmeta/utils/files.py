@@ -1480,6 +1480,27 @@ def quote_path(
     return path
 
 ##########################################################################################
+def quote_path2(
+    path,  # Filesystem path.
+):
+    """
+        Add double quotes with \ around a path when it contains spaces.
+        Useful for sub-tools such as adb or rcp
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            dict: Operation result.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+
+    if not path.startswith('"') and (' ' in path or ',' in path or '+' in path):
+        path = '\\"' + path + '\\"'
+
+    return path
+
+##########################################################################################
 def files_encode(
     files,  # Value for files.
 ):
