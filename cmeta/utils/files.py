@@ -1484,7 +1484,7 @@ def quote_path2(
     path,  # Filesystem path.
 ):
     """
-        Add double quotes with \ around a path when it contains spaces.
+        Add double quotes with \\ around a path when it contains spaces.
         Useful for sub-tools such as adb or rcp
 
         Args:
