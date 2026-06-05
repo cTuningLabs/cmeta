@@ -93,7 +93,8 @@ def deep_merge(
     append_lists: bool = False,  # If True, lists will be appended instead of overwritten.
     prepend_lists: bool = False,  # If True and append_lists is True, insert new items at the beggining of the list.
     ignore_root_keys: list = [],  # List of keys to ignore from source at the root level.
-    skip_if_exist_in_list: bool = True # Skip value if already exists in a list.
+    skip_if_exist_in_list: bool = True, # Skip value if already exists in a list.
+    remove_if_none: bool = False,  # If True, remove key from target when source value is None, {}, or [].
 ):
     """
         Recursively updates the target dictionary with values from the source dictionary.
@@ -105,6 +106,8 @@ def deep_merge(
             prepend_lists (bool): If True and append_lists is True, insert new items at the
                                  start of existing lists instead of appending at the end.
             ignore_root_keys (list): List of keys to ignore from source at the root level.
+            remove_if_none (bool): If True, remove key from target when source value is None,
+                                   empty dict {}, or empty list [].
 
         Returns:
             dict: Operation result.
@@ -116,14 +119,19 @@ def deep_merge(
     for key, value in source.items():
         if key in ignore_root_keys:
             continue
-            
+
+        if remove_if_none and (value is None or value == {} or value == []):
+            target.pop(key, None)
+            continue
+
         if isinstance(value, Mapping):
             target[key] = deep_merge(
-              target.get(key, {}), 
-              value, 
-              append_lists = append_lists, 
+              target.get(key, {}),
+              value,
+              append_lists = append_lists,
               prepend_lists = prepend_lists,
               skip_if_exist_in_list = skip_if_exist_in_list,
+              remove_if_none = remove_if_none,
         )
 
         elif isinstance(value, list):
@@ -309,84 +317,6 @@ def safe_print_json_to_str(
         obj = {k: v for k, v in obj.items() if k not in ignore_keys}
 
     return json.dumps(safe_serialize_json(obj, non_serializable_text=non_serializable_text), indent=indent, sort_keys=sort)
-
-
-###################################################################################################
-def make_json_serializable(obj, non_serializable_obj=None, seen=None):
-    """
-    Recursively walk a Python object and replace non-JSON-serializable
-    values with `non_serializable_obj`.
-
-    Supports:
-      - dicts
-      - lists
-      - tuples (preserved as tuples)
-      - sets (converted to lists)
-      - nested structures
-      - circular references
-
-    Args:
-        obj: Object to sanitize.
-        non_serializable_obj: Replacement for non-serializable values.
-                               Defaults to None.
-        seen: Internal recursion tracking.
-
-    Returns:
-        JSON-safe version of the object.
-    """
-
-    import json
-    from collections.abc import Mapping
-
-    if seen is None:
-        seen = set()
-
-    # Primitive JSON-safe types
-    if obj is None or isinstance(obj, (str, int, float, bool)):
-        return obj
-
-    obj_id = id(obj)
-
-    # Circular reference protection
-    if obj_id in seen:
-        return non_serializable_obj
-
-    seen.add(obj_id)
-
-    # Dictionaries
-    if isinstance(obj, Mapping):
-        return {
-            str(k): make_json_serializable(v, non_serializable_obj, seen)
-            for k, v in obj.items()
-        }
-
-    # Lists
-    if isinstance(obj, list):
-        return [
-            make_json_serializable(v, non_serializable_obj, seen)
-            for v in obj
-        ]
-
-    # Tuples (preserve tuple type)
-    if isinstance(obj, tuple):
-        return tuple(
-            make_json_serializable(v, non_serializable_obj, seen)
-            for v in obj
-        )
-
-    # Sets (JSON has no set type)
-    if isinstance(obj, set):
-        return [
-            make_json_serializable(v, non_serializable_obj, seen)
-            for v in obj
-        ]
-
-    # Any other object
-    try:
-        json.dumps(obj)
-        return obj
-    except (TypeError, OverflowError):
-        return non_serializable_obj
 
 ###################################################################################################
 def normalize_tags(

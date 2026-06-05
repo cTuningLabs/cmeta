@@ -528,11 +528,11 @@ def write_file(
         with open(filepath, mode, encoding=encoding, newline=set_newline) as f:
             if file_format == "json":
                 if safe_dump:
-                    from .common import make_json_serializable
-                    sdata = make_json_serializable(data)
-#                    f.write(safe_print_json_to_str(data, indent=2, sort=sort_keys))
-#                    f.write("\n")
-                    json.dump(sdata, f, indent=2, sort_keys=sort_keys)
+#                    sdata = make_json_serializable(data)
+##                    f.write(safe_print_json_to_str(data, indent=2, sort=sort_keys))
+##                    f.write("\n")
+#                    json.dump(sdata, f, indent=2, sort_keys=sort_keys)
+                    f.write(safe_json_dumps(data, indent=2, sort_keys=sort_keys))
                 else:
                     json.dump(data, f, indent=2, sort_keys=sort_keys)
                 f.write("\n")
@@ -549,6 +549,11 @@ def write_file(
     return {'return':0, 'encoding':encoding, 'mode':mode}
 
 
+##########################################################################################
+def safe_json_dumps(obj, sobj = "#NON-SERIALIZABLE#", **kwargs):
+    def default(o):
+        return sobj
+    return json.dumps(obj, default=default, **kwargs)
 
 ##########################################################################################
 def safe_write_file(
@@ -1155,7 +1160,7 @@ def unzip(
 def zip_directory(
     source_dir: str,  # Path to the directory to zip.
     output_path: str,  # Path where the zip file will be created.
-    skip_directories: list = None,  # List of directory names to skip (e.g., ['.git', '__pycache__']).
+    skip_directories: list = None,  # List of directory names/patterns to skip (e.g., ['.git', '__pycache__', 'tmp*']).
     fail_on_error: bool = True,  # Whether to raise exceptions or return error dict.
     logger = None,  # Logger instance for debug messages
     skip_files: list = None,  # List of file names or glob patterns to exclude from the archive.
@@ -1166,7 +1171,7 @@ def zip_directory(
         Args:
             source_dir (str): Path to the directory to zip.
             output_path (str): Path where the zip file will be created.
-            skip_directories (list | None): List of directory names to skip (e.g., ['.git', '__pycache__']).
+            skip_directories (list | None): List of directory names or glob patterns to skip (e.g., ['.git', '__pycache__', 'tmp*']).
             fail_on_error (bool): Whether to raise exceptions or return error dict.
             logger: Logger instance for debug messages
 
@@ -1201,7 +1206,7 @@ def zip_directory(
                 # Check if any parent directory should be skipped
                 skip = False
                 for parent in file_path.relative_to(source_path).parts:
-                    if skip_directories and parent in skip_directories:
+                    if skip_directories and any(fnmatch.fnmatch(parent, pattern) for pattern in skip_directories):
                         skip = True
                         break
 

@@ -1032,7 +1032,7 @@ class Category(InitCategory):
         con = ctx.get('control',{}).get('con', False)
         
         if not skip_dirs:
-            skip_dirs = ['.venv', '__pycache__']
+            skip_dirs = ['.venv', '__pycache__', 'tmp*']
 
         if not skip_files:
             skip_files = []
