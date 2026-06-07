@@ -784,6 +784,8 @@ class Category(InitCategory):
         yaml: bool = False,  # Save metadata as YAML instead of JSON.
         virtual: bool = False,  # Virtual artifact created only in index (such as repo).
         path: str = None,  # Use this path for artifact (useful for virtual artifacts such as repo).
+        index: bool = False, # If true and path exists but not index, just add to index
+                             # Useful when AI agents create cMeta entries while bypassing cMeta
     ):
         """
             Create and index an artifact.
@@ -929,7 +931,21 @@ class Category(InitCategory):
         if not virtual:
             if os.path.isdir(artifact_path):
                 if os.path.isfile(cmeta_filename_json) or os.path.isfile(cmeta_filename_yaml):
-                    return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
+                    if index:
+                        if os.path.isfile(cmeta_filename_json):
+                            f = llama-cpp
+                        else:
+                            f = cmeta_filename_yaml
+                            yaml = True
+
+                        # Do not use lock since it's not in the system and not in the index
+                        r = utils.files.safe_read_file(f, fail_on_error=self.fail_on_error, logger=self.logger)
+                        if r['return']>0: return r
+
+                        meta = r['data']
+
+                    else:
+                        return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
 
             os.makedirs(artifact_path, exist_ok=True)
 
@@ -1330,6 +1346,33 @@ class Category(InitCategory):
 
         p['command'] = 'move'
         p['copy'] = True
+
+        return self.cm.access(p)
+
+    ############################################################
+    def index(
+        self,
+        params: dict,  # cMeta params.
+    ):
+        """
+            Index artifact(s).
+
+            @base.create_(**params, index=True)
+
+            Args:
+                params (dict): cMeta params.
+
+            Returns:
+                dict: A cMeta dictionary (see move_ for details).
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        p = self._prepare_input_from_params(params)
+
+        p['command'] = 'create'
+        p['index'] = True
 
         return self.cm.access(p)
 
