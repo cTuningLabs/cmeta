@@ -933,7 +933,7 @@ class Category(InitCategory):
                 if os.path.isfile(cmeta_filename_json) or os.path.isfile(cmeta_filename_yaml):
                     if index:
                         if os.path.isfile(cmeta_filename_json):
-                            f = llama-cpp
+                            f = cmeta_filename_json
                         else:
                             f = cmeta_filename_yaml
                             yaml = True
