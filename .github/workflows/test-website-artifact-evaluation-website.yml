@@ -69,8 +69,8 @@ jobs:
           GH_USER: gfursin
           GH_TOKEN: ${{ secrets.PRIVATE_GH_TOKEN_CMETA }}
         run: |
-          git clone https://${GH_USER}:${GH_TOKEN}@github.com/cTuningLabs/cmeta.git
-          cd cmeta
+          git clone https://${GH_USER}:${GH_TOKEN}@github.com/cTuningLabs/cmeta.git cx
+          cd cx
           pip install .[all]
 
       - name: Test cMeta
