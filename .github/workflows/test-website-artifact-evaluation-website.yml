@@ -80,7 +80,6 @@ jobs:
 
       - name: List website
         run: |
-          cx --reindex
           cx website list
 
       - name: Build website

@@ -1,4 +1,8 @@
-﻿cMeta (0.28.0):
+﻿cMeta (0.29.0):
+  * fixed various bugs and added more basic functionality for agents, tasks and contexts
+  * fixed repo indexing when getting new repos
+
+cMeta (0.28.0):
   * fixed bug and added safe dump of agents/tasks context 
 
 cMeta (0.27.0):

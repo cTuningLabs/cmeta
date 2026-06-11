@@ -992,7 +992,8 @@ class Repos:
 
                         if path in add_repo_paths:
                             categories_to_index.append(category_entry)
-
+# ??? FGG 20260611 - we actually need to check all existing categories and not just in the pulled repo
+# because it can have artifacts with categories defined somewhere else
 
                         category_name = category_meta['artifact']
 #                        if conx:
@@ -1108,9 +1109,9 @@ class Repos:
 
 #            selected_paths_to_repos = add_repo_paths if len(add_repo_paths)>0 else paths_to_repos
             # We go through all repos but check all or selected categories only
-            selected_paths_to_repos = paths_to_repos
+#            selected_paths_to_repos = paths_to_repos
 
-            for path in selected_paths_to_repos:
+            for path in paths_to_repos: #selected_paths_to_repos:
                 repo_meta = repos_meta[path]
 
                 repo_name = repo_meta['artifact']
@@ -1127,7 +1128,8 @@ class Repos:
                 if conx:
                     print (f'  Processing repo in {repo_full_path} ...')
 
-                selected_categories = categories_to_index if len(add_repo_paths)>0 else categories
+                selected_categories = categories_to_index if len(add_repo_paths)>0 and path not in add_repo_paths else categories
+#                selected_categories = categories_to_index if len(add_repo_paths)>0 else categories
 
                 for category_mix in selected_categories:
 
