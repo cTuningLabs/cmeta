@@ -65,13 +65,9 @@ jobs:
           python -m pip install --upgrade pip
 
       - name: Install cMeta framework
-        env:
-          GH_USER: gfursin
-          GH_TOKEN: ${{ secrets.PRIVATE_GH_TOKEN_CMETA }}
         run: |
-          git clone https://${GH_USER}:${GH_TOKEN}@github.com/cTuningLabs/cmeta.git cx
-          cd cx
-          pip install .[all]
+          python -m pip install --upgrade pip
+          python -m pip install .[all]
 
       - name: Test cMeta
         run: |
