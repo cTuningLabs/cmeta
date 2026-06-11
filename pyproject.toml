@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -44,9 +44,9 @@ dev = [
     "flake8",
 ]
 
-async = [
-    "asyncio",
-]
+# asyncio is part of the Python standard library — no PyPI package required.
+# Kept as an extra so `cmeta[server]` can continue to reference it.
+async = []
 
 server = [
     "fastapi",
@@ -58,6 +58,12 @@ server = [
 ]
 
 all = ["cmeta[dev,async,server]"]
+
+
+[project.urls]
+Homepage = "https://cTuning.ai"
+Author = "https://cTuning.ai/@gfursin"
+Paper = "https://arxiv.org/abs/2406.16791"
 
 
 [project.scripts]

@@ -1,99 +1,100 @@
-﻿cMeta (0.29.0):
-  * fixed various bugs and added more basic functionality for agents, tasks and contexts
-  * fixed repo indexing when getting new repos
+# Changelog
 
-cMeta (0.28.0):
-  * fixed bug and added safe dump of agents/tasks context 
+All notable changes to cMeta are documented here, newest first.
 
-cMeta (0.27.0):
-  * fixed bug in handling repos with mixed upper and lower case characters
+## 0.29.0
+- Fixed various bugs and added more basic functionality for agents, tasks and contexts
+- Fixed repo indexing when getting new repos
 
-cMeta (0.26.0):
-  * started new clean version based on 0.25.14
-  * added last_update_timestamp
+## 0.28.0
+- Fixed bug and added safe dump of agents/tasks context
 
-cMeta (0.25.0):
-  * changed API version handling logic (now using the last one by default)
-  * many minor updates and improvements for cMeta tasks
+## 0.27.0
+- Fixed bug in handling repos with mixed upper and lower case characters
 
-cMeta (0.24.0):
-  * simplified error and logging handling logic
-  * updated state -> ctx (context)
-   
-cMeta (0.23.0):
-  * many improvements and minor bug fixes
+## 0.26.0
+- Started new clean version based on 0.25.14
+- Added `last_update_timestamp`
 
-cMeta (0.22.0):
-  * added state extensions for reproducibility
-  * fixed and extended 'load_files' in artifact read/find logic
-  * improved sub-package installation
-  * added uses_categories to cmeta
-  * added advanced match_version to packages for tools
+## 0.25.0
+- Changed API version handling logic (now using the last one by default)
+- Many minor updates and improvements for cMeta tasks
 
-cMeta (0.21.0):
-  * many various bug fixes and important extensions
+## 0.24.0
+- Simplified error and logging handling logic
+- Updated `state` -> `ctx` (context)
 
-cMeta (0.20.0):
-  * many regular improvements and some serious bug fixes
+## 0.23.0
+- Many improvements and minor bug fixes
 
-cMeta (0.19.0):
-  * many improvements and bug fixes
+## 0.22.0
+- Added state extensions for reproducibility
+- Fixed and extended `load_files` in artifact read/find logic
+- Improved sub-package installation
+- Added `uses_categories` to cmeta
+- Added advanced `match_version` to packages for tools
 
-cMeta (0.18.0):
-  * various improvements including cx repo plug/unplug USB repos
+## 0.21.0
+- Many various bug fixes and important extensions
 
-cMeta (0.17.0):
-  * many updates
-  * added cx {category} read --load_files,=
+## 0.20.0
+- Many regular improvements and some serious bug fixes
 
-cMeta (0.16.0):
-  * Extended cx note create; cx work create; cx experiment create
-  * Extended cx config
+## 0.19.0
+- Many improvements and bug fixes
 
-cMeta (0.15.0):
-  * Added cms - common meta server
-  * Added app run
+## 0.18.0
+- Various improvements including `cx repo plug`/`unplug` USB repos
 
-cMeta (0.14.0):
-  * Fixed bug in mixed case artifact handling
+## 0.17.0
+- Many updates
+- Added `cx {category} read --load_files,=`
 
-cMeta (0.13.0):
-  * Added state['deps'] for python packages
+## 0.16.0
+- Extended `cx note create`, `cx work create`, `cx experiment create`
+- Extended `cx config`
 
-cMeta (0.12.0):
-  * Added new categories to support CK
+## 0.15.0
+- Added cms - common meta server
+- Added `app run`
 
-cMeta (0.11.0):
-  * Updated documentation for all functions
+## 0.14.0
+- Fixed bug in mixed case artifact handling
 
-cMeta (0.10.0):
-  * Fixed more bugs; added on-the-fly package management; added common functions
+## 0.13.0
+- Added `state['deps']` for python packages
 
-cMeta (0.9.0):
-  * Fixed bugs in sharding schema
+## 0.12.0
+- Added new categories to support CK
 
-cMeta (0.8.0):
-  * Simplified sharding schema
-  * Changed default API handling
+## 0.11.0
+- Updated documentation for all functions
 
-cMeta (0.7.0):
-  * Added no_index artifacts
+## 0.10.0
+- Fixed more bugs; added on-the-fly package management; added common functions
 
-cMeta (0.6.0):
-  * Added sharding for artifacts
+## 0.9.0
+- Fixed bugs in sharding schema
 
-cMeta (0.4.0):
-  * Fixed another major bug in the category module loader.
+## 0.8.0
+- Simplified sharding schema
+- Changed default API handling
 
-cMeta (0.3.0):
-  * Fixed a major bug in the category module loader.
+## 0.7.0
+- Added `no_index` artifacts
 
-cMeta (0.2.0): 
+## 0.6.0
+- Added sharding for artifacts
 
-  * Added async support for FastAPI.
+## 0.4.0
+- Fixed another major bug in the category module loader
 
-cMeta (0.1.0):
+## 0.3.0
+- Fixed a major bug in the category module loader
 
-  * Removed explicit UID ordering from the index. 
-    Dictionary key insertion order (Python 3.10+) 
-    now defines the ordering.
+## 0.2.0
+- Added async support for FastAPI
+
+## 0.1.0
+- Removed explicit UID ordering from the index. Dictionary key insertion order
+  (Python 3.10+) now defines the ordering
