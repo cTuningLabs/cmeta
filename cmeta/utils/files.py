@@ -1595,13 +1595,87 @@ def gen_temp_filepath(
     return {'return':0, 'filepath': temp_filepath}
 
 ##########################################################################################
+def _to_extended_path(
+    path,  # Filesystem path.
+):
+    """
+        Convert a path to a Windows extended-length path (\\\\?\\...) to avoid
+        MAX_PATH (260 char) limitations for deeply nested build trees.
+        No-op on non-Windows platforms.
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            str: Possibly-prefixed path.
+    """
+    p = os.fspath(path)
+
+    if os.name != 'nt':
+        return p
+
+    p = os.path.abspath(p)
+
+    if p.startswith('\\\\?\\'):
+        return p
+
+    if p.startswith('\\\\'):
+        return '\\\\?\\UNC\\' + p[2:]
+
+    return '\\\\?\\' + p
+
+##########################################################################################
+def _force_remove(
+    path,  # Filesystem path.
+):
+    """
+        Best-effort removal of a single file or (empty) directory entry.
+
+        Clears the read-only attribute before removing, uses extended-length
+        paths on Windows to cope with deep/long build paths, and retries a
+        few times with short delays to ride out transient locks held by
+        antivirus, search indexing or cloud-sync agents.
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            None
+        Raises:
+            Exception: Propagated if the entry could not be removed after retries.
+    """
+    p = _to_extended_path(path)
+
+    last_exc = None
+
+    for attempt in range(5):
+        try:
+            try:
+                os.chmod(p, stat.S_IWRITE)
+            except OSError:
+                pass
+
+            if os.path.isdir(p) and not os.path.islink(p):
+                os.rmdir(p)
+            else:
+                os.unlink(p)
+
+            return
+        except FileNotFoundError:
+            return
+        except (PermissionError, OSError) as e:
+            last_exc = e
+            time.sleep(0.1 * (attempt + 1))
+
+    raise last_exc
+
+##########################################################################################
 def _handle_remove_readonly(
     func,  # Value for func.
     path,  # Filesystem path.
     exc_info,  # Value for exc info.
 ):
     """
-        Error handler for shutil.rmtree that removes read-only attributes.
+        Error handler for shutil.rmtree that removes read-only attributes
+        and retries removal (see `_force_remove`).
 
         Args:
             func: Value for func.
@@ -1612,11 +1686,7 @@ def _handle_remove_readonly(
         Raises:
             Exception: Propagated runtime errors, if any.
     """
-    try:
-        os.chmod(path, stat.S_IWRITE)
-        func(path)
-    except Exception:
-        raise
+    _force_remove(path)
 
 ##########################################################################################
 def remove_files_and_dirs_in_path(
@@ -1685,8 +1755,7 @@ def remove_files_and_dirs_in_path(
                         onerror=_handle_remove_readonly,
                     )
                 else:
-                    os.chmod(item, stat.S_IWRITE)
-                    item.unlink()
+                    _force_remove(item)
             except FileNotFoundError:
                 pass
 

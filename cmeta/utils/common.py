@@ -251,6 +251,7 @@ def safe_print_json(
     non_serializable_text: str = None,  # Text to use for non-serializable objects.
     ignore_keys: list = [],  # List of top-level keys to exclude from output.
     sort: bool = True,  # If True, sort dictionary keys. Default is True.
+    press_enter: bool = False, # If True ask to Press Enter after printing
 ):
     """
         Print object as JSON with safe serialization of non-serializable objects.
@@ -270,7 +271,15 @@ def safe_print_json(
     """
     print(safe_print_json_to_str(obj, indent=indent, non_serializable_text=non_serializable_text, ignore_keys=ignore_keys, sort=sort))
 
+    if press_enter:
+        print ('')
+        input ('Press Enter to continue:')
+
     return {'return':0}
+
+def safe_print_json_with_enter(*args, **kwargs):
+    kwargs["press_enter"] = True
+    return safe_print_json(*args, **kwargs)
 
 ###################################################################################################
 def print_module_vars(
