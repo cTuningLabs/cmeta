@@ -10,9 +10,8 @@
 interconnecting, and reusing code, data, models, agents, and knowledge
 across projects, platforms, and time through a uniform interface.
 It enables collaborative research and experimentation for developing
-self-optimizing and self-adapting software and hardware systems that
-automatically identify the most efficient and cost-effective ways
-to execute AI, ML, and other complex workloads.
+self-optimizing and self-adapting software and hardware that automatically 
+identify the most efficient and cost-effective ways to execute AI, ML, and other complex workloads.
 
 > **Created, architected and developed by
 > [Grigori Fursin](https://cTuning.ai/@gfursin)** — originator of the long-term
