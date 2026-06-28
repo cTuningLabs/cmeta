@@ -277,6 +277,86 @@ class Category(InitCategory):
 
         return self.cm.utils.common.copy_text_to_clipboard(arg1, add_quotes)
 
+    ############################################################
+    def copy_date_to_clipboard_(
+        self,
+        ctx,  # cMeta context object.
+        do_not_fail = True,  # Do not fail on error if True.
+    ):
+        """
+            Copy text to clipboard
+
+            Args:
+                ctx (dict): cMeta context object.
+                arg1 (str): Text to copy to clipboard.
+                add_quotes (bool): Add quotes to the text if True.
+                do_not_fail (bool): Do not fail on error if True.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        from datetime import datetime
+
+        arg1 = datetime.now().strftime("%Y%m%d") + '.'
+
+        return self.cm.utils.common.copy_text_to_clipboard(arg1)
+
+    ############################################################
+    def copy_date_time_to_clipboard_(
+        self,
+        ctx,  # cMeta context object.
+        do_not_fail = True,  # Do not fail on error if True.
+    ):
+        """
+            Copy text to clipboard
+
+            Args:
+                ctx (dict): cMeta context object.
+                arg1 (str): Text to copy to clipboard.
+                add_quotes (bool): Add quotes to the text if True.
+                do_not_fail (bool): Do not fail on error if True.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        from datetime import datetime
+
+        arg1 = datetime.now().strftime("%Y%m%d-%H%M%S") + '.'
+
+        return self.cm.utils.common.copy_text_to_clipboard(arg1)
+
+    ############################################################
+    def copy_date_time_iso_to_clipboard_(
+        self,
+        ctx,  # cMeta context object.
+        do_not_fail = True,  # Do not fail on error if True.
+    ):
+        """
+            Copy text to clipboard
+
+            Args:
+                ctx (dict): cMeta context object.
+                arg1 (str): Text to copy to clipboard.
+                add_quotes (bool): Add quotes to the text if True.
+                do_not_fail (bool): Do not fail on error if True.
+
+            Returns:
+                dict: Operation result.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        from datetime import datetime
+
+        arg1 = datetime.now().isoformat().replace('-','').replace(':','').replace('T','-').replace('.','-') + '.'
+
+        return self.cm.utils.common.copy_text_to_clipboard(arg1)
 
     ############################################################
     def json2yaml_(

@@ -2043,3 +2043,13 @@ def diff_env(
         'env_removed': env_removed
     }
 
+############################################################
+def remove_dirs_from_path(
+    path: str,
+    num: int = 0,
+):
+
+    for _ in range(0, num):
+        path = os.path.dirname(path)
+
+    return {'return':0, 'path': path}

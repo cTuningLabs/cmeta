@@ -150,6 +150,7 @@ class Repos:
         path,  # Filesystem path.
         original_alias = None,  # Previous artifact alias before update.
         original_uid = None,  # Previous artifact UID before update.
+        sharding_slices_num = 0, # Number of sharding slices
     ):
         """
             Insert or update an artifact record in the category index.
@@ -200,6 +201,9 @@ class Repos:
 
         # Prepare new record
         record = {'cmeta': cmeta, 'cmeta_ref_parts': cmeta_ref_parts, 'path': path}
+
+        if sharding_slices_num is not None and sharding_slices_num != 0:
+            record['sharding_slices_num'] = sharding_slices_num
 
         uids[artifact_uid] = record
 
@@ -473,7 +477,11 @@ class Repos:
                                          artifact_alias = artifact_alias, artifact_uid = artifact_uid)
                 if r['return'] >0: return r
                 
-                artifacts += r['artifacts']
+                for a in r['artifacts']:
+                    if sharding_slices:
+                        a['sharding_slices_num'] = len(sharding_slices)
+
+                    artifacts.append(a)
         
         return {'return': 0, 'artifacts': artifacts}
 
@@ -1449,6 +1457,9 @@ class Repos:
                     if repo_alias is not None and repo_alias!="": 
                         cmeta_ref_parts['repo_alias'] = repo_alias
                     entry['cmeta_ref_parts'] = cmeta_ref_parts
+
+                    if sharding_slices:
+                        entry['sharding_slices_num'] = len(sharding_slices)
 
                     if index_artifacts is None:
                         artifacts.append(entry)

@@ -2,6 +2,9 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.30.0
+- Improved handling of sharded artifacts
+
 ## 0.29.0
 - Fixed various bugs and added more basic functionality for agents, tasks and contexts
 - Fixed repo indexing when getting new repos

@@ -1,0 +1,11 @@
+artifact: 38014f4ba4184605
+authors: '[Grigori Fursin](https://cKnowledge.org/gfursin)'
+category: category,dd9ea50e7f76467f
+copyright: 2025-2026 Grigori Fursin and cTuning Labs. See the cMeta COPYRIGHT and
+  LICENSE files for details.
+creation_timestamp: '2026-06-11T09:28:51.718055+00:00'
+last_api_version: 1
+last_update_timestamp: '2026-06-18T09:49:31.779583+00:00'
+permanent: true
+uses_categories:
+  utils: utils,234ce5e3262e4d52

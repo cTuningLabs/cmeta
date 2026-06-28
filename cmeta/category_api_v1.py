@@ -500,7 +500,9 @@ class Category(InitCategory):
 
                    artifact_cmeta_ref_parts = artifact['cmeta_ref_parts']
 
-                   r = self.cm.repos.add_to_index(cmeta, artifact_cmeta_ref_parts, artifact_path)
+                   sharding_slices_num = artifact.get('sharding_slices_num', 0)
+
+                   r = self.cm.repos.add_to_index(cmeta, artifact_cmeta_ref_parts, artifact_path, sharding_slices_num = sharding_slices_num)
                    if r['return']>0: return r
 
             # Provide info
@@ -917,7 +919,10 @@ class Category(InitCategory):
         else:
             sharding_slices = category_cmeta.get('sharding_slices')
 
+        sharding_slices_num = 0
         if sharding_slices is not None:
+            sharding_slices_num = len(sharding_slices)
+
             r = utils.files.apply_sharding_to_path(category_path, artifact_dir, sharding_slices)
             if r['return']>0: return r
 
@@ -1015,7 +1020,7 @@ class Category(InitCategory):
             cmeta_ref_parts['repo_uid'] = artifact_repo_uid
 
 
-            r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, artifact_path)
+            r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, artifact_path, sharding_slices_num = sharding_slices_num)
             if r['return']>0: return r
 
         # Print artifact path
@@ -1223,6 +1228,8 @@ class Category(InitCategory):
                 else:
                     target_artifact_dir = artifact_uid
 
+            target_sharding_slices_num = len(target_sharding_slices) if target_sharding_slices else 0
+
             if target_sharding_slices is not None:
                 r = utils.files.apply_sharding_to_path(path_to_target_category, target_artifact_dir, target_sharding_slices)
                 if r['return']>0: return r
@@ -1316,6 +1323,9 @@ class Category(InitCategory):
                 kwargs = {}
                 if not copy:
                     kwargs.update(original_alias=artifact_alias, original_uid=artifact_uid)
+
+                if target_sharding_slices_num >0:
+                    kwargs['sharding_slices_num'] = target_sharding_slices_num
 
                 r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, path_to_target_artifact, **kwargs)
                 if r['return']>0: return r
