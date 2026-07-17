@@ -1,3 +1,7 @@
+# Agents
+.claude/settings.local.json
+CLAUDE.local.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

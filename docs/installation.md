@@ -59,6 +59,10 @@ A first end-to-end check — list known repositories:
 cx repo list
 ```
 
+Next, walk through everyday usage — pulling in more content repositories,
+adding your own categories (plugins) and artifacts, and keeping the local
+index healthy — in [using-cmeta.md](using-cmeta.md).
+
 ---
 
 ## Python interface
@@ -125,5 +129,7 @@ Common flags for category `program` include
 
 ---
 
+For everyday usage (repos, plugins, artifacts, reindex), see
+[using-cmeta.md](using-cmeta.md).
 For *why* cMeta exists and where it is headed, see
 [motivation.md](motivation.md).

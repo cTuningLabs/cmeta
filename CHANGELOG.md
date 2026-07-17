@@ -2,6 +2,39 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.31.0
+- **First pass at connecting AI agents to cMeta so they can help extend and
+  improve the framework itself** — ships portable, reusable guidance that
+  agents in this and downstream repos can pick up automatically:
+  - New Claude Code skills under `.claude/skills/`:
+    `use-cmeta-python`, `use-cmeta-cli`, `add-plugin`, `add-repo`.
+  - Documented the `ctx` (context) dictionary as the standard bus for
+    threading agent state (session id, trace, budget, ...) through nested
+    `access()` calls. Framework keys reserved; user/agent keys namespaced
+    (e.g. `ctx['agent']`).
+  - Documented how to seed `ctx` from the CLI via `--ctx.<key>[.<child>]=v`
+    and via `@input.yaml` / `@input.json` file inclusion.
+  - Encouraged the `self.cm.utils.*` idiom in category `api/v1.py` so
+    agent-written code stays reusable, debuggable, portable, and composable
+    (motivation + stdlib↔helper substitution table).
+  - Refreshed `AGENTS.md` (framework brief) and added `CLAUDE.md`.
+- New `docs/using-cmeta.md` — end-to-end walkthrough covering mental model,
+  first checks, global CLI flags, working with artifacts (Python + CLI),
+  alias/UID/`alias,UID` resolution, three-tier repo model (internal / default
+  local scratch / user repos), `<CMETA_HOME>` env-var resolution order and
+  per-project collections, `_cmr.yaml` reference, `cx repo get`/`init`/`plug`
+  workflows, `config`-driven configuration (incl. the `app` and cserver/FastAPI
+  patterns), adding categories and artifacts, and the fast-index + `--reindex`.
+- README refreshed: quickstart, CLI-flag cheatsheet with correct list syntax
+  (`--key,=v1,v2,v3`), built-in categories table, pointers to skills and docs.
+- Test suite expanded from 76 → 274 tests: added coverage for
+  `utils.common`/`utils.names`/`utils.cli.parse_cmd`, `packages` helpers
+  (`poetry_to_pep440`, `build_spec`, `build_pip_requirement`,
+  `build_cache_key`, `try_import`, `get`), `config` env-var resolution +
+  precedence, and full integration tests (temp `CMETA_HOME`) covering
+  first-launch layout, base CRUD lifecycle, `ctx` propagation across nested
+  calls, and shipped `utils` / `config` category commands.
+
 ## 0.30.0
 - Improved handling of sharded artifacts
 

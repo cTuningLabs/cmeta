@@ -356,6 +356,7 @@ def restore_cmeta_obj(
 def parse_cmeta_ref(
     ref: Optional[Union[str, Dict[str, Any]]],  # Ref string or dict to parse.
     fail_on_error: bool = False,  # If True, raise error on failure.
+    do_not_fail_if_no_sep: bool = False, # If True, do not fail if no :: and just return as artifact
 ) -> Dict[str, Any]:
     """
         Parse cMeta ref string (category_obj::artifact_obj) into dict.
@@ -378,19 +379,27 @@ def parse_cmeta_ref(
     if ref is None:
         result = {}
     else:
+        category_parts = {}
+
         ref = ref.strip()
         if "::" in ref:
             category_part, artifact_part = ref.split("::", 1)
             category_part = category_part.strip() or None
             artifact_part = artifact_part.strip() or None
         else:
-            return _error(f'cMeta ref must have :: in "{ref}"', 1, None, fail_on_error)
+            if do_not_fail_if_no_sep:
+                category_part = None
+                category_parts = {}
+                artifact_part = ref
+            else:
+                return _error(f'cMeta ref must have :: in "{ref}"', 1, None, fail_on_error)
 
-        r = parse_cmeta_obj(category_part, key="category", fail_on_error=fail_on_error)
-        if r['return']>0: return r
-        category_parts = r['obj_parts']
-    
-        if not category_parts:
+        if category_part:
+            r = parse_cmeta_obj(category_part, key="category", fail_on_error=fail_on_error)
+            if r['return']>0: return r
+            category_parts = r['obj_parts']
+        
+        if not category_parts and not do_not_fail_if_no_sep:
             return _error(f'category is not defined in cMeta ref "{ref}"', 1, None, fail_on_error)
 
         r = parse_cmeta_obj(artifact_part, key="artifact", fail_on_error=fail_on_error)

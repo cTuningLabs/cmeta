@@ -1306,3 +1306,85 @@ def first_digit_pos(s):
             return i
 
     return -1  # if no digit found
+
+###################################################################################################
+def smart_merge(base, delta):
+    """
+    Recursively merge `delta` into `base` and return a new dict.
+
+    Defaults (driven by what is already in the base at that key):
+        - base is a dict (and delta value is a dict) -> merged recursively
+        - base is a list -> the delta value is appended (a scalar as one item)
+        - otherwise -> the delta value replaces the base value
+
+    Delta-key prefixes override the default:
+        - '^key' : prepend the (list) value to the base list
+        - '=key' : replace the base value/dict/list with the delta value
+        - '-key' : remove from the base:
+            * '-key:'        (null)   -> remove the whole key
+            * '-key: [a, b]' (list)   -> remove those items from a base list, or
+                                          those keys from a base dict
+            * '-key: a'      (scalar) -> remove that single item / key
+
+    Neither `base` nor `delta` is modified.
+    """
+
+    import copy
+
+    if not isinstance(delta, dict):
+        # A non-dict delta replaces the base entirely
+        return copy.deepcopy(delta)
+
+    result = copy.deepcopy(base) if isinstance(base, dict) else {}
+
+    for key, value in delta.items():
+        prefix = key[0] if isinstance(key, str) and key[:1] in ('^', '=', '-') else ''
+        real_key = key[1:] if prefix else key
+
+        # '=' : force replacement (dict, list or scalar)
+        if prefix == '=':
+            result[real_key] = copy.deepcopy(value)
+            continue
+
+        # '-' : remove
+        if prefix == '-':
+            if real_key not in result:
+                continue
+
+            base_val = result[real_key]
+            if value is None:
+                # Remove the whole key (value, dict or list)
+                del result[real_key]
+            elif isinstance(base_val, list):
+                to_remove = value if isinstance(value, list) else [value]
+                result[real_key] = [x for x in base_val if x not in to_remove]
+            elif isinstance(base_val, dict):
+                to_remove = value if isinstance(value, list) else [value]
+                result[real_key] = {k: v for k, v in base_val.items() if k not in to_remove}
+            else:
+                del result[real_key]
+            continue
+
+        # '^' : prepend to a list
+        if prefix == '^':
+            existing = result.get(real_key)
+            if not isinstance(existing, list):
+                existing = [] if existing is None else [existing]
+            addition = value if isinstance(value, list) else [value]
+            result[real_key] = copy.deepcopy(addition) + existing
+            continue
+
+        # No prefix: default operation is driven by the BASE type
+        base_val = result.get(real_key)
+        if isinstance(base_val, dict) and isinstance(value, dict):
+            # Merge sub-dicts recursively
+            result[real_key] = smart_merge(base_val, value)
+        elif isinstance(base_val, list):
+            # Append to the existing list (a scalar is appended as one item)
+            addition = value if isinstance(value, list) else [value]
+            result[real_key] = base_val + copy.deepcopy(addition)
+        else:
+            # No list/dict base to merge into -> set/replace
+            result[real_key] = copy.deepcopy(value)
+
+    return result

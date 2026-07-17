@@ -68,6 +68,7 @@ class Category(InitCategory):
     def uid_(
         self,
         ctx,  # cMeta context object.
+        clipboard = True,
     ):
         """
             Generate UID
@@ -90,12 +91,16 @@ class Category(InitCategory):
         if con:
             print (uid)
 
+        if clipboard:
+            self.copy_text_to_clipboard_(ctx, uid)
+
         return {'return':0, 'uid':uid}
 
     ############################################################
     def uuid_(
         self,
         ctx,  # cMeta context
+        clipboard = True,
     ):
         """
             Generate UUID
@@ -119,6 +124,9 @@ class Category(InitCategory):
 
         if con:
             print (uuid)
+
+        if clipboard:
+            self.copy_text_to_clipboard_(ctx, uuid)
 
         return {'return':0, 'uuid':uuid}
 

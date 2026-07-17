@@ -1,9 +1,9 @@
-# AGENTS.md — Working context for AI agents in the cMeta framework
+# AGENTS.md — Working context for AI agents on the cMeta framework
 
-> Guidance for AI coding agents working on the **cMeta framework** itself
-> (the `cmeta` Python package / CLI `cx` · `cmeta`). This is the *engine*; it
-> executes **artifacts** (programs, models, datasets, tasks) that live in
-> separate content repositories. Keep this file short, factual and current.
+> Guidance for AI coding agents working on **cMeta** itself (the `cmeta` Python
+> package / CLI `cx` · `cmeta`). This is the *engine*; it executes **artifacts**
+> (programs, models, datasets, tasks, notes, ...) that live in content
+> repositories. Keep this file short, factual and current.
 
 ---
 
@@ -11,43 +11,42 @@
 
 **cMeta** (aka **cX**) is a small, portable framework for unifying,
 interconnecting and reusing code, data, models, agents and knowledge through one
-uniform interface: `cm.access({'category', 'command'})` in Python and
-`cx <category> <command>` on the command line.
+uniform interface:
 
-- **License:** Apache-2.0. **Python:** 3.9–3.14.
-- This repo is the framework. The artifacts it runs live elsewhere (e.g. the
-  `cmeta-aops` content repo). The framework ships a built-in `internal-repo/`
-  with its own categories.
+- Python: `cm.access({'category': ..., 'command': ..., ...})`
+- CLI: `cx <category> <command> [args] [--flags]`
+
+**License:** Apache-2.0. **Python:** 3.9–3.14.
+
+This repo ships the framework and a built-in content repository
+(`cmeta/internal-repo/`) with foundational categories. All other artifacts live
+in external repos (e.g. `cmeta-aops`).
 
 ---
 
 ## 2. Setup, build, test
 
 ```bash
-# Dev install (editable) with dev extras
-pip install -e ".[dev]"        # or: pip install -e ".[all]"
+pip install -e ".[dev]"        # editable install with dev extras (or [all])
 cmeta --version
 
-# Run the test suite (pytest; testpaths = tests/, files test_*.py)
-python -m pytest tests
-# convenience scripts (Windows): _run_tests.bat, _run_test_cli.bat
-
-# Lint
-flake8 cmeta
-
-# Build / docs
-python -m build                # wheel/sdist (see _build_package.bat)
-# Sphinx docs: docs/  (see _build_docs.bat / docs/README.md)
+python -m pytest tests         # tests (pytest; testpaths=tests/, files test_*.py)
+python -m pytest tests/test_utils_obj_parse_cmeta_core.py::test_name   # single test
+flake8 cmeta                   # lint
+python -m build                # build wheel + sdist
 ```
 
-- Optional extras (from `pyproject.toml`): `dev` (pytest, pytest-cov, flake8),
-  `async`, `server` (fastapi/uvicorn/jinja2/...), `all`.
-- Runtime deps are intentionally minimal: pyyaml, requests, setuptools, wheel,
-  tabulate, tqdm, filelock, packaging, psutil.
+Windows convenience `.bat` scripts (`_run_tests.bat`, `_build_package.bat`,
+`_build_docs.bat`, `_1_install_*.bat`, ...) live in the repo root — author's
+local workflow; the commands above are cross-platform truth.
+
+Runtime deps are intentionally minimal: pyyaml, requests, setuptools, wheel,
+tabulate, tqdm, filelock, packaging, psutil.
 
 ### Useful environment variables
-`CMETA_DEBUG=1`, `CMETA_LOG=DEBUG|INFO`, `CMETA_LOG_FILE=<path>`,
-`CMETA_FAIL_ON_ERROR=yes`.
+`CMETA_HOME`, `CMETA_DEBUG=1`, `CMETA_LOG=DEBUG|INFO`, `CMETA_LOG_FILE=<path>`,
+`CMETA_FAIL_ON_ERROR=yes`, `CMETA_VERBOSE=yes`, `CMETA_INTERNAL_REPO_PATH`,
+`CMETA_PIP_INSTALL_ARGS`.
 
 ---
 
@@ -55,50 +54,162 @@ python -m build                # wheel/sdist (see _build_package.bat)
 
 | Module | Role |
 |--------|------|
-| `core.py` | The `CMeta` class and the central `access()` dispatch — the single entry point everything funnels through. |
-| `core_async.py` | Async variant of the core. |
-| `category.py`, `category_api_v1.py` | Category + artifact management (find/load/read artifacts, invoke their `api_v1.py` hooks). |
-| `repos.py` | `Repos` — index and resolve content repositories and artifacts (by alias / UID / tags). |
-| `packages.py` | `Packages` — detect tools/versions and auto-install Python packages. |
-| `config.py` | Settings, parameter descriptors, env handling. |
-| `cli.py` | CLI entry points (see `[project.scripts]`): `main_cmeta`, `main_cx`, `main_cxt`, `main_cserver`, and `u*` unbuffered variants → consoles `cmeta`/`meta`/`cx`/`cxt`/`cserver`. |
-| `version.py` | `__version__` (single source of truth; wired via dynamic version in `pyproject.toml`). |
-| `utils/` | Helpers: `common`, `files`, `names`, `net`, `sys`, `cli`. |
-| `internal-repo/` | Built-in repo of framework categories (`app`, `asset`, `cache`, `category`, `config`, `docs`, `experiment`, `journal`, `log`, `note`, `repo`, `report`, `result`, `script`, `utils`, `website`, `work`). Shipped as package data. |
+| `core.py` | `CMeta` class + `access()` — the one dispatch every request funnels through. Resolves the category artifact, loads its API module, calls the matching command function. |
+| `core_async.py` | Async variant of `access()`. |
+| `category.py` | `InitCategory` base class every category API subclasses. Provides `_prepare_input_from_params/ctx` helpers used to re-enter `cm.access()`. |
+| `category_api_v1.py` | Standard **base** category — implements the shared CRUD commands every category inherits: `find`/`list`/`read`/`update`/`create`/`delete`/`move`/`copy`/`info`/`tags`/`get`/`set`/`index`/`test`. |
+| `repos.py` | `Repos` — index and resolve content repositories + artifacts (by alias / UID / tags / wildcards). Owns the per-category `.pkl` index files. |
+| `packages.py` | `Packages` — detect installed tools/versions and auto-install Python packages. |
+| `config.py` | Global `cfg` dict, param descriptors, env-var handling, command aliases (`add→create`, `rm→delete`, `ls→list`, `search→find`, `mv→move`, ...). |
+| `cli.py` | CLI entry points wired in `pyproject.toml` `[project.scripts]`: `main_cmeta`/`main_meta`/`main_cx`/`main_cxt`/`main_cserver` + `u*` unbuffered variants. |
+| `version.py` | `__version__` — single source of truth (wired via dynamic version in `pyproject.toml`). |
+| `utils/` | Helpers: `common`, `files`, `names` (cmeta ref parsing), `net`, `sys`, `cli`. |
+| `internal-repo/` | Built-in content repo shipped as package data (see §4). |
 
-### Core concepts the code implements
-- **Uniform interface**: all operations are `access({'category', 'command', ...})`.
-- **Categories**: artifact *types*; each is a folder with metadata + automation +
-  optional Python hooks.
-- **Artifacts**: identified by `_cmeta.json|yaml` (UID, category, tags, features)
-  plus a `_desc.yaml` automation and optional `api_v1.py` (`customize*` hooks).
-- **Composition**: `_desc.yaml` pipelines (`uses` → `prepend`/`append`/`update`)
-  reference tasks by `alias,UID`.
-- **Caching / reproducibility**: content-addressed task caches, `store_global`,
-  `cache_params`. (Determinism across heterogeneous environments is improved, not
-  fully solved — ongoing R&D; don't overstate it in docs.)
+### Core concepts implemented by the code
+
+- **Uniform interface.** Every operation is
+  `access({'category': ..., 'command': ..., ...})`. Add functionality by
+  extending categories/commands/hooks — not side entry points.
+- **`ctx` (context) dict.** Created (or accepted) on the first `access()`,
+  threaded through every nested call as a shared bus. Framework keys:
+  `origin`, `nested_call`, `control`, `command`, `category`,
+  `category_artifact`, `category_cmeta`, `last_self_time`, `repro`. External
+  callers (esp. AI agents) may attach namespaced state under their own key
+  (`ctx['agent']`, `ctx['trace']`, ...); it survives across nested calls and
+  is captured by `--dump`. See `docs/using-cmeta.md §5.4`.
+- **Category.** An artifact type; a folder with `_cmeta.yaml`
+  (`category: category,dd9ea50e7f76467f`) + `api/v1.py`.
+- **Artifact.** Any content identified by `_cmeta.yaml` or `_cmeta.json` (UID,
+  category ref, tags, features) inside a content repo. Optional `_desc.yaml` =
+  automation pipeline (`uses` → `prepend`/`append`/`update`, referencing tasks
+  by `alias,UID`). Optional per-artifact `api_v1.py` for hooks.
+- **Content repo.** Directory with `_cmr.yaml` (repo metadata). The framework
+  indexes multiple repos and resolves refs across them.
+- **Three repo tiers per `<CMETA_HOME>`:** (1) the shipped internal repo
+  (`cmeta/internal-repo/`; overridable via `CMETA_INTERNAL_REPO_PATH`),
+  (2) a default local scratch repo auto-created at `<CMETA_HOME>/repos/local/`,
+  (3) any user repos pulled/plugged in and listed in `<CMETA_HOME>/repos.json`.
+  `<CMETA_HOME>` resolves in order: `CMETA_HOME` → `VIRTUAL_ENV/CMETA` →
+  `CONDA_PREFIX/CMETA` → `CMETA_HOME2` → `~/CMETA` — swap the env var to
+  keep separate collections per project.
+- **Base vs. specific commands.** A category inherits from
+  `category_api_v1.py` and adds/overrides in its own `api/v1.py`. Pass `--base`
+  to force the base command; a category `api/v1.py` method can delegate via
+  `self._prepare_input_from_params(params, base=True)` then `self.cm.access(...)`.
+- **Command function naming (load-bearing).** `core.py` strips trailing
+  underscores from method names and picks call style by suffix:
+    - `foo_` (single trailing `_`, not `__`) → called with `**command_params`
+      (typed kwargs incl. `ctx`). User invokes as `foo`. Use this whenever you
+      want typed args + `ctx`.
+    - `foo` / `foo__` / `foo___` → called with one positional `params` dict.
+      Trailing `__`/`___` are stripped for the CLI name (used to avoid Python
+      keyword/builtin clashes: `list__`, `type__`, ...).
+- **Command aliases.** Global map in `config.cfg['command_aliases']`;
+  per-category overrides via `command_aliases:` in `_cmeta.yaml`.
+- **Global CLI flags** are declared in `cmeta/config.py`
+  (`params_desc` / `params_command_desc` / `params_command2_desc` /
+  `params_command3_desc` / `params_init_desc`). Full user-facing reference in
+  `docs/using-cmeta.md` §3 and `README.md`.
+- **Resolution model (alias / UID / `alias,UID`).** Every category and artifact
+  has an alias *and* a stable 16-hex UID. References accept all three forms;
+  when both are given (`alias,UID`), the **UID is authoritative** (see
+  `repos.py::find_in_index` and `utils/names.py::parse_cmeta_name`). This makes
+  `alias,UID` refs rename-safe — safe for automations, cross-repo links and
+  long-lived recipes. Cross-repo: `<repo>:<name>`. Full cRef:
+  `<category>::<artifact>`.
+- **Fast index + `--reindex`.** Per-category pickles at
+  `<CMETA_HOME>/index/<category>.pkl` back `find`/`list`/`load`. The framework
+  refreshes automatically on `create`/`update`/`delete` and on `cx repo`
+  changes. If artifacts were touched outside cMeta (manual moves, `git pull`,
+  cleared `CMETA_HOME`) run `cx --reindex`. Categories with `no_index: true` in
+  `_cmeta.yaml` are always found by filesystem scan.
+- **Content-addressed task caching / reproducibility.** Workflow caches keyed
+  by content live under the `cache` category (`cx cache show|clean|delete`).
+  `--repro` writes `cmeta-repro-input.json` / `-output.json`; `--dump` writes
+  `cmeta-ctx.json`. Determinism across heterogeneous environments is
+  *improved, not solved* — ongoing R&D; don't overstate it in docs.
 
 ---
 
-## 4. Conventions
+## 4. `cmeta/internal-repo/` — the built-in content repo
 
-- Keep runtime dependencies minimal — prefer the standard library; justify any new
-  third-party runtime dep.
-- Preserve the module docstring/copyright headers.
-- The single uniform `access()` surface is load-bearing — extend behavior through
-  categories/tasks/`api_v1.py` hooks and the dispatch, not ad-hoc side entry points.
+`_cmr.yaml` → `artifact: internal,21f6ce28893e4de8`. Shipped as package data.
+Artifacts live under `internal-repo/<category>/<artifact>/`. Categories
+present:
+
+`app`, `asset`, `cache`, `category`, `config`, `docs`, `experiment`, `journal`,
+`log`, `note`, `repo`, `report`, `research`, `result`, `script`, `utils`,
+`website`, `work`.
+
+Notable shipped artifacts:
+- `app/cserver/` — FastAPI-based local server (`cx app run cserver`, or the
+  `cserver` console script). Uses `CSERVER_HOST`/`CSERVER_PORT`/`CSERVER_FLAGS`
+  env vars (see `default_env` + `param_env_prefix` in its `_cmeta.yaml`).
+- `category/category/` — the *category* category itself (UID
+  `dd9ea50e7f76467f`). Its `create` is what `cx category add <name>` invokes; it
+  also copies `v1-template.py` into the new category as `api/v1.py`.
+- `category/repo/` — repository management: `get`, `clone`, `pull`, `checkout`,
+  `status`, `unzip`, `zip`, `plug`, `unplug`, `space`, `list`.
+- `category/utils/` — sets `skip_base_category_commands: true`; exposes helper
+  commands only (uid, uuid, json↔yaml, clipboard helpers, etc.).
+- `category/config/` — `get`/`set`/`unset`/`read`/`show` for cMeta config
+  artifacts.
+
+### `_cmeta.yaml` / `_cmeta.json` fields (quick reference)
+
+| Field | Meaning |
+|-------|---------|
+| `artifact` | Artifact UID (or `alias,UID`). Required. |
+| `category` | Category reference (`alias,UID`). |
+| `tags` | List of strings for tag search. |
+| `authors`, `copyright`, `creation_timestamp`, `last_update_timestamp` | Provenance. |
+| `permanent: true` | Refuses `delete` (used for shipped foundational artifacts). |
+| `no_index: true` | Skip fast index; found by filesystem scan. |
+| `last_api_version` | Highest API version the category ships (loads `api/v<n>.py`). |
+| `base_category_default_api_versions` | Which base API version this category inherits from, per category API version. |
+| `min_cmeta_version` | Minimum cMeta version per category API version. |
+| `skip_base_category_commands: true` | Category doesn't inherit any base CRUD. |
+| `command_aliases` | Per-category CLI aliases (global ones in `config.py`). |
+| `find_sort: false` | Disable default alphabetical sort for `find`. |
+| `uses_categories` | Mapping `<local-name>: <alias>,<UID>` declaring cross-category dependencies. Read at runtime as `self.cmeta['uses_categories'][name]` — **the recommended way** for one category to reference another (rename-safe). |
+| `default_env`, `param_env_prefix`, `config_name` | Used by the `app` category to run applications with pre-configured env vars + a named `config` artifact. |
+
+---
+
+## 5. Conventions
+
+- Keep runtime deps minimal — prefer stdlib; justify any new runtime dep.
+- Preserve module docstring / copyright headers.
+- The single uniform `access()` surface is load-bearing — extend via
+  categories/commands/`api/v1.py` hooks and the dispatch, not ad-hoc entry
+  points.
 - `version.py` is the one place the version lives; don't hard-code it elsewhere.
-- Match the surrounding code style; add tests under `tests/` as `test_*.py`.
-- Don't commit `__pycache__`/`*.pyc`.
-- This is the **public, Apache-2.0** framework. Keep high-level product
-  vision/strategy out of it — the public docs describe *functionality* (see
-  `README.md`, `docs/installation.md`).
+- **Command return contract.** Always a dict `{'return': 0, ...}` on success,
+  `{'return': >0, 'error': '...'}` on failure. Use `self.cm.error(...)` or
+  return the dict directly; callers check with `self.cm.catch_error(r)`.
+- **Cross-category calls.** Inside `api/v1.py`, use `self.cm.access(...)`. Refer
+  to other categories via `self.cmeta['uses_categories']['<name>']` declared in
+  your `_cmeta.yaml`, not by hard-coded alias.
+- Python 3.9–3.14 supported; avoid newer-only syntax.
+- Tests: `tests/`, files `test_*.py`, pytest config in `pyproject.toml`.
+- Public Apache-2.0 framework — keep product vision/strategy prose out; public
+  docs describe *functionality* (`README.md`, `docs/installation.md`,
+  `docs/using-cmeta.md`).
 
 ---
 
-## 5. Pointers
+## 6. Pointers
 - Public overview: `README.md`
-- Install/usage/config: `docs/installation.md`
-- Sphinx docs: `docs/` (`docs/README.md`)
+- Install: `docs/installation.md`
+- Using cMeta (repos, plugins, artifacts, reindex): `docs/using-cmeta.md`
+- Sphinx docs source: `docs/`
 - Changelog: `CHANGELOG.md`
+- Skills for agents extending cMeta: `.claude/skills/`
+  - `use-cmeta-python` — programmatic API surface, `access()`, `ctx` (agent
+    state), base commands, `cm.utils`, `cm.packages`
+  - `use-cmeta-cli` — command-line usage, discovery, flags, `ctx` from CLI,
+    scripting patterns
+  - `add-plugin` — scaffold a new category & artifacts
+  - `add-repo` — pull / init / plug content repositories
 - Lineage (background only): Collective Knowledge → Collective Mind → CMX → cMeta.
