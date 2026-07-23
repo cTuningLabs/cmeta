@@ -30,6 +30,11 @@ your plugin.
 If the user just wants a *new artifact of an existing category* (e.g. a new
 `note` or `experiment`), skip step 2 and jump to step 4.
 
+If the plugin is a **web page** — a `cserver.*` category rendering HTML/JS served
+by the internal `cserver` app and/or cPlatform — scaffold it here, then follow
+**`add-cserver-plugin`** for the `web_()` render contract, the `native_action`
+AJAX pattern, and the cross-host rules.
+
 ---
 
 ## 2. Add a new category (plugin)
@@ -291,15 +296,21 @@ for the logic.
 
 ## 7. Cache & reindex — quick sanity check
 
-If something looks stale (renames, `git pull` on a repo, hand-edited YAML, or
-`CMETA_HOME` was wiped):
+The framework normally keeps the index consistent automatically on
+`create`/`update`/`delete` and on `cx repo` operations — so `cx <cat> add
+<repo>:<artifact>` needs no follow-up. When something *is* stale, use the
+narrowest command that covers it:
 
 ```bash
-cx --reindex        # cleans and rebuilds <CMETA_HOME>/index/*.pkl
+cx <category> index  <repo>:<artifact>   # you created the folder by hand (mkdir + _cmeta.*)
+cx <category> update <repo>:<artifact>   # you edited an existing artifact's _cmeta.* meta
+cx --reindex                             # rebuilds ALL of <CMETA_HOME>/index/*.pkl — slow
 ```
 
-The framework normally keeps the index consistent automatically on
-`create`/`update`/`delete` and on `cx repo` operations. Category-level content
+Prefer the per-artifact forms: `--reindex` walks every category and is markedly
+slower on a large home. Save it for renames/moves, a bulk `git pull`, or a wiped
+`CMETA_HOME`. Editing only `api/`, `files/`, `src/` or `_desc.yaml` needs no
+reindex — the index tracks meta, not content. Category-level content
 caches (task results, downloaded blobs) live under the `cache` category:
 
 ```bash

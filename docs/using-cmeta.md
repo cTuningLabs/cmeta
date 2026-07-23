@@ -418,8 +418,8 @@ cx repo list       # sees only proj-b repos
 # One-shot override (no export):
 cx --home=D:\work\clientX <category> <command>
 
-# Windows batch (see repo-root example `_2_run_cm_with_global_repos.bat`):
-set CMETA_HOME=D:\!FGG_Repos
+# Windows batch:
+set CMETA_HOME=D:\my-cmeta-home
 uv run cx repo list
 ```
 

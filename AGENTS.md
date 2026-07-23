@@ -36,9 +36,8 @@ flake8 cmeta                   # lint
 python -m build                # build wheel + sdist
 ```
 
-Windows convenience `.bat` scripts (`_run_tests.bat`, `_build_package.bat`,
-`_build_docs.bat`, `_1_install_*.bat`, ...) live in the repo root — author's
-local workflow; the commands above are cross-platform truth.
+The commands above are cross-platform truth. Any Windows `.bat` wrappers around
+them are the author's local workflow and are not tracked in this repository.
 
 Runtime deps are intentionally minimal: pyyaml, requests, setuptools, wheel,
 tabulate, tqdm, filelock, packaging, psutil.
@@ -121,9 +120,14 @@ tabulate, tqdm, filelock, packaging, psutil.
 - **Fast index + `--reindex`.** Per-category pickles at
   `<CMETA_HOME>/index/<category>.pkl` back `find`/`list`/`load`. The framework
   refreshes automatically on `create`/`update`/`delete` and on `cx repo`
-  changes. If artifacts were touched outside cMeta (manual moves, `git pull`,
-  cleared `CMETA_HOME`) run `cx --reindex`. Categories with `no_index: true` in
-  `_cmeta.yaml` are always found by filesystem scan.
+  changes. If artifacts were touched outside cMeta, reindex with the narrowest
+  command: `cx <category> index <repo>:<artifact>` registers a single folder you
+  created by hand (`mkdir` + `_cmeta.*`); `cx <category> update <repo>:<artifact>`
+  refreshes the entry after you edit an existing artifact's `_cmeta.*` meta;
+  `cx --reindex` rebuilds every pickle and is slow — keep it for manual moves,
+  bulk `git pull`, or a cleared `CMETA_HOME`. Payload-only edits (`api/`,
+  `files/`, `src/`, `_desc.yaml`) need no reindex. Categories with
+  `no_index: true` in `_cmeta.yaml` are always found by filesystem scan.
 - **Content-addressed task caching / reproducibility.** Workflow caches keyed
   by content live under the `cache` category (`cx cache show|clean|delete`).
   `--repro` writes `cmeta-repro-input.json` / `-output.json`; `--dump` writes
@@ -139,8 +143,8 @@ Artifacts live under `internal-repo/<category>/<artifact>/`. Categories
 present:
 
 `app`, `asset`, `cache`, `category`, `config`, `docs`, `experiment`, `journal`,
-`log`, `note`, `repo`, `report`, `research`, `result`, `script`, `utils`,
-`website`, `work`.
+`log`, `note`, `repo`, `report`, `research`, `result`, `script`, `tests`,
+`utils`, `website`, `work`.
 
 Notable shipped artifacts:
 - `app/cserver/` — FastAPI-based local server (`cx app run cserver`, or the

@@ -320,14 +320,23 @@ cx <cat> <cmd> ... --repro                       # capture inputs/outputs
 cx <cat> <cmd> ... --dump                        # capture full ctx
 ```
 
-### 10.7 Reindex when things look stale
+### 10.7 Reindex when things look stale — narrowest command first
+
+`cx --reindex` rebuilds *every* category pickle and gets slow as a home grows.
+Reach for the per-artifact commands first; they touch one index entry:
 
 ```bash
-cx --reindex
+cx <category> index  <repo>:<artifact>   # register ONE hand-made (mkdir-ed) artifact
+cx <category> update <repo>:<artifact>   # refresh entry after editing its _cmeta.* meta
+cx --reindex                             # whole-home rebuild — last resort
 ```
 
-Needed after: manual moves, hand-edited `_cmeta.yaml`, `git pull` in a repo,
-`CMETA_HOME` wipe. Safe, idempotent, usually fast.
+- `cx <category> add <repo>:<artifact>` already indexes as it creates — nothing
+  extra needed. `index` is for folders you made by hand (`mkdir` + `_cmeta.*`).
+- Editing only an artifact's **payload** (`api/`, `files/`, `src/`, `_desc.yaml`)
+  needs no reindex at all — the index tracks meta, not content.
+- Keep `--reindex` for the broad cases: bulk `git pull`, moved/renamed folders,
+  `CMETA_HOME` wipe, or an index that looks generally wrong. Safe, idempotent.
 
 ## 11. Scripting the CLI
 
@@ -346,8 +355,7 @@ $out = cx repo list --json | ConvertFrom-Json
 Write-Host "repos: $($out.repos.Count)"
 ```
 
-**Windows `.bat`** (see this repo's root for examples like `_run_tests.bat`,
-`_2_run_cm_with_global_repos.bat`, `_test_get_ctuninglabs_cmeta_ops.bat`):
+**Windows `.bat`**:
 
 ```bat
 @echo off

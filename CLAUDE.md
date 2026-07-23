@@ -15,10 +15,9 @@ flake8 cmeta                       # lint
 python -m build                    # build wheel/sdist
 ```
 
-Windows convenience batch scripts live in the repo root (`_run_tests.bat`,
-`_run_test_cli.bat`, `_build_package.bat`, `_build_docs.bat`, `_1_install_*.bat`).
-Prefer the Python commands above when scripting cross-platform; the `.bat` files
-are the author's local workflow.
+The commands above are the cross-platform source of truth. The author keeps
+local Windows `.bat` wrappers around them, but those are personal workflow and
+are not tracked here — don't expect to find them in a clone.
 
 ## Architecture — the load-bearing shape
 
@@ -35,8 +34,8 @@ Key modules (`cmeta/`):
 - `cli.py` — CLI entry points wired in `pyproject.toml` `[project.scripts]`.
 - `internal-repo/` — built-in categories (`app`, `asset`, `cache`, `category`,
   `config`, `docs`, `experiment`, `journal`, `log`, `note`, `repo`, `report`,
-  `research`, `result`, `script`, `utils`, `website`, `work`). Shipped as
-  package-data.
+  `research`, `result`, `script`, `tests`, `utils`, `website`, `work`). Shipped
+  as package-data.
 - `version.py` — single source of truth for `__version__` (wired via
   `[tool.setuptools.dynamic]`; do not hard-code the version anywhere else).
 
@@ -66,7 +65,11 @@ separate content repos (e.g. `cmeta-aops`).
 - **Fast index lives at `<CMETA_HOME>/index/<category>.pkl`.** cMeta keeps it
   fresh automatically on `create`/`update`/`delete` and on `cx repo` ops. If
   artifacts were touched outside cMeta (manual move, `git pull`, hand-edited
-  YAML, wiped `CMETA_HOME`), run `cx --reindex` — safe and idempotent.
+  YAML, wiped `CMETA_HOME`), reindex — but pick the narrowest command:
+  `cx <cat> index <repo>:<artifact>` for a single hand-made (`mkdir`-ed) folder,
+  `cx <cat> update <repo>:<artifact>` after editing an existing artifact's
+  `_cmeta.*` meta, and `cx --reindex` (whole-home, slow) only as a last resort.
+  Payload-only edits (`api/`, `files/`, `src/`, `_desc.yaml`) need no reindex.
   Categories with `no_index: true` are always found by filesystem scan.
 
 ## Debug env vars
@@ -79,3 +82,6 @@ separate content repos (e.g. `cmeta-aops`).
 - User-facing walkthrough (repos, plugins, artifacts, reindex):
   `docs/using-cmeta.md`
 - Add-a-plugin skill: `.claude/skills/add-plugin/SKILL.md`
+- Add-a-web-plugin skill (a `cserver.*` category that renders a page and runs on
+  both the internal `cserver` app and cPlatform):
+  `.claude/skills/add-cserver-plugin/SKILL.md`
