@@ -79,7 +79,7 @@ def select_artifact_(
 ):
 
     """
-    select_artifact_ function.
+    Find artifacts and interactively select one or more entries.
 
     Args:
         ctx: Input dictionary used by this function.
@@ -99,7 +99,10 @@ def select_artifact_(
         load_api (bool): Value for load api.
         load_api_ver (int): Value for load api ver.
         load_api_class (str): Value for load api class.
+        inside_cli (bool | None): If True, load the latest API version when ``load_api`` is enabled.
         print_extra_line (bool): Value for print extra line.
+        allow_skip (bool): If True, offer a selection that skips the operation.
+        allow_multiple (bool): If True, accept multiple comma-separated selections.
 
     Returns:
         dict: Operation result.

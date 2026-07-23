@@ -186,6 +186,7 @@ class CMeta:
                 exception: Exception object associated with the error.
                 fail16: If True, treat return code 16 as a fatal error.
                 fail_on_error: If True, raise exceptions instead of returning error dictionaries.
+                extra (dict): Additional fields to include in the returned error dictionary.
             Returns:
                 dict: Operation result.
             Raises:
@@ -312,10 +313,19 @@ class CMeta:
 
     ###################################################################################################
     def outdated(
-        slef,
+        self,
         path, 
         meta
     ):
+        """Print a warning when a category API version is outdated.
+
+        Args:
+            path: Path to the category API being loaded.
+            meta (dict): Category metadata, optionally containing ``last_api_version``.
+
+        Returns:
+            dict: A successful cMeta return dictionary.
+        """
 
         msg = f'WARNING: API version 1 is outdated in {path}.'
 

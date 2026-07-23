@@ -71,10 +71,11 @@ class Category(InitCategory):
         clipboard = True,
     ):
         """
-            Generate UID
+            Generate a 16-character cMeta UID.
 
             Args:
                 ctx (dict): cMeta context object.
+                clipboard (bool): If True, copy the generated UID to the clipboard.
 
             Returns:
                 dict: Operation result.
@@ -103,10 +104,11 @@ class Category(InitCategory):
         clipboard = True,
     ):
         """
-            Generate UUID
+            Generate a UUID4 string.
 
             Args:
-                ctx (dict): cMeta context
+                ctx (dict): cMeta context.
+                clipboard (bool): If True, copy the generated UUID to the clipboard.
 
             Returns:
                 dict: Operation result.
@@ -134,7 +136,7 @@ class Category(InitCategory):
     def find_by_cid_(
         self,
         ctx,  # cMeta context.
-        arg1,  # Standard CID.
+        arg1 = None,  # Standard CID.
         tags = None,  # Optional tags filter for repository lookup.
         far = False,  # If True, open FAR manager in found artifact path.
         web = False,  # If True, decode web-style `cmeta:///?` CID input.
@@ -170,6 +172,12 @@ class Category(InitCategory):
 
             from urllib.parse import unquote
             arg1 = unquote(arg1)
+
+        if arg1 is None:
+            arg1 = '*'
+
+        if '::' not in arg1:
+            arg1 = '*::' + arg1
 
         r = names.parse_cmeta_ref(arg1, fail_on_error = self.fail_on_error)
         if r['return']>0: return r

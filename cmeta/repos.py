@@ -161,6 +161,7 @@ class Repos:
                 path: Filesystem path.
                 original_alias: Previous artifact alias before update.
                 original_uid: Previous artifact UID before update.
+                sharding_slices_num (int): Number of UID slices used to shard artifact paths.
             Returns:
                 dict: Operation result.
             Raises:
@@ -509,6 +510,7 @@ class Repos:
                 skip_non_indexed (bool): Value for skip non indexed.
                 match (bool): Optional match dictionary to filter results (key that ends with - is supported)
                 match_empty_version (bool): Value for match empty version.
+                match_empty_values (bool): Match when queried values or key components are empty.
                 all_tags (str): match all tags in cmeta
             Returns:
                 dict: Dictionary with 'return': 0 and 'artifacts' list on success,

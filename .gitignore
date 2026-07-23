@@ -209,3 +209,21 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Author's scratch/backup siblings and agent run artifacts (kept locally)
+*.arc1
+*.arc2
+_run_claude_prompt_*_output.txt
+_run_claude_prompt_*_result.json
+
+# Author's local Windows workflow scripts (kept locally, never published).
+# These encode local paths, venv layout, PyPI upload and agent prompts.
+/_*.bat
+/_*.ps1
+/_*.sh
+/_run_claude_prompt_*
+
+# Manual/interactive test scratch — may contain live endpoints and API keys.
+# Never commit: use environment variables or an untracked local config instead.
+/tests.manual/
+/test.py

@@ -488,6 +488,7 @@ def run(
 
         Args:
             cmd (str): Command to execute.
+            cmds (list | None): Sequence of commands to execute instead of ``cmd``.
             work_dir (str | None): Working directory.
             env (dict | None): 2nd (current) env to update global ENV.
             envs (dict | None): 1st level of env to update global ENV.
@@ -512,7 +513,13 @@ def run(
             capture_env (bool): If True, capture and return environment changes produced by the command.
             print_env_keys (list): Environment variable keys to print after execution.
             print_extra_line (bool): If True, print an extra blank line in console output.
-            print_cur_dir (bool): If True, print current directory before running command
+            print_cur_dir (bool): If True, print current directory before running command.
+            open_shell (bool): Open an interactive shell instead of running a command.
+            open_shell_after (bool): Open an interactive shell after the command finishes.
+            pack_existing_env_values (bool): Replace repeated existing environment values with variable references.
+            print_env_with_os_sep_on_new_lines (bool): Print path-like environment values one entry per line.
+            skip_print_env (bool): Suppress environment output even in verbose mode.
+
         Returns:
             dict: Unified output with 'return', 'returncode', 'stdout', 'stderr'.
 

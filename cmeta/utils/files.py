@@ -323,6 +323,7 @@ def read_file(
             fail_on_error (bool): If True, raises exception on error instead of returning error dict.
             logger: Optional logger for debug messages.
             encoding (str | None): Character encoding for text files.
+            remove_after_read (bool): If True, attempt to remove the file after reading it.
 
         Returns:
             dict: Dictionary with 'return': 0 and 'data', or 'return' > 0 and 'error'.
@@ -508,6 +509,7 @@ def write_file(
                 file_format (str | None): Force specific format ('json', 'yaml', 'pickle', 'text'). If None, auto-detected.
                 newline (str): Newline character for text files. Default is '
         '.
+                safe_dump (bool): Replace non-serializable JSON values with a marker string.
 
             Returns:
                 dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
@@ -551,6 +553,16 @@ def write_file(
 
 ##########################################################################################
 def safe_json_dumps(obj, sobj = "#NON-SERIALIZABLE#", **kwargs):
+    """Serialize an object to JSON while replacing unsupported values.
+
+    Args:
+        obj: Object to serialize.
+        sobj (str): Replacement value for objects that JSON cannot serialize.
+        **kwargs: Additional keyword arguments forwarded to ``json.dumps``.
+
+    Returns:
+        str: Serialized JSON text.
+    """
     def default(o):
         return sobj
     return json.dumps(obj, default=default, **kwargs)
@@ -1816,9 +1828,9 @@ def is_dir_empty(
 
         Args:
             path: Filesystem path.
-            clean: Value for clean.
+            clean (bool): If True, remove the directory when it is found to be empty.
         Returns:
-            dict: Operation result.
+            bool: True if the path is an existing, empty directory, else False.
         Raises:
             Exception: Propagated runtime errors, if any.
     """
@@ -2048,6 +2060,15 @@ def remove_dirs_from_path(
     path: str,
     num: int = 0,
 ):
+    """Remove trailing directory levels from a path.
+
+    Args:
+        path (str): Starting filesystem path.
+        num (int): Number of parent directory levels to remove.
+
+    Returns:
+        dict: A successful cMeta return dictionary containing the resulting ``path``.
+    """
 
     for _ in range(0, num):
         path = os.path.dirname(path)

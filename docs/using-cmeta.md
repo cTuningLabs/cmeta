@@ -194,6 +194,7 @@ All shipped in `cmeta/internal-repo/` and available immediately after install.
 | **journal**, **note**, **log** | Chronological entries, notes, structured logs. |
 | **docs**, **website** | Documentation artifacts and website builds. |
 | **work** | Work items / tasks. |
+| **tests** | Test artifacts — group and manage test cases as cMeta artifacts. |
 
 Every category inherits the standard base commands: `find`, `list`, `read`,
 `create`, `update`, `delete`, `move`, `copy`, `info`, `tags`, `get`, `set`,

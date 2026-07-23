@@ -29,6 +29,7 @@ def _error(
             fail_on_error: If True, raises exception instead of returning error dict.
 
             fail_on_16: If True, treat return code 16 as a fatal error when fail_on_error is enabled.
+            extra (dict): Additional fields to include in the returned error dictionary.
         Returns:
             dict: Dictionary with 'return' and 'error' keys.
 
@@ -106,6 +107,7 @@ def deep_merge(
             prepend_lists (bool): If True and append_lists is True, insert new items at the
                                  start of existing lists instead of appending at the end.
             ignore_root_keys (list): List of keys to ignore from source at the root level.
+            skip_if_exist_in_list (bool): If True, do not append list items that already exist.
             remove_if_none (bool): If True, remove key from target when source value is None,
                                    empty dict {}, or empty list [].
 
@@ -262,6 +264,7 @@ def safe_print_json(
             non_serializable_text (str | None): Text to use for non-serializable objects.
             ignore_keys (list): List of top-level keys to exclude from output.
             sort (bool): If True, sort dictionary keys. Default is True.
+            press_enter (bool): If True, wait for Enter after printing.
 
         Returns:
             dict: Dictionary with 'return': 0.
@@ -278,6 +281,15 @@ def safe_print_json(
     return {'return':0}
 
 def safe_print_json_with_enter(*args, **kwargs):
+    """Print an object as JSON and wait for Enter.
+
+    Args:
+        *args: Positional arguments forwarded to ``safe_print_json``.
+        **kwargs: Keyword arguments forwarded to ``safe_print_json``.
+
+    Returns:
+        dict: The cMeta return dictionary from ``safe_print_json``.
+    """
     kwargs["press_enter"] = True
     return safe_print_json(*args, **kwargs)
 
@@ -288,6 +300,17 @@ def print_module_vars(
     sort: bool = True,
     private: bool = True,
 ):
+    """Print attributes stored directly on an object.
+
+    Args:
+        obj: Object whose ``__dict__`` attributes are printed.
+        indent (int): Reserved for output indentation; currently unused.
+        sort (bool): Reserved for attribute sorting; currently unused.
+        private (bool): If False, omit attributes whose names start with an underscore.
+
+    Returns:
+        None.
+    """
 
     for key, value in obj.__dict__.items():
         if private or not key.startswith("_"):  # filter public only
@@ -772,8 +795,9 @@ def matches_query(
             query: Value for query.
             match_version_func: Value for match version func.
             match_empty_version: Value for match empty version.
+            match_empty_values: Match when target values or key components are empty.
         Returns:
-            dict: Operation result.
+            bool: True if the data satisfies every entry in the query, else False.
         Raises:
             Exception: Propagated runtime errors, if any.
     """
@@ -833,8 +857,9 @@ def value_matches(
             query_value: Value for query value.
             match_version_func: Value for match version func.
             match_empty_version: Value for match empty version.
+            match_empty_values: Match empty target values while evaluating nested queries.
         Returns:
-            dict: Operation result.
+            bool: True if the data value satisfies the query value, else False.
         Raises:
             Exception: Propagated runtime errors, if any.
     """
@@ -1104,6 +1129,15 @@ def expand_strings_in_list(
     data,  # List to process (modified in-place)
     values: dict,  # Dictionary of values for template expansion
 ) -> dict:
+    """Expand template strings recursively in a list.
+
+    Args:
+        data: List to process in place.
+        values (dict): Values available during template expansion.
+
+    Returns:
+        dict: A cMeta return dictionary from ``expand_strings_in_dict``.
+    """
 
     return expand_strings_in_dict(data, values)
 
@@ -1273,6 +1307,19 @@ def smart_get(
 
 ###################################################################################################
 def smart_set(params: dict, key: str, value):
+    """Set a value in a dictionary using a dot-separated key path.
+
+    Args:
+        params (dict): Dictionary to modify in place.
+        key (str): Dot-separated path identifying the destination key.
+        value: Value to assign.
+
+    Returns:
+        None.
+
+    Raises:
+        TypeError: If an intermediate path component is not a dictionary.
+    """
     parts = key.split(".")
     cur = params
 
@@ -1289,18 +1336,44 @@ def smart_set(params: dict, key: str, value):
 
 ###################################################################################################
 def split_clean(s: str, key = ',') -> list[str]:
+    """Split a string, trim its values, and discard empty values.
+
+    Args:
+        s (str): String to split.
+        key (str): Separator to split on.
+
+    Returns:
+        list[str]: Trimmed, nonempty values in their original case.
+    """
     if not s:
         return []
     return [item.strip() for item in s.split(key) if item.strip()]
 
 ###################################################################################################
 def split(s: str, key = ',') -> list[str]:
+    """Split a string into normalized lowercase values.
+
+    Args:
+        s (str): String to split.
+        key (str): Separator to split on.
+
+    Returns:
+        list[str]: Trimmed, lowercase, nonempty values.
+    """
     if not s:
         return []
     return [item.strip().lower() for item in s.split(key) if item.strip()]
 
 ###################################################################################################
 def first_digit_pos(s):
+    """Find the position of the first digit in a string.
+
+    Args:
+        s (str): String to search.
+
+    Returns:
+        int: Zero-based digit position, or -1 if no digit is present.
+    """
     for i, ch in enumerate(s):
         if ch.isdigit():
             return i
@@ -1327,6 +1400,13 @@ def smart_merge(base, delta):
             * '-key: a'      (scalar) -> remove that single item / key
 
     Neither `base` nor `delta` is modified.
+
+    Args:
+        base: Base value, normally a dictionary.
+        delta: Value or dictionary describing changes to apply.
+
+    Returns:
+        object: A deep-copied merged value whose type depends on ``delta``.
     """
 
     import copy

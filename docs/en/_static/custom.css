@@ -1,0 +1,238 @@
+/* Custom CSS for dark theme - applies directly without wrapper */
+
+/* Dark theme for body and main areas - but not for Bootstrap buttons */
+body:not(.btn):not([class*="btn-"]) {
+    background-color: #1e1e1e !important;
+    color: #e8e6e3 !important;
+}
+
+/* Dark theme overrides for Read the Docs theme */
+.wy-nav-content-wrap {
+    background-color: #1e1e1e !important;
+}
+
+.wy-nav-content {
+    background-color: #1e1e1e !important;
+    color: #e8e6e3 !important;
+}
+
+/* Force dark background on main document body */
+.document {
+    background-color: #1e1e1e !important;
+}
+
+.documentwrapper {
+    background-color: #1e1e1e !important;
+}
+
+.bodywrapper {
+    background-color: #1e1e1e !important;
+}
+
+.body {
+    background-color: #1e1e1e !important;
+    color: #e8e6e3 !important;
+}
+
+/* Override any white/light backgrounds */
+section {
+    background-color: #1e1e1e !important;
+}
+
+div.section {
+    background-color: #1e1e1e !important;
+}
+
+/* Main content wrapper */
+.wy-grid-for-nav {
+    background-color: #1e1e1e !important;
+    position: relative !important;
+}
+
+/* Fix sidebar to stay within docs content, not viewport */
+.wy-nav-side {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 300px !important;
+    height: 100% !important;
+}
+
+/* Ensure content doesn't go under the sidebar */
+.wy-nav-content-wrap {
+    margin-left: 300px !important;
+}
+
+/* Remove fixed positioning that causes overlap */
+@media screen and (min-width: 768px) {
+    .wy-nav-side {
+        position: absolute !important;
+        left: 0 !important;
+    }
+}
+
+.wy-side-nav-search {
+    background-color: #2d2d30 !important;
+}
+
+.wy-menu-vertical a {
+    color: #e8e6e3 !important;
+}
+
+.wy-menu-vertical a:hover {
+    background-color: #3e3e42 !important;
+}
+
+.wy-menu-vertical li.current a {
+    border-right-color: #5a9fd4 !important;
+}
+
+.wy-side-nav-search input[type="text"] {
+    background-color: #3e3e42 !important;
+    border-color: #5a5a5a !important;
+    color: #e8e6e3 !important;
+}
+
+/* Code blocks dark theme */
+.highlight {
+    background-color: #2d2d30 !important;
+}
+
+pre {
+    background-color: #2d2d30 !important;
+    color: #e8e6e3 !important;
+    border: 1px solid #3e3e42 !important;
+}
+
+code {
+    background-color: #2d2d30 !important;
+    color: #e8e6e3 !important;
+    border: 1px solid #3e3e42 !important;
+}
+
+/* Links */
+a {
+    color: #5a9fd4 !important;
+}
+
+a:hover {
+    color: #7bb2e0 !important;
+}
+
+a:visited {
+    color: #9b72cf !important;
+}
+
+/* Tables */
+table.docutils {
+    border-color: #3e3e42 !important;
+}
+
+table.docutils td,
+table.docutils th {
+    border-color: #3e3e42 !important;
+    background-color: #252526 !important;
+}
+
+.wy-table-odd td,
+.wy-table-striped tr:nth-child(2n-1) td {
+    background-color: #2d2d30 !important;
+}
+
+/* Admonitions (notes, warnings, etc.) */
+.admonition {
+    background-color: #2d2d30 !important;
+    border-left-color: #5a9fd4 !important;
+}
+
+.admonition-title {
+    background-color: #3e3e42 !important;
+    color: #e8e6e3 !important;
+}
+
+/* Navigation */
+.wy-nav-side {
+    background-color: #252526 !important;
+}
+
+.wy-menu-vertical li.current {
+    background-color: #2d2d30 !important;
+}
+
+/* Breadcrumbs */
+.wy-breadcrumbs {
+    background-color: transparent !important;
+    color: #e8e6e3 !important;
+}
+
+.wy-breadcrumbs a {
+    color: #5a9fd4 !important;
+}
+
+/* Search results */
+.search li {
+    background-color: #2d2d30 !important;
+    border-bottom: 1px solid #3e3e42 !important;
+}
+
+/* Function/class signatures */
+.sig {
+    background-color: #2d2d30 !important;
+    color: #e8e6e3 !important;
+}
+
+.sig-name {
+    color: #dcdcaa !important;
+}
+
+.sig-param {
+    color: #9cdcfe !important;
+}
+
+/* Version selector and footer */
+.rst-versions {
+    background-color: #252526 !important;
+    color: #e8e6e3 !important;
+}
+
+.rst-current-version {
+    background-color: #2d2d30 !important;
+}
+
+/* Headers styling for dark theme */
+h1, h2, h3, h4, h5, h6 {
+    color: #e8e6e3 !important;
+    background-color: transparent !important;
+}
+
+/* Paragraphs and content */
+p, div:not([class*="wy-"]), span {
+    color: inherit;
+}
+
+/* Definition lists (common in API docs) */
+dl {
+    background-color: transparent !important;
+}
+
+dt {
+    background-color: #2d2d30 !important;
+    color: #e8e6e3 !important;
+}
+
+dd {
+    background-color: transparent !important;
+}
+
+/* Field lists (parameters, returns, etc.) */
+.field-list {
+    background-color: transparent !important;
+}
+
+.field-name {
+    color: #9cdcfe !important;
+}
+
+.field-body {
+    color: #e8e6e3 !important;
+}

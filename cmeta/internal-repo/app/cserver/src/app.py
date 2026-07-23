@@ -108,7 +108,7 @@ async def home(
         return JSONResponse(content = {'return': 0, 'text': txt})
     else:
         html_meta = {'request': request, 'html': f'<h3>{txt}</h3>'}
-        return templates.TemplateResponse('task.html', html_meta, status_code = 200)
+        return templates.TemplateResponse(request, 'task.html', html_meta, status_code = 200)
 
 
 ##################################################################################################
@@ -181,7 +181,7 @@ async def task_handler(
                return JSONResponse(content = r)
 
             html_meta = {"message": r['error'], 'request': request}
-            return templates.TemplateResponse('error.html', html_meta, status_code = 200)
+            return templates.TemplateResponse(request, 'error.html', html_meta, status_code = 200)
         
         # Store validated API key in session
         request.session['api_key'] = validated_api_key
@@ -216,7 +216,7 @@ async def task_handler(
             return JSONResponse(content = r)
 
         html_meta = {"message": r['error'], 'request': request}
-        return templates.TemplateResponse('error.html', html_meta, status_code = 200)
+        return templates.TemplateResponse(request, 'error.html', html_meta, status_code = 200)
 
     if 'json' in r:
         return JSONResponse(content = r['json'])
@@ -228,7 +228,7 @@ async def task_handler(
     if force_json:
         return JSONResponse(content = cm.utils.common.safe_serialize_json(r))
 
-    return templates.TemplateResponse('task.html', html_meta, status_code = 200)
+    return templates.TemplateResponse(request, 'task.html', html_meta, status_code = 200)
 
 ##################################################################################################
 @app.get("/{task}/{file_path:path}")
@@ -319,6 +319,6 @@ async def task_files(
 
     if media_type == 'text/html':
         html_meta={'request': request}
-        return templates.TemplateResponse('task.html', html_meta, status_code = 200)
+        return templates.TemplateResponse(request, 'task.html', html_meta, status_code = 200)
 
     return FileResponse(full_file_path, media_type=media_type)

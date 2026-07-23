@@ -23,6 +23,12 @@ class Category(InitCategory):
 #        super().__init__(*kwargs)
 
     def __init__(self, *args, **kwargs):
+        """Initialize the website category API.
+
+        Args:
+            *args: Positional arguments forwarded to the base category API.
+            **kwargs: Keyword arguments forwarded to the base category API.
+        """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
     ############################################################
@@ -33,11 +39,13 @@ class Category(InitCategory):
         ignore_dirs=None,
     ):
         """
-        Build website
+        Build a static website artifact.
 
         Args:
             ctx (dict): cMeta context.
-            arg1 (str): cMeta artifact with a website directory
+            arg1 (str): cMeta artifact with a website directory.
+            subdir (str | None): Optional source subdirectory within the artifact.
+            ignore_dirs (list | None): Directory names to exclude from the generated website.
 
 
         Returns:

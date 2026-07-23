@@ -170,7 +170,7 @@ class Category(InitCategory):
         skip_uids: bool = False,  # Skip UIDs when using wildcards.
         match: dict = None,  # Value for match.
         match_empty_version: bool = False,  # Value for match empty version.
-        match_empty_values: bool = False,  # Value for match empty version.
+        match_empty_values: bool = False,  # Match when queried values or keys are empty.
         all_tags: str = None,  # Value for all tags.
         load_files = [],  # Load files (omit extension to load either yaml or json)
     ):
@@ -186,7 +186,9 @@ class Category(InitCategory):
                 skip_uids (bool): Skip UIDs when using wildcards.
                 match (dict): Value for match.
                 match_empty_version (bool): Value for match empty version.
+                match_empty_values (bool): Match artifacts whose queried values or keys are empty.
                 all_tags (str): Value for all tags.
+                load_files (list): Metadata file basenames to load from each matched artifact.
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -365,7 +367,10 @@ class Category(InitCategory):
                 ignore_errors (bool): Ignore errors when updating multiple artifacts.
                 create (bool): If artifact doesn't exist attempt to create.
                 create_params (dict): Pass params to create function.
-                update_category (bool): Allow category update in meta
+                update_category (bool): Allow category update in meta.
+                match (dict | None): Match artifact metadata before updating.
+                match_empty_version (bool): Match artifacts with an empty version value.
+                all_tags (str | None): Require all supplied tags when selecting artifacts.
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -668,6 +673,9 @@ class Category(InitCategory):
                 skip_uids (bool): Skip UIDs when using wildcards.
                 ignore_errors (bool): Ignore errors when deleting multiple artifacts.
                 print_time (bool): Print time per deletion.
+                match (dict | None): Match artifact metadata before deleting.
+                match_empty_version (bool): Match artifacts with an empty version value.
+                all_tags (str | None): Require all supplied tags when selecting artifacts.
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -800,6 +808,7 @@ class Category(InitCategory):
                 yaml (bool): Save metadata as YAML instead of JSON.
                 virtual (bool): Virtual artifact created only in index (such as repo).
                 path (str | None): Use this path for artifact (useful for virtual artifacts such as repo).
+                index (bool): Index an artifact that already exists at `path` without creating it.
 
             Returns:
                 dict: A cMeta dictionary with the following keys:

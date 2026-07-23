@@ -364,6 +364,7 @@ def parse_cmeta_ref(
         Args:
             ref (Optional[str|dict]): Ref string or dict to parse.
             fail_on_error (bool): If True, raise error on failure.
+            do_not_fail_if_no_sep (bool): Treat a reference without ``::`` as an artifact reference.
 
         Returns:
             Dict[str, Any]: {'return': 0, 'ref_parts': {category/artifact parts}}.

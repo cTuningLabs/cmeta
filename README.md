@@ -22,9 +22,11 @@ self-optimizing and self-adapting software/hardware stacks.
 
 ## Project status
 
-**Personal research project — stable, low-activity, maintained in my spare time.**
+**A research and prototyping project by Grigori Fursin and cTuning Labs —
+stable, low-activity, and maintained alongside active downstream work.**
 
-cMeta is the current iteration of a my long-running personal experiment on how
+cMeta is the current iteration of a long-running research effort by
+Grigori Fursin and cTuning Labs on how
 to make research code, data, models, agents and knowledge composable,
 portable and reusable across time. It builds on decades of iteration —
 [Collective Knowledge](https://github.com/mlcommons/ck), Collective Mind,

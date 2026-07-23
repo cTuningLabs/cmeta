@@ -1,0 +1,18 @@
+# Documentation requirements for CMeta
+# Install with: pip install -r requirements-docs.txt
+
+# Core Sphinx packages
+sphinx>=7.0.0
+sphinx-rtd-theme>=2.0.0
+
+# Sphinx extensions
+sphinx-autodoc-typehints>=1.24.0
+sphinx-copybutton>=0.5.2
+
+# Optional but recommended
+myst-parser>=2.0.0  # For Markdown support
+sphinxcontrib-napoleon>=0.7  # Better docstring support
+
+# Development and building
+wheel
+setuptools
