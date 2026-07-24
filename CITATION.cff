@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use cMeta in your research, please cite it as below."
+title: "cMeta (Common Meta Framework)"
+abstract: >-
+  cMeta (also known as cX) is a small, portable framework for unifying,
+  interconnecting and reusing code, data, models, agents and knowledge across
+  projects, platforms and time through a single uniform interface, designed for
+  collaborative and reproducible research, development and experimentation.
+type: software
+authors:
+  - family-names: Fursin
+    given-names: Grigori
+    website: "https://cTuning.ai/@gfursin"
+    affiliation: "cTuning Labs"
+    orcid: "https://orcid.org/0000-0001-7719-1624"
+version: "1.0.0"
+date-released: "2026-07-24"
+license: Apache-2.0
+repository-code: "https://github.com/cTuningLabs/cmeta"
+url: "https://cTuning.ai"
+keywords:
+  - reproducible research
+  - meta-framework
+  - content-addressable artifacts
+  - machine learning systems
+  - benchmarking
+  - co-design
+  - automation

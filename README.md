@@ -397,6 +397,26 @@ and the skills under [`.claude/skills/`](.claude/skills/)).
 
 ---
 
+## How to cite
+
+If you use cMeta in your research, please cite it. GitHub's **"Cite this
+repository"** button (generated from [`CITATION.cff`](CITATION.cff)) produces
+APA and BibTeX automatically. A BibTeX entry:
+
+```bibtex
+@software{fursin_cmeta,
+  author  = {Fursin, Grigori},
+  title   = {{cMeta (Common Meta Framework)}},
+  year    = {2026},
+  version = {1.0.0},
+  license = {Apache-2.0},
+  url     = {https://github.com/cTuningLabs/cmeta},
+  note    = {cTuning Labs}
+}
+```
+
+---
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
