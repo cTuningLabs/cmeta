@@ -12,7 +12,24 @@ projects, platforms and time through a single uniform interface.
 
 It is designed for collaborative and reproducible research, development and
 experimentation across AI, ML, systems and other complex workloads — including
-self-optimizing and self-adapting software/hardware stacks.
+**AI-driven benchmarking, modeling, optimization, adaptation and co-design of
+the full software/hardware stack** end to end.
+
+cMeta also serves as a **common engine for building "operating systems for
+AI"** — a thin, uniform layer that connects, abstracts and orchestrates the
+code, data, models, agents and hardware that modern AI systems are assembled
+from, much as a conventional operating system abstracts and manages the
+resources of a machine.
+
+It is built to work across the whole stack and the tools people already use:
+
+- **Any operating system**, and **any target platform** — from the data center
+  to edge and mobile devices.
+- **Modern AI coding assistants and agents**, such as Claude (Claude Code),
+  OpenAI Codex and OpenClaw.
+- **Automation and workflow frameworks**, plugged in through the same uniform
+  interface — the `cx` CLI and the `access()` API.
+- **Knowledge-management systems**, such as Notion and Obsidian.
 
 > Created, architected and developed by
 > [Grigori Fursin](https://cTuning.ai/@gfursin) — originator of the long-term
@@ -397,6 +414,34 @@ and the skills under [`.claude/skills/`](.claude/skills/)).
 
 ---
 
+## Background & related publications
+
+cMeta builds on the author's past research on making code, data, models, agents
+and knowledge reusable, portable and reproducible — through Collective Knowledge
+(CK), MLCommons Collective Mind (CM/CMX) and now cMeta. Selected publications and
+talks describing the concepts behind this framework and its predecessors:
+
+- G. Fursin. *Collective knowledge: organizing research projects as a database
+  of reusable components and portable workflows with common interfaces.*
+  Philosophical Transactions of the Royal Society A, 379(2197), 2021.
+  [doi:10.1098/rsta.2020.0211](https://doi.org/10.1098/rsta.2020.0211)
+- G. Fursin. *Enabling more efficient and cost-effective AI/ML systems with
+  Collective Mind, virtualized MLOps, MLPerf, Collective Knowledge Playground
+  and reproducible optimization tournaments.* arXiv:2406.16791, 2024.
+  [arxiv.org/abs/2406.16791](https://arxiv.org/abs/2406.16791)
+- G. Fursin, D. Altunay. *Framing AI System Benchmarking as a Learning Task:
+  FlexBench and the Open MLPerf Dataset.* arXiv:2509.11413, 2025.
+  [arxiv.org/abs/2509.11413](https://arxiv.org/abs/2509.11413)
+- G. Fursin. *Collective Mind: toward a common language to facilitate
+  reproducible research and technology transfer.* Presentation, Zenodo, 2023.
+  [doi:10.5281/zenodo.8105339](https://doi.org/10.5281/zenodo.8105339)
+- G. Fursin. *Reproducing 150 Research Papers and Testing Them in the Real
+  World.* ACM Tech Talk, 2021.
+  [video](https://www.youtube.com/watch?v=7zpeIVwICa4) ·
+  [slides](https://learning.acm.org/binaries/content/assets/leaning-center/webinar-slides/2021/grigorifursin_techtalk_slides.pdf)
+
+---
+
 ## How to cite
 
 If you use cMeta in your research, please cite it. GitHub's **"Cite this
@@ -415,6 +460,10 @@ APA and BibTeX automatically. A BibTeX entry:
 }
 ```
 
+If your work builds on the ideas behind cMeta, you are also very welcome to
+reference the earlier projects and papers it grew out of — see
+[Background & related publications](#background--related-publications).
+
 ---
 
 ## License
@@ -432,6 +481,8 @@ Copyright (C) 2025–2026 [Grigori Fursin](https://cTuning.ai/@gfursin) and
 
 ## Links
 
+- Project page: [https://cTuning.ai/project/cmeta](https://cTuning.ai/project/cmeta)
+  (under development)
 - Author: [https://cTuning.ai/@gfursin](https://cTuning.ai/@gfursin)
 - Organizations: [cTuning Labs](https://cTuning.ai) and the
   [cTuning foundation](https://cTuning.org)

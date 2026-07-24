@@ -26,3 +26,57 @@ keywords:
   - benchmarking
   - co-design
   - automation
+
+# Selected prior work by the author describing the concepts behind cMeta and its
+# predecessors (Collective Knowledge, Collective Mind / CMX), which this project
+# builds upon.
+references:
+  - type: article
+    title: "Collective knowledge: organizing research projects as a database of reusable components and portable workflows with common interfaces"
+    authors:
+      - family-names: Fursin
+        given-names: Grigori
+        orcid: "https://orcid.org/0000-0001-7719-1624"
+    year: 2021
+    journal: "Philosophical Transactions of the Royal Society A: Mathematical, Physical and Engineering Sciences"
+    volume: 379
+    issue: 2197
+    doi: 10.1098/rsta.2020.0211
+  - type: article
+    title: "Enabling more efficient and cost-effective AI/ML systems with Collective Mind, virtualized MLOps, MLPerf, Collective Knowledge Playground and reproducible optimization tournaments"
+    authors:
+      - family-names: Fursin
+        given-names: Grigori
+    year: 2024
+    doi: 10.48550/arXiv.2406.16791
+    url: "https://arxiv.org/abs/2406.16791"
+    notes: "arXiv preprint 2406.16791"
+  - type: article
+    title: "Framing AI System Benchmarking as a Learning Task: FlexBench and the Open MLPerf Dataset"
+    authors:
+      - family-names: Fursin
+        given-names: Grigori
+      - family-names: Altunay
+        given-names: Daniel
+    year: 2025
+    doi: 10.48550/arXiv.2509.11413
+    url: "https://arxiv.org/abs/2509.11413"
+    notes: "arXiv preprint 2509.11413"
+  - type: generic
+    title: "Collective Mind: toward a common language to facilitate reproducible research and technology transfer"
+    authors:
+      - family-names: Fursin
+        given-names: Grigori
+    year: 2023
+    publisher:
+      name: Zenodo
+    doi: 10.5281/zenodo.8105339
+    notes: "Presentation"
+  - type: video
+    title: "Reproducing 150 Research Papers and Testing Them in the Real World"
+    authors:
+      - family-names: Fursin
+        given-names: Grigori
+    year: 2021
+    url: "https://www.youtube.com/watch?v=7zpeIVwICa4"
+    notes: "ACM Tech Talk (video). Slides: https://learning.acm.org/binaries/content/assets/leaning-center/webinar-slides/2021/grigorifursin_techtalk_slides.pdf"
