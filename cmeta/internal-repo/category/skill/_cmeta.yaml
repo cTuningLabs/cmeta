@@ -1,14 +1,10 @@
-artifact: f4f792ab40c7498f
+artifact: 56d8c9e58a7d41a9
 authors: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
+base_category_default_api_versions:
+  '1': 1
 category: category,dd9ea50e7f76467f
 copyright: 2025-2026 Grigori Fursin and cTuning Labs. See the cMeta COPYRIGHT and
   LICENSE files for details.
-creation_timestamp: '2026-06-11T09:28:52.070305+00:00'
-find_sort: false
-last_api_version: 1
+creation_timestamp: '2026-07-24T07:11:38.632035+00:00'
 permanent: true
-tags:
-- category
-- repo
-uses_categories:
-  config: config,cc6bfe174be847ed
+last_api_version: 1
