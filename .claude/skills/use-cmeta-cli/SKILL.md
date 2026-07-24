@@ -173,16 +173,35 @@ Per-category aliases live under `command_aliases:` in a category's `_cmeta.yaml`
 ## 7. Current-directory shortcut (`cx .`)
 
 `cx .` inspects the current working directory, walks up to find the enclosing
-repo (`_cmr.yaml`), then the enclosing artifact (`_cmeta.yaml`), and injects
-the matching category + artifact ref:
+repo (`_cmr.yaml`), then the enclosing category and — if present — the enclosing
+artifact (`_cmeta.yaml`), and injects the matching repo + category (+ artifact)
+so you don't type them.
+
+**Inside a category directory** — category + repo are inferred, the command
+still takes an artifact arg:
+
+```bash
+cd /path/to/some/repo/log
+
+cx . add xyz              # → cx log add <repo>:xyz
+cx . find                # → cx log find <repo>:      (list this category/repo)
+cx . find --tags=demo    # ...pruned by tags
+```
+
+Prefer `find` as the universal lister — unlike a bare `ls` it also prunes by
+tags/filters, so it works as list, ls and find in one.
+
+**Inside an artifact directory** — the artifact is the target, no category or
+artifact ref needed:
 
 ```bash
 cd /path/to/some/repo/experiment/e1
 
-cx . info                 # → cx experiment info e1  (auto-detected)
-cx .                      # → cx experiment info e1  (info is the default when . resolves)
-cx . <command>            # → cx experiment <command> e1
-cx . <cat> <command>      # override the detected category
+cx . load                 # → cx experiment load e1   (print its meta)
+cx . update --meta.description="..."   # update this artifact
+cx . info                 # → cx experiment info e1
+cx .                      # info is the default when . resolves to an artifact
+cx . <cat> <command>      # pass an explicit category to override detection
 ```
 
 Same detection is available programmatically via

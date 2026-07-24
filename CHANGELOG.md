@@ -35,6 +35,24 @@ All notable changes to cMeta are documented here, newest first.
   precedence, and full integration tests (temp `CMETA_HOME`) covering
   first-launch layout, base CRUD lifecycle, `ctx` propagation across nested
   calls, and shipped `utils` / `config` category commands.
+- **Prepared the repository for public open-source release:**
+  - Added a DCO-based contribution policy — `CONTRIBUTING.md`, the verbatim
+    `DCO` (Developer Certificate of Origin 1.1), and a self-contained
+    `.github/workflows/dco.yml` that checks every pull-request commit is signed
+    off.
+  - Added `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) and `MAINTAINERS.md`.
+  - Added `CITATION.cff` (machine-readable citation powering GitHub's "Cite this
+    repository"), including a `references` list of the author's prior work the
+    framework builds on (Collective Knowledge, MLCommons Collective Mind / CMX).
+  - Contributor License Agreement templates (dormant individual ICLA, corporate
+    CCLA) are maintained separately in the `cTuningLabs/cla` repository.
+- README refreshed for the public release.
+- New docs: `docs/cplatform.md` (connecting to the cTuning.ai platform and
+  testing the API) and `docs/configuration.md` (working with `config`
+  artifacts).
+- Documented the current-directory shortcut `cx .` — infers the repo and
+  category, and the artifact when run inside one — in `docs/using-cmeta.md`
+  and the `use-cmeta-cli` skill.
 
 ## 0.30.0
 - Improved handling of sharded artifacts

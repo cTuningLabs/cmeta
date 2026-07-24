@@ -324,6 +324,42 @@ Notes:
   namespace once at the top-level call and read/write it from any hook the
   framework subsequently invokes.
 
+### 5.5 Working from the current directory (`cx .`)
+
+When you are already inside a repo, you can use `.` in place of the category.
+cMeta walks up from the current directory to detect the enclosing **repo**, then
+the enclosing **category**, and — if you are inside an artifact — the **artifact**
+itself, so you don't have to type any of them.
+
+**Inside a category directory** (e.g. `<repo>/log/`), the category and repo are
+inferred:
+
+```bash
+cd <repo>/log
+
+cx . add xyz             # add a new artifact 'xyz' to this category/repo
+cx . find                # list artifacts in this category/repo
+cx . find --tags=demo    # ...pruned by tags
+```
+
+Tip: `find` is a good universal lister — unlike a bare `ls` it also prunes by
+tags and other filters, so you can use it everywhere.
+
+**Inside an artifact directory** (e.g. `<repo>/log/xyz/`), the artifact is the
+target, so no category or artifact name is needed:
+
+```bash
+cd <repo>/log/xyz
+
+cx . load                # print this artifact's meta
+cx . update --meta.description="..."   # update this artifact
+cx .                     # with no command, defaults to 'info'
+```
+
+You can still pass an explicit category after `.` to override detection
+(`cx . <category> <command>`). The same detection is available from Python via
+`cm.utils.common.detect_cid_in_the_current_directory(cm)`.
+
 ---
 
 ## 6. Resolving categories & artifacts (alias / UID / `alias,UID`)
