@@ -2,7 +2,8 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## 0.31.0
+
+## 0.32.0
 - **First pass at connecting AI agents to cMeta so they can help extend and
   improve the framework itself** — ships portable, reusable guidance that
   agents in this and downstream repos can pick up automatically:
