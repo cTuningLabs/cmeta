@@ -453,7 +453,7 @@ APA and BibTeX automatically. A BibTeX entry:
   author  = {Fursin, Grigori},
   title   = {{cMeta (Common Meta Framework)}},
   year    = {2026},
-  version = {1.0.0},
+  version = {0.32.0},
   license = {Apache-2.0},
   url     = {https://github.com/cTuningLabs/cmeta},
   note    = {cTuning Labs}

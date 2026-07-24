@@ -13,7 +13,7 @@ authors:
     website: "https://cTuning.ai/@gfursin"
     affiliation: "cTuning Labs"
     orcid: "https://orcid.org/0000-0001-7719-1624"
-version: "1.0.0"
+version: "0.32.0"
 date-released: "2026-07-24"
 license: Apache-2.0
 repository-code: "https://github.com/cTuningLabs/cmeta"
