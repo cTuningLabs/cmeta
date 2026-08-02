@@ -382,8 +382,44 @@ set CMETA_HOME=D:\my-cmeta-home
 uv run cx %*
 ```
 
-Always check exit codes (`errorlevel` on Windows, `$?` on POSIX) —
-non-zero equals the `return` value of the call.
+### Exit codes (CI / agent integration)
+
+**The exit code of `cx` / `cmeta` is exactly the `return` value of the
+equivalent `access()` call** — the same numbers from the shell as from Python:
+
+| Code | Meaning |
+|------|---------|
+| `0` | success |
+| `16` | **soft** "not found" — usually a normal branch, not a failure |
+| `1` / `8` / `32` / `99` | real failure (generic / conflict / no such command / internal) |
+
+Error text goes to **stderr** as `cMeta notice: <error>!`; normal output goes
+to stdout.
+
+For machine-readable results use **`--json_file=<path>`** (`--jf`), not
+`--json`: `--json` prints the console output and a separator line before the
+dict, so it is not safe to pipe into `jq`. Add `--quiet` in unattended scripts
+so nothing waits on a prompt.
+
+```bash
+cx note find my-note --quiet --jf=out.json
+code=$?
+[ "$code" -eq 0 ] || [ "$code" -eq 16 ] || { jq -r .error out.json >&2; exit "$code"; }
+```
+
+```powershell
+cx note find my-note --quiet ; $code = $LASTEXITCODE   # native exe -> $LASTEXITCODE, not $?
+```
+
+```bat
+cx note find my-note --quiet
+set CODE=%ERRORLEVEL%
+if "%CODE%"=="16" goto :missing
+:: NOTE: `if errorlevel 16` means "16 OR GREATER" - compare the variable instead
+```
+
+Full guide (incl. `set -e` interaction and debugger setup):
+`docs/error-handling.md`.
 
 ## 12. Source of truth
 

@@ -162,7 +162,7 @@ def status_(self, ctx, arg1=None):
     p = self._prepare_input_from_params({'ctx': ctx, 'arg1': arg1}, base=True)
     p['command'] = 'find'
     r = self.cm.access(p)
-    if r['return'] > 0: return r
+    if self.cm.catch_error(r): return r
     return {'return': 0, 'count': len(r.get('artifacts', []))}
 ```
 
@@ -314,7 +314,7 @@ re-implementations** whenever they exist. Every category shipped in
   (`is_path_within`), atomic writes, secret masking, env-diff capture.
 - **Composability.** They return the standard `{'return': 0, ...}` dict —
   the same contract as `access()` — so you can propagate errors with
-  `if r['return'] > 0: return r` without adapters.
+  `if self.cm.catch_error(r): return r` without adapters.
 - **Safety.** `safe_read_file` / `safe_write_file` use file locks, atomic
   temp-file rename, retries, and proper YAML/JSON detection. Rolling your
   own with `open()` risks partial writes and races.
@@ -355,7 +355,8 @@ re-implementations** whenever they exist. Every category shipped in
 | `self.cm.js(obj)` | Return JSON string (for logs). |
 | `self.cm.q(path)`, `self.cm.qq(path)` | Cross-platform path quoting for shell commands. |
 | `self.cm.error(msg, return_code=1, exception=None)` | Build/raise a standard error dict. |
-| `self.cm.catch_error(r)` | Propagate an error dict up the stack. |
+| `self.cm.catch_error(r)` | **The standard check** — True when there's an error to propagate; skips soft 16; raises at the failure point under `fail_on_error`. |
+| `self.cm.catch_error(r, fail16=True)` | Same, but treat a soft "not found" (16) as fatal here. |
 
 **Example — from `internal-repo/category/config/api/v1.py::set_`** (this is
 the actual shipped code):
@@ -391,6 +392,12 @@ if r['return'] > 0: return r
 
 Six lines of framework helpers instead of ~40 lines of `open`/`json`/`fcntl`
 /`os.replace` boilerplate — and it works identically on Windows.
+
+Note the explicit `if r['return'] != 16` guard in that example: a missing file
+is a **soft error** and this command has to *do* something specific in that
+branch (start from an empty config). Where you have no such branch, the plain
+`if self.cm.catch_error(r): return r` is preferred — it skips 16 for you. See
+§9 and `docs/error-handling.md`.
 
 **When it's OK to skip a helper.** If you truly need something not in
 `cm.utils` (very domain-specific parsing, a third-party client library that
@@ -479,25 +486,30 @@ r = cm.packages.get_all({
 
 ## 9. Error handling contract
 
-```python
-r = cm.access({...})
+**Use this form everywhere:**
 
-if r['return'] == 0:
-    # success — read command-specific keys
-    ...
-elif r['return'] == 16:
-    # soft "not found" / warning — usually recoverable
-    ...
-else:
-    # hard error
-    self.logger.error(r['error'])
-    return r   # propagate up the stack; the outer caller handles it
+```python
+r = self.cm.access({...})
+if self.cm.catch_error(r): return r
 ```
 
-Inside hooks you can use `self.cm.error(msg, return_code=1, exception=None)`
-to build an error dict (or raise, if `fail_on_error=True`). `self.cm.catch_error(r)`
-returns True when there's an error to propagate; `self.cm.catch_error_and_halt(r)`
-will `sys.exit()`.
+It raises at the point of failure when `fail_on_error` is on (real traceback
+under a debugger), and it **skips code 16** — the soft "not found" that `find`
+returns and that callers routinely continue past.
+
+`if r['return'] > 0: return r` is the simplified form: acceptable for
+prototyping, but it has no debugging hook and treats a soft 16 as fatal.
+
+```python
+if self.cm.catch_error(r, fail16=True): return r   # a missing artifact IS fatal here
+return self.cm.error('message', 1, exception=e)    # build (or raise) an error dict
+self.cm.catch_error_and_halt(r)                    # top-level scripts: print + sys.exit
+```
+
+Low-level helpers with no `self.cm` use `_error(msg, code, exc, fail_on_error)`
+directly and take `fail_on_error` as a forwarded parameter.
+
+Full guide, incl. return codes and IDE debugger setup: `docs/error-handling.md`.
 
 ## 10. Reproducibility hooks
 

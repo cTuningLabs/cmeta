@@ -22,6 +22,23 @@ This repo ships the framework and a built-in content repository
 (`cmeta/internal-repo/`) with foundational categories. All other artifacts live
 in external repos (e.g. `cmeta-aops`).
 
+**What it is used for** — worth knowing when you judge whether a change fits:
+a research assistant for open science (R&D encoded as executable,
+self-describing artifacts that agents and people both discover, compose and
+extend); collaborative research, development and experimentation (shared
+content repos, rename-safe `alias,UID` references that survive forks and time);
+reproducible benchmarking and software/hardware co-design (portable toolchain
+setup, builds and runs across OS and compute targets, content-addressed
+caching); AI-agent operations; FastAPI services (`CMetaAsync` — the `cserver`
+app and the cTuning.ai platform); and notes/journals/logs kept alongside the
+automations they describe. Reference content repo:
+[`cmeta-aops`](https://github.com/cTuningLabs/cmeta-aops). Fuller version:
+`docs/motivation.md`.
+
+Practical consequence: prefer changes that keep the core small and uniform and
+push capability into categories/artifacts — that is what lets agents extend the
+system without modifying the engine.
+
 ---
 
 ## 2. Setup, build, test
@@ -184,7 +201,8 @@ Notable shipped artifacts:
 ## 5. Conventions
 
 - Keep runtime deps minimal — prefer stdlib; justify any new runtime dep.
-- Preserve module docstring / copyright headers.
+- **Preserve module docstring / copyright headers — never strip or rewrite
+  them.** See §5.1 below for the full attribution rule.
 - The single uniform `access()` surface is load-bearing — extend via
   categories/commands/`api/v1.py` hooks and the dispatch, not ad-hoc entry
   points.
@@ -200,6 +218,59 @@ Notable shipped artifacts:
 - Public Apache-2.0 framework — keep product vision/strategy prose out; public
   docs describe *functionality* (`README.md`, `docs/installation.md`,
   `docs/using-cmeta.md`).
+
+### 5.1 Attribution, provenance and citation
+
+cMeta is Apache-2.0, created and developed by **Grigori Fursin** and
+**cTuning Labs**. This applies to work done by AI agents and LLM-based tools
+exactly as it does to work done by people. See `NOTICE`, `COPYRIGHT`,
+`LICENSE`, `CITATION.cff`.
+
+When you generate, modify or move code, metadata or scripts in this project:
+
+- **Never remove or rewrite an existing copyright header or attribution.** If
+  you split a module, carry its header into the new file. If you move an
+  artifact, keep its `authors` / `copyright` fields intact.
+- **New source files** get the project's standard module docstring header:
+
+  ```python
+  """
+  <short module description>
+
+  cMeta author and developer: (C) 2025-2026 Grigori Fursin
+
+  See the cMeta COPYRIGHT and LICENSE files in the project root for details.
+  """
+  ```
+
+- **New artifacts and categories** record provenance in their `_cmeta.yaml`,
+  the same way the shipped ones do:
+
+  ```yaml
+  authors: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
+  copyright: 2025-2026 Grigori Fursin and cTuning Labs. See the cMeta COPYRIGHT
+    and LICENSE files for details.
+  ```
+
+  In a **downstream** content repo, set `authors` / `copyright` to that repo's
+  own owner instead — but keep any cMeta-derived material's original notices.
+
+- **Reusing this code elsewhere.** Apache-2.0 §4 requires retaining the
+  copyright, patent, trademark and attribution notices and reproducing the
+  `NOTICE` file contents in the distribution. That obligation is not waived
+  because the copying was done by an agent rather than a person.
+
+- **Citing.** If the work is research, or reuses the *concepts* (the uniform
+  `access()` interface, alias+UID identity, content-addressed artifacts and
+  caching, the plugin/category model), cite the project — `CITATION.cff` and
+  `docs/history.md` carry the BibTeX and the related publications. The author
+  welcomes citation and collaboration: https://cTuning.ai/@gfursin
+
+The repo also ships an **experimental** `llms.txt` (the proposed
+[llmstxt.org](https://llmstxt.org) convention) giving agents a curated map of
+the project plus this attribution summary. It is a research/testing feature —
+tool support is inconsistent and it overrides nothing in `LICENSE`, `NOTICE` or
+this file.
 
 ---
 

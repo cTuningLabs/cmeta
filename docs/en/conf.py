@@ -26,7 +26,20 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
+    'myst_parser',      # lets Sphinx read the Markdown guides in docs/en/guides/
 ]
+
+# MyST (Markdown) settings
+# The written guides live in docs/*.md and are copied into docs/en/guides/ by
+# build_docs.py (which also rewrites their repo-relative links).
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
+}
+
+# Generate anchors for headings up to level 4 so cross-document links of the
+# form `guide.md#3-some-heading` resolve inside the built site.
+myst_heading_anchors = 4
 
 # Autodoc settings
 autodoc_default_options = {

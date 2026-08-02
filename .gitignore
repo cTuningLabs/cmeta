@@ -75,6 +75,10 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Markdown guides copied into the Sphinx source tree by docs/build_docs.py
+# (generated on every build - the originals live in docs/*.md)
+docs/en/guides/
+
 # PyBuilder
 .pybuilder/
 target/

@@ -239,8 +239,9 @@ from cmeta import CMeta
 cm = CMeta()
 
 r = cm.access({'category': 'repo', 'command': 'list'})
-if r['return'] > 0:
-    raise RuntimeError(r['error'])
+if cm.catch_error(r): raise RuntimeError(r['error'])
+# See error-handling.md — `catch_error` skips soft "not found" errors (code 16)
+# and raises at the point of failure when debugging is on.
 
 # Fetch a config artifact:
 r = cm.access({'category': 'config', 'command': 'get', 'arg1': 'default'})
@@ -359,6 +360,125 @@ cx .                     # with no command, defaults to 'info'
 You can still pass an explicit category after `.` to override detection
 (`cx . <category> <command>`). The same detection is available from Python via
 `cm.utils.common.detect_cid_in_the_current_directory(cm)`.
+
+**`cx . info` — identify whatever you are standing in.** This is the everyday
+"where am I?" command. It resolves the current directory and prints the
+artifact path, the full **cRef**, and the alias/UID of the artifact, its
+category and its repo:
+
+```console
+$ cd <repo>/category/config
+$ cx . info
+Artifact path: ...\cmeta\internal-repo\category\config
+
+cRef=category,dd9ea50e7f76467f::config,cc6bfe174be847ed
+
+artifact_alias: config
+artifact_uid:   cc6bfe174be847ed
+category_alias: category
+category_uid:   dd9ea50e7f76467f
+repo_alias:     internal
+repo_uid:       21f6ce28893e4de8
+```
+
+Useful flags:
+
+| Flag | Effect |
+|------|--------|
+| *(default)* | Copies the **cRef** to the clipboard, ready to paste into meta or a message. |
+| `--clip-` | Don't touch the clipboard (the boolean off-switch). |
+| `--url` | Also print — and copy — a **cRef URL** pointing at the configured server, for sharing a link to the artifact. |
+| `--name` | Copy the artifact **name** to the clipboard instead of the cRef. |
+| `--jf=<file>` | Write the full result — including the artifact's complete `_cmeta` metadata — as JSON. |
+
+`cx <category> info <alias>` does the same for an artifact you name explicitly,
+without having to `cd` into it.
+
+### 5.6 Generating UIDs (and other `utils` helpers)
+
+When you create an artifact or a category by hand — `mkdir` plus a
+`_cmeta.yaml`, rather than `cx <category> add` — you need a UID for the
+`artifact:` field. Generate one with:
+
+```bash
+cx utils uid                 # -> 7dc971950cfe4eec  (also copied to the clipboard)
+cx utils uid --clipboard-    # print only, don't touch the clipboard
+cx utils uuid                # -> 7938f1d4-7187-4bed-baae-26b9345635c5 (UUID4)
+```
+
+`cx utils uid` prints a **16-hex-character** cMeta UID — the same format the
+framework generates internally — and copies it to the clipboard by default, so
+you can paste it straight into a `_cmeta.yaml`. Suppress that with the boolean
+off-switch `--clipboard-`. For scripts, take it from the return dict:
+
+```bash
+cx utils uid --clipboard- --jf=uid.json     # {"return": 0, "uid": "29576481b25846ba"}
+```
+
+From Python the underlying helper is `cm.utils.names.generate_cmeta_uid()`.
+
+Remember to register a hand-made artifact afterwards so it enters the index:
+`cx <category> index <repo>:<artifact>` (see §11).
+
+### 5.7 Searching across categories (`cx utils find_by_cid`)
+
+`cx <category> find <alias>` searches **one** category. When you don't know
+which category something is in — or want to sweep several at once —
+`cx utils find_by_cid` searches by a full **cRef** and accepts wildcards on
+both halves:
+
+```bash
+cx utils find_by_cid "<category>::<artifact>"
+```
+
+```bash
+# Just a name — the category defaults to '*', so this searches everywhere
+cx utils find_by_cid "config"
+
+# Any artifact whose name contains 'server', in any category
+cx utils find_by_cid "*::*server*"
+
+# Every artifact of every category whose name starts with 'cserver'
+cx utils find_by_cid "cserver*::*"
+
+# Narrow by tags as well
+cx utils find_by_cid "*::*" --tags=demo,gpu
+```
+
+It prints the path of each match (and returns them in `artifacts`). If you omit
+`::`, cMeta prepends `*::` for you — so a bare name is a global search. Omitting
+the argument entirely searches for `*`.
+
+This is the tool for finding **related artifacts across categories** — the same
+alias or tag used by a task, a tool and a result, for instance — which the
+per-category `find` cannot express.
+
+| Flag | Effect |
+|------|--------|
+| `--tags=<t1,t2>` | Filter matches by tags. |
+| `--skip_non_indexed` | Skip `no_index` categories (see §12.2) — much faster when some categories are scanned rather than indexed. |
+| `--web` | Accept a web-style `cmeta:///?<encoded-cid>` input and URL-decode it. |
+| `--ask` | Prompt for the CID interactively. |
+| `--far` | Open the first match in the FAR file manager (Windows). |
+
+`cx utils smart_find_by_cid` is the wrapped-CID variant, for pasting a cRef that
+is embedded in surrounding text.
+
+Other frequently used `utils` commands (full list: `cx utils --help`):
+
+| Command | What it does |
+|---------|--------------|
+| `cx utils uid` / `uuid` | Generate a 16-hex cMeta UID / a UUID4. |
+| `cx utils yaml2json <file>` / `json2yaml` | Convert between YAML and JSON. |
+| `cx utils pickle2json <file>` (`pkl2json`) / `json2pickle` | Convert between pickle and JSON — handy for inspecting `index/*.pkl`. |
+| `cx utils find_by_cid <cid>` / `smart_find_by_cid` | Find artifacts by a full cRef / CID. |
+| `cx utils artifacts` | Analyse all artifacts across all categories. |
+| `cx utils copy_text_to_clipboard` / `copy_date_to_clipboard` | Clipboard helpers. |
+| `cx utils utf8sig_to_utf8 <file>` | Strip a UTF-8 BOM. |
+| `cx utils convert_old_entries <path>` | Convert legacy CK/CM/CMX entries. |
+
+Note that `utils` sets `skip_base_category_commands: true` — it provides
+helpers only and has no `find`/`create`/`delete` of its own.
 
 ---
 
@@ -700,7 +820,7 @@ class Category(InitCategory):
             'command':  'get',
             'arg1':     'my-cat',          # or self.cm.cfg['default_config_name']
         })
-        if r['return'] > 0: return r
+        if self.cm.catch_error(r): return r
 
         cfg = r['config_cmeta']
         endpoint = cfg.get('endpoint', 'https://default.example')
@@ -1013,7 +1133,8 @@ For each artifact, cMeta writes a `_cmeta.yaml`. Useful fields:
 | `tags` | List of strings for tag search. |
 | `authors`, `copyright`, `creation_timestamp` | Provenance. |
 | `permanent: true` | Refuses `delete` (shipped foundational artifacts). |
-| `no_index: true` | Skip the fast index; find by filesystem scan (useful for very large / ephemeral artifacts). |
+| `no_index: true` | Skip the fast index; find by filesystem scan (useful for very large / ephemeral artifacts — see §12.2). |
+| `sharding_slices: [2, 2]` | Category-level: spread artifacts into nested sub-directories by slicing the alias, for categories with very many artifacts (see §12.1). |
 | **Category-only fields** | Only meaningful on category artifacts. |
 | `last_api_version: <n>` | Highest API version the category ships. |
 | `base_category_default_api_versions: {'1': 1}` | Base API version to inherit per category API version. |
@@ -1021,7 +1142,7 @@ For each artifact, cMeta writes a `_cmeta.yaml`. Useful fields:
 | `skip_base_category_commands: true` | Category doesn't inherit base CRUD. |
 | `command_aliases` | Per-category CLI aliases. |
 | `find_sort: false` | Disable default alpha-sort for `find`. |
-| `uses_categories` | Cross-category dependencies (see §7.2). |
+| `uses_categories` | Cross-category dependencies (see §9.3). |
 | `default_env`, `param_env_prefix`, `config_name` | Used by the `app` category to run apps with pre-configured env vars + a named `config` artifact. |
 
 For advanced needs (per-artifact automation), an artifact can ship its own
@@ -1070,7 +1191,144 @@ cx <category> <command> ... --dump     # writes cmeta-ctx.json (full ctx)
 
 ---
 
-## 12. Where to look next
+## 12. Scaling a category to very many artifacts
+
+A category normally stores each artifact as one directory directly under
+`<repo>/<category>/`. That is fine for hundreds of artifacts. At tens or
+hundreds of thousands it stops being fine: filesystems slow down with huge flat
+directories, and the per-category index pickle grows until loading it costs
+more than the lookup saves.
+
+Two independent mechanisms handle this — **sharding** (spread artifacts into
+sub-directories) and **`no_index`** (don't index the category at all). They can
+be used separately or together.
+
+### 12.1 Sharding — `sharding_slices`
+
+`sharding_slices` is a list of integers that splits the artifact's directory
+name into nested sub-directories. Each number is how many characters to take
+for that level:
+
+```yaml
+# in the category's _cmeta.yaml
+sharding_slices: [2, 2]
+```
+
+```
+shard_name('example', [2, 2])  ->  ex/am/example
+```
+
+so the artifact lands at `<repo>/<category>/ex/am/example/` instead of
+`<repo>/<category>/example/`. With `[2, 2]` you get at most 256×256 leaf
+directories at two levels, which keeps any single directory small.
+
+The **name being sharded is the artifact's alias** — or its UID when the
+artifact has no alias. That is what makes the "by year" layout work: if your
+aliases are date-prefixed (as the `note` category's are, e.g.
+`20260802.my-note`), then
+
+```yaml
+sharding_slices: [4, 2]
+```
+
+gives `2026/08/20260802.my-note` — artifacts grouped by year, then month.
+
+Names shorter than the slices are padded with underscores so the depth stays
+predictable:
+
+| Alias | `sharding_slices` | Path |
+|-------|-------------------|------|
+| `example` | `[2, 2]` | `ex/am/example` |
+| `example` | `[3, 2]` | `exa/mp/example` |
+| `example` | `[1]` | `e/example` |
+| `ab` | `[2, 2]` | `ab/__/ab` |
+| `a` | `[2, 2]` | `a_/__/a` |
+| `20260802.my-note` | `[4, 2]` | `2026/08/20260802.my-note` |
+
+**Where to declare it.** Two places, with the repo winning:
+
+```yaml
+# 1. On the category (default for every repo) — <repo>/category/<name>/_cmeta.yaml
+sharding_slices: [2, 2]
+```
+
+```yaml
+# 2. On a repo, per category UID (overrides the category default) — _cmr.yaml
+sharding_slices:
+  <category-uid>: [4, 2]
+```
+
+The per-repo form lets one repo shard a category deeply while another keeps it
+flat — useful when only your bulk-data repo has the volume problem.
+
+**What cMeta handles for you.** `create`, `move`/`copy` and `delete` all apply
+the same sharding when computing paths, the index record stores
+`sharding_slices_num` so lookups know how deep to look, and deleting an
+artifact prunes shard directories that have become empty. You keep referring to
+artifacts by `alias` / `UID` / `alias,UID` exactly as before — the layout is an
+implementation detail.
+
+> Change `sharding_slices` only on an empty (or freshly migrated) category.
+> Existing artifacts are **not** relocated automatically, and the old paths
+> won't match the new scheme.
+
+### 12.2 Skipping the index — `no_index`
+
+```yaml
+# in the category's (or artifact's) _cmeta.yaml
+no_index: true
+```
+
+Artifacts of a `no_index` category are never written to
+`<CMETA_HOME>/index/<category>.pkl`. Lookups fall back to scanning the
+filesystem (`Repos.find_in_file_system`), which still supports wildcards on the
+alias.
+
+Use it when:
+
+- the category holds so many artifacts that maintaining and loading the index
+  costs more than it saves;
+- artifacts are created and deleted constantly (logs, scratch results), so the
+  index would be rewritten continuously;
+- the artifacts are managed by something outside cMeta and the index would go
+  stale anyway.
+
+The trade-off: **you rely on the alias (or the directory layout) to find
+things**, so aliases must be unique and predictable within the category — the
+index is what normally makes UID lookups fast. Filesystem scanning is slower
+for broad queries but avoids the index entirely, which is the point.
+
+`cx --reindex` skips these categories, and a lookup can skip them explicitly
+with `skip_non_indexed` (exposed by `cx utils find_by_cid --skip_non_indexed`).
+
+### 12.3 Combining them
+
+Sharding and `no_index` solve different halves of the problem and compose well:
+sharding keeps the *filesystem* fast, `no_index` keeps the *index* from
+becoming the bottleneck. A large archive category with date-prefixed aliases
+might use both:
+
+```yaml
+sharding_slices: [4, 2]   # <category>/2026/08/<alias>/
+no_index: true            # find by scanning, alias is the key
+```
+
+---
+
+## 13. Where to look next
+
+Other guides ([documentation index](README.md)):
+
+- Why cMeta exists and its design principles: [motivation.md](motivation.md)
+- Installing and verifying: [installation.md](installation.md)
+- Error handling and debugging: [error-handling.md](error-handling.md)
+- Async use and concurrency:
+  [async-and-concurrency.md](async-and-concurrency.md)
+- The `config` category in depth: [configuration.md](configuration.md)
+- Connecting to the cTuning.ai platform: [cplatform.md](cplatform.md)
+- Lineage, publications and citation: [history.md](history.md)
+
+Source of truth in the code:
 
 - Framework agent guide: [`AGENTS.md`](../AGENTS.md)
 - Add-a-plugin walkthrough for AI agents:

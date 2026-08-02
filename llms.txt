@@ -1,0 +1,71 @@
+# cMeta (Common Meta Framework)
+
+> A small, portable framework for unifying, interconnecting and reusing code,
+> data, models, agents and knowledge across projects, platforms and time
+> through a single uniform interface: `cm.access({'category','command',...})`
+> in Python and `cx <category> <command>` on the command line.
+
+Created and developed by Grigori Fursin (https://cTuning.ai/@gfursin) and
+cTuning Labs (https://cTuning.ai). Licensed under Apache-2.0.
+
+This file is an **experimental** adoption of the `llms.txt` convention
+(https://llmstxt.org) — a proposed, not standardised, way to give LLMs and
+AI agents a curated map of a project. It is provided for testing and research;
+support across tools is inconsistent, and nothing here overrides LICENSE,
+NOTICE or the terms in AGENTS.md.
+
+## Attribution and citation
+
+If you use, adapt or generate code, metadata or scripts derived from this
+project — including via an AI agent or LLM — retain the copyright and
+attribution notices and reproduce the contents of NOTICE, as Apache-2.0
+section 4 requires. If you use cMeta in research, or build on its concepts,
+please cite it (CITATION.cff). Collaboration is actively invited.
+
+- [NOTICE](NOTICE): required attribution, plus citation and collaboration requests
+- [LICENSE](LICENSE): Apache License 2.0
+- [CITATION.cff](CITATION.cff): machine-readable citation (BibTeX/APA)
+- [AGENTS.md](AGENTS.md): rules for AI agents working on this repository — §5.1 covers attribution and provenance
+
+## What cMeta is used for
+
+A research assistant for open science (R&D encoded as executable,
+self-describing artifacts that agents and people both compose and extend);
+collaborative research, development and experimentation; reproducible
+benchmarking and software/hardware co-design; AI-agent operations; FastAPI
+services; and notes/journals kept alongside the automations they describe.
+Reference content repository: https://github.com/cTuningLabs/cmeta-aops
+
+## Core concepts
+
+- [Why cMeta](docs/motivation.md): the problem, the approach, design principles, what people use it for
+- [History and background](docs/history.md): lineage (cTuning framework, Collective Knowledge, Collective Mind/CMX), related publications, how to cite
+- Uniform interface: everything is reached through one `access()` dispatch
+- Artifact identity: every category and artifact has a human alias **and** a stable 16-hex UID; references written `alias,UID` are rename-safe
+- Content repositories: pluggable directories of artifacts, indexed together under one `<CMETA_HOME>`
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Installation](docs/installation.md): pip / uv / source, extras for serial vs async use
+- [Common commands](docs/common-commands.md): everyday cheatsheet
+- [Using cMeta](docs/using-cmeta.md): the full guide — CLI flags, artifacts, ctx, resolution, repositories, configs, adding categories, scaling, indexing
+- [Error handling](docs/error-handling.md): the return-dict contract, soft errors (code 16), debugging, CI/agent integration via exit codes
+- [Async and concurrency](docs/async-and-concurrency.md): CMeta vs CMetaAsync, FastAPI, and the locking/atomic-write guards for a shared CMETA_HOME
+- [Configuration](docs/configuration.md): the `config` category
+- [cTuning.ai platform](docs/cplatform.md): connecting to the hosted API
+- [Known issues](docs/known-issues.md): tracked defects and planned improvements
+
+## For AI agents extending cMeta
+
+- [AGENTS.md](AGENTS.md): canonical agent brief — architecture, conventions, attribution
+- [CLAUDE.md](CLAUDE.md): Claude Code specific notes
+- Skills in `.claude/skills/`: `use-cmeta-python`, `use-cmeta-cli`, `add-plugin`, `add-repo`, `add-cserver-plugin`
+
+## Optional
+
+- [README](README.md): project overview and quickstart
+- [CONTRIBUTING](CONTRIBUTING.md): DCO-based contribution policy
+- [CHANGELOG](CHANGELOG.md): release notes
+- Source of truth for dispatch: `cmeta/core.py` (`CMeta.access`)
+- Source of truth for base commands: `cmeta/category_api_v1.py`

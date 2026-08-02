@@ -9,7 +9,7 @@ description = "cMeta (aka cX) is a common meta-framework for unifying, interconn
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"
-license-files = ["LICENSE", "COPYRIGHT"]
+license-files = ["LICENSE", "COPYRIGHT", "NOTICE"]
 authors = [
     {name = "Grigori Fursin", email = "gfursin@ctuninglabs.com"},
     {name = "cTuning Labs"}

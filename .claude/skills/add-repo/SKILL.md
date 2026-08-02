@@ -228,7 +228,9 @@ r = cm.access({'category': 'repo', 'command': 'unplug',
 ```
 
 All calls return `{'return': 0, ...}` on success; `{'return': >0, 'error':
-'...'}` on failure — same contract as every other cMeta command.
+'...'}` on failure — same contract as every other cMeta command. Check each
+one with `if cm.catch_error(r): return r` (see `docs/error-handling.md`); note
+that a lookup miss returns the **soft** code `16`, which `catch_error` skips.
 
 ---
 

@@ -1,7 +1,8 @@
 #
 # cMeta tests
 #
-# Copyright (C) 2025-2026 Grigori Fursin and cTuning Labs. All rights reserved.
+# Copyright (C) 2025-2026 Grigori Fursin and cTuning Labs.
+# Licensed under the Apache License, Version 2.0 (see LICENSE).
 #
 
 name: Test cMeta core

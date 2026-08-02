@@ -39,6 +39,32 @@ uv run cmeta --version
 
 ---
 
+## Serial or async — choosing extras
+
+cMeta can be driven **serially** (a script, the CLI, a CI step) or
+**asynchronously** from an event loop inside FastAPI or another asyncio server.
+Both modes use the same categories, artifacts and commands.
+
+| Install | Gives you |
+|---------|-----------|
+| `pip install cmeta` | Serial use — the `cx` / `cmeta` CLI and the `CMeta` Python class. |
+| `pip install "cmeta[server]"` | The above **plus** FastAPI, uvicorn, jinja2, starlette and itsdangerous — needed to *host* an async app such as the shipped `cserver`. |
+| `pip install "cmeta[dev]"` | pytest, pytest-cov, flake8 for working on cMeta itself. |
+| `pip install "cmeta[all]"` | dev + async + server. |
+
+The async class `CMetaAsync` needs **no extra** — it is built on `asyncio` and
+`concurrent.futures` from the standard library, so the base install is enough
+to `await cm.access(...)`. The `[server]` extra is only about the web stack you
+run it in. (There is also an `[async]` extra; it is intentionally empty and
+exists so `cmeta[server]` can reference it.)
+
+cMeta is designed for **concurrent use**: several processes may share one
+`<CMETA_HOME>`, with file locks and atomic writes protecting the index and the
+artifact metadata. Details and examples in
+[async-and-concurrency.md](async-and-concurrency.md).
+
+---
+
 ## Verify the installation
 
 ```bash
@@ -129,7 +155,13 @@ Common flags for category `program` include
 
 ---
 
-For everyday usage (repos, plugins, artifacts, reindex), see
-[using-cmeta.md](using-cmeta.md).
-For *why* cMeta exists and where it is headed, see
-[motivation.md](motivation.md).
+Next steps:
+
+- Everyday usage (repos, plugins, artifacts, reindex) —
+  [using-cmeta.md](using-cmeta.md)
+- Why cMeta exists and its design principles — [motivation.md](motivation.md)
+- Async use (FastAPI) and concurrency guards —
+  [async-and-concurrency.md](async-and-concurrency.md)
+- Working with `config` artifacts — [configuration.md](configuration.md)
+- Connecting to the cTuning.ai platform — [cplatform.md](cplatform.md)
+- All guides — [documentation index](README.md)

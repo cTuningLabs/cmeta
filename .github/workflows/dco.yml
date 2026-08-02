@@ -1,7 +1,8 @@
 #
 # DCO (Developer Certificate of Origin) sign-off check
 #
-# Copyright (C) 2025-2026 Grigori Fursin and cTuning Labs. All rights reserved.
+# Copyright (C) 2025-2026 Grigori Fursin and cTuning Labs.
+# Licensed under the Apache License, Version 2.0 (see LICENSE).
 #
 # Verifies that every commit in a pull request carries a valid "Signed-off-by"
 # line matching the commit author, per the project's DCO-based contribution

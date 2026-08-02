@@ -49,7 +49,10 @@ separate content repos (e.g. `cmeta-aops`).
 
 - Runtime deps are intentionally minimal (pyyaml, requests, setuptools, wheel,
   tabulate, tqdm, filelock, packaging, psutil). Justify any new one.
-- Preserve module docstring/copyright headers.
+- Preserve module docstring/copyright headers — never strip or rewrite them.
+  New files get the standard header; new artifacts/categories record `authors`
+  and `copyright` in their `_cmeta.yaml`. Full rule, including reuse and
+  citation: `AGENTS.md` §5.1 and `NOTICE`.
 - Python 3.9–3.14 supported; don't use newer-only syntax.
 - Tests live in `tests/` as `test_*.py` (pytest config in `pyproject.toml`).
 - This is the public Apache-2.0 framework — keep product vision/strategy prose

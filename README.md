@@ -21,6 +21,17 @@ code, data, models, agents and hardware that modern AI systems are assembled
 from, much as a conventional operating system abstracts and manages the
 resources of a machine.
 
+On that same foundation, cMeta is built to **implement and support research
+assistants** — AI agents that operate a growing body of machine-readable,
+self-describing automations instead of improvised scripts. Because every
+artifact declares its own identity, dependencies and interface, an agent can
+discover what already exists, compose it into new workflows, extend it, and
+hand the result back in the same form a person can read and rerun. The
+artifacts become durable, shareable memory of how work is actually done; the
+agent is the operator. The aim is deliberately modest — not a system that
+invents science, but one that lets experiments, builds and benchmarks be set
+up, varied and repeated without re-deriving the same work each time.
+
 It is built to work across the whole stack and the tools people already use:
 
 - **Any operating system**, and **any target platform** — from the data center
@@ -31,9 +42,11 @@ It is built to work across the whole stack and the tools people already use:
   interface — the `cx` CLI and the `access()` API.
 - **Knowledge-management systems**, such as Notion and Obsidian.
 
-> Created, architected and developed by
-> [Grigori Fursin](https://cTuning.ai/@gfursin) — originator of the long-term
-> vision, concept, architecture and successive prototypes behind cMeta.
+Created and developed by [Grigori Fursin](https://cTuning.ai/@gfursin).
+cMeta builds on his earlier R&D on reusable, portable research components —
+Collective Knowledge (CK), Collective Mind (CM/CMX) — and the lineage,
+related publications and citation guidance are collected in
+[docs/history.md](docs/history.md).
 
 ---
 
@@ -42,14 +55,9 @@ It is built to work across the whole stack and the tools people already use:
 **A research and prototyping project by Grigori Fursin and cTuning Labs —
 stable, low-activity, and maintained alongside active downstream work.**
 
-cMeta is the current iteration of a long-running research effort by
-Grigori Fursin and cTuning Labs on how
-to make research code, data, models, agents and knowledge composable,
-portable and reusable across time. It builds on decades of iteration —
-[Collective Knowledge](https://github.com/mlcommons/ck), Collective Mind,
-CMX — and now takes a first pass at co-developing the framework itself
-together with AI agents (see the shipped [skills](.claude/skills/),
-the `ctx` dictionary, and the uniform `access()` interface documented in
+cMeta also takes a first pass at co-developing the framework itself together
+with AI agents (see the shipped [skills](.claude/skills/), the `ctx`
+dictionary, and the uniform `access()` interface documented in
 [`docs/using-cmeta.md`](docs/using-cmeta.md)).
 
 The framework is **stable in its current shape and I use it daily**, but my
@@ -60,6 +68,9 @@ of it. What that means in practice:
 - Slow release cadence — mostly targeted fixes.
 - The design goal is a small, uniform core that AI agents can extend via
   content repositories and skills, **not** a big feature surface.
+
+Known defects and rough edges that are understood but not yet fixed are tracked
+in [docs/known-issues.md](docs/known-issues.md).
 
 **You're very welcome to try it, fork it, or build on it.** Bug reports and
 questions via GitHub issues are welcome — I answer when I can. I'm not
@@ -98,7 +109,7 @@ in, index and share.
 - **Semantic portability via UIDs** — every category and artifact has both a
   human-friendly *alias* and a stable 16-hex-char *UID*. References written as
   `alias,UID` remain valid even if the alias is renamed (see
-  [Resolving categories & artifacts](#resolving-categories--artifacts)).
+  [Resolving categories & artifacts](#6-resolving-categories--artifacts)).
 - **Content-addressed caching & better reproducibility** — identical work is
   not repeated, and the full context of a run is captured to help reproduce it.
   (Full determinism across heterogeneous environments is hard; cMeta improves
@@ -107,6 +118,48 @@ in, index and share.
   detected, isolated and pinned to abstract over OS and accelerator differences.
 - **Unified interface for humans and agents** — AI agents drive the same
   discovery, composition and execution surface people use.
+- **Serial or async, with concurrency safety guards** — the same engine runs
+  one call at a time from a script or `await`s from FastAPI (`CMetaAsync`).
+  Unlike the earlier frameworks in this line, concurrent execution is a
+  supported mode: cross-process file locks and atomic writes protect the index
+  and artifact metadata when several processes share one `<CMETA_HOME>`
+  (see [docs/async-and-concurrency.md](docs/async-and-concurrency.md)).
+
+---
+
+## Use cases
+
+cMeta is the engine; what it does depends on the content repositories plugged
+into it. The uses it is built for:
+
+- **A research assistant for open science.** Encode R&D as executable,
+  self-describing automations rather than prose, one-off scripts and remembered
+  command lines — so the *method* travels with the result, inspectable,
+  shareable and rerunnable by other people and by their agents.
+- **Collaborative research, development and experimentation.** Share work as
+  content repositories that others plug in and run. `alias,UID` references stay
+  valid across renames, forks and years, so results, experiments and the
+  workflows that produced them remain referenceable over time.
+- **Reproducible benchmarking and software/hardware co-design.** Detect and
+  install toolchains, build and run programs across operating systems and
+  compute targets (CPU, CUDA, …), and reuse installs, downloads and builds
+  through content-addressed caching — so an experiment can be repeated and
+  varied without re-deriving the setup.
+- **AI-agent operations.** Agents drive the same `access()` surface as humans,
+  with `ctx` threading session/trace state through nested calls and skills
+  describing how to extend the framework itself.
+- **Web services and dashboards.** `CMetaAsync` runs cMeta behind FastAPI — the
+  shipped `cserver` app and the [cTuning.ai](https://cTuning.ai) platform are
+  both built this way.
+- **Notes, journals and knowledge.** The same artifact model covers notes,
+  journals, logs and reports, so knowledge lives next to the automations it
+  describes rather than in a separate silo.
+
+The reference content repository is
+**[cmeta-aops](https://github.com/cTuningLabs/cmeta-aops)** — reusable `task`,
+`tool`, `program`, `model` and `dataset` artifacts for portable setup, builds
+and benchmarking. More background in
+[docs/motivation.md](docs/motivation.md#what-people-use-it-for).
 
 ---
 
@@ -120,6 +173,28 @@ cx --version
 
 See [docs/installation.md](docs/installation.md) for `uv`, install-from-source,
 configuration and troubleshooting.
+
+---
+
+## Documentation
+
+The full documentation lives in **[`docs/`](docs/README.md)** — this README is
+a summary of it.
+
+| Guide | What it covers |
+|-------|----------------|
+| [Motivation](docs/motivation.md) | Why cMeta exists, the problem it addresses, design principles. |
+| [Installation](docs/installation.md) | pip / `uv` / from source, verification, first configuration, troubleshooting. |
+| [Common commands](docs/common-commands.md) | Cheatsheet of everyday commands, incl. the `cx .` current-directory shortcut and `cx . info`. |
+| [Using cMeta](docs/using-cmeta.md) | **The getting-started and reference guide** — mental model, CLI flags, artifacts, `ctx`, alias/UID resolution, repositories, configs, adding categories, metadata reference, indexing. |
+| [Error handling](docs/error-handling.md) | The return-dict contract, soft errors (code 16), raising errors, and debugging with `fail_on_error` in an IDE. |
+| [Async & concurrency](docs/async-and-concurrency.md) | `CMeta` vs `CMetaAsync`, parallel calls, FastAPI, and the safety guards for a shared `<CMETA_HOME>`. |
+| [Working with configs](docs/configuration.md) | The `config` category and how categories and apps read their settings. |
+| [cTuning.ai platform](docs/cplatform.md) | Connecting cMeta to the hosted platform API. |
+| [History & background](docs/history.md) | Lineage (CK → CM/CMX → cMeta), related publications, how to cite. |
+
+API reference for the engine modules is generated with Sphinx — see
+[docs/README.md](docs/README.md#building-the-api-reference).
 
 ---
 
@@ -351,6 +426,7 @@ added at any time with `cx category add <name>`.
 | **docs**      | Documentation artifacts. |
 | **website**   | Website builds — `build`. |
 | **work**      | Work items / tasks — `create`. |
+| **tests**     | Test artifacts — group and manage test cases as cMeta artifacts. |
 
 Every category above inherits the standard base commands (`find`, `list`,
 `read`, `create`, `update`, `delete`, `move`, `copy`, `info`, `tags`, `get`,
@@ -369,7 +445,8 @@ alongside it. The framework reads whichever is present. Common fields:
 | `tags` | List of strings for tag-based search. |
 | `authors`, `copyright`, `creation_timestamp`, `last_update_timestamp` | Provenance. |
 | `permanent: true` | Refuses `delete` (used for shipped foundational artifacts). |
-| `no_index: true` | Skip the fast index for this artifact; found by filesystem scan. |
+| `no_index: true` | Skip the fast index for this artifact; found by filesystem scan. Used for categories with very many artifacts. |
+| `sharding_slices: [2, 2]` | Category-only. Spread artifacts into nested sub-directories by slicing the alias (`example` → `ex/am/example`), so no single directory holds tens of thousands of entries. Can be overridden per repo in `_cmr.yaml`. |
 | **Category-only fields (below)** | Only meaningful on category artifacts. |
 | `last_api_version: <n>` | Highest API version the category ships (loads `api/v<n>.py`). |
 | `base_category_default_api_versions: {'1': 1}` | Which base API version this category inherits from, per category API version. |
@@ -414,55 +491,37 @@ and the skills under [`.claude/skills/`](.claude/skills/)).
 
 ---
 
-## Background & related publications
+## Background & how to cite
 
-cMeta builds on the author's past research on making code, data, models, agents
-and knowledge reusable, portable and reproducible — through Collective Knowledge
-(CK), MLCommons Collective Mind (CM/CMX) and now cMeta. Selected publications and
-talks describing the concepts behind this framework and its predecessors:
+cMeta grew out of earlier R&D by the author on making code, data, models and
+knowledge reusable, portable and reproducible — the cTuning framework,
+Collective Knowledge (CK), and MLCommons Collective Mind (CM/CMX).
 
-- G. Fursin. *Collective knowledge: organizing research projects as a database
-  of reusable components and portable workflows with common interfaces.*
-  Philosophical Transactions of the Royal Society A, 379(2197), 2021.
-  [doi:10.1098/rsta.2020.0211](https://doi.org/10.1098/rsta.2020.0211)
-- G. Fursin. *Enabling more efficient and cost-effective AI/ML systems with
-  Collective Mind, virtualized MLOps, MLPerf, Collective Knowledge Playground
-  and reproducible optimization tournaments.* arXiv:2406.16791, 2024.
-  [arxiv.org/abs/2406.16791](https://arxiv.org/abs/2406.16791)
-- G. Fursin, D. Altunay. *Framing AI System Benchmarking as a Learning Task:
-  FlexBench and the Open MLPerf Dataset.* arXiv:2509.11413, 2025.
-  [arxiv.org/abs/2509.11413](https://arxiv.org/abs/2509.11413)
-- G. Fursin. *Collective Mind: toward a common language to facilitate
-  reproducible research and technology transfer.* Presentation, Zenodo, 2023.
-  [doi:10.5281/zenodo.8105339](https://doi.org/10.5281/zenodo.8105339)
-- G. Fursin. *Reproducing 150 Research Papers and Testing Them in the Real
-  World.* ACM Tech Talk, 2021.
-  [video](https://www.youtube.com/watch?v=7zpeIVwICa4) ·
-  [slides](https://learning.acm.org/binaries/content/assets/leaning-center/webinar-slides/2021/grigorifursin_techtalk_slides.pdf)
+**[docs/history.md](docs/history.md)** covers that lineage, the related
+publications and talks, and how to cite cMeta (GitHub's **"Cite this
+repository"** button, generated from [`CITATION.cff`](CITATION.cff), produces
+APA and BibTeX automatically).
 
 ---
 
-## How to cite
+## Attribution & reuse
 
-If you use cMeta in your research, please cite it. GitHub's **"Cite this
-repository"** button (generated from [`CITATION.cff`](CITATION.cff)) produces
-APA and BibTeX automatically. A BibTeX entry:
+You are free to use, modify and redistribute cMeta under Apache 2.0. Section 4
+of the licence asks that you keep the copyright and attribution notices and
+reproduce the contents of [`NOTICE`](NOTICE) in your distribution — this
+applies equally whether the code was copied by a person or generated with the
+help of an AI agent or an LLM.
 
-```bibtex
-@software{fursin_cmeta,
-  author  = {Fursin, Grigori},
-  title   = {{cMeta (Common Meta Framework)}},
-  year    = {2026},
-  version = {0.32.0},
-  license = {Apache-2.0},
-  url     = {https://github.com/cTuningLabs/cmeta},
-  note    = {cTuning Labs}
-}
-```
+If you reuse the **concepts** rather than the code, a citation is very welcome —
+and so is getting in touch. **Collaboration is actively invited:**
+[cTuning.ai/@gfursin](https://cTuning.ai/@gfursin). See
+[docs/history.md](docs/history.md#reusing-the-code-or-the-concepts).
 
-If your work builds on the ideas behind cMeta, you are also very welcome to
-reference the earlier projects and papers it grew out of — see
-[Background & related publications](#background--related-publications).
+AI agents working *on* this repository: see [`AGENTS.md`](AGENTS.md) §5.1 for
+the attribution and provenance rules. The repo also ships an **experimental**
+[`llms.txt`](llms.txt) (the proposed [llmstxt.org](https://llmstxt.org)
+convention) giving agents a curated map of the project — a research/testing
+feature; it overrides nothing in `LICENSE` or `NOTICE`.
 
 ---
 

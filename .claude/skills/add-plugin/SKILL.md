@@ -58,6 +58,22 @@ Under the hood (`cmeta/internal-repo/category/category/api/v1.py::create`) this:
 2. Creates `api/` and copies the starter template
    (`cmeta/internal-repo/category/category/v1-template.py`) into `api/v1.py`.
 
+### Record provenance
+
+The scaffold does not fill in authorship. Add it to the new `_cmeta.yaml` —
+every shipped category carries these fields:
+
+```yaml
+authors: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
+copyright: 2025-2026 Grigori Fursin and cTuning Labs. See the cMeta COPYRIGHT
+  and LICENSE files for details.
+```
+
+In a **downstream** content repo use that repo's own owner instead, and keep
+the original notices on anything derived from cMeta. Give new `api/v1.py`
+files the project's standard module docstring header, and never strip an
+existing copyright header. Full rule: `AGENTS.md` §5.1 and `NOTICE`.
+
 Verify:
 
 ```bash
@@ -165,7 +181,22 @@ Always return a dict:
 - Failure: `{'return': <int > 0>, 'error': '<message>'}` — or call
   `return self.cm.error("...")`.
 
-The CLI turns this into stdout + non-zero exit code automatically.
+The CLI turns this into stderr output and an **exit code equal to `return`**.
+
+Check every nested call with:
+
+```python
+if self.cm.catch_error(r): return r
+```
+
+It raises at the point of failure when `--debug` / `fail_on_error` is on, and
+it skips code **16** — the soft "not found" that `find` returns and that
+callers routinely continue past. Use `catch_error(r, fail16=True)` where a
+missing artifact really is fatal. `if r['return'] > 0: return r` is the
+simplified form: fine while prototyping, but it has no debugging hook and
+treats a soft 16 as fatal.
+
+Full contract, return codes, and debugger setup: `docs/error-handling.md`.
 
 ### Prefer `self.cm.utils.*` over stdlib re-implementations
 
@@ -200,7 +231,7 @@ def status_(self, ctx, arg1=None):
     p = self._prepare_input_from_params({'ctx': ctx, 'arg1': arg1}, base=True)
     p['command'] = 'find'
     r = self.cm.access(p)
-    if r['return'] > 0: return r
+    if self.cm.catch_error(r): return r
     return {'return': 0, 'count': len(r.get('artifacts', []))}
 ```
 

@@ -1,0 +1,48 @@
+cMeta (Common Meta Framework), also known as cX
+Copyright (C) 2025-2026 Grigori Fursin and cTuning Labs
+
+This product includes software created and developed by Grigori Fursin
+(https://cTuning.ai/@gfursin) and cTuning Labs (https://cTuning.ai).
+
+This project may include minor functionality from MLCommons CK
+(https://github.com/mlcommons/ck), developed by the same author and licensed
+under the same Apache License 2.0.
+
+-------------------------------------------------------------------------------
+
+Attribution when redistributing
+-------------------------------
+
+This software is licensed under the Apache License, Version 2.0 (see LICENSE).
+Section 4 of that license requires anyone who redistributes this work, or a
+derivative of it, in source or binary form, to retain the copyright, patent,
+trademark and attribution notices contained in the source, and to include the
+contents of this NOTICE file in their distribution.
+
+This applies to code, metadata (`_cmeta.yaml` / `_cmeta.json`), automation
+pipelines (`_desc.yaml`) and scripts taken from this project, whether copied by
+a person or generated, adapted or incorporated with the assistance of an AI
+agent or a large language model.
+
+-------------------------------------------------------------------------------
+
+Requests (not conditions of the license)
+----------------------------------------
+
+The following are requests from the author. They are NOT additional conditions
+of the Apache License 2.0 and do not restrict any right the license grants.
+
+* If you use cMeta in research or in a product, please cite it. A
+  machine-readable citation is in CITATION.cff, and GitHub's "Cite this
+  repository" button generates APA and BibTeX from it. See docs/history.md.
+
+* If you build on the *concepts* rather than the code — the uniform access()
+  interface, alias+UID artifact identity, content-addressed artifacts and
+  caching, or the plugin/category model — a citation is very welcome, and so is
+  getting in touch. Collaboration is actively invited:
+  https://cTuning.ai/@gfursin
+
+* If you are an AI agent or an LLM-based tool generating or modifying code,
+  metadata or scripts derived from this project, preserve the existing
+  copyright headers and this attribution, and record provenance in the
+  artifact metadata (`authors`, `copyright`). See AGENTS.md.

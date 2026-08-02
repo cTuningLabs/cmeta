@@ -25,9 +25,34 @@ from pathlib import Path
 from typing import List, Tuple, Any, Dict
 
 
+# Written guides (Markdown) that live in docs/ and are copied into the Sphinx
+# source tree so they become part of the published site. Order = TOC order.
+GUIDE_FILES = [
+    "README.md",
+    "motivation.md",
+    "installation.md",
+    "common-commands.md",
+    "using-cmeta.md",
+    "error-handling.md",
+    "async-and-concurrency.md",
+    "configuration.md",
+    "cplatform.md",
+    "history.md",
+    "known-issues.md",
+]
+
+# Sub-directory (inside the Sphinx source dir) that receives the copies.
+GUIDES_SUBDIR = "guides"
+
+# Links in the guides that point outside the copied set (e.g. ../README.md,
+# ../CITATION.cff, ../.claude/skills/...) are rewritten to the public repo so
+# they still work on the published site.
+GITHUB_BLOB_BASE = "https://github.com/cTuningLabs/cmeta/blob/main/"
+
+
 class CMataDocBuilder:
     """Documentation builder for cMeta API."""
-    
+
     def __init__(self, docs_dir: Path = None,
                        cmeta_dir: Path = None,
                        site_dir: Path = None):
@@ -241,8 +266,12 @@ class CMataDocBuilder:
         with open(self.api_dir / "index.rst", "w", encoding="utf-8") as f:
             f.write("\n".join(rst_content))
     
-    def generate_main_index_rst(self):
-        """Generate main index.rst file."""
+    def generate_main_index_rst(self, guide_entries=None):
+        """Generate main index.rst file.
+
+        Args:
+            guide_entries: Toctree entries for the copied Markdown guides.
+        """
         # Check if index.rst already exists and has manual edits (e.g., PDF download links)
         index_file = self.docs_dir / "index.rst"
         
@@ -278,6 +307,25 @@ class CMataDocBuilder:
             f"   :caption: cMeta v{version} Contents:",
             "",
             "   home",
+        ]
+
+        # Written guides (Markdown, copied in by copy_guides())
+        if guide_entries:
+            rst_content += [
+                "",
+                ".. toctree::",
+                "   :maxdepth: 2",
+                "   :caption: Guides:",
+                "",
+            ]
+            rst_content += [f"   {entry}" for entry in guide_entries]
+
+        rst_content += [
+            "",
+            ".. toctree::",
+            "   :maxdepth: 2",
+            "   :caption: API Reference:",
+            "",
             "   api/index",
             "",
             "Indices and tables",
@@ -287,10 +335,83 @@ class CMataDocBuilder:
             "* :ref:`modindex`",
             "* :ref:`search`"
         ]
-        
+
         with open(self.docs_dir / "index.rst", "w", encoding="utf-8") as f:
             f.write("\n".join(rst_content))
-    
+
+    def _rewrite_guide_link(self, target: str, copied: set) -> str:
+        """Rewrite one Markdown link target for use inside the Sphinx source tree.
+
+        Links to another copied guide are left alone (MyST resolves them).
+        Anything else that is repo-relative is turned into a GitHub blob URL.
+
+        Args:
+            target: The raw link target from the Markdown source.
+            copied: Set of guide file names that were copied.
+
+        Returns:
+            str: The rewritten link target.
+        """
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            return target
+
+        path, sep, anchor = target.partition("#")
+        if not path:
+            return target
+
+        # A sibling guide that we copied - keep the relative link.
+        if path in copied:
+            return target
+
+        # Anything else is relative to docs/ - point at the repository.
+        repo_rel = os.path.normpath(os.path.join("docs", path)).replace(os.sep, "/")
+        return GITHUB_BLOB_BASE + repo_rel + (sep + anchor if anchor else "")
+
+    def copy_guides(self) -> List[str]:
+        """Copy the Markdown guides into the Sphinx source tree.
+
+        The guides live in docs/*.md while Sphinx reads from docs/en/. Sphinx
+        cannot read sources above its root, so they are copied into
+        docs/en/guides/ on every build and their repo-relative links are
+        rewritten.
+
+        Returns:
+            List[str]: Toctree entries (e.g. "guides/installation") in TOC order.
+        """
+        import re
+
+        source_dir = self.docs_dir.parent          # .../docs
+        target_dir = self.docs_dir / GUIDES_SUBDIR  # .../docs/en/guides
+
+        # Always start clean so removed guides don't linger.
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        available = {name for name in GUIDE_FILES if (source_dir / name).is_file()}
+        entries = []
+
+        link_re = re.compile(r"(\]\()([^)\s]+)(\))")
+
+        for name in GUIDE_FILES:
+            src = source_dir / name
+            if not src.is_file():
+                print(f"Warning: guide not found, skipping: {src}")
+                continue
+
+            text = src.read_text(encoding="utf-8")
+            text = link_re.sub(
+                lambda m: m.group(1) + self._rewrite_guide_link(m.group(2), available) + m.group(3),
+                text,
+            )
+
+            (target_dir / name).write_text(text, encoding="utf-8")
+            entries.append(f"{GUIDES_SUBDIR}/{Path(name).stem}")
+
+        print(f"Copied {len(entries)} guides into {target_dir}")
+
+        return entries
+
     def generate_documentation(self):
         """Generate all documentation files."""
         print("Generating cMeta API documentation...")
@@ -315,9 +436,12 @@ class CMataDocBuilder:
         
         # Generate API index file
         self.generate_api_index_rst(module_files)
-        
+
+        # Copy the written Markdown guides into the Sphinx source tree
+        guide_entries = self.copy_guides()
+
         # Generate main index file
-        self.generate_main_index_rst()
+        self.generate_main_index_rst(guide_entries)
         
         print(f"Generated documentation for {len(module_files)} modules")
         print("Documentation files created in:", self.docs_dir)

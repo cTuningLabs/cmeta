@@ -98,6 +98,13 @@ Return **one of**:
 {'return': 0, 'json': {...}}        # AJAX response (both hosts return it as JSONResponse)
 ```
 
+On failure return the standard error dict — `return self.cm.error('...')` — and
+check nested calls with `if self.cm.catch_error(r): return r`. Don't let an
+exception escape `web_()`: both hosts expect a dict. For an AJAX branch,
+prefer returning `{'return': 0, 'json': {'error': '...'}}` so the page can
+render the message instead of the request failing. See
+`docs/error-handling.md`.
+
 `html_meta` keys the hosts consume: `html` (body, rendered safe), `page_title`,
 `page_extra_style` (inject `<script>`/`<link>`), `global_footer`. cPlatform also
 adds `project_home_url` / `projects_home_url` when the project sets `add_home` /
