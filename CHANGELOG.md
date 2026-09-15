@@ -3,6 +3,209 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.32.1)
+- **Documentation: the mechanism behind the aims is now stated explicitly.**
+  `docs/motivation.md` gained "How: complexity becomes abstractions you can
+  operate" — each toolchain, dataset, model, workflow, concept or measured number
+  becomes one artifact that is *simple*, *reusable*, *live* (executable rather
+  than described) and *interconnected* by `alias,UID`, so it can be operated,
+  understood and built upon instead of re-derived. Because each abstraction stays
+  inspectable down to its inputs, versions and provenance, a claim can be taken
+  back to **first principles**. Added a matching "Complexity becomes artifacts"
+  design principle, a new **"FAIR by construction"** section mapping findable /
+  accessible / interoperable / reusable onto the identity, file-based access,
+  uniform interface and self-description already in the design, and the same
+  framing in `README.md` and `llms.txt`.
+- **Documentation: the purpose of the project is now stated in one place and
+  repeated consistently.** `docs/motivation.md` gained an "The aim" section naming
+  the six aims cMeta serves — collaborative, reproducible, reusable, scalable,
+  portable and sustainable — together with the constraint that makes them
+  affordable (plain files and directories, one CLI, one Python API, minimal
+  dependencies), and a "Why this matters more with AI" section explaining that an
+  agent does not have to reassemble context because the context is already
+  recorded and machine-readable. The README now opens with the problem this
+  addresses and carries a matching summary table; `llms.txt` and the PyPI summary
+  in `pyproject.toml` were updated to the same wording. Reproducibility is
+  consistently described as *gradually improving*, never as a guarantee.
+- **`LICENSE` is now the verbatim Apache-2.0 text.** A copyright and attribution
+  preamble had been added above it and the APPENDIX was missing, which together
+  left the file only 93% similar to the canonical licence, so GitHub reported the
+  project as having no detectable licence. Both statements from the preamble were
+  already present in [`NOTICE`](NOTICE), where they belong under Apache-2.0 §4, so
+  nothing was lost. No change to the licensing of the project itself.
+- **Packaging metadata for PyPI.** Added `keywords`, audience and topic
+  classifiers, and `Repository` / `Documentation` / `Course` / `Issues` /
+  `Changelog` project URLs.
+- **`cserver`: a POST whose body is not a JSON object no longer crashes the app.**
+  The `home` and `task_handler` routes returned the `{'return': 99, 'error': …}`
+  dictionary of `utils.net.unify_request` as-is on an `HTMLResponse` route, so
+  Starlette failed with `AttributeError: 'dict' object has no attribute 'encode'`
+  and the client got a 500 with a full traceback in the server log. It happened
+  every time a page was reloaded or left while a `native_action` AJAX call was
+  still in flight (the browser aborts the request and the server reads a
+  truncated body), and for empty or form-encoded bodies. Both routes now answer
+  with the error as JSON and **HTTP 400**. `unify_request` reads the body once
+  and reports precisely: an **empty POST body now means "no extra parameters"**
+  (it was an error), a body that is not JSON or not a JSON object is a `return: 99`
+  with a clear message (a JSON list used to crash later in the merge), and a
+  client that disconnects mid-body is reported instead of raising. Valid
+  requests are unchanged - same merge of query string and body, body wins.
+  Unit tests: `tests/core_tests/test_utils_net_unify_request.py`.
+- New **`--search_text`** and **`--search_files`** on `cx utils find_by_cid` and
+  `cx utils smart_find_by_cid` — keep only artifacts that carry the given text
+  inside their own files, so a content search no longer has to be a second pass
+  by the caller:
+  - `--search_text` takes **space-separated** words, **OR**-ed, each matched as
+    a case-insensitive substring of the file content. Without it **no file is
+    opened at all** and the whole stage is skipped, so `--search_files` alone
+    changes nothing.
+  - `--search_files` takes comma-separated glob patterns naming which files to
+    read, defaulting to **`*info*.md`**. A pattern containing **`**` recurses**
+    into the artifact's sub-directories (`**/*info*.md` reaches every matching
+    file at any depth, top level included, since `**` also matches zero
+    directories). Patterns are always relative to the artifact - a leading
+    separator is stripped so a glob cannot escape it.
+  - Directories are skipped, duplicates across patterns are collapsed, and a
+    file that cannot be read or decoded is skipped rather than failing the
+    search. Pruning everything away returns 16 ("not found").
+  - **A content search answers with the files, not the directories.** When
+    `--search_text` is given, the full path of every matching file is collected
+    into **`files`** in the returned dictionary, and those paths are printed
+    instead of the artifact directories - having searched inside files, the
+    files are the answer, so a caller can open them directly. Every match is
+    listed, including several files inside one artifact; a file matching the
+    glob but not carrying the text is not listed. `artifacts` still holds the
+    artifacts, and without `--search_text` there is no `files` key and the
+    output is unchanged.
+- New **`--after_date`** and **`--before_date`** on the same two commands —
+  keep only artifacts dated within the range, judged from the artifact itself:
+  - **Where the date comes from, in order:** a date at the **start of the
+    artifact name** (naming a folder `20260503.something` is a deliberate
+    statement, so it wins), then **`last_update_timestamp`** in the meta, then
+    **`creation_timestamp`**. An artifact with no date at all cannot be shown
+    to be in range, so it is filtered out.
+  - Names are read as `YYYY`, `YYYYMM`, `YYYYMMDD`, `YYYYMMDD-HHMM` or
+    `YYYY-MM-DD`, each followed by `.`, `-`, `_`, a space or the end of the
+    name — matching how these artifacts are actually named
+    (`20251206.far manager…`, `202512.gfursin…`, `20250814 - cTuning Labs`).
+    Values are validated, so `20261301.something` is not read as a date.
+  - The bounds accept the same forms plus a full ISO timestamp **with a
+    timezone** (`2026-05-03T14:30:00+02:00`, trailing `Z` allowed), with `.`
+    `-` `_` `/` `T` `:` ignored between the digits. Everything is normalized to
+    naive UTC so name dates and tz-aware meta stamps compare correctly. A
+    shorter form means the start of that period, and both bounds are
+    **inclusive**. A bound that cannot be read is an **error** (return 1), not
+    an empty result — a typo should not look like "nothing found".
+  - Applied **before** any file is opened, so narrowing by date makes a content
+    search cheaper rather than more expensive.
+  - Implemented as `_parse_date_value()`, `_date_from_name()`, `_artifact_date()`
+    and `_as_naive_utc()` in the `utils` category's own `api/common.py`, with
+    33 new tests.
+- New **`--search_file_names`** on the same two commands — keep only artifacts
+  holding a file whose **name** contains every one of the given strings:
+  - Space-separated, **AND**-ed (all parts must appear), each a
+    case-insensitive substring of the **file name alone** — never of the
+    directories above it, and directory names are never matched.
+  - **Always recursive**: naming parts of a file name is a name-based selector
+    in its own right, so it walks the whole artifact and **replaces**
+    `--search_files` when both are given, rather than intersecting with it.
+  - Composes with `--search_text`, which then narrows whatever the name filter
+    selected. Like a text search, it fills **`files`** and prints the matching
+    files instead of the artifact directories.
+  - Implemented as `_files_matching_name_parts()` in the `utils` category's own
+    `api/common.py`; the text filter became `_files_containing_any_text()`,
+    which now takes a candidate list so either selector can feed it.
+  - Twelve new integration tests covering AND semantics, recursion, case,
+    directory names and parent paths not matching, composition with
+    `--search_text`, and precedence over `--search_files`.
+  - Twenty new integration tests covering the default pattern, non-recursive
+    vs recursive globs, OR semantics, case-insensitivity, multiple globs,
+    composition with the other filters, that a pattern cannot escape the
+    artifact directory, and the contents of `files`.
+- New **`--smart_match`** on `cx utils find_by_cid` and
+  `cx utils smart_find_by_cid` — prune found artifacts down to those holding
+  any of the given values **under any meta key**, without having to name the
+  key. `--match.<key>=` answers *"which artifacts have this key set to that?"*;
+  `--smart_match` answers *"which artifacts mention this at all?"*, which is
+  what an interactive search box needs when the key is not known in advance:
+  - Comma-separated (a list works too), **OR**-ed — one hit is enough, so
+    adding values widens the result. Each value is matched as a
+    **case-insensitive substring** of a meta value, so `cuda` finds
+    `cuda-12.4`. Note the consequence: `red` also matches `shared`.
+  - Every value is visited at any depth, walking into nested dicts and lists.
+    **Keys are never matched** — only the values they hold — so `--smart_match=tags`
+    does not match every artifact just because they all have a `tags` key.
+  - Runs after `find`, over meta already in memory, so it costs no extra
+    lookup. Pruning everything away returns 16 ("not found"), the same empty
+    result the other filters give. An empty or whitespace-only value keeps
+    everything.
+  - Implemented as `_matches_any_value()` / `_iter_values()` in the `utils`
+    category's own `api/common.py`, so it lives in the live-loaded internal
+    repo and needs no reinstall.
+  - Twelve new integration tests in
+    `tests/internal_repo_tests/test_integration_categories.py`, including the
+    nested-structure walk, the key-vs-value distinction, OR semantics, and the
+    documented `red`-inside-`shared` substring case.
+- **`cx utils find_by_cid` and `cx utils smart_find_by_cid` now take the same
+  filters as `cx <category> find`** — `--tags`, `--all_tags`, `--match.<key>=`,
+  `--match_empty_version` and `--match_empty_values`. `repos.find()` already
+  implemented all of them; the two CID commands simply did not pass them on, so
+  a caller had to fetch every match and prune the list itself:
+  - `find_by_cid` accepted `tags` but forwarded nothing else. It now forwards
+    `match`, `match_empty_version`, `match_empty_values` and `all_tags` too.
+  - `smart_find_by_cid` accepted **no** filters at all and called
+    `find_by_cid_` bare, so `--tags` failed with *"unexpected keyword argument
+    'tags'"*. It now accepts and forwards the whole set.
+  - Filtering happens inside the single `repos.find()` index pass, so a filtered
+    lookup stays one call — no second query and no client-side pruning. Tags
+    keep their usual semantics: comma-separated, whitespace-tolerant,
+    case-insensitive, combined with **AND**, and `-tag` excludes. Nothing
+    matching returns 16 ("not found"), an empty result rather than a failure.
+  - Thirteen new integration tests in
+    `tests/internal_repo_tests/test_integration_categories.py` cover single and
+    multiple tags, exclusion, list-valued tags, an unknown tag, `all_tags`
+    exact-set semantics, `match` on a meta key, and that `smart_find_by_cid`
+    really forwards both `tags` and `match`.
+- New **`cx utils detect_category`** and **`cx utils detect_repo`** commands —
+  report the category and the repository of the current (or a given) directory
+  using the same detection that backs `cx . <command>`
+  (`utils.common.detect_cid_in_the_current_directory`), so external tools no
+  longer have to re-derive the repo/category layout themselves or scrape the
+  output of `cx .`:
+  - `detect_category` prints the category as `alias,UID` inside an artifact
+    directory, and as just the alias when standing in the category directory
+    itself (where no single artifact pins the UID).
+  - `detect_repo` prints the repository as `alias,UID`. It resolves in more
+    places than the category does — including a repository root, which belongs
+    to no category.
+  - Both print nothing when there is nothing to report. **Detecting nothing is
+    not an error**: they return 0 with `category` / `repo` set to `None`, so a
+    caller can fall back to a wider search. Pass `--fail_if_not_found` to turn
+    it into an error instead.
+  - Both take an optional directory as `arg1` instead of using the current one.
+    `detect_category` returns `category`, `category_alias`, `category_uid`,
+    `artifact_name`, `artifact_repo_name`; `detect_repo` returns `repo`,
+    `repo_alias`, `repo_uid` and `artifact_path` (the path relative to the
+    repository root). Both return the inspected `path`.
+  - Shared detection and directory normalization live in one private helper,
+    so the two commands cannot drift apart.
+  - Thirteen new integration tests in
+    `tests/internal_repo_tests/test_integration_categories.py` cover detection
+    inside an artifact, in a category directory, via an explicit path, outside
+    any repository (not an error), `--fail_if_not_found`, a missing directory,
+    and that the two commands agree on the repository.
+- Fixed `KeyError: 'repo_uid'` when searching a **wildcard category with a
+  repository filter** (e.g. `cx utils find_by_cid *::<repo>:<artifact>`): such a
+  search also visits the built-in `repo` category, whose index entries carry no
+  `repo_uid` because repositories are not themselves inside a repository.
+  `Repos.find_in_index` now prunes those entries instead of crashing — a repo
+  artifact can never match a repo filter.
+- New integration tests for repo-filtered searches
+  (`tests/internal_repo_tests/test_integration_repo_filter.py`): the `repo`
+  category under a repo filter, a wildcard-category search end to end, and a
+  guard that the filter really prunes rather than being ignored.
+
+
 ## 0.32.0
 - **First pass at connecting AI agents to cMeta so they can help extend and
   improve the framework itself** — ships portable, reusable guidance that
