@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.32.1)
+## 0.32.1
 - **Documentation: the mechanism behind the aims is now stated explicitly.**
   `docs/motivation.md` gained "How: complexity becomes abstractions you can
   operate" — each toolchain, dataset, model, workflow, concept or measured number
