@@ -219,6 +219,31 @@ Notable shipped artifacts:
   docs describe *functionality* (`README.md`, `docs/installation.md`,
   `docs/using-cmeta.md`).
 
+### 5.0 Git workflow — sign-off, branch naming, PR titles
+
+These rules hold for **every** commit, branch and pull request here, including
+those an AI agent creates on the author's behalf:
+
+- **Sign off every commit: `git commit -s -m "…"`.** The `-s`/`--signoff` flag
+  appends the DCO `Signed-off-by:` line certifying the Developer Certificate of
+  Origin 1.1 (see [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [`DCO`](DCO)
+  file). A DCO check runs on every pull request and an unsigned commit blocks the
+  merge. If one slipped through, repair it *before* pushing:
+  `git commit --amend -s --no-edit` for the last commit, or
+  `git rebase --signoff <base>` for a range.
+- **Name PR branches `YYYYMMDD-<short-branch-name>`.** Creation date first, then
+  a short kebab-case topic — e.g. `20260808-fix-repo-resolution`,
+  `20260808-add-repo-zip-support`. The date prefix keeps branches chronologically
+  sortable and makes a pile of open PRs analyzable. Always branch before
+  committing; don't push work directly to the default branch.
+- **Prefix the PR title the same way: `YYYYMMDD - <Title of PR>`.** The date, a
+  spaced hyphen, then the normal human-readable title — e.g.
+  `20260808 - Fix repo resolution for mixed-case aliases`. This is the subject
+  line visible on GitHub, so the same date ordering that helps on branches also
+  helps when scanning or scripting over the PR list
+  (`gh pr create --title "20260808 - …"`, `gh pr list`). Use the same date as the
+  branch prefix — the day the work was branched, not the day it merges.
+
 ### 5.1 Attribution, provenance and citation
 
 cMeta is Apache-2.0, created and developed by **Grigori Fursin** and

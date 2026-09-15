@@ -9,8 +9,8 @@ Start here. These guides are the full documentation for the framework; the
 
 | Guide | What it covers |
 |-------|----------------|
-| [motivation.md](motivation.md) | Why cMeta exists, the problem it addresses, the design principles behind it. |
-| [installation.md](installation.md) | Install with pip / `uv` / from source, verify, first configuration, troubleshooting. |
+| [motivation.md](motivation.md) | Why cMeta exists: the problem, the six aims (collaborative, reproducible, reusable, scalable, portable, sustainable), how complexity becomes abstractions you can operate, the design principles, and FAIR by construction. |
+| [installation.md](installation.md) | Install as a global CLI (`uv tool`) or into a venv (`uv` / pip), from source, where repositories live, verify, first configuration, troubleshooting. |
 | [common-commands.md](common-commands.md) | **Cheatsheet** — the commands you use daily: discovery, the `cx .` current-directory shortcut, `cx . info`, artifacts, UIDs, repos, configs, index/cache, scripting and debugging flags. |
 | [using-cmeta.md](using-cmeta.md) | **The getting-started and reference guide.** Mental model, first checks, CLI flags and syntax, built-in categories, working with artifacts from the CLI and Python, `ctx`, alias/UID resolution, content repositories, `config`-driven configuration, adding your own category, the artifact metadata reference, and indexing / caching. |
 | [error-handling.md](error-handling.md) | The return-dict contract, checking results, soft errors (code 16), raising errors, and debugging with `fail_on_error` in VS Code / Visual Studio / PyCharm. |

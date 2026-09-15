@@ -6,6 +6,15 @@
 
 # cMeta (Common Meta Framework)
 
+> **Lineage.** cMeta is the next generation of the **Collective Knowledge** technology: the same idea - research and engineering as reusable, content-addressed components behind one common interface - that ran through the cTuning framework and MILEPOST (2006-), [Collective Knowledge (CK)](https://github.com/mlcommons/ck) with its community Artifact Evaluation at ACM and IEEE conferences, and MLCommons Collective Mind (CM / CMX) behind the MLPerf automations. The 2021 ACM TechTalk [*Reproducing 150 Research Papers and Testing Them in the Real World*](https://www.youtube.com/watch?v=7zpeIVwICa4) ([slides](https://learning.acm.org/binaries/content/assets/leaning-center/webinar-slides/2021/grigorifursin_techtalk_slides.pdf)) tells the story that led here, and the 2023 ACM REP keynote [*Collective Mind: toward a common language to facilitate reproducible research and technology transfer*](https://zenodo.org/records/8105339) set out the common language for reproducibility that cMeta now implements; [docs/history.md](docs/history.md) has the full lineage and the publications.
+
+Shared research stops working for ordinary reasons: a path breaks, an environment
+drifts, the context that made a run work is lost, and what a component was actually
+for lives in someone's head rather than in the component. None of that is a hard
+research problem — it is bookkeeping, and it is why work gets redone instead of
+reused. Removing that whole class of problem is what this project is for
+(see [Why](#why--what-cmeta-is-for) below, and [docs/motivation.md](docs/motivation.md)).
+
 **cMeta** (also known as **cX**) is a small, portable framework for unifying,
 interconnecting and reusing code, data, models, agents and knowledge across
 projects, platforms and time through a single uniform interface.
@@ -50,6 +59,57 @@ related publications and citation guidance are collected in
 
 ---
 
+## Why — what cMeta is for
+
+cMeta exists to support R&D that is **collaborative, reproducible, reusable,
+scalable, portable and sustainable**, in the simplest way that works:
+
+| Aim | What it means here |
+|-----|--------------------|
+| **Collaborative** | Share work as content repositories others plug in and *run*, not as instructions to follow. `alias,UID` references survive renames, forks, machines and years. |
+| **Reproducible** | The context of a run is recorded with the run. This improves *gradually* and is deliberately not claimed as a guarantee — full determinism across heterogeneous environments is hard and remains ongoing R&D. |
+| **Reusable** | An artifact describes what it is rather than being wired into one pipeline, so the same toolchain, program, model or dataset carries over to another project unchanged. |
+| **Scalable** | Encode more complexity by adding artifacts and categories, not by growing the engine. The framework extends sideways, in many directions; the core stays small. |
+| **Portable** | The same automation runs anywhere, any time, adapting to the software and hardware the user actually has — toolchains are detected, installed if missing, and pinned. |
+| **Sustainable** | Work outlives the people who did it. The method, the dependencies, the versions and the provenance are recorded beside the result, so whoever picks it up next — in six months, or after the author has left — *resumes* instead of reconstructing. |
+
+**And it has to stay simple, with minimal dependencies.** No database, no
+daemon, no service to stand up, no binary format: just a directory and file
+structure, reached through one CLI, one Python API and one metadata convention.
+Everything cMeta stores can be read, edited, diffed and fixed by hand — which is
+what lets the work outlive the tool.
+
+**How it does that: complexity becomes abstractions you can operate.** A serious
+project accumulates more complexity than anyone can hold in their head. cMeta
+expresses each piece of it — a toolchain, a dataset, a model, a workflow, a
+measured number, a concept — as one artifact that is **simple** (a folder and a
+metadata file), **reusable** (it states what it is, not where it fits), **live**
+(you run it, rather than read about running it) and **interconnected** (artifacts
+reference each other by `alias,UID`, forming a graph rather than a pile). You then
+*operate* those abstractions through one interface, *understand* them by reading
+what they declare, and *build upon* them by composing them into larger ones.
+Because each stays inspectable down to its inputs, versions and provenance, a
+question can be taken back to **first principles** — what was measured, under what
+conditions, on what date — instead of being settled by folklore. The same design
+is what makes the work [FAIR](https://www.go-fair.org/fair-principles/) —
+findable, accessible, interoperable, reusable — by construction rather than by
+extra effort; see
+[docs/motivation.md](docs/motivation.md#fair-by-construction).
+
+**That same recorded context is what makes AI-powered R&D work.** An agent is only as good
+as the context it can assemble, and assembling context is usually the expensive
+part: what exists, how it was run, in which environment, and whether a number is
+still current. In cMeta that context is already recorded and already
+machine-readable — identity, declared dependencies, connections between
+artifacts, dates and provenance on records — so an agent can discover, compose,
+run and hand back work through the **same `access()` interface a person uses**.
+A graph a newcomer can pick up is, for the same reasons, a graph an agent can
+operate.
+
+More detail in [docs/motivation.md](docs/motivation.md).
+
+---
+
 ## Project status
 
 **A research and prototyping project by Grigori Fursin and cTuning Labs —
@@ -72,12 +132,17 @@ of it. What that means in practice:
 Known defects and rough edges that are understood but not yet fixed are tracked
 in [docs/known-issues.md](docs/known-issues.md).
 
-**You're very welcome to try it, fork it, or build on it.** Bug reports and
-questions via GitHub issues are welcome — I answer when I can. I'm not
-actively soliciting pull requests or new-feature proposals right now: the
-direction is driven by what I need in the downstream projects. If you're
-building something interesting on top of cMeta, feel free to reach out via
-[my page](https://cTuning.ai/@gfursin).
+**You're very welcome to try it, fork it, build on it — and to send a pull
+request.** Contributing is deliberately low-ceremony: Apache 2.0, no CLA to
+sign, and a one-flag `git commit -s` sign-off (DCO) that certifies you have the
+right to submit the change. See [`CONTRIBUTING.md`](CONTRIBUTING.md) — the whole
+flow is five steps.
+
+Bug reports and questions via GitHub issues are welcome too; I answer when I
+can. Large new-feature proposals are best raised as an issue first, since the
+direction is driven by what the downstream projects need and the design goal is
+a small core. If you're building something interesting on top of cMeta, do reach
+out via [my page](https://cTuning.ai/@gfursin).
 
 ---
 
@@ -165,14 +230,41 @@ and benchmarking. More background in
 
 ## Installation
 
+cMeta is normally a tool you use everywhere rather than a dependency of one
+project, so the recommended route installs it as a **standalone command** — its
+own private environment that you never activate, `cx` / `cmeta` / `cxt` /
+`cserver` on `PATH`, and an interpreter [uv](https://github.com/astral-sh/uv)
+downloads itself. No system Python, no root, and PEP 668 never enters the
+picture:
+
 ```bash
-pip install cmeta
-cmeta --version
-cx --version
+curl -LsSf https://astral.sh/uv/install.sh | sh    # uv, if you have none
+uv tool install "cmeta[server]"
+uv tool update-shell                               # put the shims on PATH
+
+export CMETA_HOME="$HOME/CMETA"                    # one home for every project
+cx --version                                       # also prints the home it resolved
 ```
 
-See [docs/installation.md](docs/installation.md) for `uv`, install-from-source,
-configuration and troubleshooting.
+On Windows, the same three steps:
+
+```bat
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+uv tool install "cmeta[server]"
+uv tool update-shell
+setx CMETA_HOME "%USERPROFILE%\CMETA"
+```
+
+Installing globally and having a global home are two separate things: with no
+`CMETA_HOME` set, an activated virtual environment still captures the home, even
+for a globally installed `cx`. And `pip install cmeta` inside a project virtual
+environment stays perfectly good when cMeta *is* a dependency of that project.
+
+An interactive installer that assembles the commands for your OS, shell and
+package manager lives at
+**[cTuning.ai/project/cmeta/cmeta.install](https://cTuning.ai/project/cmeta/cmeta.install/)**;
+[docs/installation.md](docs/installation.md) covers every route,
+install-from-source, where repositories live, configuration and troubleshooting.
 
 ---
 
@@ -540,12 +632,17 @@ Copyright (C) 2025–2026 [Grigori Fursin](https://cTuning.ai/@gfursin) and
 
 ## Links
 
-- Project page: [https://cTuning.ai/project/cmeta](https://cTuning.ai/project/cmeta)
-  (under development)
+- Project page: [https://cTuning.ai/project/cmeta](https://cTuning.ai/project/cmeta) —
+  the [course from 0 to 1](https://cTuning.ai/project/cmeta/cmeta.course/) and the
+  [interactive installer](https://cTuning.ai/project/cmeta/cmeta.install/)
 - Author: [https://cTuning.ai/@gfursin](https://cTuning.ai/@gfursin)
 - Organizations: [cTuning Labs](https://cTuning.ai) and the
   [cTuning foundation](https://cTuning.org)
 - [Artifact Evaluation and Reproducibility Initiatives](https://cTuning.org/ae)
+
+If cMeta is useful to you, a ⭐ on GitHub helps other people find it —
+[cmeta](https://github.com/cTuningLabs/cmeta) (the engine) and
+[cmeta-aops](https://github.com/cTuningLabs/cmeta-aops) (the automations).
 
 ## Status
 

@@ -9,6 +9,24 @@ contributing, you agree that your contribution is licensed under the same terms.
 
 ---
 
+## The short version
+
+```bash
+git clone https://github.com/cTuningLabs/cmeta && cd cmeta
+pip install -e ".[dev]"
+git checkout -b my-fix
+# ... make your change, add a test ...
+python -m pytest tests && flake8 cmeta
+git commit -s -m "Short imperative summary"      # -s is the whole agreement
+git push && gh pr create
+```
+
+That is the entire process. **Apache 2.0, no CLA to sign, no account to
+register** — the `-s` flag on `git commit` is the sign-off, and an automated
+check confirms it on the pull request. Everything below is detail.
+
+---
+
 ## Sign-off: the Developer Certificate of Origin (DCO)
 
 This project uses the **Developer Certificate of Origin (DCO) 1.1** as its
@@ -61,13 +79,19 @@ A DCO check runs on every pull request; it must pass before a change can be
 merged. Passing the check is necessary but not sufficient — a maintainer still
 reviews and approves each pull request.
 
-### A note for contributors employed elsewhere
+### If you are contributing from a job
 
-If your employer has rights to the intellectual property you create, please make
-sure you have permission to contribute before signing off. Employers whose staff
-contribute regularly can put a single **Corporate CLA** in place instead; see the
-[`cTuningLabs/cla`](https://github.com/cTuningLabs/cla) repository or contact
-**gfursin@gmail.com**.
+This is the part the sign-off is really for. Clause (a) of the DCO is a
+statement that you **have the right to submit** the contribution under the
+project's licence — so if your employer owns the intellectual property you
+create, get their permission before you sign off. For most companies a short
+confirmation from your manager or legal contact is enough, and it costs the
+project nothing to administer, which is exactly why this project uses a DCO
+rather than a contributor licence agreement.
+
+Employers whose staff contribute regularly can put a single **Corporate CLA** in
+place instead; see the [`cTuningLabs/cla`](https://github.com/cTuningLabs/cla)
+repository or contact **gfursin@gmail.com**.
 
 ---
 

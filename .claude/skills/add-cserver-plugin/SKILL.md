@@ -273,6 +273,9 @@ cPlatform needs a **userspace pointer** at
 
 - `cmeta_artifact_for_files` is what makes `…/files/**` resolve to the
   category's `files/` dir (path-traversal guarded).
+- Optional: `group` (+ `group_sort`) lists the project under a heading on the user's
+  projects page (`<li class="ctp-project-group">`, styled by the platform stylesheet or the
+  user's `project_extra_html`); the course/install/tools pointers of `___cmeta` show the pattern.
 - Optional: `allowed_commands` (permits `?command=…`), `skip_files_prefix`
   (drops `/files/` from `url_files`), `logged`, `sort`, `add_home`.
 - **Reference by `alias,UID`.** The UID is authoritative and the alias advisory,

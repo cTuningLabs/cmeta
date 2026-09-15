@@ -231,3 +231,14 @@ _run_claude_prompt_*_result.json
 # Never commit: use environment variables or an untracked local config instead.
 /tests.manual/
 /test.py
+
+# AI coding-session provenance - resume scripts and conversation summaries
+# written into whatever directory the tool was launched from.
+# Claude Code: the SessionStart / Stop / SessionEnd hooks in
+# ~/.claude/hooks/provenance.py.
+claude-resume-*.bat
+claude-resume-*.sh
+claude-summary-*.md
+codex-resume-*.bat
+codex-resume-*.sh
+codex-summary-*.md
