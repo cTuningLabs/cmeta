@@ -19,6 +19,7 @@ import os
 import sys
 import inspect
 import importlib.util
+import datetime
 import shutil
 import subprocess
 from pathlib import Path
@@ -510,6 +511,18 @@ class CMataDocBuilder:
                         else:
                             shutil.copy2(item, dest_path)
                     
+                    # Release stamp: the cTuning platform's releases page (cserver docs_api_html) reads
+                    # <version dir>/_cmeta.yaml and shows its `date` next to the version. It used to be
+                    # written by hand after every build; now every build writes it with today's date.
+                    stamp = datetime.datetime.now()
+                    stamp_file = versioned_html_dir / "_cmeta.yaml"
+                    stamp_file.write_text(
+                        f"date: {stamp.strftime('%Y %B %d')}"
+                        f"{chr(10)}version: {version}"
+                        f"{chr(10)}built: {stamp.strftime('%Y-%m-%dT%H:%M:%S')}{chr(10)}",
+                        encoding="utf-8")
+                    print(f"Release stamp written: {stamp_file} (date: {stamp.strftime('%Y %B %d')})")
+
                     print(f"Versioned HTML documentation created: {versioned_html_dir}")
                     print(f"Latest documentation available at: {html_build_dir / 'index.html'}")
                     print(f"Versioned documentation available at: {versioned_html_dir / 'index.html'}")
