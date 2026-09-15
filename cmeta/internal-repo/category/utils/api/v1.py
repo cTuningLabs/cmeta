@@ -10,6 +10,8 @@ import os
 from cmeta.category import InitCategory
 
 from cmeta.utils import names
+# Aliased - this category has its own "common" module next to it
+from cmeta.utils import common as utils_common
 
 from . import common
 
@@ -137,11 +139,21 @@ class Category(InitCategory):
         self,
         ctx,  # cMeta context.
         arg1 = None,  # Standard CID.
-        tags = None,  # Optional tags filter for repository lookup.
+        tags = None,  # Comma-separated string or iterable of tags to match ("-tag" excludes).
         far = False,  # If True, open FAR manager in found artifact path.
         web = False,  # If True, decode web-style `cmeta:///?` CID input.
         ask = False,  # If True, ask for CID in console.
         skip_non_indexed = False,  # If True, skip non-indexed repositories.
+        match = None,  # Value for match.
+        match_empty_version = False,  # Value for match empty version.
+        match_empty_values = False,  # Match when queried values or keys are empty.
+        all_tags = None,  # Value for all tags.
+        smart_match = None,  # Comma-separated values - keep artifacts holding any of them under any meta key.
+        search_text = None,  # Space-separated texts - keep artifacts whose files contain any of them.
+        search_files = None,  # Comma-separated globs naming those files (default "*info*.md"; "**" recurses).
+        search_file_names = None,  # Space-separated strings that must ALL appear in a file name (recursive).
+        after_date = None,  # Keep artifacts dated on or after this (ISO or YYYY[MM[DD[-HHMM]]]).
+        before_date = None,  # Keep artifacts dated on or before this (same formats).
     ):
         """
             Find artifacts by standard CID
@@ -149,14 +161,35 @@ class Category(InitCategory):
             Args:
                 ctx (dict): cMeta context.
                 arg1 (str): Standard CID.
-                tags (str): Optional tags filter for repository lookup.
+                tags (str): Comma-separated string or iterable of tags to match ("-tag" excludes).
                 far (bool): If True, open FAR manager in found artifact path.
                 web (bool): If True, decode web-style `cmeta:///?` CID input.
                 ask (bool): If True, ask for CID in console.
                 skip_non_indexed (bool): If True, skip non-indexed repositories.
+                match (dict): Value for match.
+                match_empty_version (bool): Value for match empty version.
+                match_empty_values (bool): Match when queried values or keys are empty.
+                all_tags (str): Value for all tags.
+                smart_match (str | list): Comma-separated values - keep artifacts holding
+                                          any of them under any meta key.
+                search_text (str | list): Space-separated texts - keep artifacts whose
+                                          files contain any of them.
+                search_files (str | list): Comma-separated globs naming those files
+                                           (default "*info*.md"; "**" recurses).
+                search_file_names (str | list): Space-separated strings that must ALL
+                                               appear in a file name. Always recursive,
+                                               and replaces search_files when given.
+                after_date (str): Keep artifacts dated on or after this. Full ISO, or
+                                  YYYY / YYYYMM / YYYYMMDD / YYYYMMDD-HHMM and the
+                                  dashed variants. The date is taken from the artifact
+                                  name when it starts with one, else from
+                                  last_update_timestamp, else from creation_timestamp.
+                before_date (str): Keep artifacts dated on or before this, same formats.
 
             Returns:
-                dict: Operation result.
+                dict: Operation result. When search_text or search_file_names was
+                      given, "files" holds the full paths of every matching file
+                      and those are printed instead of the artifact directories.
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
@@ -187,16 +220,148 @@ class Category(InitCategory):
         if self.cm.debug:
             self.logger.debug(f"artifact_ref_parts={artifact_ref_parts}")
 
-        r = self.cm.repos.find(artifact_ref_parts, tags=tags, skip_non_indexed=skip_non_indexed)
+        r = self.cm.repos.find(
+              artifact_ref_parts,
+              tags = tags,
+              skip_non_indexed = skip_non_indexed,
+              match = match,
+              match_empty_version = match_empty_version,
+              match_empty_values = match_empty_values,
+              all_tags = all_tags,
+           )
         if r['return']>0: return r
 
         artifacts = r['artifacts']
 
+        # Prune further: keep only artifacts whose meta holds any of these
+        # values under any key. "find" narrows by CID, tags and named keys -
+        # this catches the case where the key is not known in advance.
+        if smart_match is not None:
+            r2 = utils_common.normalize_tags(smart_match, fail_on_error = self.fail_on_error)
+            if r2['return']>0: return r2
+
+            smart_match_values = r2['tags']
+
+            artifacts = [a for a in artifacts
+                         if common._matches_any_value(a.get('cmeta', {}), smart_match_values)]
+
+            # Pruning everything away is an empty result, not a failure -
+            # the same 16 that "find" itself answers with
+            if len(artifacts) == 0:
+                return {'return':16, 'error':f'artifacts matching "{smart_match}" not found'}
+
+            r['artifacts'] = artifacts
+
+        # Prune further still: keep only artifacts with a file matching
+        # "search_files" that contains any of the "search_text" words. Without
+        # search_text no file is opened at all - the whole stage is skipped.
+        #
+        # The matching files themselves are collected into "files": having
+        # searched inside files, the files are the answer, so a caller can
+        # open them directly instead of re-deriving them from the artifacts.
+        # Prune by date before touching the file system: this only reads the
+        # artifact name and meta already in hand, so it makes the file stage
+        # below cheaper rather than more expensive.
+        if (after_date is not None and str(after_date).strip() != '') or \
+           (before_date is not None and str(before_date).strip() != ''):
+
+            after = common._parse_date_value(after_date)
+            if after is None and after_date is not None and str(after_date).strip() != '':
+                return {'return':1, 'error':f'could not read after_date "{after_date}"'}
+
+            before = common._parse_date_value(before_date)
+            if before is None and before_date is not None and str(before_date).strip() != '':
+                return {'return':1, 'error':f'could not read before_date "{before_date}"'}
+
+            dated_artifacts = []
+
+            for a in artifacts:
+                when = common._artifact_date(a['path'], a.get('cmeta', {}))
+
+                # No date to judge by means it cannot be shown to be in range
+                if when is None:
+                    continue
+
+                if after is not None and when < after:
+                    continue
+
+                if before is not None and when > before:
+                    continue
+
+                dated_artifacts.append(a)
+
+            if len(dated_artifacts) == 0:
+                return {'return':16, 'error':'no artifacts in that date range'}
+
+            artifacts = dated_artifacts
+            r['artifacts'] = artifacts
+
+        files = []
+
+        def _split_values(value):
+            if value is None:
+                return []
+            values = value if isinstance(value, list) else str(value).split()
+            return [v for v in values if str(v).strip() != '']
+
+        search_text_values = _split_values(search_text)
+        search_file_names_values = _split_values(search_file_names)
+
+        if len(search_text_values) > 0 or len(search_file_names_values) > 0:
+            # Which files are candidates. Naming parts of a file name is itself
+            # a name-based selector, so it replaces the glob patterns and always
+            # recurses; otherwise the "search_files" globs pick the candidates.
+            if len(search_file_names_values) > 0:
+                def _candidates(path):
+                    return common._files_matching_name_parts(path, search_file_names_values)
+            else:
+                if search_files is None or str(search_files).strip() == '':
+                    search_files = common.DEFAULT_SEARCH_FILES
+
+                r2 = utils_common.normalize_tags(search_files, fail_on_error = self.fail_on_error)
+                if r2['return']>0: return r2
+
+                search_files_patterns = r2['tags']
+
+                def _candidates(path):
+                    return common._files_matching_patterns(path, search_files_patterns)
+
+            matched_artifacts = []
+
+            for a in artifacts:
+                a_files = _candidates(a['path'])
+
+                # The text filter narrows whatever the name filter selected
+                if len(search_text_values) > 0:
+                    a_files = common._files_containing_any_text(a_files, search_text_values)
+
+                if len(a_files) > 0:
+                    matched_artifacts.append(a)
+                    files.extend(a_files)
+
+            if len(matched_artifacts) == 0:
+                what = []
+                if len(search_text_values) > 0:
+                    what.append(f'"{search_text}"')
+                if len(search_file_names_values) > 0:
+                    what.append(f'file names "{search_file_names}"')
+
+                return {'return':16, 'error':f'artifacts with {" and ".join(what)} not found'}
+
+            artifacts = matched_artifacts
+
+            r['artifacts'] = artifacts
+            r['files'] = files
+
         # if no artifact found, "find" function will return error
         # we need to check >1 for ambiguity
+        #
+        # Searching inside files answers with the files that matched; without
+        # a file search the artifact directories are still the answer
         if con:
-            for artifact in artifacts:
-                print (artifact['path'])
+            for line in (files if len(files) > 0 else
+                         [a['path'] for a in artifacts]):
+                print (line)
 
         path = artifacts[0]['path']
 
@@ -214,6 +379,17 @@ class Category(InitCategory):
         web = False,  # If True, remove cmeta:///? from CID (web request).
         ask = False,  # If True, ask for CID in console.
         cid = None,  # Direct CID to use.
+        tags = None,  # Comma-separated string or iterable of tags to match ("-tag" excludes).
+        match = None,  # Value for match.
+        match_empty_version = False,  # Value for match empty version.
+        match_empty_values = False,  # Match when queried values or keys are empty.
+        all_tags = None,  # Value for all tags.
+        smart_match = None,  # Comma-separated values - keep artifacts holding any of them under any meta key.
+        search_text = None,  # Space-separated texts - keep artifacts whose files contain any of them.
+        search_files = None,  # Comma-separated globs naming those files (default "*info*.md"; "**" recurses).
+        search_file_names = None,  # Space-separated strings that must ALL appear in a file name (recursive).
+        after_date = None,  # Keep artifacts dated on or after this (ISO or YYYY[MM[DD[-HHMM]]]).
+        before_date = None,  # Keep artifacts dated on or before this (same formats).
     ):
         """
             Find artifacts by wrapped CID
@@ -225,6 +401,26 @@ class Category(InitCategory):
                 web (bool): If True, remove cmeta:///? from CID (web request).
                 ask (bool): If True, ask for CID in console.
                 cid (str): Direct CID to use.
+                tags (str): Comma-separated string or iterable of tags to match ("-tag" excludes).
+                match (dict): Value for match.
+                match_empty_version (bool): Value for match empty version.
+                match_empty_values (bool): Match when queried values or keys are empty.
+                all_tags (str): Value for all tags.
+                smart_match (str | list): Comma-separated values - keep artifacts holding
+                                          any of them under any meta key.
+                search_text (str | list): Space-separated texts - keep artifacts whose
+                                          files contain any of them.
+                search_files (str | list): Comma-separated globs naming those files
+                                           (default "*info*.md"; "**" recurses).
+                search_file_names (str | list): Space-separated strings that must ALL
+                                               appear in a file name. Always recursive,
+                                               and replaces search_files when given.
+                after_date (str): Keep artifacts dated on or after this. Full ISO, or
+                                  YYYY / YYYYMM / YYYYMMDD / YYYYMMDD-HHMM and the
+                                  dashed variants. The date is taken from the artifact
+                                  name when it starts with one, else from
+                                  last_update_timestamp, else from creation_timestamp.
+                before_date (str): Keep artifacts dated on or before this, same formats.
 
             Returns:
                 dict: Operation result.
@@ -256,7 +452,21 @@ class Category(InitCategory):
         if cid is None:
             return {'return':1, 'error':f'Could not extract CID from the input string (arg1)'}
 
-        r = self.find_by_cid_(ctx, cid)
+        r = self.find_by_cid_(
+              ctx,
+              cid,
+              tags = tags,
+              match = match,
+              match_empty_version = match_empty_version,
+              match_empty_values = match_empty_values,
+              all_tags = all_tags,
+              smart_match = smart_match,
+              search_text = search_text,
+              search_files = search_files,
+              search_file_names = search_file_names,
+              after_date = after_date,
+              before_date = before_date,
+           )
         if r['return']>0: return r
 
         artifacts = r['artifacts']
@@ -267,6 +477,200 @@ class Category(InitCategory):
             os.system(f'start far {path}')
 
         return r
+
+    ############################################################
+    def _detect_in_directory(
+        self,
+        arg1,  # Directory to inspect. If None, use the current directory.
+        command,  # Calling command name, for debug logging.
+    ):
+        """
+            Shared detection behind detect_category and detect_repo.
+
+            Normalizes the directory and runs the same detection as
+            `cx . <command>`. Being outside any plugged repository is reported
+            as "nothing detected" (`detected` is None), not as an error - only
+            a bad directory is an error.
+
+            Args:
+                arg1 (str): Directory to inspect. If None, use the current directory.
+                command (str): Calling command name, for debug logging.
+
+            Returns:
+                dict: Operation result with the normalized `path`, the raw
+                      `detected` dictionary (or None) and any `detect_error`.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        self.logger.debug(f"running utils.{command}")
+
+        if arg1 is None:
+            path = os.getcwd()
+        else:
+            path = arg1
+
+        path = os.path.normpath(os.path.abspath(path))
+
+        if not os.path.isdir(path):
+            return {'return':1, 'error':f'directory not found: {path}'}
+
+        r = self.cm.utils.common.detect_cid_in_the_current_directory(
+                self.cm, path = path, debug = self.cm.debug, logger = self.logger)
+
+        if r['return']>0:
+            # Outside any plugged repository - not detected rather than broken
+            self.logger.debug(f"utils.{command}: {r.get('error','')}")
+
+            return {'return':0, 'path':path, 'detected':None,
+                    'detect_error': r.get('error')}
+
+        return {'return':0, 'path':path, 'detected':r, 'detect_error':None}
+
+    ############################################################
+    def detect_category_(
+        self,
+        ctx,  # cMeta context.
+        arg1 = None,  # Directory to inspect. If None, use the current directory.
+        fail_if_not_found = False,  # If True, return an error when nothing is detected.
+    ):
+        """
+            Detect the cMeta category of the current (or a given) directory
+
+            Uses the same detection as `cx . <command>`: locate the plugged
+            repository that contains the directory, then report the category
+            (and the artifact, when standing inside one).
+
+            Prints the category as `alias,UID`, or as just the alias when the
+            UID is not known - such as when standing in the category directory
+            itself rather than inside one of its artifacts. Prints nothing when
+            no category can be detected.
+
+            Detecting nothing is not an error: the command returns 0 with
+            `category` set to None, so callers can fall back to a wider search.
+            Pass `fail_if_not_found` to turn it into an error instead.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Directory to inspect. If None, use the current directory.
+                fail_if_not_found (bool): If True, return an error when nothing is detected.
+
+            Returns:
+                dict: Operation result with `category` (str or None),
+                      `category_alias`, `category_uid`, `artifact_name`,
+                      `artifact_repo_name` and the inspected `path`.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        con = ctx['control'].get('con', False)
+
+        r = self._detect_in_directory(arg1, 'detect_category')
+        if r['return']>0: return r
+
+        path = r['path']
+        detected = r['detected']
+
+        result = {'return':0,
+                  'path': path,
+                  'category': None,
+                  'category_alias': None,
+                  'category_uid': None,
+                  'artifact_name': None,
+                  'artifact_repo_name': None}
+
+        if detected is None:
+            if fail_if_not_found:
+                return {'return':16, 'error':f'no cMeta category detected in {path}'}
+
+            result['detect_error'] = r['detect_error']
+
+            return result
+
+        result['category'] = detected.get('category_obj')
+        result['category_alias'] = detected.get('category_alias')
+        result['category_uid'] = detected.get('category_uid')
+        result['artifact_name'] = detected.get('artifact_name')
+        result['artifact_repo_name'] = detected.get('artifact_repo_name')
+
+        if result['category'] is None and fail_if_not_found:
+            return {'return':16, 'error':f'no cMeta category detected in {path}'}
+
+        if con and result['category'] is not None:
+            print (result['category'])
+
+        return result
+
+    ############################################################
+    def detect_repo_(
+        self,
+        ctx,  # cMeta context.
+        arg1 = None,  # Directory to inspect. If None, use the current directory.
+        fail_if_not_found = False,  # If True, return an error when nothing is detected.
+    ):
+        """
+            Detect the cMeta repository of the current (or a given) directory
+
+            The counterpart of `detect_category`, using the same detection as
+            `cx . <command>`: find which plugged repository contains the
+            directory.
+
+            Prints the repository as `alias,UID`, or as just the alias or UID
+            when only one of them is known. Prints nothing when the directory
+            is outside every plugged repository.
+
+            Detecting nothing is not an error: the command returns 0 with
+            `repo` set to None, so callers can fall back to a wider search.
+            Pass `fail_if_not_found` to turn it into an error instead.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): Directory to inspect. If None, use the current directory.
+                fail_if_not_found (bool): If True, return an error when nothing is detected.
+
+            Returns:
+                dict: Operation result with `repo` (str or None), `repo_alias`,
+                      `repo_uid`, `artifact_path` (the path relative to the
+                      repository root) and the inspected `path`.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        con = ctx['control'].get('con', False)
+
+        r = self._detect_in_directory(arg1, 'detect_repo')
+        if r['return']>0: return r
+
+        path = r['path']
+        detected = r['detected']
+
+        result = {'return':0,
+                  'path': path,
+                  'repo': None,
+                  'repo_alias': None,
+                  'repo_uid': None,
+                  'artifact_path': None}
+
+        if detected is None:
+            if fail_if_not_found:
+                return {'return':16, 'error':f'no cMeta repository detected in {path}'}
+
+            result['detect_error'] = r['detect_error']
+
+            return result
+
+        result['repo'] = detected.get('artifact_repo_name')
+        result['repo_alias'] = detected.get('artifact_repo_alias')
+        result['repo_uid'] = detected.get('artifact_repo_uid')
+        result['artifact_path'] = detected.get('artifact_path')
+
+        if result['repo'] is None and fail_if_not_found:
+            return {'return':16, 'error':f'no cMeta repository detected in {path}'}
+
+        if con and result['repo'] is not None:
+            print (result['repo'])
+
+        return result
 
     ############################################################
     def copy_text_to_clipboard_(

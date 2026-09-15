@@ -6,6 +6,8 @@ cMeta author and developer: (C) 2025-2026 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
+import json
+
 from .common import _error
 
 ##################################################################################################
@@ -197,16 +199,25 @@ async def unify_request(
 
     body_dict = {}
 
-    headers = request.headers
-
-    api_key = None
-    username = None
-
     if request.method == "POST":
+        # Read the raw body once. It can fail when the client went away while sending
+        # (a page reloaded or closed while an AJAX call was in flight) - report it,
+        # never raise: the caller turns 'return' > 0 into an HTTP error answer.
         try:
-           body_dict = await request.json()
+           raw = await request.body()
         except Exception as e:
-           return {'return':99, 'error':format(e)}
+           return {'return':99, 'error':'the POST body could not be read: ' + format(e)}
+
+        # An empty body means "no extra parameters" (e.g. `curl -X POST <url>` without
+        # -d, or a client that sends the parameters in the query string only).
+        if raw is not None and len(raw.strip()) > 0:
+            try:
+               body_dict = json.loads(raw)
+            except Exception as e:
+               return {'return':99, 'error':'the POST body is not valid JSON: ' + format(e)}
+
+            if not isinstance(body_dict, dict):
+               return {'return':99, 'error':'the POST body must be a JSON object, not ' + type(body_dict).__name__}
 
         query = {**query_params, **body_dict}
     else:

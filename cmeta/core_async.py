@@ -119,8 +119,27 @@ class CMetaAsync(CMeta):
         # Store external logger (use parent's logger if not provided)
         self._logger = logger or self.logger
 
-        # Event loop + executor
-        self._loop = loop or asyncio.get_event_loop()
+        # Event loop + executor.
+        #
+        # The loop is NOT resolved here. It used to be
+        # `loop or asyncio.get_event_loop()`, which is wrong in two ways when
+        # CMetaAsync is constructed at import time - as the cserver app and the
+        # cTuning platform both do, at module level, before any loop runs:
+        #
+        #   * On Python 3.14.3 `get_event_loop()` raises
+        #     "RuntimeError: There is no current event loop in thread
+        #     'MainThread'" when none is current, so the import fails outright.
+        #     (3.14.0 still auto-created one, which is why the same code can
+        #     work on one patch release and not the next.)
+        #   * Where it did auto-create one, that loop was NOT the loop the
+        #     server later runs on, so the first await failed with
+        #     "Future attached to a different loop".
+        #
+        # `self._loop` is only ever needed inside a coroutine (see
+        # `access()`), and inside a coroutine the running loop is always
+        # available - so it is looked up there instead. An explicitly passed
+        # `loop` is still honoured.
+        self._loop = loop
         self._executor = ProcessPoolExecutor(max_workers=max_workers)
 
         # Store constructor args for CMeta workers
@@ -150,7 +169,12 @@ class CMetaAsync(CMeta):
         func = partial(_access_worker, params, self._cmeta_kwargs)
 
         try:
-            return await self._loop.run_in_executor(self._executor, func)
+            # Resolved here rather than in __init__: this is a coroutine, so
+            # the loop actually running it is knowable and correct. See the
+            # note in __init__ for why capturing one there was a bug.
+            loop = self._loop or asyncio.get_running_loop()
+
+            return await loop.run_in_executor(self._executor, func)
 
         except Exception as e:
             tb = traceback.format_exc()
