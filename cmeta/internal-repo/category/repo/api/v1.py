@@ -973,24 +973,128 @@ class Category(InitCategory):
         params,  # Input parameters dictionary.
     ):
         """
-            Unzip local cMeta repository
+            Install or update a cMeta repository from a local .zip archive.
 
-            @self.get_
+                cx repo unzip <file.zip>              # first time: extract + register (plug) + index
+                cx repo unzip <file.zip>              # again later: extract over + reindex (an update)
+                cx repo unzip <file.zip> --path=<dir> # extract to a specific folder
+
+            The repository's own alias is read from the `_cmr.yaml` (or `_cmr.json`) inside the
+            archive - at its root, or one directory down - so the destination is `<repos>/<alias>`
+            whatever the zip file is called. If that repository is not registered yet, it is plugged
+            (registered and indexed); if it already is, its index is refreshed. So one command both
+            installs a repository the first time and updates it afterwards, with no separate plug or
+            reindex step.
+
+            Note: an update replaces the files carried in the archive; a file you added locally is
+            kept, and a file deleted upstream is not removed (unplug + delete the folder + unzip for an
+            exact copy). Use `cx repo zip <alias>` to produce a compatible archive.
 
             Args:
-                params: Input parameters dictionary.
+                params: Input parameters dictionary (arg1 = path to the .zip file; path = optional target).
             Returns:
                 dict: Operation result.
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
 
-        import copy
-        copy_params = params.copy()
+        import json
+        import re
+        import zipfile
 
-        zip_file = copy_params.pop('arg1')
+        ctx = params.get('ctx', {}) or {}
+        con = ctx.get('control', {}).get('con', False)
 
-        return self.get_(**copy_params, zip_file=zip_file, method='local_zip')
+        zip_file = params.get('arg1')
+        if zip_file is None or zip_file == '':
+            return {'return': 1, 'error': 'path to a .zip archive is required: cx repo unzip <file.zip>'}
+
+        zip_file = os.path.abspath(os.path.normpath(zip_file))
+        if not os.path.isfile(zip_file):
+            return {'return': 1, 'error': f'zip file {zip_file} not found'}
+
+        # Read the repository descriptor (_cmr.yaml / _cmr.json) nearest the archive root to learn the
+        # repository's own name - never the name of the zip file (which is what the old code used).
+        desc_basenames = ('_cmr.yaml', '_cmr.json')
+        desc_member = None
+        desc_raw = ''
+        try:
+            with zipfile.ZipFile(zip_file) as zf:
+                files_in_zip = [m.filename.replace('\\', '/') for m in zf.infolist() if not m.is_dir()]
+                # the descriptor closest to the root (fewest path separators) wins
+                for member in sorted(files_in_zip, key=lambda x: (x.count('/'), len(x))):
+                    if member.rsplit('/', 1)[-1] in desc_basenames:
+                        desc_member = member
+                        break
+                if desc_member is not None:
+                    desc_raw = zf.read(desc_member).decode('utf-8', 'ignore')
+        except Exception as e:
+            return {'return': 1, 'error': f'cannot read archive {zip_file}: {e}'}
+
+        if desc_member is None:
+            return {'return': 1, 'error': f'{zip_file} is not a cMeta repository archive '
+                                          f'(no _cmr.yaml / _cmr.json at or near its root)'}
+
+        # the repository name from the descriptor's `artifact:` field
+        repo_name = ''
+        if desc_member.endswith('.json'):
+            try:
+                repo_name = (json.loads(desc_raw) or {}).get('artifact', '')
+            except Exception:
+                repo_name = ''
+        else:
+            m = re.search(r'(?m)^[ \t]*artifact[ \t]*:[ \t]*(.+?)[ \t]*$', desc_raw)
+            if m:
+                repo_name = m.group(1).strip().strip('"\'')
+        if repo_name is None or repo_name == '':
+            return {'return': 1, 'error': f'the descriptor {desc_member} in {zip_file} has no "artifact" name'}
+
+        r = utils.names.parse_cmeta_name(repo_name)
+        if r['return'] > 0:
+            return r
+        repo_alias = r.get('name', {}).get('alias') or r.get('name', {}).get('uid')
+        if not repo_alias:
+            return {'return': 1, 'error': f'could not read a repository alias from "{repo_name}"'}
+
+        # how many leading directories to strip so the descriptor lands at the extraction root
+        remove_directories = desc_member.count('/')
+
+        # the destination folder: an explicit --path, else <repos>/<alias>
+        path = params.get('path')
+        if path is None or path == '':
+            path = os.path.join(self.cm.repos_path, repo_alias)
+        path = os.path.abspath(os.path.normpath(path))
+
+        # is a repository at this path already registered?
+        already_registered = False
+        r = utils.files.safe_read_file(self.cm.repos_config_path, lock=False,
+                                       fail_on_error=self.fail_on_error, logger=self.logger)
+        if r['return'] == 0:
+            already_registered = path in (r['data'] or {})
+
+        if con:
+            print('')
+            print(f'Repository "{repo_alias}" from {zip_file}')
+            print(f'{"Updating" if already_registered else "Installing"} in {path} ...')
+
+        # extract; overwrite so an update replaces changed files
+        r = utils.files.unzip(zip_file, path=path, remove_directories=remove_directories,
+                              overwrite=True, clean=False, fail_on_error=self.fail_on_error)
+        if r['return'] > 0:
+            return r
+
+        if already_registered:
+            # an update: refresh the index (re-scans the repo, so new artifacts are picked up too)
+            if con:
+                print('')
+                print('Reindexing ...')
+            return self.cm.repos.index(clean=False, con=con, add_repo_paths=[path])
+
+        # first time: register and index in one step (reuses the tested `plug` path)
+        if con:
+            print('')
+            print('Registering (plug) and indexing ...')
+        return self.plug({'ctx': ctx, 'arg1': path})
 
 
     ###############################################################################################

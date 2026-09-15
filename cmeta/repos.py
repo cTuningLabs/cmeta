@@ -375,7 +375,9 @@ class Repos:
 
                 artifact_cmeta_ref_parts = index[self.KEY_INDEX_UIDS][artifact_uid]['cmeta_ref_parts']
 
-                if repos and artifact_cmeta_ref_parts['repo_uid'] not in repos:
+                # Note that "repo" artifacts are not inside any repo, i.e. their index entries
+                # have no "repo_uid" - they can never match a repo filter
+                if repos and artifact_cmeta_ref_parts.get('repo_uid') not in repos:
                     continue
 
                 if category_uid is not None and artifact_cmeta_ref_parts['category_uid'] != category_uid:

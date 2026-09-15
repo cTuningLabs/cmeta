@@ -58,6 +58,25 @@ separate content repos (e.g. `cmeta-aops`).
 - This is the public Apache-2.0 framework — keep product vision/strategy prose
   out; public docs describe *functionality*.
 
+## Git workflow — sign-off, branch names, PR titles
+
+- **Every commit is signed off: `git commit -s -m "…"`.** The `-s`/`--signoff`
+  flag appends the DCO `Signed-off-by:` line required by `CONTRIBUTING.md` and
+  the `DCO` file. This applies to commits an agent makes on the author's behalf
+  exactly as it does to the author's own. A DCO check runs on every pull request
+  and an unsigned commit blocks the merge. Repair before pushing:
+  `git commit --amend -s --no-edit` (last commit) or
+  `git rebase --signoff <base>` (a range).
+- **PR branches are named `YYYYMMDD-<short-branch-name>`** — creation date, then
+  a short kebab-case topic (e.g. `20260808-fix-repo-resolution`). The date prefix
+  keeps branches sortable and a set of open PRs analyzable. Branch first; never
+  commit straight to the default branch.
+- **Prefix the PR title the same way: `YYYYMMDD - <Title of PR>`** — date, spaced
+  hyphen, human-readable title, e.g.
+  `20260808 - Fix repo resolution for mixed-case aliases`. That is the subject
+  line shown on GitHub, so the date ordering carries over to the PR list:
+  `gh pr create --title "20260808 - …"`. Use the branch's date.
+
 ## Resolution & reindex — two things to internalize
 
 - **`alias,UID` references are the recommended form.** When both are given,

@@ -7,6 +7,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 import os
+import sys
 import copy
 
 from cmeta.category import InitCategory
@@ -169,6 +170,22 @@ class Category(InitCategory):
                 param = self.cm.utils.common.deep_merge(param, param1, append_lists=True)
 
             
+        # The interpreter cMeta itself is running under, exported for every app's
+        # run script.
+        #
+        # A run script cannot assume "python" is on PATH. A `uv tool` install
+        # (the route the installer page recommends) keeps its interpreter out of
+        # PATH on purpose - only the cx/cmeta/cserver shims go there - so a bare
+        # `python` in a run script fails with "python: not found" even though cx
+        # works perfectly. Modern Linux is the same story with python3 and no
+        # python alias. sys.executable is also the ONLY interpreter guaranteed
+        # to have cmeta itself importable, which is what an app like cserver
+        # needs.
+        #
+        # Not overwritten if the caller or a config already set it.
+        if not env1.get('CMETA_PYTHON'):
+            env1['CMETA_PYTHON'] = sys.executable
+
         default_env = cmeta.get('default_env', {})
 
         if run_script is None or run_script == '':

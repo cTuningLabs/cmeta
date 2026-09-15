@@ -97,7 +97,12 @@ async def home(
         Exception: Propagated runtime errors, if any.
     """
     r = await cm.utils.net.unify_request(request)
-    if r['return']>0: return r
+    if r['return']>0:
+        # A POST whose body could not be read as a JSON object (an aborted request whose
+        # body arrived truncated, a form-encoded body, ...): answer with the error instead
+        # of handing a dict to an HTMLResponse route, which crashed with
+        # "'dict' object has no attribute 'encode'" and a 500.
+        return JSONResponse(content = r, status_code = 400)
 
     query = r['query']
 
@@ -151,7 +156,12 @@ async def task_handler(
         Exception: Propagated runtime errors, if any.
     """
     r = await cm.utils.net.unify_request(request)
-    if r['return']>0: return r
+    if r['return']>0:
+        # A POST whose body could not be read as a JSON object (an aborted request whose
+        # body arrived truncated, a form-encoded body, ...): answer with the error instead
+        # of handing a dict to an HTMLResponse route, which crashed with
+        # "'dict' object has no attribute 'encode'" and a 500.
+        return JSONResponse(content = r, status_code = 400)
 
     query = r['query']
 

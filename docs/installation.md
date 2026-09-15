@@ -5,37 +5,146 @@ dependencies. It runs on Linux, macOS and Windows and supports Python 3.9+.
 
 ---
 
-## Requirements
-
-- **Python 3.9 or newer**
-- `pip` (and optionally [`uv`](https://github.com/astral-sh/uv) for fast, isolated
-  environments)
-- Git (only needed for installing directly from the repository)
+> There is also an interactive installer that assembles these commands for your
+> OS, shell and package manager:
+> **[cTuning.ai/project/cmeta/cmeta.install](https://cTuning.ai/project/cmeta/cmeta.install/)**
 
 ---
 
-## Option 1 — pip (simplest)
+## Requirements
+
+- **Git** — `cx repo get --url=...` clones content repositories over git, and so
+  does the install-from-source route.
+- **Python 3.9 or newer** — only for the pip route. The two
+  [`uv`](https://github.com/astral-sh/uv) routes below let uv fetch its own
+  interpreter, so they work on a host with no usable Python and no root.
+
+### Installing uv
+
+astral's own installer is used on every platform in preference to whatever the
+distribution packages — one command shape everywhere, and no dependency on a
+distro keeping up with uv releases:
 
 ```bash
-pip install cmeta
-cmeta --version
+curl -LsSf https://astral.sh/uv/install.sh | sh                 # Linux, macOS
 ```
 
-## Option 2 — uv + pip (isolated environment, recommended)
+```bat
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+On a minimal Linux image install `curl` first (`apt-get install -y curl`,
+`dnf install -y curl`, …).
+
+---
+
+## Option 1 — `uv tool` (a global `cx`, recommended)
+
+Installs cMeta as a **standalone command**, the way uv or ripgrep are installed:
+its own private environment that you never activate, real `cx` / `cmeta` /
+`cxt` / `cserver` shims on `PATH`, and an interpreter uv downloads itself.
 
 ```bash
-uv venv
+uv tool install "cmeta[server]"
+uv tool update-shell          # put the shims on PATH (once per machine)
+cx --version
+```
+
+The `server` extra is included because `cx app run cserver` cannot start
+without it &mdash; there is no uvicorn to run it with, and a `uv tool`
+environment has no pip to add one afterwards. Drop it (`uv tool install cmeta`)
+if you will never run the web app.
+
+Pick this when cMeta is a **tool you use everywhere** rather than a dependency
+of one project — which is how it is normally used. It also sidesteps PEP 668
+entirely, since it never touches the system interpreter, and
+`uv tool upgrade cmeta` upgrades the CLI in isolation.
+
+**Set `CMETA_HOME` alongside it** — see
+[Choosing where repositories live](#choosing-where-repositories-live). A global
+command does *not* by itself imply a global home.
+
+## Option 2 — `uv` + a project virtual environment
+
+For when cMeta is a dependency of one project, and its repositories should live
+and die with that project:
+
+```bash
+uv venv cmeta-env
+source cmeta-env/bin/activate            # Windows: cmeta-env\Scripts\activate.bat
 uv pip install cmeta
-uv run cmeta --version
+cx --version
 ```
 
-## Option 3 — uv + Git (latest from source)
+## Option 3 — pip + a project virtual environment
+
+Using only what ships with Python 3.9+:
 
 ```bash
-uv venv
-uv pip install --force-reinstall git+ssh://git@github.com/ctuninglabs/cmeta.git@main#egg=cmeta
-uv run cmeta --version
+python3 -m venv cmeta-env
+source cmeta-env/bin/activate            # Windows: cmeta-env\Scripts\activate.bat
+pip install cmeta
+cx --version
 ```
+
+## Latest from source
+
+Add `--force` (uv tool) or `--force-reinstall` (uv / pip): the version number
+does not change between commits on `main`, so the installer would otherwise
+decide there is nothing to do.
+
+```bash
+uv tool install --force "cmeta @ git+https://github.com/cTuningLabs/cmeta.git@main"
+uv pip install --force-reinstall "cmeta @ git+https://github.com/cTuningLabs/cmeta.git@main"
+pip install --force-reinstall "cmeta @ git+https://github.com/cTuningLabs/cmeta.git@main"
+```
+
+Extras combine with the direct reference as usual:
+`"cmeta[server] @ git+https://..."`.
+
+---
+
+## Choosing where repositories live
+
+One directory — the **cMeta home** — holds `repos.json`, the plugged
+repositories under `repos/`, the fast lookup index under `index/`, and the task
+caches. cMeta picks it the first time it runs, in this order:
+
+| | Source | Becomes | When |
+|---|---|---|---|
+| 1 | `CMETA_HOME` | used as-is | Explicit, and beats everything below. |
+| 2 | `$VIRTUAL_ENV` | + `/CMETA` | An activated virtual environment. |
+| 3 | `$CONDA_PREFIX` | + `/CMETA` | An activated conda environment. |
+| 4 | `CMETA_HOME2` | used as-is | A global default that a venv overrides. |
+| 5 | `~/CMETA` | — | The fallback when nothing above is set. |
+
+`cx --version` prints the home it resolved, and `cx --home=<path> …` overrides
+it for a single command.
+
+**Installing globally and having a global home are two separate things.** Rule 2
+reads an environment variable, not the location of the `cx` you invoked — so a
+`uv tool`-installed `cx`, run from a shell with a project venv activated, will
+still put its repositories in `$VIRTUAL_ENV/CMETA`. If you want one home
+everywhere, say so:
+
+```bash
+export CMETA_HOME="$HOME/CMETA"
+echo 'export CMETA_HOME="$HOME/CMETA"' >> ~/.bashrc
+```
+
+```bat
+setx CMETA_HOME "%USERPROFILE%\CMETA"
+```
+
+Use `CMETA_HOME2` instead when you want a shared default that an activated
+virtual environment is still allowed to override.
+
+> **A hand-written wrapper script is not needed.** `uv tool install` already
+> creates native shims (`cx`, and `cx.exe` on Windows) and `uv tool update-shell`
+> puts them on `PATH`. Wrapping `uv run cx` in a shell script and pinning
+> `UV_PROJECT`/`PATH` to one project's `.venv` ties your global `cx` to that
+> project: its dependency changes alter your CLI, a broken lockfile there breaks
+> `cx` everywhere, and every invocation pays a project re-resolve.
 
 ---
 
@@ -146,8 +255,21 @@ Common flags for category `program` include
 
 ## Troubleshooting
 
-- **`cmeta: command not found`** — ensure your Python `Scripts`/`bin` directory is
-  on `PATH`, or use `uv run cmeta …` / `python -m cmeta …`.
+- **`cx: command not found`** — after `uv tool install`, run `uv tool update-shell`
+  and open a new shell. Otherwise ensure your Python `Scripts`/`bin` directory is
+  on `PATH`, or call the module directly with `python -m cmeta …`.
+- **`error: externally-managed-environment`** — PEP 668: most current Linux
+  distributions refuse a `pip install` into the system interpreter. Use
+  **Option 1** (`uv tool`, which never touches it), a virtual environment, or add
+  `--break-system-packages` deliberately.
+- **`uv pip install` refuses to run** — uv will not install into an interpreter
+  outside a virtual environment unless told to. Activate one, or add `--system`.
+- **Repositories keep disappearing between shells** — the home moved with you. A
+  venv activated in one terminal and not in another resolves to two different
+  homes; see [Choosing where repositories live](#choosing-where-repositories-live),
+  and `cx --version` to see which one you are in.
+- **`python3 -m venv` fails on Debian/Ubuntu** — `python3-venv` is a separate
+  package: `sudo apt-get install -y python3-venv`.
 - **Permission or cache errors on first run** — point `--meta.file_cache` at a
   writable location with enough free space (model/build caches can be large).
 - **Tool/version detection issues** — run with `-v` to see how cMeta is detecting

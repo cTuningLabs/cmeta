@@ -6,6 +6,453 @@ cMeta author and developer: (C) 2025-2026 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
+import os
+
+###################################################################################################
+def _iter_values(
+    data,  # Nested structure to walk.
+):
+    """
+    _iter_values function.
+
+    Yields every scalar value inside a nested structure. Keys are never
+    yielded - only the values they hold, at any depth.
+
+    Args:
+        data: Nested structure to walk.
+
+    Returns:
+        Iterator over scalar values.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    if isinstance(data, dict):
+        for value in data.values():
+            for scalar in _iter_values(value):
+                yield scalar
+
+    elif isinstance(data, (list, tuple, set)):
+        for value in data:
+            for scalar in _iter_values(value):
+                yield scalar
+
+    else:
+        yield data
+
+
+###################################################################################################
+def _matches_any_value(
+    data,  # Meta of an artifact.
+    values,  # List of values to look for.
+) -> bool:
+    """
+    _matches_any_value function.
+
+    Checks whether any of the values appears anywhere in the meta.
+
+    Unlike a "match" query, no key has to be named: every value in the
+    structure is visited, at any depth, and compared as a case-insensitive
+    substring. The values are OR-ed - one hit is enough. Keys themselves are
+    never compared, only the values they hold.
+
+    Args:
+        data (dict): Meta of an artifact.
+        values (list): List of values to look for.
+
+    Returns:
+        bool: True if any value is found, else False.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+
+    if values is None:
+        return True
+
+    needles = [str(v).lower() for v in values if str(v).strip() != '']
+
+    if len(needles) == 0:
+        return True
+
+    for value in _iter_values(data):
+        if value is None:
+            continue
+
+        haystack = str(value).lower()
+
+        for needle in needles:
+            if needle in haystack:
+                return True
+
+    return False
+
+
+###################################################################################################
+# Files matched when no pattern is given
+DEFAULT_SEARCH_FILES = '*info*.md'
+
+
+###################################################################################################
+def _files_matching_patterns(
+    path: str,  # Artifact directory.
+    patterns,  # List of glob patterns, relative to the artifact directory.
+) -> list:
+    """
+    _files_matching_patterns function.
+
+    Expands glob patterns inside an artifact directory.
+
+    A pattern containing "**" recurses into sub-directories, exactly as
+    `glob` defines it, so "**/*info*.md" reaches every matching file at any
+    depth while "*info*.md" stays at the top level. Directories are skipped -
+    only files come back.
+
+    Args:
+        path (str): Artifact directory.
+        patterns (list): List of glob patterns, relative to the artifact directory.
+
+    Returns:
+        list: Absolute paths of matching files, without duplicates.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    import glob
+
+    found = []
+    seen = set()
+
+    for pattern in patterns:
+        pattern = str(pattern).strip()
+        if pattern == '':
+            continue
+
+        # Patterns are always relative to the artifact - an absolute one would
+        # escape it and search somewhere else entirely
+        pattern = pattern.lstrip('/\\')
+
+        for file_path in glob.glob(os.path.join(path, pattern), recursive=True):
+            if not os.path.isfile(file_path):
+                continue
+
+            key = os.path.normcase(os.path.abspath(file_path))
+            if key in seen:
+                continue
+
+            seen.add(key)
+            found.append(file_path)
+
+    return found
+
+
+###################################################################################################
+def _files_matching_name_parts(
+    path: str,  # Artifact directory.
+    parts,  # List of strings that must all appear in the file name.
+) -> list:
+    """
+    _files_matching_name_parts function.
+
+    Walks an artifact recursively and keeps files whose name contains every
+    one of the given strings.
+
+    The parts are AND-ed - all of them must appear - and each is compared as a
+    case-insensitive substring of the **file name alone**, never of the
+    directories above it. The walk always recurses: naming files is a
+    name-based selector in its own right, so it does not go through the glob
+    patterns.
+
+    Args:
+        path (str): Artifact directory.
+        parts (list): List of strings that must all appear in the file name.
+
+    Returns:
+        list: Absolute paths of the matching files.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+
+    needles = [str(p).lower() for p in parts if str(p).strip() != '']
+
+    if len(needles) == 0:
+        return []
+
+    found = []
+
+    for root, _dirs, file_names in os.walk(path):
+        for file_name in file_names:
+            lowered = file_name.lower()
+
+            if all(needle in lowered for needle in needles):
+                found.append(os.path.join(root, file_name))
+
+    return found
+
+
+###################################################################################################
+def _files_containing_any_text(
+    file_paths,  # Files to read.
+    texts,  # List of texts to look for.
+) -> list:
+    """
+    _files_containing_any_text function.
+
+    Keeps the files whose content contains any of the texts.
+
+    The texts are OR-ed - one hit is enough for a file to be kept - and each is
+    compared as a case-insensitive substring of the file content. Every file is
+    examined, so the caller gets the full list rather than just the first hit.
+    Files that cannot be read are skipped rather than failing the search.
+
+    Args:
+        file_paths (list): Files to read.
+        texts (list): List of texts to look for.
+
+    Returns:
+        list: The subset of file_paths that contain any of the texts.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+
+    needles = [str(t).lower() for t in texts if str(t).strip() != '']
+
+    if len(needles) == 0:
+        return []
+
+    found = []
+
+    for file_path in file_paths:
+        try:
+            with open(file_path, 'rt', encoding='utf-8', errors='ignore') as f:
+                content = f.read().lower()
+        except Exception:
+            # Unreadable or binary - not a reason to fail the whole search
+            continue
+
+        for needle in needles:
+            if needle in content:
+                found.append(file_path)
+                break
+
+    return found
+
+
+###################################################################################################
+# Digit layouts accepted for a compact date, by number of digits
+_DATE_DIGIT_FORMATS = {
+    4:  '%Y',
+    6:  '%Y%m',
+    8:  '%Y%m%d',
+    10: '%Y%m%d%H',
+    12: '%Y%m%d%H%M',
+    14: '%Y%m%d%H%M%S',
+}
+
+# Characters that may separate the parts of a date being read
+_DATE_SEPARATORS = '.-_ /T:'
+
+
+###################################################################################################
+def _as_naive_utc(
+    value,  # datetime, possibly timezone-aware.
+):
+    """
+    _as_naive_utc function.
+
+    Normalizes a datetime to naive UTC so every comparison is like-for-like.
+
+    Meta timestamps carry a timezone while dates read out of a name do not, and
+    Python refuses to compare the two.
+
+    Args:
+        value (datetime): datetime, possibly timezone-aware.
+
+    Returns:
+        datetime: The same instant, in UTC, without tzinfo.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    import datetime
+
+    if value.tzinfo is not None:
+        value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+
+    return value
+
+
+###################################################################################################
+def _parse_date_value(
+    text,  # Date as a string.
+):
+    """
+    _parse_date_value function.
+
+    Reads a date written either as a full ISO string or in a compact form.
+
+    A full ISO timestamp is tried first - it is the only form that can carry a
+    timezone, and a trailing "Z" is accepted. Otherwise the digits are read
+    positionally as YYYY, YYYYMM, YYYYMMDD, YYYYMMDDHH, YYYYMMDDHHMM or
+    YYYYMMDDHHMMSS, with ".", "-", "_", "/", " ", "T" and ":" ignored between
+    them. So "20260503", "2026-05-03", "20260503-1430" and
+    "2026-05-03T14:30:00+02:00" all read as the same kind of value. A shorter
+    form means the start of that period: "2026" is 2026-01-01 00:00.
+
+    Args:
+        text (str): Date as a string.
+
+    Returns:
+        datetime: Naive UTC datetime, or None when nothing could be read.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    import datetime
+
+    if text is None:
+        return None
+
+    text = str(text).strip()
+
+    if text == '':
+        return None
+
+    # Full ISO first - the only form that can carry a timezone
+    iso = text
+    if iso[-1:] in ('Z', 'z'):
+        iso = iso[:-1] + '+00:00'
+
+    try:
+        return _as_naive_utc(datetime.datetime.fromisoformat(iso))
+    except Exception:
+        pass
+
+    # Compact form - keep the digits, stop at anything that is not a separator
+    digits = ''
+    for character in text:
+        if character.isdigit():
+            digits += character
+        elif character in _DATE_SEPARATORS:
+            continue
+        else:
+            break
+
+    date_format = _DATE_DIGIT_FORMATS.get(len(digits))
+
+    if date_format is None:
+        # More digits than any known layout (sub-second precision, an offset
+        # glued on): fall back to the longest layout that fits
+        for size in (14, 12, 10, 8, 6, 4):
+            if len(digits) > size:
+                date_format = _DATE_DIGIT_FORMATS[size]
+                digits = digits[:size]
+                break
+
+    if date_format is None:
+        return None
+
+    try:
+        return datetime.datetime.strptime(digits, date_format)
+    except Exception:
+        return None
+
+
+###################################################################################################
+def _date_from_name(
+    name: str,  # Artifact directory name.
+) -> object:
+    """
+    _date_from_name function.
+
+    Reads the date an artifact name starts with, if it starts with one.
+
+    Recognises "YYYY", "YYYYMM", "YYYYMMDD" and "YYYYMMDD-HHMM" as well as
+    "YYYY-MM-DD", each followed by a separator (".", "-", "_", " ") or by the
+    end of the name - so "20251206.far manager", "202512.some note",
+    "20250814 - cTuning Labs" and "2026-05-03 notes" are all understood. The
+    value is validated, so "20261301.something" is not read as a date.
+
+    Args:
+        name (str): Artifact directory name.
+
+    Returns:
+        datetime: Naive datetime, or None when the name does not start with a date.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    import re
+
+    tail = r'(?:[.\-_ ]|$)'
+
+    patterns = [
+        (r'^(\d{4})(\d{2})(\d{2})[.\-_](\d{2})(\d{2})' + tail, '%Y%m%d%H%M'),
+        (r'^(\d{4})-(\d{2})-(\d{2})' + tail,                   '%Y%m%d'),
+        (r'^(\d{4})(\d{2})(\d{2})' + tail,                     '%Y%m%d'),
+        (r'^(\d{4})(\d{2})' + tail,                            '%Y%m'),
+        (r'^(\d{4})' + tail,                                   '%Y'),
+    ]
+
+    import datetime
+
+    for pattern, date_format in patterns:
+        match = re.match(pattern, name)
+        if not match:
+            continue
+
+        try:
+            return datetime.datetime.strptime(''.join(match.groups()), date_format)
+        except Exception:
+            # Looked like a date but is not a real one - try a shorter reading
+            continue
+
+    return None
+
+
+###################################################################################################
+def _artifact_date(
+    path: str,  # Artifact directory.
+    cmeta,  # Meta of the artifact.
+):
+    """
+    _artifact_date function.
+
+    Works out the date to judge an artifact by, in three steps:
+
+    1. **A date at the start of the name.** Naming a folder
+       "20260503.something" is a deliberate statement about what the artifact
+       is about, so it wins over anything recorded automatically.
+    2. **"last_update_timestamp" in the meta** - when the artifact was last
+       touched, which is the more useful of the two automatic stamps.
+    3. **"creation_timestamp" in the meta** - the last resort.
+
+    Args:
+        path (str): Artifact directory.
+        cmeta (dict): Meta of the artifact.
+
+    Returns:
+        datetime: Naive UTC datetime, or None when no date could be worked out.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    from_name = _date_from_name(os.path.basename(os.path.normpath(path)))
+
+    if from_name is not None:
+        return from_name
+
+    if isinstance(cmeta, dict):
+        for key in ('last_update_timestamp', 'creation_timestamp'):
+            when = _parse_date_value(cmeta.get(key))
+            if when is not None:
+                return when
+
+    return None
+
+
 ###################################################################################################
 def _extract_category_artifact(
     s: str,  # Value for s.

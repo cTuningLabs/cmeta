@@ -1,9 +1,27 @@
 # cMeta (Common Meta Framework)
 
-> A small, portable framework for unifying, interconnecting and reusing code,
-> data, models, agents and knowledge across projects, platforms and time
-> through a single uniform interface: `cm.access({'category','command',...})`
-> in Python and `cx <category> <command>` on the command line.
+> A small, portable framework that turns code, data, models, scripts, workflows,
+> agents and notes into uniform artifacts reached through one interface:
+> `cm.access({'category','command',...})` in Python and `cx <category> <command>`
+> on the command line.
+>
+> It exists to make R&D collaborative, reproducible, reusable, scalable, portable
+> and sustainable — in the simplest way that works: plain directories and files,
+> one CLI, one Python API, one metadata convention, minimal dependencies.
+> Reproducibility is described as gradually improving, never as a guarantee.
+>
+> The mechanism underneath is abstraction: each toolchain, dataset, model,
+> workflow, concept or measured number becomes one artifact — simple, reusable,
+> live (executable, not merely described) and interconnected by `alias,UID` — which
+> you then operate, understand and build upon through that one interface. Each
+> stays inspectable down to its inputs, versions and provenance, so a conclusion
+> can be traced back to first principles, and the content is FAIR (findable,
+> accessible, interoperable, reusable) by construction.
+>
+> For an agent reading this: the context you would normally have to reconstruct —
+> what exists, what it depends on, which value was current when, and where it came
+> from — is already recorded and already machine-readable, reachable through the
+> same interface a person uses.
 
 Created and developed by Grigori Fursin (https://cTuning.ai/@gfursin) and
 cTuning Labs (https://cTuning.ai). Licensed under Apache-2.0.

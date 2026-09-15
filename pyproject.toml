@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cmeta"
 dynamic = ["version"]
-description = "cMeta (aka cX) is a common meta-framework for unifying, interconnecting and reusing code, data, models, agents, and knowledge across projects and domains."
+description = "Common Meta Framework (cMeta/cX): code, data, models, scripts, workflows, agents and notes as uniform artifacts behind one CLI and one Python API - for collaborative, reproducible, reusable, scalable, portable and sustainable R&D."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"
@@ -14,9 +14,19 @@ authors = [
     {name = "Grigori Fursin", email = "gfursin@ctuninglabs.com"},
     {name = "cTuning Labs"}
 ]
+keywords = [
+    "reproducibility", "research-software", "workflow", "automation",
+    "metadata", "provenance", "knowledge-graph", "benchmarking",
+    "portability", "ai-agents", "open-science", "mlops",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Installation/Setup",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -62,6 +72,11 @@ all = ["cmeta[dev,async,server]"]
 
 [project.urls]
 Homepage = "https://cTuning.ai"
+Repository = "https://github.com/cTuningLabs/cmeta"
+Documentation = "https://github.com/cTuningLabs/cmeta/blob/main/docs/README.md"
+Course = "https://cTuning.ai/project/cmeta/cmeta.course/"
+Issues = "https://github.com/cTuningLabs/cmeta/issues"
+Changelog = "https://github.com/cTuningLabs/cmeta/blob/main/CHANGELOG.md"
 Author = "https://cTuning.ai/@gfursin"
 Paper = "https://arxiv.org/abs/2406.16791"
 

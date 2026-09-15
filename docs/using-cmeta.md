@@ -559,6 +559,14 @@ this order (first match wins):
 4. `$CMETA_HOME2` env var (secondary fallback, useful for team-wide defaults).
 5. `~/CMETA` — your user home.
 
+> **Installing `cx` globally does not give you a global home.** Rule 2 reads an
+> environment variable, not the location of the `cx` you invoked — so a `cx`
+> installed as a standalone command (`uv tool install cmeta`, see
+> [installation.md](installation.md)) still resolves `<CMETA_HOME>` to
+> `$VIRTUAL_ENV/CMETA` whenever it runs in a shell with a project venv
+> activated. Export `CMETA_HOME` if you want one home regardless, or
+> `CMETA_HOME2` if an activated venv should still be allowed to win.
+
 Because each `<CMETA_HOME>` has its own `repos.json`, its own local scratch
 repo, and its own index, you can maintain **multiple independent collections
 of repos** and switch between them just by changing an env var. Typical setups:
