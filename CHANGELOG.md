@@ -3,6 +3,13 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION
+- **cserver: a busy indicator on every page.** The host template shows a thin animated bar along the top and
+  a spinner in the top-right corner while any request of the page to the server (`fetch` or
+  `XMLHttpRequest`) has been in flight for more than 250 ms - visible feedback when a page computes its data
+  live from a large or slow repository (for example one bind-mounted into a container). Pages doing long
+  work of their own can drive it with `cmetaBusy.start()` / `cmetaBusy.stop()`.
+
 ## 0.32.1
 - **Documentation: the mechanism behind the aims is now stated explicitly.**
   `docs/motivation.md` gained "How: complexity becomes abstractions you can
