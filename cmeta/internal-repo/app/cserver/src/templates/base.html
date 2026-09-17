@@ -14,6 +14,58 @@
      {{ page_extra_style|safe }}
   {% endblock %}
 
+  <!-- Busy indicator of the cMeta server host: a thin bar along the top and a spinner in the corner while any
+       request of the page to the server (fetch or XMLHttpRequest) is in flight for more than 250 ms. Pages that
+       do long work of their own can drive it with cmetaBusy.start() / cmetaBusy.stop(). -->
+  <style>
+    #cmeta-busy{position:fixed;top:0;left:0;right:0;height:3px;z-index:2147483000;pointer-events:none;display:none;
+      background:linear-gradient(90deg,transparent 0%,#3b82f6 50%,transparent 100%);background-size:40% 100%;
+      background-repeat:no-repeat;animation:cmeta-busy-bar 1.1s linear infinite}
+    #cmeta-busy.on{display:block}
+    #cmeta-busy-spin{position:fixed;top:10px;right:12px;width:22px;height:22px;box-sizing:border-box;
+      border:3px solid rgba(59,130,246,.25);border-top-color:#3b82f6;border-radius:50%;
+      animation:cmeta-busy-spin .9s linear infinite;z-index:2147483000;pointer-events:none;display:none}
+    #cmeta-busy-spin.on{display:block}
+    @keyframes cmeta-busy-bar{from{background-position:-40% 0}to{background-position:140% 0}}
+    @keyframes cmeta-busy-spin{to{transform:rotate(360deg)}}
+  </style>
+  <script>
+    (function () {
+      var pending = 0, timer = null, bar = null, spin = null;
+      function els() {
+        if (bar) return;
+        var root = document.body || document.documentElement;
+        bar = document.createElement('div'); bar.id = 'cmeta-busy';
+        spin = document.createElement('div'); spin.id = 'cmeta-busy-spin'; spin.title = 'loading data from the cMeta server ...';
+        root.appendChild(bar); root.appendChild(spin);
+      }
+      function update() { els(); var on = pending > 0; bar.classList.toggle('on', on); spin.classList.toggle('on', on); }
+      function start() { pending++; if (!timer) timer = setTimeout(function () { timer = null; update(); }, 250); }
+      function stop() {
+        pending = Math.max(0, pending - 1);
+        if (pending === 0) { if (timer) { clearTimeout(timer); timer = null; } if (bar) update(); }
+      }
+      if (window.fetch) {
+        var nativeFetch = window.fetch;
+        window.fetch = function () {
+          start();
+          var p;
+          try { p = nativeFetch.apply(this, arguments); } catch (e) { stop(); throw e; }
+          return p.then(function (r) { stop(); return r; }, function (e) { stop(); throw e; });
+        };
+      }
+      if (window.XMLHttpRequest) {
+        var nativeSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function () {
+          start();
+          this.addEventListener('loadend', stop, { once: true });
+          return nativeSend.apply(this, arguments);
+        };
+      }
+      window.cmetaBusy = { start: start, stop: stop };
+    })();
+  </script>
+
  </head>
 
  <!------------------------------------------------------------------------------>

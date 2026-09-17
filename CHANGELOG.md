@@ -3,6 +3,18 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION
+- **README rewritten for first-time readers.** A plain opening (what cMeta is, the two interfaces, why we
+  develop it, the "second brain that runs" analogy), a two-minute try-out with the first commands, a
+  where-to-go-next table (course, installer, cmeta-aops, docs, agents). The lineage paragraph moved out of
+  the top: one sentence names Collective Knowledge (CK, now at MLCommons) and `docs/history.md` keeps the
+  full story and the publications. The rest of the README is unchanged.
+- **cserver: a busy indicator on every page.** The host template shows a thin animated bar along the top and
+  a spinner in the top-right corner while any request of the page to the server (`fetch` or
+  `XMLHttpRequest`) has been in flight for more than 250 ms - visible feedback when a page computes its data
+  live from a large or slow repository (for example one bind-mounted into a container). Pages doing long
+  work of their own can drive it with `cmetaBusy.start()` / `cmetaBusy.stop()`.
+
 ## 0.32.1
 - **Documentation: the mechanism behind the aims is now stated explicitly.**
   `docs/motivation.md` gained "How: complexity becomes abstractions you can
