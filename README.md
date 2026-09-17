@@ -6,63 +6,93 @@
 
 # cMeta (Common Meta Framework)
 
-> **Lineage.** cMeta is the next generation of the **Collective Knowledge** technology: the same idea - research and engineering as reusable, content-addressed components behind one common interface - that ran through the cTuning framework and MILEPOST (2006-), [Collective Knowledge (CK)](https://github.com/mlcommons/ck) with its community Artifact Evaluation at ACM and IEEE conferences, and MLCommons Collective Mind (CM / CMX) behind the MLPerf automations. The 2021 ACM TechTalk [*Reproducing 150 Research Papers and Testing Them in the Real World*](https://www.youtube.com/watch?v=7zpeIVwICa4) ([slides](https://learning.acm.org/binaries/content/assets/leaning-center/webinar-slides/2021/grigorifursin_techtalk_slides.pdf)) tells the story that led here, and the 2023 ACM REP keynote [*Collective Mind: toward a common language to facilitate reproducible research and technology transfer*](https://zenodo.org/records/8105339) set out the common language for reproducibility that cMeta now implements; [docs/history.md](docs/history.md) has the full lineage and the publications.
+**cMeta** (also known as **cX**) is a small, portable framework that turns the pieces
+of research and engineering work — code, data, models, toolchains, workflows, agents,
+notes and results — into **uniform, reusable artifacts**: plain directories with one
+metadata file, linked to each other by stable identifiers and reached through **one
+interface**:
+
+```bash
+cx <category> <command> [args] [--flags]          # from a terminal
+```
+
+```python
+cm.access({'category': ..., 'command': ..., ...})   # from Python
+```
+
+We develop cMeta to make R&D **collaborative, reproducible, reusable, scalable,
+portable and sustainable**: work that colleagues and their AI agents can pick up,
+run, understand and build upon years later, in the simplest way that works — no
+database, no daemon, no service to stand up, just files, one CLI, one Python API and
+minimal dependencies. It is free and open source under Apache-2.0.
+
+If you know **Obsidian** or other "second brain" tools, the idea will feel familiar:
+local plain files, links between everything, an open format you are never locked
+into, and plugins. cMeta applies that idea to R&D work and adds one thing — the
+artifacts are **live**. A toolchain, a benchmark, a model, a dataset, a measured
+number or a report is something you *run* or *query* through the same interface,
+not only something you read, and an AI agent can do it exactly as a person does.
+
+Created and developed by [Grigori Fursin](https://cTuning.ai/@gfursin) at cTuning
+Labs. cMeta is the next generation of the **Collective Knowledge** technology
+([CK, now hosted by MLCommons](https://github.com/mlcommons/ck)); the story and the
+publications are in [docs/history.md](docs/history.md).
+
+## Try it in two minutes
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh    # uv, if you have none (Windows: see Installation below)
+uv tool install "cmeta[server]"                    # cx / cmeta / cserver on PATH, in their own environment
+export CMETA_HOME="$HOME/CMETA"                    # one home for all your content repositories
+
+cx --version                                       # the engine version and the home it resolved
+cx repo get ctuninglabs@cmeta-aops                 # pull the reusable automations from GitHub
+cx tool setup python                               # detect (or install) a tool and pin its version
+cx program run test-nmm-c-cpu cpu                  # compile and run a small matmul benchmark
+cx task run test-python -j                         # run a task; the trace shows every step it reused
+cx app run cserver                                 # browse everything at http://127.0.0.1:8004
+```
+
+The same from Python:
+
+```python
+from cmeta import CMeta
+
+cm = CMeta()
+r = cm.access({'category': 'program', 'command': 'run', 'arg1': 'test-nmm-c-cpu', 'arg2': 'cpu'})
+if r['return'] > 0:
+    raise Exception(r['error'])
+```
+
+## Where to go next
+
+| You want to ... | Go to |
+|-----------------|-------|
+| understand the idea step by step | the [course from 0 to 1](https://cTuning.ai/project/cmeta/cmeta.course/) |
+| install on your OS with your package manager | the [interactive installer](https://cTuning.ai/project/cmeta/cmeta.install/), or [docs/installation.md](docs/installation.md) |
+| see what you can run today | [cmeta-aops](https://github.com/cTuningLabs/cmeta-aops) — tools, tasks, programs, models, datasets — and the [catalogues on cTuning.ai](https://cTuning.ai/project/cmeta) |
+| learn the CLI and the Python API | [docs/common-commands.md](docs/common-commands.md), then [docs/using-cmeta.md](docs/using-cmeta.md) |
+| add your own category, artifacts or repository | [Using cMeta in one page](#using-cmeta-in-one-page) below, and the shipped [skills](.claude/skills/) |
+| point an AI agent at the project | [AGENTS.md](AGENTS.md) and [llms.txt](llms.txt) |
+
+cMeta works with the tools people already use: any operating system and target
+platform, from the data center to edge and mobile devices; AI coding assistants
+and agents such as Claude Code, OpenAI Codex and OpenClaw; automation and
+workflow frameworks, through the same `cx` CLI and `access()` API; and
+knowledge-management systems such as Notion and Obsidian.
+
+---
+
+## Why — what cMeta is for
 
 Shared research stops working for ordinary reasons: a path breaks, an environment
 drifts, the context that made a run work is lost, and what a component was actually
 for lives in someone's head rather than in the component. None of that is a hard
 research problem — it is bookkeeping, and it is why work gets redone instead of
 reused. Removing that whole class of problem is what this project is for
-(see [Why](#why--what-cmeta-is-for) below, and [docs/motivation.md](docs/motivation.md)).
-
-**cMeta** (also known as **cX**) is a small, portable framework for unifying,
-interconnecting and reusing code, data, models, agents and knowledge across
-projects, platforms and time through a single uniform interface.
-
-It is designed for collaborative and reproducible research, development and
-experimentation across AI, ML, systems and other complex workloads — including
-**AI-driven benchmarking, modeling, optimization, adaptation and co-design of
-the full software/hardware stack** end to end.
-
-cMeta also serves as a **common engine for building "operating systems for
-AI"** — a thin, uniform layer that connects, abstracts and orchestrates the
-code, data, models, agents and hardware that modern AI systems are assembled
-from, much as a conventional operating system abstracts and manages the
-resources of a machine.
-
-On that same foundation, cMeta is built to **implement and support research
-assistants** — AI agents that operate a growing body of machine-readable,
-self-describing automations instead of improvised scripts. Because every
-artifact declares its own identity, dependencies and interface, an agent can
-discover what already exists, compose it into new workflows, extend it, and
-hand the result back in the same form a person can read and rerun. The
-artifacts become durable, shareable memory of how work is actually done; the
-agent is the operator. The aim is deliberately modest — not a system that
-invents science, but one that lets experiments, builds and benchmarks be set
-up, varied and repeated without re-deriving the same work each time.
-
-It is built to work across the whole stack and the tools people already use:
-
-- **Any operating system**, and **any target platform** — from the data center
-  to edge and mobile devices.
-- **Modern AI coding assistants and agents**, such as Claude (Claude Code),
-  OpenAI Codex and OpenClaw.
-- **Automation and workflow frameworks**, plugged in through the same uniform
-  interface — the `cx` CLI and the `access()` API.
-- **Knowledge-management systems**, such as Notion and Obsidian.
-
-Created and developed by [Grigori Fursin](https://cTuning.ai/@gfursin).
-cMeta builds on his earlier R&D on reusable, portable research components —
-Collective Knowledge (CK), Collective Mind (CM/CMX) — and the lineage,
-related publications and citation guidance are collected in
-[docs/history.md](docs/history.md).
-
----
-
-## Why — what cMeta is for
-
-cMeta exists to support R&D that is **collaborative, reproducible, reusable,
-scalable, portable and sustainable**, in the simplest way that works:
+([docs/motivation.md](docs/motivation.md)). cMeta exists to support R&D that is
+**collaborative, reproducible, reusable, scalable, portable and sustainable**, in
+the simplest way that works:
 
 | Aim | What it means here |
 |-----|--------------------|
@@ -105,6 +135,17 @@ artifacts, dates and provenance on records — so an agent can discover, compose
 run and hand back work through the **same `access()` interface a person uses**.
 A graph a newcomer can pick up is, for the same reasons, a graph an agent can
 operate.
+
+**Two ways people describe it.** As a *common engine for "operating systems for
+AI"*: a thin, uniform layer that connects, abstracts and orchestrates the code,
+data, models, agents and hardware that modern AI systems are assembled from, much
+as an operating system manages the resources of a machine. And as the *substrate
+of a research assistant*: AI agents operating a growing body of machine-readable,
+self-describing automations instead of improvised scripts, discovering what
+exists, composing it, extending it and handing the result back in a form a person
+can read and rerun. The aim is deliberately modest — not a system that invents
+science, but one that lets experiments, builds and benchmarks be set up, varied and
+repeated without re-deriving the same work each time.
 
 More detail in [docs/motivation.md](docs/motivation.md).
 
@@ -585,14 +626,15 @@ and the skills under [`.claude/skills/`](.claude/skills/)).
 
 ## Background & how to cite
 
-cMeta grew out of earlier R&D by the author on making code, data, models and
-knowledge reusable, portable and reproducible — the cTuning framework,
-Collective Knowledge (CK), and MLCommons Collective Mind (CM/CMX).
-
-**[docs/history.md](docs/history.md)** covers that lineage, the related
-publications and talks, and how to cite cMeta (GitHub's **"Cite this
-repository"** button, generated from [`CITATION.cff`](CITATION.cff), produces
-APA and BibTeX automatically).
+cMeta is the next generation of the **Collective Knowledge** technology: the
+cTuning framework and MILEPOST (2006-), [Collective Knowledge (CK)](https://github.com/mlcommons/ck)
+with its community Artifact Evaluation at ACM and IEEE conferences, and MLCommons
+Collective Mind (CM/CMX) behind the MLPerf automations — the same idea, research and
+engineering as reusable, content-addressed components behind one common interface,
+with a deliberately smaller engine this time. **[docs/history.md](docs/history.md)**
+tells that story with the talks and publications, and explains how to cite cMeta
+(GitHub's **"Cite this repository"** button, generated from
+[`CITATION.cff`](CITATION.cff), produces APA and BibTeX automatically).
 
 ---
 
