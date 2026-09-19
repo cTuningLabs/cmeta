@@ -135,6 +135,84 @@ class Category(InitCategory):
         return {'return':0, 'uuid':uuid}
 
     ############################################################
+    def hash_password_(
+        self,
+        ctx,  # cMeta context object.
+        arg1 = '',  # Password to hash. Asked for without echo when omitted.
+        config = 'cserver',  # Config artifact named in the ready-to-paste command.
+        key = 'password_sha256',  # Config key named in the ready-to-paste command.
+        bare = False,  # Print the digest alone, for scripts.
+        clipboard = False,  # Copy the digest to the clipboard.
+    ):
+        """
+            Hash a password for a cMeta config, so the plain text is not stored on disk.
+
+            The shipped use is the shared password of the `cserver` web app, which accepts either
+            `password` (plain) or `password_sha256` (this digest, which takes precedence):
+
+                cx utils hash_password                     # asks without echo, then confirms
+                cx utils hash_password "my passphrase"     # left in the shell history - avoid
+                cx utils hash_password --bare               # the digest alone
+
+            Args:
+                ctx (dict): cMeta context object.
+                arg1 (str): Password to hash. Asked for without echo when omitted.
+                config (str): Config artifact named in the ready-to-paste command.
+                key (str): Config key named in the ready-to-paste command.
+                bare (bool): Print the digest alone, for scripts ("quiet" is a reserved cMeta flag).
+                clipboard (bool): Copy the digest to the clipboard.
+
+            Returns:
+                dict: Operation result with `sha256`.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        import getpass
+        import hashlib
+
+        self.logger.debug("running utils.hash_password")
+
+        con = ctx['control'].get('con', False)
+
+        password = arg1 if arg1 is not None else ''
+        from_cli = password != ''
+
+        if not from_cli:
+            try:
+                password = getpass.getpass('Password: ')
+                again = getpass.getpass('Repeat: ')
+            except (EOFError, KeyboardInterrupt):
+                return self.cm.error('no password was given')
+
+            if password != again:
+                return self.cm.error('the two passwords do not match')
+
+        if password == '':
+            return self.cm.error('the password is empty')
+
+        digest = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+        if con:
+            if bare:
+                print (digest)
+            else:
+                print ('')
+                print (digest)
+                print ('')
+                print (f'cx config set {config} --meta.{key}={digest}')
+                print ('')
+                if from_cli:
+                    print ('The password was typed on the command line, so it is in your shell history.')
+                    print ('Run the command without it next time and it is asked for without echo.')
+                    print ('')
+
+        if clipboard:
+            self.copy_text_to_clipboard_(ctx, digest)
+
+        return {'return':0, 'sha256':digest}
+
+    ############################################################
     def find_by_cid_(
         self,
         ctx,  # cMeta context.

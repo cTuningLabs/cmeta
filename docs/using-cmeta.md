@@ -420,6 +420,12 @@ From Python the underlying helper is `cm.utils.names.generate_cmeta_uid()`.
 Remember to register a hand-made artifact afterwards so it enters the index:
 `cx <category> index <repo>:<artifact>` (see §11).
 
+A neighbour of these generators is `cx utils hash_password`, which turns a
+password into the SHA-256 digest a config expects — so the plain text never
+reaches disk. With no argument it asks without echoing, asks again to catch a
+typo, and prints the `cx config set ...` line to paste; `--bare` prints the
+digest alone. Its first use is the `cserver` shared password (§8.2.1).
+
 ### 5.7 Searching across categories (`cx utils find_by_cid`)
 
 `cx <category> find <alias>` searches **one** category. When you don't know
@@ -796,6 +802,9 @@ cx config set ctuning_server --meta.api_key=$CTUNING_API_KEY --meta.skip_ssl_cer
 cx config set cserver --meta.api_keys,=key1,key2
 cx config set cserver --meta.default_page=/repos
 
+# Ask for one shared password before showing any page (§8.2.1):
+cx config set cserver --meta.password="a passphrase of your own"
+
 # Inspect and confirm:
 cx config show default
 cx config show cserver
@@ -804,6 +813,74 @@ cx config show cserver
 cx config unset cserver --meta.api_keys
 cx config unset default --meta.default_git_repo
 ```
+
+### 8.2.1 A shared password in front of `cserver`
+
+By default `cserver` listens on `127.0.0.1` and anyone who can reach the port
+can read every page. As soon as it listens on a routable address — so that a
+phone or a tablet can open it, directly or through a private overlay network —
+it is worth putting one shared password in front of it:
+
+```bash
+cx config set cserver --meta.password="a passphrase of your own"
+cx config unset cserver --meta.password          # open again
+```
+
+The next request from a browser shows a small prompt instead of the page. A
+correct answer is remembered in the session cookie, so the password is asked
+once per browser and not again on every page.
+
+| Key | Default | What it does |
+|---|---|---|
+| `password` | — | The shared password. Any value here turns the prompt on. |
+| `password_sha256` | — | The same, as a SHA-256 digest, so the plain text is not stored on disk. Takes precedence over `password`. |
+| `password_allow_local` | `yes` | Requests from the machine itself skip the prompt, so the CLI and local development are untouched. Set to `no` to be asked locally too. |
+| `password_realm` | `cMeta server` | The heading shown on the prompt. |
+| `password_max_attempts` | `10` | Wrong answers from one address before it is told to wait. |
+| `password_lockout_min` | `5` | How many minutes that wait lasts. |
+
+To keep the plain text off disk, let `cx utils hash_password` produce the
+digest. With no argument it asks for the password without echoing it, asks
+again to catch a typo, and prints both the digest and the line to paste:
+
+```bash
+$ cx utils hash_password
+Password:
+Repeat:
+
+8b1a9953c4611296a827abf8c47804d7...
+
+cx config set cserver --meta.password_sha256=8b1a9953c4611296a827abf8c47804d7...
+```
+
+| Flag | What it does |
+|---|---|
+| `<password>` as the first argument | Hashes it without prompting. It stays in your shell history, so the command says so. |
+| `--bare` | Prints the digest alone, for scripts. |
+| `--clipboard` | Copies the digest to the clipboard. |
+| `--config=<name> --key=<key>` | Names a different config and key in the printed line. |
+
+Two related settings are read from the environment rather than the config,
+because the cookie is signed before any config is loaded. Both are exported by
+`cx app run cserver --param.<key>=<value>` and by a `param:` block in this same
+config:
+
+| Environment variable | Default | What it does |
+|---|---|---|
+| `CSERVER_SESSION_SECRET` | random per start | The key that signs the session cookie. Left unset, restarting the server asks everyone for the password again; pin it to a long random string to keep sessions across restarts. |
+| `CSERVER_SESSION_MAX_AGE` | `604800` (a week) | How long a session cookie stays valid, in seconds. |
+
+What this is and is not. It is a door with a lock: one shared secret, no
+accounts, no password reset, and a naive per-address delay after repeated wrong
+answers. It keeps port scanners and curious passers-by out of a server that
+answers on a routable address. It is not a login system, and unless the server
+is reached over HTTPS or through an encrypted overlay network the password
+travels in clear text — so use a passphrase you do not use anywhere else.
+
+A request carrying a valid `api_keys` value is let through without the prompt,
+so existing automation keeps working; an AJAX call is answered with a JSON
+`401` rather than the HTML prompt, so a page can report it instead of rendering
+a form into its own data.
 
 ### 8.3 The pattern from Python — reading a config from any category
 
