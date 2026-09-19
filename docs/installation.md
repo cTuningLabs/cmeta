@@ -55,6 +55,18 @@ without it &mdash; there is no uvicorn to run it with, and a `uv tool`
 environment has no pip to add one afterwards. Drop it (`uv tool install cmeta`)
 if you will never run the web app.
 
+Quote the extra. In `zsh` &mdash; the default shell on macOS &mdash; square
+brackets are a filename pattern, so an unquoted `cmeta[server]` never reaches
+uv: it fails with `zsh: no matches found`. `"cmeta[server]"` works in every
+shell.
+
+Installing from a branch rather than a release, to try something before it
+ships:
+
+```bash
+uv tool install --force "cmeta[server] @ git+https://github.com/ctuninglabs/cmeta@dev"
+```
+
 Pick this when cMeta is a **tool you use everywhere** rather than a dependency
 of one project — which is how it is normally used. It also sidesteps PEP 668
 entirely, since it never touches the system interpreter, and

@@ -247,6 +247,10 @@ cx config set task --meta.file_cache=/path/to/large/cache
 
 # Run the local web app
 cx app run cserver
+
+# Serve it to your own devices, behind one shared password
+cx config set cserver --meta.password="a passphrase of your own"
+cx app run cserver --param.host=0.0.0.0 --param.port=8004
 ```
 
 ---
