@@ -131,6 +131,7 @@ tool and a result sharing an alias or tag.
 cx utils uid                 # 16-hex cMeta UID, also copied to the clipboard
 cx utils uid --clipboard-    # print only
 cx utils uuid                # UUID4
+cx utils hash_password       # asks without echo -> the digest for a config password
 ```
 
 Needed when you create an artifact by hand (`mkdir` + `_cmeta.yaml`) rather

@@ -13,6 +13,11 @@ All notable changes to cMeta are documented here, newest first.
   (`password_max_attempts`, `password_lockout_min`). The prompt is self-contained and readable on a phone or
   a tablet, in light and dark. Documented in `docs/using-cmeta.md` §8.2.1, with its limits stated: one
   shared secret, no accounts, and clear text unless the connection itself is encrypted.
+- **`cx utils hash_password`.** Turns a password into the SHA-256 digest a config expects, so the plain text
+  never reaches disk. With no argument it asks for the password without echoing it, asks again to catch a
+  typo, and prints both the digest and the ready `cx config set ...` line; `--bare` prints the digest alone,
+  `--clipboard` copies it, `--config=` / `--key=` name a different target. Passing the password as an
+  argument works too and says that it stays in the shell history.
 - **cserver: the session cookie is no longer signed with a published key.** The secret now comes from
   `CSERVER_SESSION_SECRET` (exported by `--param.session_secret=...` or a `param:` block in the cserver
   config) and is otherwise random per start, so a session cookie can no longer be forged from the source

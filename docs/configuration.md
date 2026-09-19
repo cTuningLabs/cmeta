@@ -70,11 +70,13 @@ them into shared scripts, issues or logs. If a secret is exposed, revoke and
 reissue it at its source.
 
 The same applies to `cserver`'s `password`. If you would rather not keep the
-plain text on disk, store its digest instead — the server accepts either:
+plain text on disk, store its digest instead — the server accepts either.
+`cx utils hash_password` asks for the password without echoing it and prints
+the line to paste:
 
 ```bash
-cx config set cserver --meta.password_sha256=$(python -c \
-  "import hashlib,getpass;print(hashlib.sha256(getpass.getpass().encode()).hexdigest())")
+cx utils hash_password
+cx config set cserver --meta.password_sha256=<the digest it printed>
 ```
 
 ---

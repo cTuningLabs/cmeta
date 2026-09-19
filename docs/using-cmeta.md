@@ -420,6 +420,12 @@ From Python the underlying helper is `cm.utils.names.generate_cmeta_uid()`.
 Remember to register a hand-made artifact afterwards so it enters the index:
 `cx <category> index <repo>:<artifact>` (see §11).
 
+A neighbour of these generators is `cx utils hash_password`, which turns a
+password into the SHA-256 digest a config expects — so the plain text never
+reaches disk. With no argument it asks without echoing, asks again to catch a
+typo, and prints the `cx config set ...` line to paste; `--bare` prints the
+digest alone. Its first use is the `cserver` shared password (§8.2.1).
+
 ### 5.7 Searching across categories (`cx utils find_by_cid`)
 
 `cx <category> find <alias>` searches **one** category. When you don't know
@@ -833,11 +839,26 @@ once per browser and not again on every page.
 | `password_max_attempts` | `10` | Wrong answers from one address before it is told to wait. |
 | `password_lockout_min` | `5` | How many minutes that wait lasts. |
 
+To keep the plain text off disk, let `cx utils hash_password` produce the
+digest. With no argument it asks for the password without echoing it, asks
+again to catch a typo, and prints both the digest and the line to paste:
+
 ```bash
-# store only the digest:
-cx config set cserver --meta.password_sha256=$(python -c \
-  "import hashlib,getpass;print(hashlib.sha256(getpass.getpass().encode()).hexdigest())")
+$ cx utils hash_password
+Password:
+Repeat:
+
+8b1a9953c4611296a827abf8c47804d7...
+
+cx config set cserver --meta.password_sha256=8b1a9953c4611296a827abf8c47804d7...
 ```
+
+| Flag | What it does |
+|---|---|
+| `<password>` as the first argument | Hashes it without prompting. It stays in your shell history, so the command says so. |
+| `--bare` | Prints the digest alone, for scripts. |
+| `--clipboard` | Copies the digest to the clipboard. |
+| `--config=<name> --key=<key>` | Names a different config and key in the printed line. |
 
 Two related settings are read from the environment rather than the config,
 because the cookie is signed before any config is loaded. Both are exported by
