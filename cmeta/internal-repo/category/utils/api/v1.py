@@ -135,6 +135,162 @@ class Category(InitCategory):
         return {'return':0, 'uuid':uuid}
 
     ############################################################
+    def api_key_(
+        self,
+        ctx,  # cMeta context object.
+        arg1 = 1,  # How many keys to generate.
+        nbytes = 24,  # Random bytes per key (24 -> 192 bits, a 32-character string).
+        config = 'cserver',  # Config artifact named in the ready-to-paste command.
+        key = 'api_keys',  # Config key named in the ready-to-paste command.
+        bare = False,  # Print the keys alone, for scripts.
+        clipboard = False,  # Copy the keys to the clipboard.
+    ):
+        """
+            Generate API keys for a cMeta config (for example the `api_keys` list of the `cserver` web app).
+
+            A key is only a random string: the server compares what a request carries against the list in the
+            config. These come from `secrets.token_urlsafe`, so they are safe to use as bearer tokens.
+
+                cx utils api_key                     one key, with the line to paste
+                cx utils api_key 3                   three keys, ready for a device each
+                cx utils api_key --bare              the key alone, for a script
+                cx utils api_key --nbytes=32         a longer key
+
+            Args:
+                ctx (dict): cMeta context object.
+                arg1 (int): How many keys to generate.
+                nbytes (int): Random bytes per key (24 -> 192 bits, a 32-character string).
+                config (str): Config artifact named in the ready-to-paste command.
+                key (str): Config key named in the ready-to-paste command.
+                bare (bool): Print the keys alone, for scripts.
+                clipboard (bool): Copy the keys to the clipboard.
+
+            Returns:
+                dict: Operation result with `api_keys` (a list) and `api_key` (the first one).
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        import secrets
+
+        self.logger.debug("running utils.api_key")
+
+        con = ctx['control'].get('con', False)
+
+        try:
+            count = max(1, int(arg1 or 1))
+        except (TypeError, ValueError):
+            return self.cm.error('the number of keys must be an integer')
+
+        try:
+            nbytes = int(nbytes or 24)
+        except (TypeError, ValueError):
+            return self.cm.error('nbytes must be an integer')
+        if nbytes < 16:
+            return self.cm.error('use at least 16 bytes - a shorter key is guessable')
+
+        keys = [secrets.token_urlsafe(nbytes) for _ in range(count)]
+
+        if con:
+            if bare:
+                for k in keys:
+                    print (k)
+            else:
+                print ('')
+                for k in keys:
+                    print (k)
+                print ('')
+                print (f'cx config set {config} --meta.{key},=' + ','.join(keys))
+                print ('')
+                print ('The comma in "--meta.%s,=" is what makes it a list. Restart the server afterwards.' % key)
+                print ('A key travels in the URL, so it reaches the access log and the shell history: treat it')
+                print ('like a password and give one per device, so a single key can be replaced on its own.')
+                print ('')
+
+        if clipboard:
+            self.copy_text_to_clipboard_(ctx, ','.join(keys))
+
+        return {'return':0, 'api_keys':keys, 'api_key':keys[0]}
+
+    ############################################################
+    def hash_password_(
+        self,
+        ctx,  # cMeta context object.
+        arg1 = '',  # Password to hash. Asked for without echo when omitted.
+        config = 'cserver',  # Config artifact named in the ready-to-paste command.
+        key = 'password_sha256',  # Config key named in the ready-to-paste command.
+        bare = False,  # Print the digest alone, for scripts.
+        clipboard = False,  # Copy the digest to the clipboard.
+    ):
+        """
+            Hash a password for a cMeta config, so the plain text is not stored on disk.
+
+            The shipped use is the shared password of the `cserver` web app, which accepts either
+            `password` (plain) or `password_sha256` (this digest, which takes precedence):
+
+                cx utils hash_password                     # asks without echo, then confirms
+                cx utils hash_password "my passphrase"     # left in the shell history - avoid
+                cx utils hash_password --bare               # the digest alone
+
+            Args:
+                ctx (dict): cMeta context object.
+                arg1 (str): Password to hash. Asked for without echo when omitted.
+                config (str): Config artifact named in the ready-to-paste command.
+                key (str): Config key named in the ready-to-paste command.
+                bare (bool): Print the digest alone, for scripts ("quiet" is a reserved cMeta flag).
+                clipboard (bool): Copy the digest to the clipboard.
+
+            Returns:
+                dict: Operation result with `sha256`.
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        import getpass
+        import hashlib
+
+        self.logger.debug("running utils.hash_password")
+
+        con = ctx['control'].get('con', False)
+
+        password = arg1 if arg1 is not None else ''
+        from_cli = password != ''
+
+        if not from_cli:
+            try:
+                password = getpass.getpass('Password: ')
+                again = getpass.getpass('Repeat: ')
+            except (EOFError, KeyboardInterrupt):
+                return self.cm.error('no password was given')
+
+            if password != again:
+                return self.cm.error('the two passwords do not match')
+
+        if password == '':
+            return self.cm.error('the password is empty')
+
+        digest = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+        if con:
+            if bare:
+                print (digest)
+            else:
+                print ('')
+                print (digest)
+                print ('')
+                print (f'cx config set {config} --meta.{key}={digest}')
+                print ('')
+                if from_cli:
+                    print ('The password was typed on the command line, so it is in your shell history.')
+                    print ('Run the command without it next time and it is asked for without echo.')
+                    print ('')
+
+        if clipboard:
+            self.copy_text_to_clipboard_(ctx, digest)
+
+        return {'return':0, 'sha256':digest}
+
+    ############################################################
     def find_by_cid_(
         self,
         ctx,  # cMeta context.

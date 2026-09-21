@@ -166,7 +166,16 @@ present:
 Notable shipped artifacts:
 - `app/cserver/` — FastAPI-based local server (`cx app run cserver`, or the
   `cserver` console script). Uses `CSERVER_HOST`/`CSERVER_PORT`/`CSERVER_FLAGS`
-  env vars (see `default_env` + `param_env_prefix` in its `_cmeta.yaml`).
+  env vars (see `default_env` + `param_env_prefix` in its `_cmeta.yaml`), plus
+  `CSERVER_SESSION_SECRET` / `CSERVER_SESSION_MAX_AGE` for the session cookie.
+  Access control is read from the `cserver` **config** artifact, not from the
+  environment: `api_keys` (a key per request or session) and `password` /
+  `password_sha256` (one shared password asked once per browser, exempting
+  loopback unless `password_allow_local` says otherwise). The password check is
+  an HTTP middleware, so it covers pages, artifact files and AJAX alike; note
+  that Starlette runs the most recently added middleware first, which is why
+  `SessionMiddleware` is registered *after* it in `src/app.py`. Details:
+  `docs/using-cmeta.md` §8.2.1.
 - `category/category/` — the *category* category itself (UID
   `dd9ea50e7f76467f`). Its `create` is what `cx category add <name>` invokes; it
   also copies `v1-template.py` into the new category as `api/v1.py`.
