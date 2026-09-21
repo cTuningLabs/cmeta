@@ -59,7 +59,7 @@ password is enough to keep everyone else out:
 
 ```bash
 cx config set cserver --meta.password="a passphrase of your own"   # ask once per browser
-cx app run cserver --param.host=0.0.0.0 --param.port=8004
+cx app run cserver --param.host=0.0.0.0 --param.port=8004          # reads the config at startup
 ```
 
 See [`docs/using-cmeta.md` §8.2.1](docs/using-cmeta.md#821-a-shared-password-in-front-of-cserver)

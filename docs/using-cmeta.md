@@ -826,9 +826,12 @@ cx config set cserver --meta.password="a passphrase of your own"
 cx config unset cserver --meta.password          # open again
 ```
 
-The next request from a browser shows a small prompt instead of the page. A
-correct answer is remembered in the session cookie, so the password is asked
-once per browser and not again on every page.
+**Restart the server after changing any of these keys.** The app reads its
+config once, at startup, so a password set while it is running does not take
+effect and the pages stay open until it is restarted — check it yourself before
+trusting it. Once restarted, the next request from a browser shows a small
+prompt instead of the page, and a correct answer is remembered in the session
+cookie, so the password is asked once per browser and not again on every page.
 
 | Key | Default | What it does |
 |---|---|---|

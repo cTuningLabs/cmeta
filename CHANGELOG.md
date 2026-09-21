@@ -11,7 +11,8 @@ All notable changes to cMeta are documented here, newest first.
   are exempt by default (`password_allow_local`), a valid `api_keys` value is let through, an AJAX call gets
   a JSON `401` instead of the HTML prompt, and repeated wrong answers from one address are delayed
   (`password_max_attempts`, `password_lockout_min`). The prompt is self-contained and readable on a phone or
-  a tablet, in light and dark. Documented in `docs/using-cmeta.md` §8.2.1, with its limits stated: one
+  a tablet, in light and dark. The config is read at startup, so the server is restarted after setting the
+  key. Documented in `docs/using-cmeta.md` §8.2.1, with its limits stated: one
   shared secret, no accounts, and clear text unless the connection itself is encrypted.
 - **`cx utils hash_password`.** Turns a password into the SHA-256 digest a config expects, so the plain text
   never reaches disk. With no argument it asks for the password without echoing it, asks again to catch a
