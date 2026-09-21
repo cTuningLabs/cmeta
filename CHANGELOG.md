@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION
+## DEV VERSION (0.32.1.1)
 - **cserver: an optional shared password in front of every page.** `cx config set cserver
   --meta.password="..."` (or `--meta.password_sha256=...`) makes the server ask for one shared password
   before any page, file or AJAX call, and remember the answer in the session cookie - so a server that
