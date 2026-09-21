@@ -420,8 +420,12 @@ From Python the underlying helper is `cm.utils.names.generate_cmeta_uid()`.
 Remember to register a hand-made artifact afterwards so it enters the index:
 `cx <category> index <repo>:<artifact>` (see §11).
 
-A neighbour of these generators is `cx utils hash_password`, which turns a
-password into the SHA-256 digest a config expects — so the plain text never
+Two neighbours of these generators exist for credentials. `cx utils api_key`
+prints random keys from `secrets.token_urlsafe` together with the
+`cx config set ... --meta.api_keys,=` line to paste, one per device if you pass a
+count (`cx utils api_key 3`); `--nbytes=` changes the length and `--bare` prints
+the keys alone. And `cx utils hash_password` turns a password into the SHA-256
+digest a config expects — so the plain text never
 reaches disk. With no argument it asks without echoing, asks again to catch a
 typo, and prints the `cx config set ...` line to paste; `--bare` prints the
 digest alone. Its first use is the `cserver` shared password (§8.2.1).
@@ -841,6 +845,19 @@ cookie, so the password is asked once per browser and not again on every page.
 | `password_realm` | `cMeta server` | The heading shown on the prompt. |
 | `password_max_attempts` | `10` | Wrong answers from one address before it is told to wait. |
 | `password_lockout_min` | `5` | How many minutes that wait lasts. |
+| `password_trust_proxy` | `no` | Count failed attempts per forwarded client instead of per connection. Set it only when the server sits behind a reverse proxy you control. |
+
+**Behind a reverse proxy.** A proxy adds `X-Forwarded-For`, and any caller can
+send that header too, so it is never taken as proof of where a request came
+from: a request carrying one never receives the loopback exemption, whatever it
+claims. That also means a proxy running on the same host does not accidentally
+exempt the whole internet. Two consequences worth knowing. If your proxy adds no
+forwarding header at all, set `password_allow_local=no`, because every request
+then arrives from loopback. And unless `password_trust_proxy` is set, all
+requests that carry a header share one lockout counter, so one determined client
+can use up the attempts for the others; setting it gives each forwarded client
+its own counter, which is right when the header comes from your own proxy and
+wrong when anyone can reach the port directly.
 
 To keep the plain text off disk, let `cx utils hash_password` produce the
 digest. With no argument it asks for the password without echoing it, asks

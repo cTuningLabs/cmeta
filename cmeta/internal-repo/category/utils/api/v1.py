@@ -135,6 +135,84 @@ class Category(InitCategory):
         return {'return':0, 'uuid':uuid}
 
     ############################################################
+    def api_key_(
+        self,
+        ctx,  # cMeta context object.
+        arg1 = 1,  # How many keys to generate.
+        nbytes = 24,  # Random bytes per key (24 -> 192 bits, a 32-character string).
+        config = 'cserver',  # Config artifact named in the ready-to-paste command.
+        key = 'api_keys',  # Config key named in the ready-to-paste command.
+        bare = False,  # Print the keys alone, for scripts.
+        clipboard = False,  # Copy the keys to the clipboard.
+    ):
+        """
+            Generate API keys for a cMeta config (for example the `api_keys` list of the `cserver` web app).
+
+            A key is only a random string: the server compares what a request carries against the list in the
+            config. These come from `secrets.token_urlsafe`, so they are safe to use as bearer tokens.
+
+                cx utils api_key                     one key, with the line to paste
+                cx utils api_key 3                   three keys, ready for a device each
+                cx utils api_key --bare              the key alone, for a script
+                cx utils api_key --nbytes=32         a longer key
+
+            Args:
+                ctx (dict): cMeta context object.
+                arg1 (int): How many keys to generate.
+                nbytes (int): Random bytes per key (24 -> 192 bits, a 32-character string).
+                config (str): Config artifact named in the ready-to-paste command.
+                key (str): Config key named in the ready-to-paste command.
+                bare (bool): Print the keys alone, for scripts.
+                clipboard (bool): Copy the keys to the clipboard.
+
+            Returns:
+                dict: Operation result with `api_keys` (a list) and `api_key` (the first one).
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        import secrets
+
+        self.logger.debug("running utils.api_key")
+
+        con = ctx['control'].get('con', False)
+
+        try:
+            count = max(1, int(arg1 or 1))
+        except (TypeError, ValueError):
+            return self.cm.error('the number of keys must be an integer')
+
+        try:
+            nbytes = int(nbytes or 24)
+        except (TypeError, ValueError):
+            return self.cm.error('nbytes must be an integer')
+        if nbytes < 16:
+            return self.cm.error('use at least 16 bytes - a shorter key is guessable')
+
+        keys = [secrets.token_urlsafe(nbytes) for _ in range(count)]
+
+        if con:
+            if bare:
+                for k in keys:
+                    print (k)
+            else:
+                print ('')
+                for k in keys:
+                    print (k)
+                print ('')
+                print (f'cx config set {config} --meta.{key},=' + ','.join(keys))
+                print ('')
+                print ('The comma in "--meta.%s,=" is what makes it a list. Restart the server afterwards.' % key)
+                print ('A key travels in the URL, so it reaches the access log and the shell history: treat it')
+                print ('like a password and give one per device, so a single key can be replaced on its own.')
+                print ('')
+
+        if clipboard:
+            self.copy_text_to_clipboard_(ctx, ','.join(keys))
+
+        return {'return':0, 'api_keys':keys, 'api_key':keys[0]}
+
+    ############################################################
     def hash_password_(
         self,
         ctx,  # cMeta context object.

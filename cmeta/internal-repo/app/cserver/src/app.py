@@ -107,8 +107,13 @@ async def test_cmeta_repos():
 # address out of reach of port scanners and curious passers-by.
 #
 # Requests from the machine itself are exempt by default (password_allow_local), so the CLI, local scripts and
-# development keep working untouched. A request carrying a valid api_key is exempt too, so automation that
-# already authenticates does not need a second secret.
+# development keep working untouched. That exemption is decided on the real peer address and only for a request
+# with no proxy header, because those headers are written by whoever connects. A request carrying a valid
+# api_key is exempt too, so automation that already authenticates does not need a second secret.
+#
+# Behind a reverse proxy on the same host, every request arrives from loopback. Such a proxy normally adds
+# `X-Forwarded-For`, which already disables the exemption; if yours does not, set password_allow_local=no.
+# Set password_trust_proxy=yes to count failed attempts per forwarded client rather than per proxy.
 
 LOGIN_PATH = '/_cserver_login'
 
@@ -158,11 +163,29 @@ def _session_token(digest):
     return hmac.new(session_secret.encode('utf-8'), digest.encode('utf-8'), hashlib.sha256).hexdigest()
 
 
-def _client_ip(request):
-    fwd = request.headers.get('x-forwarded-for', '')
-    if fwd:
-        return fwd.split(',')[0].strip()
+# Headers a reverse proxy adds. Anyone can send them, so they are never trusted for the loopback exemption.
+FORWARDING_HEADERS = ('x-forwarded-for', 'x-real-ip', 'forwarded')
+
+
+def _peer_ip(request):
+    """The address the connection came from, as the server stack reports it.
+
+    Not read from a header here, but not fully trustworthy either: uvicorn's proxy-header middleware runs
+    outside this app and overwrites it from `X-Forwarded-For` when the peer is in `--forwarded-allow-ips`
+    (loopback by default). That is why every decision below also asks whether a proxy header was present at all.
+    """
     return getattr(request.client, 'host', '') or ''
+
+
+def _forwarded_ip(request):
+    """The left-most address a proxy claims the request came from, or '' when no proxy header is present."""
+    fwd = request.headers.get('x-forwarded-for', '') or request.headers.get('x-real-ip', '')
+    return fwd.split(',')[0].strip()
+
+
+def _via_proxy(request):
+    """True when the request carries any proxy header, so it did not come straight from a local process."""
+    return any(request.headers.get(h) for h in FORWARDING_HEADERS)
 
 
 def _is_local(ip):
@@ -172,10 +195,36 @@ def _is_local(ip):
         return False
 
 
+VIA_PROXY_BUCKET = 'via-untrusted-proxy'
+
+
+def _throttle_key(request):
+    """Which address the failed-attempt counter is kept under.
+
+    Behind a proxy the peer is always the proxy, so every client would share one bucket and one attacker could
+    lock everybody out. There the forwarded address is the useful key, but only when `password_trust_proxy` says
+    the header comes from a proxy under your control.
+
+    Without that, a forwarded address must not become a key at all: uvicorn already rewrites `request.client`
+    from `X-Forwarded-For` when the peer is in its `--forwarded-allow-ips` (loopback by default), so a caller
+    that reaches the port could otherwise mint a fresh bucket per request by varying the header and never meet
+    the lockout. Every request carrying an untrusted proxy header therefore shares one bucket.
+    """
+    if _via_proxy(request):
+        if _cfg_bool('password_trust_proxy', False):
+            fwd = _forwarded_ip(request)
+            if fwd:
+                return fwd
+        return VIA_PROXY_BUCKET
+    return _peer_ip(request)
+
+
 def _wants_json(request):
-    """An AJAX call of a page (native_action / force_json / an Accept of JSON) must not be answered with HTML."""
+    """A machine caller (AJAX, force_json, out=json, an Accept of JSON) must not be answered with HTML."""
     q = request.query_params
     if q.get('native_action') or q.get('force_json'):
+        return True
+    if str(q.get('out', '')).strip().lower() == 'json':
         return True
     accept = request.headers.get('accept', '')
     return 'application/json' in accept and 'text/html' not in accept
@@ -245,7 +294,7 @@ async def password_gate(request: Request, call_next):
         return await call_next(request)
 
     wanted = _session_token(digest)
-    ip = _client_ip(request)
+    ip = _throttle_key(request)
 
     # the login form itself
     if path == LOGIN_PATH:
@@ -289,7 +338,12 @@ async def password_gate(request: Request, call_next):
         return await call_next(request)
     if path == '/favicon.ico':
         return await call_next(request)
-    if _cfg_bool('password_allow_local', True) and _is_local(ip):
+
+    # The loopback exemption is decided on the address the connection really came from, and only for a request
+    # that carries no proxy header at all. A local browser or a local script sends none; a request that arrived
+    # through a proxy does, and so does an attacker hoping that `X-Forwarded-For: 127.0.0.1` will be taken at
+    # face value. Reading the header here would hand that attacker the whole server.
+    if _cfg_bool('password_allow_local', True) and _is_local(_peer_ip(request)) and not _via_proxy(request):
         return await call_next(request)
 
     api_keys = cfg.get('api_keys', [])

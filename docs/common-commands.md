@@ -131,6 +131,7 @@ tool and a result sharing an alias or tag.
 cx utils uid                 # 16-hex cMeta UID, also copied to the clipboard
 cx utils uid --clipboard-    # print only
 cx utils uuid                # UUID4
+cx utils api_key             # a random API key + the line to paste (api_key 3 = three)
 cx utils hash_password       # asks without echo -> the digest for a config password
 ```
 
