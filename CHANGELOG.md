@@ -3,7 +3,40 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION
+## DEV VERSION (0.32.1.1)
+- **cserver: an optional shared password in front of every page.** `cx config set cserver
+  --meta.password="..."` (or `--meta.password_sha256=...`) makes the server ask for one shared password
+  before any page, file or AJAX call, and remember the answer in the session cookie - so a server that
+  listens on a routable address is not readable by whoever finds the port. Requests from the machine itself
+  are exempt by default (`password_allow_local`), a valid `api_keys` value is let through, an AJAX call gets
+  a JSON `401` instead of the HTML prompt, and repeated wrong answers from one address are delayed
+  (`password_max_attempts`, `password_lockout_min`). The prompt is self-contained and readable on a phone or
+  a tablet, in light and dark. The config is read at startup, so the server is restarted after setting the
+  key. Documented in `docs/using-cmeta.md` §8.2.1, with its limits stated: one
+  shared secret, no accounts, and clear text unless the connection itself is encrypted.
+- **`cx utils api_key`.** Prints random keys from `secrets.token_urlsafe` with the ready
+  `cx config set ... --meta.api_keys,=` line, a count for one key per device (`cx utils api_key 3`),
+  `--nbytes=` for the length, `--bare` for scripts and `--clipboard`. It also says out loud that a key travels
+  in the URL and so reaches the access log and the shell history.
+- **cserver: a forwarded header is no longer taken as proof of where a request came from.** A forged
+  `X-Forwarded-For: 127.0.0.1` used to win the loopback exemption and open a protected server completely, and
+  rotating the header gave a fresh lockout counter each time. The exemption is now granted only to a request
+  that carries no proxy header at all, and every request that does carry one shares a single lockout counter
+  unless the new `password_trust_proxy` says the header comes from a proxy you control. This matters because
+  uvicorn itself rewrites the client address from that header when the peer is in `--forwarded-allow-ips`,
+  loopback by default, so neither the header nor `request.client` could be trusted on its own.
+- **cserver: `?out=json` under the password gate answers with a JSON `401`** instead of the HTML prompt, like
+  the other machine-facing forms.
+- **`cx utils hash_password`.** Turns a password into the SHA-256 digest a config expects, so the plain text
+  never reaches disk. With no argument it asks for the password without echoing it, asks again to catch a
+  typo, and prints both the digest and the ready `cx config set ...` line; `--bare` prints the digest alone,
+  `--clipboard` copies it, `--config=` / `--key=` name a different target. Passing the password as an
+  argument works too and says that it stays in the shell history.
+- **cserver: the session cookie is no longer signed with a published key.** The secret now comes from
+  `CSERVER_SESSION_SECRET` (exported by `--param.session_secret=...` or a `param:` block in the cserver
+  config) and is otherwise random per start, so a session cookie can no longer be forged from the source
+  code. The session lifetime became configurable through `CSERVER_SESSION_MAX_AGE` and now defaults to a
+  week rather than an hour.
 - **README rewritten for first-time readers.** A plain opening (what cMeta is, the two interfaces, why we
   develop it, the "second brain that runs" analogy), a two-minute try-out with the first commands, a
   where-to-go-next table (course, installer, cmeta-aops, docs, agents). The lineage paragraph moved out of
