@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cmeta"
 dynamic = ["version"]
-description = "Common Meta Framework (cMeta/cX): code, data, models, scripts, workflows, agents and notes as uniform artifacts behind one CLI and one Python API - for collaborative, reproducible, reusable, scalable, portable and sustainable R&D."
+description = "Common Meta Framework (cMeta/cX): code, data, models, scripts, workflows, agents, and notes as uniform artifacts behind one CLI and one Python API - for collaborative, reproducible, reusable, scalable, portable, and sustainable R&D."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"

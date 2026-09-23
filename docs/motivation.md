@@ -3,7 +3,7 @@
 ## The problem
 
 Research and engineering projects accumulate code, data, models, toolchains,
-scripts and notes — and most of it stops being usable surprisingly quickly.
+scripts, and notes — and most of it stops being usable surprisingly quickly.
 The typical failure modes:
 
 - **Everything is addressed by path.** A workflow hard-codes
@@ -27,12 +27,12 @@ redone rather than reused.
 ## The aim
 
 cMeta exists to support R&D that is **collaborative, reproducible, reusable,
-scalable, portable and sustainable** — and to do it in the simplest way that
+scalable, portable, and sustainable** — and to do it in the simplest way that
 works.
 
 - **Collaborative.** Work is shared as content repositories that other people
   plug in and *run*, rather than as instructions to follow. References written
-  as `alias,UID` keep resolving across renames, forks, machines and years, so a
+  as `alias,UID` keep resolving across renames, forks, machines, and years, so a
   pointer to an experiment or a dataset still means something later.
 - **Reproducible — gradually, not absolutely.** The context around a run is
   recorded with the run: the toolchain, the versions, the inputs, the metadata.
@@ -41,7 +41,7 @@ works.
   heterogeneous hardware and library versions is genuinely hard, so
   reproducibility here improves steadily and is never advertised as solved.
 - **Reusable.** An artifact describes what it is instead of being wired into one
-  pipeline, so the same toolchain, program, model or dataset can be picked up by
+  pipeline, so the same toolchain, program, model, or dataset can be picked up by
   a different project without being rewritten for it.
 - **Scalable.** More complexity is encoded by adding artifacts and categories,
   not by growing the engine. A new domain is a new category; a new capability is
@@ -54,7 +54,7 @@ works.
 
 - **Sustainable.** Work outlives the people who did it. Teams change: someone
   leaves, someone joins two years later, a project is picked up after a pause.
-  If the method lived in one person's head, in a chat thread or in a script on a
+  If the method lived in one person's head, in a chat thread, or in a script on a
   laptop, it leaves with them and the next person restarts. Here it is recorded
   as artifacts beside the result — what was run, what it depended on, which
   version, on what date, and why — so the next person plugs in the repository,
@@ -63,10 +63,10 @@ works.
   turnover unless the context survives with them.
 
 And the constraint that shapes all six: **it has to stay simple, with minimal
-dependencies.** There is no database, no daemon, no service to stand up and no
+dependencies.** There is no database, no daemon, no service to stand up, and no
 binary format. There are directories and files — a folder with a small metadata
-file beside it — reached through one CLI, one Python API and one metadata
-convention. Anything cMeta stores can be read, edited, diffed, committed and
+file beside it — reached through one CLI, one Python API, and one metadata
+convention. Anything cMeta stores can be read, edited, diffed, committed, and
 fixed by hand, which is what lets the work outlive the tool.
 
 ### How: complexity becomes abstractions you can operate
@@ -97,7 +97,7 @@ declare about themselves, and **build upon** them by composing them into larger
 ones — which is what lets a body of work extend sideways instead of collapsing
 under its own weight.
 
-Because every abstraction stays inspectable down to its inputs, its versions and
+Because every abstraction stays inspectable down to its inputs, its versions, and
 its provenance, a question can also be taken back to **first principles** — what
 was actually measured, under what conditions, on what date, and by whom — rather
 than settled by convention, by folklore, or by a number that has been copied from
@@ -112,7 +112,7 @@ number meant and whether it is still current. That work is repeated on almost
 every task, by people and by agents alike.
 
 cMeta removes most of it, because **the context is already recorded and already
-machine-readable**. Every artifact declares its own identity, dependencies and
+machine-readable**. Every artifact declares its own identity, dependencies, and
 interface. Connections state what relates to what, so a graph can be walked
 rather than a directory guessed at. Records carry their dates and their
 provenance, so "which value was current in June" is a query rather than an
@@ -138,7 +138,7 @@ artifact**, and reaches all of them through **one interface**:
 An artifact is a plain directory with a `_cmeta.yaml` sidecar that carries its
 identity and metadata. A **category** is a plugin type that knows how to
 operate on artifacts of its kind, implemented in an `api/v1.py`. Categories and
-artifacts live in **content repositories** that you pull in, index and share.
+artifacts live in **content repositories** that you pull in, index, and share.
 
 That is nearly the whole model. The engine stays small on purpose; capability
 comes from the repositories plugged into it.
@@ -160,7 +160,7 @@ composable, and what lets AI agents drive the same surface people use.
 human-friendly *alias* and a stable 16-hex-character *UID*. References written
 as `alias,UID` stay valid when the alias changes, because the UID is
 authoritative and the alias is advisory. This is what makes references portable
-across projects, forks and time.
+across projects, forks, and time.
 
 **Discovery by metadata, not by path.** Structured tags and metadata make
 components findable by what they are, rather than by where they happen to sit
@@ -174,8 +174,8 @@ pipelines), so a workflow can be recomposed instead of rewritten.
 self-contained artifacts with optional Python hooks. The framework grows
 sideways; the engine does not.
 
-**Virtualized portability.** Toolchains, compilers, drivers and runtimes are
-detected, isolated and pinned, so the same automation abstracts over OS and
+**Virtualized portability.** Toolchains, compilers, drivers, and runtimes are
+detected, isolated, and pinned, so the same automation abstracts over OS and
 accelerator differences.
 
 **Content-addressed caching and better reproducibility.** Identical work is not
@@ -195,7 +195,7 @@ therefore usable serially from a script and asynchronously from FastAPI. See
 [async-and-concurrency.md](async-and-concurrency.md).
 
 **Humans and agents on the same surface.** AI agents use the same discovery,
-composition and execution interface people do, so an automation written by a
+composition, and execution interface people do, so an automation written by a
 person can be extended by an agent and vice versa. See the `ctx` dictionary in
 [using-cmeta.md §5.4](using-cmeta.md#54-ctx--thread-state-and-ai-agent-context-through-nested-calls).
 
@@ -203,15 +203,15 @@ person can be extended by an agent and vice versa. See the `ctx` dictionary in
 
 The [FAIR principles](https://www.go-fair.org/fair-principles/) — findable,
 accessible, interoperable, reusable — were formulated for research data, and they
-apply just as directly to the code, models, workflows and results around it.
+apply just as directly to the code, models, workflows, and results around it.
 cMeta is shaped so that following them is the default rather than extra work:
 
 | FAIR | How it falls out of the design |
 |------|--------------------------------|
 | **Findable** | Every artifact carries a stable `alias,UID` identity plus structured tags and metadata, and a fast index makes it searchable by *what it is* rather than by where it happens to sit on disk. |
-| **Accessible** | Plain directories and files, reached through one CLI and one Python API. No database, daemon, service or binary format stands between a person and their own content. |
+| **Accessible** | Plain directories and files, reached through one CLI and one Python API. No database, daemon, service, or binary format stands between a person and their own content. |
 | **Interoperable** | One `access()` interface and one metadata convention across every domain, with dependencies and relations declared rather than implied — so components from unrelated projects still compose. |
-| **Reusable** | An artifact describes itself and carries its provenance, licence and declared dependencies, so another project — or another person years later — can pick it up unchanged and know what it is. |
+| **Reusable** | An artifact describes itself and carries its provenance, licence, and declared dependencies, so another project — or another person years later — can pick it up unchanged and know what it is. |
 
 The point is not compliance. It is that these four properties are precisely what
 a collaborator, a newcomer or an AI agent needs in order to use work they did not
@@ -224,49 +224,49 @@ plugged into it. These are the uses it is designed around.
 
 **A research assistant for open science.** The recurring problem in research
 engineering is that knowledge about *how* something was done lives in prose,
-one-off scripts and remembered command lines — and decays. cMeta's answer is to encode
+one-off scripts, and remembered command lines — and decays. cMeta's answer is to encode
 that practice as executable, self-describing artifacts: how to detect and
 install a toolchain, how to build and benchmark a program on a given target,
 how to fetch a model. Because each artifact carries machine-readable metadata
-and declares what it uses, an AI agent can discover, compose and extend them
+and declares what it uses, an AI agent can discover, compose, and extend them
 through the same interface a person uses. The artifacts are the accumulated
 memory; the agent — or the person — is the operator. This is a deliberately
 modest reading of "research assistant": not a system that invents science, but
 one that stops you re-deriving the same setup every time.
 
-**Collaborative research, development and experimentation.** Work is shared as
+**Collaborative research, development, and experimentation.** Work is shared as
 content repositories that others plug in and run, not as instructions to
 follow. Because references use `alias,UID` and the UID is authoritative, a
-pointer to an experiment, a dataset or the workflow that produced a result
-stays valid across renames, forks and years — which is what makes collaboration
+pointer to an experiment, a dataset, or the workflow that produced a result
+stays valid across renames, forks, and years — which is what makes collaboration
 across groups and across time practical.
 
-**Reproducible benchmarking and software/hardware co-design.** Detect, install
+**Reproducible benchmarking and software/hardware co-design.** Detect, install,
 and pin toolchains; build and run programs across operating systems and compute
-targets (CPU, CUDA, and others); reuse installs, downloads and builds through
-content-addressed caching. An experiment can then be repeated, varied and
+targets (CPU, CUDA, and others); reuse installs, downloads, and builds through
+content-addressed caching. An experiment can then be repeated, varied, and
 compared without rebuilding its scaffolding each time.
 
 **AI-agent operations.** Agents drive the same `access()` surface humans do,
-with `ctx` carrying session, trace and budget state through nested calls, and
+with `ctx` carrying session, trace, and budget state through nested calls, and
 shipped skills describing how to extend the framework itself.
 
 **Web services and dashboards.** `CMetaAsync` runs cMeta behind FastAPI. The
 shipped `cserver` app and the [cTuning.ai](https://cTuning.ai) platform are both
 built this way — see [async-and-concurrency.md](async-and-concurrency.md).
 
-**Notes, journals and knowledge.** Notes, journals, logs and reports are
+**Notes, journals, and knowledge.** Notes, journals, logs, and reports are
 artifacts like everything else, so the knowledge sits next to the automations
 it describes instead of in a separate tool.
 
 The reference content repository is
 [cmeta-aops](https://github.com/cTuningLabs/cmeta-aops) — reusable `task`,
-`tool`, `program`, `model` and `dataset` artifacts for portable setup, builds
+`tool`, `program`, `model`, and `dataset` artifacts for portable setup, builds,
 and benchmarking.
 
 ## What it is not
 
-- **Not a workflow engine competing with Airflow, Snakemake or Nextflow.**
+- **Not a workflow engine competing with Airflow, Snakemake, or Nextflow.**
   Those can be plugged in behind the same uniform interface.
 - **Not a package manager.** It detects and pins what is already installable,
   and installs Python packages when a task needs them.
