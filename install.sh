@@ -51,6 +51,17 @@ err()  { printf 'cmeta-install: error: %s\n' "$*" >&2; exit 1; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# A git that actually runs. On macOS /usr/bin/git is only a stub until the
+# Command Line Tools are installed - and running it pops up their installer -
+# so ask xcode-select about that one instead of trying it.
+git_works() {
+    have git || return 1
+    if [ "$(uname -s)" = Darwin ] && [ "$(command -v git)" = /usr/bin/git ]; then
+        xcode-select -p >/dev/null 2>&1 || return 1
+    fi
+    git --version >/dev/null 2>&1
+}
+
 # Echo the command, then run it - unless --dry-run, in which case only echo.
 # Everything that touches the machine goes through here, so --dry-run is a
 # complete and truthful preview rather than an approximation.
@@ -75,8 +86,10 @@ Usage:
   sh install.sh [options]
 
 Options:
-  --with-deps        also install git and curl with the OS package manager.
-                     This is the only step that needs root (sudo).
+  --with-deps        also install git and curl (and tar and gzip, which some
+                     minimal images lack), whichever is missing, with the OS
+                     package manager - the only step that needs root (sudo).
+                     macOS: Homebrew, or the Command Line Tools.
   -e, --editable     install in editable mode: the installed cMeta keeps
                      pointing at this directory, so re-copying the tree
                      updates it with no reinstall. Do NOT use it if this
@@ -223,6 +236,8 @@ set_sudo() {
     [ "$(id -u)" = 0 ] && return 0
     if have sudo; then
         SUDO="sudo"
+    elif have doas; then
+        SUDO="doas"
     else
         err "--with-deps needs root and neither sudo nor a root shell is available.
                    Re-run as root, or drop --with-deps and install git yourself."
@@ -230,31 +245,65 @@ set_sudo() {
     return 0
 }
 
+# macOS has no package manager of its own: git comes with the Command Line
+# Tools, which a fresh Mac does not have yet, and Homebrew is optional. Use brew
+# when it is there, since it needs no dialog; otherwise start the Tools
+# installer, which is a dialog that cannot be driven from a script, and carry on
+# without git - cMeta itself does not need it, only `cx repo get` does.
+install_deps_macos() {
+    if have brew; then
+        run brew install git
+        return 0
+    fi
+    warn "git is not installed yet, and it comes with the Command Line Tools.
+                   Their installer should open in a dialog now - accept it, and
+                   once it has finished run:  cx repo get $AOPS_REF"
+    run xcode-select --install || true
+    return 0
+}
+
 install_deps() {
     step "Installing system packages (git, curl)"
-    set_sudo
 
+    # Only what is missing. Asking for a package that is already there is not
+    # free: it needs root even when there is nothing to do, and on RHEL-family
+    # images (Rocky, Alma 9) `curl` conflicts with the curl-minimal they ship,
+    # so asking for it fails the whole dnf transaction.
+    local pkgs=""
+    git_works || pkgs="git"
+    have curl || pkgs="$pkgs curl"
+    # astral's uv installer unpacks a .tar.gz, and minimal images (openSUSE's)
+    # ship neither tar nor gzip.
+    have tar  || pkgs="$pkgs tar"
+    have gzip || pkgs="$pkgs gzip"
+    if [ -z "$pkgs" ]; then
+        say "     git and curl are already installed"
+        return 0
+    fi
+
+    if [ "$OS_ID" = macos ]; then
+        install_deps_macos
+        return 0
+    fi
+
+    set_sudo
+    # $pkgs is unquoted on purpose: it is a list of package names.
+    # shellcheck disable=SC2086
     case "$OS_ID" in
         debian)
             run ${SUDO:+$SUDO} apt-get update
-            run ${SUDO:+$SUDO} apt-get install -y git curl ca-certificates ;;
+            run ${SUDO:+$SUDO} apt-get install -y $pkgs ca-certificates ;;
         fedora|rhel)
-            run ${SUDO:+$SUDO} dnf install -y git curl ca-certificates ;;
+            run ${SUDO:+$SUDO} dnf install -y $pkgs ca-certificates ;;
         opensuse)
-            run ${SUDO:+$SUDO} zypper --non-interactive install git curl ca-certificates ;;
+            run ${SUDO:+$SUDO} zypper --non-interactive install $pkgs ca-certificates ;;
         arch)
-            run ${SUDO:+$SUDO} pacman -Sy --needed --noconfirm git curl ca-certificates ;;
+            run ${SUDO:+$SUDO} pacman -Sy --needed --noconfirm $pkgs ca-certificates ;;
         alpine)
-            run ${SUDO:+$SUDO} apk add --no-cache git curl ca-certificates ;;
-        macos)
-            have brew || err "--with-deps on macOS needs Homebrew.
-                   Install it from https://brew.sh and re-run, or drop
-                   --with-deps: the Command Line Tools already provide git
-                   (xcode-select --install)."
-            run brew install git curl ;;
+            run ${SUDO:+$SUDO} apk add --no-cache $pkgs ca-certificates ;;
         *)
             err "--with-deps does not know this system's package manager.
-                   Install git yourself, then re-run without --with-deps." ;;
+                   Install ${pkgs# } yourself, then re-run without --with-deps." ;;
     esac
     return 0
 }
@@ -281,20 +330,30 @@ install_uv() {
         return 0
     fi
     step "Installing uv"
+    # curl, or wget where there is no curl: Ubuntu and Debian desktops ship
+    # wget but not curl, and astral's installer itself works with either.
+    #
+    # Under --dry-run the dependency step only printed its commands, so curl
+    # may legitimately still be missing here even though a real run would have
+    # just installed it. Reporting that as fatal would make --dry-run refuse to
+    # preview the very combination it is being asked about.
+    local fetch="curl -LsSf"
     if ! have curl; then
-        if [ "$DRY_RUN" = 1 ]; then
-            warn "curl is not installed - a real run needs it"
-            [ "$WITH_DEPS" = 1 ] && say "     (--with-deps installs it in the step above)"
+        if have wget; then
+            fetch="wget -qO-"
+        elif [ "$DRY_RUN" = 1 ]; then
+            warn "neither curl nor wget is installed - a real run needs one"
+            [ "$WITH_DEPS" = 1 ] && say "     (--with-deps installs curl in the step above)"
         else
-            err "curl is required to fetch uv.
+            err "curl (or wget) is required to fetch uv.
                    Install curl (or re-run with --with-deps) and try again."
         fi
     fi
 
     if [ "$NO_MODIFY_PATH" = 1 ]; then
-        run_sh "curl -LsSf $UV_INSTALL_URL | env UV_NO_MODIFY_PATH=1 sh"
+        run_sh "$fetch $UV_INSTALL_URL | env UV_NO_MODIFY_PATH=1 sh"
     else
-        run_sh "curl -LsSf $UV_INSTALL_URL | sh"
+        run_sh "$fetch $UV_INSTALL_URL | sh"
     fi
 
     use_local_bin
@@ -395,7 +454,7 @@ set_home() {
 add_repos() {
     [ "$WANT_AOPS" = 1 ] || return 0
     step "Adding the cmeta-aops automation repository"
-    have git || {
+    [ "$DRY_RUN" = 1 ] || git_works || {
         warn "git is not installed, so cx repo get cannot clone. Skipping.
                    Install git (or re-run with --with-deps) and then:
                        cx repo get $AOPS_REF"
@@ -421,7 +480,7 @@ verify() {
         cx --version || err "'cx --version' failed."
     fi
 
-    have git || warn "git is not installed. cMeta works, but 'cx repo get' needs
+    git_works || warn "git is not installed. cMeta works, but 'cx repo get' needs
                    git to clone content repositories. Install it with your
                    package manager, or re-run this script with --with-deps."
     return 0

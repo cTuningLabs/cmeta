@@ -8,7 +8,7 @@
 
 **cMeta** (also known as **cX**) is a small, portable framework that turns the pieces
 of research and engineering work — code, data, models, toolchains, workflows, agents,
-notes and results — into **uniform, reusable artifacts**: plain directories with one
+notes, and results — into **uniform, reusable artifacts**: plain directories with one
 metadata file, linked to each other by stable identifiers and reached through **one
 interface**:
 
@@ -21,9 +21,9 @@ cm.access({'category': ..., 'command': ..., ...})   # from Python
 ```
 
 We develop cMeta to make R&D **collaborative, reproducible, reusable, scalable,
-portable and sustainable**: work that colleagues and their AI agents can pick up,
-run, understand and build upon years later, in the simplest way that works — no
-database, no daemon, no service to stand up, just files, one CLI, one Python API and
+portable, and sustainable**: work that colleagues and their AI agents can pick up,
+run, understand, and build upon years later, in the simplest way that works — no
+database, no daemon, no service to stand up, just files, one CLI, one Python API, and
 minimal dependencies. It is free and open source under Apache-2.0.
 
 If you know **Obsidian** or other "second brain" tools, the idea will feel familiar:
@@ -54,7 +54,7 @@ cx app run cserver                                 # browse everything at http:/
 ```
 
 The web app answers on `127.0.0.1` alone until you tell it otherwise. Serving
-it to your own phone, tablet or another machine takes one flag, and one shared
+it to your own phone, tablet, or another machine takes one flag, and one shared
 password is enough to keep everyone else out:
 
 ```bash
@@ -84,12 +84,12 @@ if r['return'] > 0:
 | install on your OS with your package manager | the [interactive installer](https://cTuning.ai/project/cmeta/cmeta.install/), or [docs/installation.md](docs/installation.md) |
 | see what you can run today | [cmeta-aops](https://github.com/cTuningLabs/cmeta-aops) — tools, tasks, programs, models, datasets — and the [catalogues on cTuning.ai](https://cTuning.ai/project/cmeta) |
 | learn the CLI and the Python API | [docs/common-commands.md](docs/common-commands.md), then [docs/using-cmeta.md](docs/using-cmeta.md) |
-| add your own category, artifacts or repository | [Using cMeta in one page](#using-cmeta-in-one-page) below, and the shipped [skills](.claude/skills/) |
+| add your own category, artifacts, or repository | [Using cMeta in one page](#using-cmeta-in-one-page) below, and the shipped [skills](.claude/skills/) |
 | point an AI agent at the project | [AGENTS.md](AGENTS.md) and [llms.txt](llms.txt) |
 
 cMeta works with the tools people already use: any operating system and target
 platform, from the data center to edge and mobile devices; AI coding assistants
-and agents such as Claude Code, OpenAI Codex and OpenClaw; automation and
+and agents such as Claude Code, OpenAI Codex, and OpenClaw; automation and
 workflow frameworks, through the same `cx` CLI and `access()` API; and
 knowledge-management systems such as Notion and Obsidian.
 
@@ -103,22 +103,22 @@ for lives in someone's head rather than in the component. None of that is a hard
 research problem — it is bookkeeping, and it is why work gets redone instead of
 reused. Removing that whole class of problem is what this project is for
 ([docs/motivation.md](docs/motivation.md)). cMeta exists to support R&D that is
-**collaborative, reproducible, reusable, scalable, portable and sustainable**, in
+**collaborative, reproducible, reusable, scalable, portable, and sustainable**, in
 the simplest way that works:
 
 | Aim | What it means here |
 |-----|--------------------|
-| **Collaborative** | Share work as content repositories others plug in and *run*, not as instructions to follow. `alias,UID` references survive renames, forks, machines and years. |
+| **Collaborative** | Share work as content repositories others plug in and *run*, not as instructions to follow. `alias,UID` references survive renames, forks, machines, and years. |
 | **Reproducible** | The context of a run is recorded with the run. This improves *gradually* and is deliberately not claimed as a guarantee — full determinism across heterogeneous environments is hard and remains ongoing R&D. |
-| **Reusable** | An artifact describes what it is rather than being wired into one pipeline, so the same toolchain, program, model or dataset carries over to another project unchanged. |
+| **Reusable** | An artifact describes what it is rather than being wired into one pipeline, so the same toolchain, program, model, or dataset carries over to another project unchanged. |
 | **Scalable** | Encode more complexity by adding artifacts and categories, not by growing the engine. The framework extends sideways, in many directions; the core stays small. |
 | **Portable** | The same automation runs anywhere, any time, adapting to the software and hardware the user actually has — toolchains are detected, installed if missing, and pinned. |
-| **Sustainable** | Work outlives the people who did it. The method, the dependencies, the versions and the provenance are recorded beside the result, so whoever picks it up next — in six months, or after the author has left — *resumes* instead of reconstructing. |
+| **Sustainable** | Work outlives the people who did it. The method, the dependencies, the versions, and the provenance are recorded beside the result, so whoever picks it up next — in six months, or after the author has left — *resumes* instead of reconstructing. |
 
 **And it has to stay simple, with minimal dependencies.** No database, no
 daemon, no service to stand up, no binary format: just a directory and file
-structure, reached through one CLI, one Python API and one metadata convention.
-Everything cMeta stores can be read, edited, diffed and fixed by hand — which is
+structure, reached through one CLI, one Python API, and one metadata convention.
+Everything cMeta stores can be read, edited, diffed, and fixed by hand — which is
 what lets the work outlive the tool.
 
 **How it does that: complexity becomes abstractions you can operate.** A serious
@@ -126,11 +126,11 @@ project accumulates more complexity than anyone can hold in their head. cMeta
 expresses each piece of it — a toolchain, a dataset, a model, a workflow, a
 measured number, a concept — as one artifact that is **simple** (a folder and a
 metadata file), **reusable** (it states what it is, not where it fits), **live**
-(you run it, rather than read about running it) and **interconnected** (artifacts
+(you run it, rather than read about running it), and **interconnected** (artifacts
 reference each other by `alias,UID`, forming a graph rather than a pile). You then
 *operate* those abstractions through one interface, *understand* them by reading
 what they declare, and *build upon* them by composing them into larger ones.
-Because each stays inspectable down to its inputs, versions and provenance, a
+Because each stays inspectable down to its inputs, versions, and provenance, a
 question can be taken back to **first principles** — what was measured, under what
 conditions, on what date — instead of being settled by folklore. The same design
 is what makes the work [FAIR](https://www.go-fair.org/fair-principles/) —
@@ -144,19 +144,19 @@ part: what exists, how it was run, in which environment, and whether a number is
 still current. In cMeta that context is already recorded and already
 machine-readable — identity, declared dependencies, connections between
 artifacts, dates and provenance on records — so an agent can discover, compose,
-run and hand back work through the **same `access()` interface a person uses**.
+run, and hand back work through the **same `access()` interface a person uses**.
 A graph a newcomer can pick up is, for the same reasons, a graph an agent can
 operate.
 
 **Two ways people describe it.** As a *common engine for "operating systems for
-AI"*: a thin, uniform layer that connects, abstracts and orchestrates the code,
-data, models, agents and hardware that modern AI systems are assembled from, much
+AI"*: a thin, uniform layer that connects, abstracts, and orchestrates the code,
+data, models, agents, and hardware that modern AI systems are assembled from, much
 as an operating system manages the resources of a machine. And as the *substrate
 of a research assistant*: AI agents operating a growing body of machine-readable,
 self-describing automations instead of improvised scripts, discovering what
-exists, composing it, extending it and handing the result back in a form a person
+exists, composing it, extending it, and handing the result back in a form a person
 can read and rerun. The aim is deliberately modest — not a system that invents
-science, but one that lets experiments, builds and benchmarks be set up, varied and
+science, but one that lets experiments, builds, and benchmarks be set up, varied, and
 repeated without re-deriving the same work each time.
 
 More detail in [docs/motivation.md](docs/motivation.md).
@@ -211,7 +211,7 @@ artifact** reached through **one interface**:
 cMeta ships a tiny **engine** and a small **built-in content repository** of
 foundational categories (plugins). Everything else — your projects, research
 artifacts, workflows — lives in **external content repositories** that you pull
-in, index and share.
+in, index, and share.
 
 ### What you get
 
@@ -232,10 +232,10 @@ in, index and share.
   not repeated, and the full context of a run is captured to help reproduce it.
   (Full determinism across heterogeneous environments is hard; cMeta improves
   reproducibility but doesn't yet fully solve it — ongoing R&D.)
-- **Virtualized portability** — toolchains, compilers, drivers and runtimes are
-  detected, isolated and pinned to abstract over OS and accelerator differences.
+- **Virtualized portability** — toolchains, compilers, drivers, and runtimes are
+  detected, isolated, and pinned to abstract over OS and accelerator differences.
 - **Unified interface for humans and agents** — AI agents drive the same
-  discovery, composition and execution surface people use.
+  discovery, composition, and execution surface people use.
 - **Serial or async, with concurrency safety guards** — the same engine runs
   one call at a time from a script or `await`s from FastAPI (`CMetaAsync`).
   Unlike the earlier frameworks in this line, concurrent execution is a
@@ -251,16 +251,16 @@ cMeta is the engine; what it does depends on the content repositories plugged
 into it. The uses it is built for:
 
 - **A research assistant for open science.** Encode R&D as executable,
-  self-describing automations rather than prose, one-off scripts and remembered
+  self-describing automations rather than prose, one-off scripts, and remembered
   command lines — so the *method* travels with the result, inspectable,
-  shareable and rerunnable by other people and by their agents.
-- **Collaborative research, development and experimentation.** Share work as
+  shareable, and rerunnable by other people and by their agents.
+- **Collaborative research, development, and experimentation.** Share work as
   content repositories that others plug in and run. `alias,UID` references stay
-  valid across renames, forks and years, so results, experiments and the
+  valid across renames, forks, and years, so results, experiments, and the
   workflows that produced them remain referenceable over time.
 - **Reproducible benchmarking and software/hardware co-design.** Detect and
   install toolchains, build and run programs across operating systems and
-  compute targets (CPU, CUDA, …), and reuse installs, downloads and builds
+  compute targets (CPU, CUDA, …), and reuse installs, downloads, and builds
   through content-addressed caching — so an experiment can be repeated and
   varied without re-deriving the setup.
 - **AI-agent operations.** Agents drive the same `access()` surface as humans,
@@ -269,13 +269,13 @@ into it. The uses it is built for:
 - **Web services and dashboards.** `CMetaAsync` runs cMeta behind FastAPI — the
   shipped `cserver` app and the [cTuning.ai](https://cTuning.ai) platform are
   both built this way.
-- **Notes, journals and knowledge.** The same artifact model covers notes,
-  journals, logs and reports, so knowledge lives next to the automations it
+- **Notes, journals, and knowledge.** The same artifact model covers notes,
+  journals, logs, and reports, so knowledge lives next to the automations it
   describes rather than in a separate silo.
 
 The reference content repository is
 **[cmeta-aops](https://github.com/cTuningLabs/cmeta-aops)** — reusable `task`,
-`tool`, `program`, `model` and `dataset` artifacts for portable setup, builds
+`tool`, `program`, `model`, and `dataset` artifacts for portable setup, builds,
 and benchmarking. More background in
 [docs/motivation.md](docs/motivation.md#what-people-use-it-for).
 
@@ -313,11 +313,11 @@ Installing globally and having a global home are two separate things: with no
 for a globally installed `cx`. And `pip install cmeta` inside a project virtual
 environment stays perfectly good when cMeta *is* a dependency of that project.
 
-An interactive installer that assembles the commands for your OS, shell and
+An interactive installer that assembles the commands for your OS, shell, and
 package manager lives at
 **[cTuning.ai/project/cmeta/cmeta.install](https://cTuning.ai/project/cmeta/cmeta.install/)**;
 [docs/installation.md](docs/installation.md) covers every route,
-install-from-source, where repositories live, configuration and troubleshooting.
+install-from-source, where repositories live, configuration, and troubleshooting.
 
 ---
 
@@ -514,7 +514,7 @@ For linking one artifact from another, use the full **cRef** form
 Because the `alias,UID` form ignores the alias during lookup, category and
 artifact aliases can be renamed later without breaking anything that referenced
 them by UID — this is what makes cMeta references **semantically portable**
-across projects, forks and time.
+across projects, forks, and time.
 
 ### 7. Index & caching (when to `cx --reindex`)
 
@@ -532,7 +532,7 @@ inconsistent), force a full rebuild:
 cx --reindex
 ```
 
-This is safe, idempotent and typically fast. Categories that opt out with
+This is safe, idempotent, and typically fast. Categories that opt out with
 `no_index: true` in `_cmeta.yaml` are found by scanning the filesystem instead.
 Task caches produced by workflows live under the `cache` category and can be
 inspected/pruned with `cx cache show` / `cx cache clean` / `cx cache delete`.
@@ -652,7 +652,7 @@ tells that story with the talks and publications, and explains how to cite cMeta
 
 ## Attribution & reuse
 
-You are free to use, modify and redistribute cMeta under Apache 2.0. Section 4
+You are free to use, modify, and redistribute cMeta under Apache 2.0. Section 4
 of the licence asks that you keep the copyright and attribution notices and
 reproduce the contents of [`NOTICE`](NOTICE) in your distribution — this
 applies equally whether the code was copied by a person or generated with the

@@ -72,12 +72,15 @@ function Have { param([string]$n) return [bool](Get-Command $n -ErrorAction Sile
 # NOTE: the parameter is deliberately NOT called $Args - that is a PowerShell
 # automatic variable, so a parameter of that name never receives the caller's
 # values and every command printed its name with no arguments at all.
+#
+# -AllowFail leaves the exit code in $LASTEXITCODE for the caller to judge,
+# for a command whose non-zero codes do not all mean failure (winget).
 function Run {
-    param([string]$Exe, [string[]]$CmdArgs)
+    param([string]$Exe, [string[]]$CmdArgs, [switch]$AllowFail)
     Say "     > $Exe $($CmdArgs -join ' ')"
-    if ($script:DryRunMode) { return }
+    if ($script:DryRunMode) { $global:LASTEXITCODE = 0; return }
     & $Exe @CmdArgs
-    if ($LASTEXITCODE -ne 0) { Fail "$Exe exited with $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0 -and -not $AllowFail) { Fail "$Exe exited with $LASTEXITCODE" }
 }
 
 function Show-Usage {
@@ -120,6 +123,20 @@ What it needs:
 
 # ------------------------------------------------------------------ options
 
+# A home path written for the other shell. -File hands its arguments over as
+# literal strings, so cmd's %USERPROFILE% arrives unexpanded when the command
+# is pasted into PowerShell, and PowerShell's $HOME or ~ when it is pasted into
+# cmd - and would otherwise become a directory literally named that.
+function Expand-HomePath {
+    param([string]$p)
+    if (-not $p) { return $p }
+    $p = [Environment]::ExpandEnvironmentVariables($p)
+    if ($p -match '^(~|\$HOME|\$env:USERPROFILE)(?=$|[\\/])') {
+        $p = $env:USERPROFILE + $p.Substring($Matches[0].Length)
+    }
+    return $p
+}
+
 function Resolve-Options {
     $script:WithDepsMode = $WithDeps.IsPresent
     $script:EditableMode = $Editable.IsPresent
@@ -135,14 +152,16 @@ function Resolve-Options {
     $script:ExtrasList   = if ($Extras) { $Extras } else { 'server' }
     if ($NoExtras.IsPresent) { $script:ExtrasList = '' }
 
-    if ($CmetaHome -and $CmetaHome2) {
+    $h  = Expand-HomePath $CmetaHome
+    $h2 = Expand-HomePath $CmetaHome2
+    if ($h -and $h2) {
         Fail '-CmetaHome and -CmetaHome2 are mutually exclusive'
     }
-    if ($CmetaHome2) {
-        $script:HomeVar = 'CMETA_HOME2'; $script:HomeDir = $CmetaHome2
+    if ($h2) {
+        $script:HomeVar = 'CMETA_HOME2'; $script:HomeDir = $h2
     } else {
         $script:HomeVar = 'CMETA_HOME'
-        $script:HomeDir = if ($CmetaHome) { $CmetaHome } else { Join-Path $env:USERPROFILE 'CMETA' }
+        $script:HomeDir = if ($h) { $h } else { Join-Path $env:USERPROFILE 'CMETA' }
     }
 }
 
@@ -202,18 +221,72 @@ function Add-LocalBin {
     }
 }
 
+# Bring PATH entries that an installer has just written to the registry into
+# this session. The Git installer adds C:\Program Files\Git\cmd to the machine
+# PATH, but a shell that is already running never sees it - so without this the
+# -Aops step, a few seconds after installing git, found no git and skipped.
+function Update-SessionPath {
+    $known = @($env:PATH -split ';' | Where-Object { $_ })
+    foreach ($scope in 'Machine', 'User') {
+        $p = [Environment]::GetEnvironmentVariable('Path', $scope)
+        if (-not $p) { continue }
+        foreach ($d in ($p -split ';')) {
+            if (-not $d) { continue }
+            $d = [Environment]::ExpandEnvironmentVariables($d)
+            if ($known -notcontains $d) { $env:PATH = "$env:PATH;$d"; $known += $d }
+        }
+    }
+}
+
+function Find-Git {
+    if (Have git) { return $true }
+    Update-SessionPath
+    return (Have git)
+}
+
+# Exit codes with which winget reports that the package is already there.
+$script:WingetAlreadyInstalled = @(
+    -1978335189,    # 0x8A15002B  installed, and no newer version to upgrade to
+    -1978335135     # 0x8A150061  installed (--no-upgrade)
+)
+
+# A missing or failing git is a warning, not the end of the install: cMeta
+# itself does not need it, only `cx repo get` does, and every later step says
+# so again and names the command to run once git is there.
 function Install-Deps {
     Step 'Installing system packages (git)'
-    if (-not (Have winget)) {
-        Fail @'
--WithDeps needs winget, which is not available here (Windows Server SKUs and
-                   older Windows 10 builds ship without it). Install git
-                   yourself from https://git-scm.com and re-run without
-                   -WithDeps.
-'@
+    if (Find-Git) {
+        Say "     git is already installed ($(& git --version))"
+        return
     }
-    Run 'winget' @('install', '-e', '--id', 'Git.Git',
-                   '--accept-source-agreements', '--accept-package-agreements')
+    if (-not (Have winget)) {
+        Warn ('-WithDeps installs git with winget, which is not available here: ' +
+              'Windows Server and older Windows 10 builds ship without it, and on a ' +
+              'new machine it can take a few minutes after the first sign-in, or an ' +
+              'update of "App Installer" from the Microsoft Store. Continuing without ' +
+              'git - install it from https://git-scm.com/download/win and then run: ' +
+              "cx repo get $script:AopsRef")
+        return
+    }
+    # --source winget: without it winget also queries the Microsoft Store
+    # source, and on a machine where that fails - "0x8a15005e: The server
+    # certificate did not match any of the expected values", certificate
+    # pinning broken by an HTTPS-inspecting antivirus or proxy - it refuses to
+    # install the package it has just found in the winget source, and asks for
+    # --source. winget takes one --id per invocation.
+    Run 'winget' @('install', '-e', '--id', 'Git.Git', '--source', 'winget',
+                   '--accept-source-agreements', '--accept-package-agreements') -AllowFail
+    $code = $LASTEXITCODE
+    if ($script:DryRunMode) { return }
+    if ($code -ne 0 -and $script:WingetAlreadyInstalled -notcontains $code) {
+        Warn (("winget could not install git (exit code {0}, 0x{0:X8}). Continuing " +
+               "without it - install git from https://git-scm.com/download/win, open " +
+               "a new shell and run: cx repo get {1}") -f $code, $script:AopsRef)
+        return
+    }
+    if (-not (Find-Git)) {
+        Warn "git is installed but not visible in this shell yet. Open a new shell and run: cx repo get $script:AopsRef"
+    }
 }
 
 function Install-Uv {
@@ -301,7 +374,7 @@ function Set-CmetaHome {
 function Add-Repos {
     if (-not $script:AopsMode) { return }
     Step 'Adding the cmeta-aops automation repository'
-    if (-not (Have git)) {
+    if (-not $script:DryRunMode -and -not (Find-Git)) {
         Warn "git is not installed, so cx repo get cannot clone. Skipping. Install git (or re-run with -WithDeps), then: cx repo get $script:AopsRef"
         return
     }
@@ -315,8 +388,21 @@ function Test-Install {
         Fail 'cMeta installed but cx is not on PATH. Open a new shell and try cx --version.'
     }
     if ($script:Q) { & cx --version | Out-Null } else { & cx --version }
-    if (-not (Have git)) {
+    if (-not (Find-Git)) {
         Warn 'git is not installed. cMeta works, but "cx repo get" needs git to clone content repositories.'
+    }
+}
+
+# Whether Windows long paths are on. The cmeta-aops tasks offer to switch them
+# on - with an administrator prompt - the first time they run without them, so
+# the epilogue says so, and the prompt does not come as a surprise.
+function Test-LongPaths {
+    try {
+        $v = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+                               -Name LongPathsEnabled -ErrorAction Stop).LongPathsEnabled
+        return ($v -eq 1)
+    } catch {
+        return $false
     }
 }
 
@@ -337,6 +423,13 @@ cMeta is installed from $script:SrcDir
 
   Docs: https://github.com/cTuningLabs/cmeta/blob/main/docs/installation.md
 "@
+    if (-not (Test-LongPaths)) {
+        Write-Host @'
+  Windows long paths are off. The cmeta-aops tasks offer to switch them on the
+  first time they run, with an administrator prompt; to do it yourself, turn on
+  Settings > System > Advanced > "Enable long paths".
+'@
+    }
 }
 
 # ------------------------------------------------------------------ main

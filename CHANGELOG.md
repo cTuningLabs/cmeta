@@ -4,6 +4,22 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## DEV VERSION (0.32.1.1)
+- **Installers (`install.ps1`, `install.sh`): the dependency step no longer stops the install.** On Windows
+  `-WithDeps` ran `winget install --id Git.Git` without `--source winget`, so on a machine where winget's
+  Microsoft Store source fails - `0x8a15005e: The server certificate did not match any of the expected
+  values`, certificate pinning broken by an HTTPS-inspecting antivirus or proxy - winget refused to install
+  the package it had just found in the winget source, and the script exited before installing cMeta at all.
+  It now names `--source winget`, skips winget when git is already there, treats winget's "already
+  installed" exit codes as success, brings the PATH the Git installer wrote into the running session (the
+  `-Aops` step used to find no git seconds after installing it), and turns a failure into a warning with the
+  command to run once git is there. A `-CmetaHome` value written for the other shell (`%USERPROFILE%` pasted
+  into PowerShell, `$HOME` or `~` into cmd) is expanded instead of becoming a directory of that name, and
+  the epilogue says when Windows long paths are off. On Linux and macOS `--with-deps` installs only what is
+  missing - asking for `curl` next to the `curl-minimal` of RHEL-family images (Rocky, Alma 9) failed the
+  whole `dnf` transaction, and root was needed even with nothing to install; on a Mac without Homebrew it now
+  starts the Command Line Tools installer instead of stopping with an error, and `/usr/bin/git` is no
+  longer mistaken for a working git before those Tools are installed. uv is fetched with wget where there is
+  no curl, and `doas` is accepted where there is no sudo. The same changes went into the website installer.
 - **cserver: an optional shared password in front of every page.** `cx config set cserver
   --meta.password="..."` (or `--meta.password_sha256=...`) makes the server ask for one shared password
   before any page, file or AJAX call, and remember the answer in the session cookie - so a server that
