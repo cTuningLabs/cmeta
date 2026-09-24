@@ -13,9 +13,11 @@
 # a USB stick): it installs the package sitting next to this script, so the
 # remote runs exactly the code you copied rather than whatever happens to be
 # released. To install the released or the git version instead, use the
-# installer on the website:
+# installer on the website - saved under another name, so that it does not
+# overwrite this one:
 #
-#   curl -LsSf https://cTuning.ai/project/cmeta/cmeta.install/install.sh | sh
+#   curl -fLo install-web.sh https://cTuning.ai/project/cmeta/cmeta.install/install.sh
+#   sh install-web.sh
 #
 # NETWORK: only cMeta itself comes from this directory. Its dependencies
 # (pyyaml, requests, tabulate, ...) and uv are still fetched from the network,

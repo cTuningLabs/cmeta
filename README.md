@@ -41,7 +41,9 @@ publications are in [docs/history.md](docs/history.md).
 ## Try it in two minutes
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh    # uv, if you have none (Windows: see Installation below)
+curl -fLo uv-install.sh https://astral.sh/uv/install.sh   # uv, if you have none (Windows: see Installation below)
+sh uv-install.sh
+. "$HOME/.local/bin/env"                           # put uv on PATH in this shell
 uv tool install "cmeta[server]"                    # cx / cmeta / cserver on PATH, in their own environment
 export CMETA_HOME="$HOME/CMETA"                    # one home for all your content repositories
 
@@ -291,7 +293,9 @@ downloads itself. No system Python, no root, and PEP 668 never enters the
 picture:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh    # uv, if you have none
+curl -fLo uv-install.sh https://astral.sh/uv/install.sh   # uv, if you have none
+sh uv-install.sh
+. "$HOME/.local/bin/env"                           # put uv on PATH in this shell
 uv tool install "cmeta[server]"
 uv tool update-shell                               # put the shims on PATH
 
@@ -299,10 +303,12 @@ export CMETA_HOME="$HOME/CMETA"                    # one home for every project
 cx --version                                       # also prints the home it resolved
 ```
 
-On Windows, the same three steps:
+On Windows (in `cmd.exe`), the same steps:
 
 ```bat
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+curl.exe -fLo uv-install.ps1 https://astral.sh/uv/install.ps1
+powershell -ExecutionPolicy ByPass -File uv-install.ps1
+set "PATH=%USERPROFILE%\.local\bin;%PATH%"
 uv tool install "cmeta[server]"
 uv tool update-shell
 setx CMETA_HOME "%USERPROFILE%\CMETA"

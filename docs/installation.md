@@ -23,14 +23,21 @@ dependencies. It runs on Linux, macOS and Windows and supports Python 3.9+.
 
 astral's own installer is used on every platform in preference to whatever the
 distribution packages — one command shape everywhere, and no dependency on a
-distro keeping up with uv releases:
+distro keeping up with uv releases. It is downloaded first and then run, so it
+can be read before it runs; on Windows the piped `irm ... | iex` form is what
+Microsoft Defender flags as a download-and-run trojan. The last line puts uv on
+`PATH` in the current shell, since the installer arranges it only for new ones.
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh                 # Linux, macOS
+curl -fLo uv-install.sh https://astral.sh/uv/install.sh         # Linux, macOS
+sh uv-install.sh
+. "$HOME/.local/bin/env"
 ```
 
 ```bat
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+curl.exe -fLo uv-install.ps1 https://astral.sh/uv/install.ps1
+powershell -ExecutionPolicy ByPass -File uv-install.ps1
+set "PATH=%USERPROFILE%\.local\bin;%PATH%"
 ```
 
 On a minimal Linux image install `curl` first (`apt-get install -y curl`,
