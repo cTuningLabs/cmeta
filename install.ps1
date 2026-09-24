@@ -10,9 +10,11 @@
     scp, a USB stick): it installs the package sitting next to this script, so
     the machine runs exactly the code you copied rather than whatever happens
     to be released. To install the released or the git version instead, use the
-    installer on the website:
+    installer on the website - saved under another name, so that it does not
+    overwrite this one:
 
-      powershell -ExecutionPolicy ByPass -c "irm https://cTuning.ai/project/cmeta/cmeta.install/install.ps1 | iex"
+      curl.exe -fLo install-web.ps1 https://cTuning.ai/project/cmeta/cmeta.install/install.ps1
+      powershell -ExecutionPolicy ByPass -File install-web.ps1
 
     NETWORK: only cMeta itself comes from this directory. Its dependencies
     (pyyaml, requests, tabulate, ...) and uv are still fetched from the
@@ -295,14 +297,32 @@ function Install-Uv {
         return
     }
     Step 'Installing uv'
-    Say "     > irm $script:UvInstallUrl | iex"
-    if (-not $script:DryRunMode) {
-        if ($script:NoPathMode) { $env:UV_NO_MODIFY_PATH = '1' }
-        Invoke-Expression (Invoke-RestMethod -Uri $script:UvInstallUrl)
-        Add-LocalBin
-        if (-not (Have uv)) {
-            Fail 'uv was installed but is not on PATH. Open a new shell and re-run.'
-        }
+    # astral's installer is downloaded to a file and run from there - the same
+    # two steps as this script's own - rather than piped into
+    # Invoke-Expression: a script downloaded and run in memory is the pattern
+    # Microsoft Defender flags as a download-and-run trojan. It runs in its own
+    # PowerShell, so nothing it does can end this script.
+    $tmp = Join-Path $env:TEMP "uv-install-$PID.ps1"
+    $ps  = (Get-Process -Id $PID).Path
+    Say "     > Invoke-WebRequest $script:UvInstallUrl -OutFile $tmp"
+    Say "     > powershell -ExecutionPolicy ByPass -File $tmp"
+    if ($script:DryRunMode) { return }
+    if ($script:NoPathMode) { $env:UV_NO_MODIFY_PATH = '1' }
+    # Windows PowerShell 5.1 on an older Windows may not offer TLS 1.2 unasked.
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $script:UvInstallUrl -OutFile $tmp
+    } catch {
+        Fail "could not download the uv installer from ${script:UvInstallUrl}: $($_.Exception.Message)"
+    }
+    & $ps -NoProfile -ExecutionPolicy ByPass -File $tmp
+    $code = $LASTEXITCODE
+    Remove-Item -Path $tmp -ErrorAction SilentlyContinue
+    if ($code -ne 0) { Fail "the uv installer exited with $code" }
+    Add-LocalBin
+    if (-not (Have uv)) {
+        Fail 'uv was installed but is not on PATH. Open a new shell and re-run.'
     }
 }
 

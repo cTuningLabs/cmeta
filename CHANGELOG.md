@@ -4,6 +4,16 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## DEV VERSION (0.32.1.1)
+- **Install instructions are two steps - download the file, then run it - instead of piped one-liners.**
+  The headers of `install.ps1` and `install.sh`, `README.md`, and `docs/installation.md` showed the website
+  installer and astral's uv installer as `curl ... | sh` and `irm ... | iex`. A downloaded file can be read
+  before it runs, and Microsoft Defender's machine-learning model classifies the piped `irm ... | iex` form
+  as `Trojan:Win32/Commando` and blocks it. `install.ps1` now installs uv the same way: astral's installer is
+  saved to a temporary file and run with `-File` in its own PowerShell, instead of being passed to
+  `Invoke-Expression`, which also keeps the `exit 1` that script uses on errors from ending ours. The engine's
+  headers download the website installer under another name, so it does not overwrite the local one, and the
+  README and docs add the line that puts uv on `PATH` in the current shell, so the next step no longer fails
+  on a fresh machine.
 - **Installers (`install.ps1`, `install.sh`): the dependency step no longer stops the install.** On Windows
   `-WithDeps` ran `winget install --id Git.Git` without `--source winget`, so on a machine where winget's
   Microsoft Store source fails - `0x8a15005e: The server certificate did not match any of the expected
