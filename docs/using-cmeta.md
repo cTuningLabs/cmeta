@@ -649,10 +649,40 @@ Fields worth knowing:
 | `subdir` | Optional — if set, only that subdirectory of the repo is scanned for artifacts. Handy when a git repo carries mixed content. |
 | `method` | Set at registration time — `git`, `zip`, `local`, `local_zip`. Tells the framework how the repo was obtained. |
 | `keep: true` | Keep the descriptor and registration on `--reindex` even if the path is temporarily missing (useful for USB / network drives). |
-| `version`, `authors`, `copyright` | Provenance. |
+| `version`, `authors`, `copyright` | Provenance of the repository itself. |
+| `artifact_defaults` | `authors`, `copyright` and `generator` stamped on each new artifact of this repository (see below). |
 
 Everything else you'd want to attach to the repo (tags, description, ...) is
 just extra YAML keys — they are preserved and returned by `cx repo find`.
+
+**Who made an artifact, and how.** A new artifact's `_cmeta` records `authors`, `copyright` and a
+`generator` object - how it was made. Keys given explicitly (`--meta.authors=...`) are kept; missing
+ones are filled like this:
+
+| Key | Taken from, in order |
+|-----|----------------------|
+| `authors` | `CMETA_AUTHORS`, then `artifact_defaults.authors` - the person at work comes first |
+| `copyright` | `artifact_defaults.copyright`, then `CMETA_COPYRIGHT` - the repository decides |
+| `generator` | `CMETA_GENERATOR`, then `artifact_defaults.generator`; `by` defaults to the authors |
+
+```yaml
+# _cmr.yaml
+artifact_defaults:
+  authors: Jane Doe
+  copyright: Copyright (C) 2026 Example Org. All rights reserved.
+  generator:
+    method: manual        # what a plain `cx ... add` from a terminal records
+```
+
+`CMETA_GENERATOR` holds a JSON object that a task, a script or an AI-agent launcher sets for the
+commands it runs, for example
+`{"method": "task", "task": "<alias>,<UID>", "run": "<log reference>", "agent": "<agent and version>",
+"model": "<model>", "effort": "<effort>"}`; a single word is read as `{"method": "<word>"}`. Suggested
+methods: `manual` (written by hand), `agent` (an interactive AI-agent session), `task` (a cMeta task
+run), `script` (a generator script), `unrecorded` (made before provenance was kept). When
+`CMETA_GENERATOR` is set during `cx ... update`, the artifact also gets `last_generator` with the date,
+so a regeneration stays visible next to how the artifact was created. Record only what is known: leave
+a field out rather than guess it.
 
 ### 7.7 Getting a repo (pull existing)
 

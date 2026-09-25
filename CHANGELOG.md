@@ -4,6 +4,17 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## DEV VERSION (0.32.1.1)
+- **A repository sets the authors, copyright and generator of its new artifacts; a running task or agent
+  records how it made them.** `CMETA_AUTHORS` and `CMETA_COPYRIGHT` were the only source, and they are
+  global: one machine working on repositories of different owners stamped the same copyright on all of
+  them. A repository's `_cmr.yaml` can now carry `artifact_defaults` (`authors`, `copyright`,
+  `generator`). The repository's copyright comes before `CMETA_COPYRIGHT`; `CMETA_AUTHORS`, the person at
+  work, comes before the repository's authors. The new `CMETA_GENERATOR` (a JSON object such as
+  `{"method": "task", "task": "<alias>,<UID>", "model": "...", "effort": "..."}`) is written as
+  `generator` when an artifact is created and as `last_generator`, with the date, when it is updated,
+  so provenance is kept without every script having to write it. Keys given in the meta are never
+  overwritten, and repositories without `artifact_defaults` behave as before. Documented in
+  `docs/using-cmeta.md` §7.6; tests in `tests/core_tests/test_artifact_defaults.py`.
 - **Install instructions are two steps - download the file, then run it - instead of piped one-liners.**
   The headers of `install.ps1` and `install.sh`, `README.md`, and `docs/installation.md` showed the website
   installer and astral's uv installer as `curl ... | sh` and `irm ... | iex`. A downloaded file can be read

@@ -62,7 +62,9 @@ tabulate, tqdm, filelock, packaging, psutil.
 ### Useful environment variables
 `CMETA_HOME`, `CMETA_DEBUG=1`, `CMETA_LOG=DEBUG|INFO`, `CMETA_LOG_FILE=<path>`,
 `CMETA_FAIL_ON_ERROR=yes`, `CMETA_VERBOSE=yes`, `CMETA_INTERNAL_REPO_PATH`,
-`CMETA_PIP_INSTALL_ARGS`.
+`CMETA_PIP_INSTALL_ARGS`, and the provenance stamped on new artifacts: `CMETA_AUTHORS`, `CMETA_COPYRIGHT`,
+`CMETA_GENERATOR` (JSON: how the artifact was made; with the `artifact_defaults` of a repository's
+`_cmr.yaml` - docs/using-cmeta.md §7.6).
 
 ---
 

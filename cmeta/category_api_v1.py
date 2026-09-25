@@ -16,6 +16,110 @@ from . import utils
 from .category import InitCategory
 from .utils.common import _error
 
+
+def _parse_generator(value):
+    """
+        Read the value of the generator environment variable.
+
+        JSON gives an object ({"method": "task", "task": "<alias>,<UID>", ...});
+        a single word is read as {"method": <word>}; any other text as {"note": <text>}.
+
+        Returns:
+            dict | None: The generator record, or None for an empty value.
+    """
+
+    import json
+
+    value = (value or '').strip()
+    if value == '':
+        return None
+
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        parsed = None
+
+    if isinstance(parsed, dict):
+        return parsed
+
+    if ' ' not in value and ';' not in value:
+        return {'method': value}
+
+    return {'note': value}
+
+
+def apply_artifact_defaults(
+    cmeta: dict,  # Artifact meta, changed in place.
+    repo_meta: dict = None,  # Meta of the target repository (its _cmr.yaml).
+    env: dict = None,  # Environment (os.environ when None).
+    cfg: dict = None,  # cMeta configuration with the environment variable names.
+    creating: bool = True,  # True when the artifact is created, False when it is updated.
+    today: str = None,  # Date for "last_generator" (YYYY-MM-DD, today in UTC when None).
+):
+    """
+        Stamp who made an artifact and how: authors, copyright and generator.
+
+        When an artifact is created, keys already in its meta are kept, and missing ones are filled:
+          - authors: CMETA_AUTHORS, else artifact_defaults.authors of the repository
+            (the person at work comes before the repository default);
+          - copyright: artifact_defaults.copyright of the repository, else CMETA_COPYRIGHT
+            (the repository decides who holds the copyright);
+          - generator: CMETA_GENERATOR (set by the task or agent that is running), else
+            artifact_defaults.generator of the repository; "by" defaults to the authors.
+
+        When an artifact is updated and CMETA_GENERATOR is set, "last_generator" records it
+        with the date, so a regeneration stays visible next to how the artifact was created.
+
+        Returns:
+            dict: The same cmeta.
+    """
+
+    env = os.environ if env is None else env
+    cfg = cfg or {}
+
+    var_authors = cfg.get('env_var_cmeta_authors', 'CMETA_AUTHORS')
+    var_copyright = cfg.get('env_var_cmeta_copyright', 'CMETA_COPYRIGHT')
+    var_generator = cfg.get('env_var_cmeta_generator', 'CMETA_GENERATOR')
+
+    defaults = (repo_meta or {}).get('artifact_defaults')
+    if not isinstance(defaults, dict):
+        defaults = {}
+
+    generator = _parse_generator(env.get(var_generator, ''))
+
+    if not creating:
+        if generator is not None:
+            if 'by' not in generator and cmeta.get('authors'):
+                generator['by'] = cmeta['authors']
+            if 'date' not in generator:
+                from datetime import datetime, timezone
+                generator['date'] = today or datetime.now(timezone.utc).date().isoformat()
+            cmeta['last_generator'] = generator
+        return cmeta
+
+    if 'authors' not in cmeta:
+        if env.get(var_authors, '') != '':
+            cmeta['authors'] = env[var_authors]
+        elif defaults.get('authors'):
+            cmeta['authors'] = copy.deepcopy(defaults['authors'])
+
+    if 'copyright' not in cmeta:
+        if defaults.get('copyright'):
+            cmeta['copyright'] = copy.deepcopy(defaults['copyright'])
+        elif env.get(var_copyright, '') != '':
+            cmeta['copyright'] = env[var_copyright]
+
+    if 'generator' not in cmeta:
+        if generator is None and isinstance(defaults.get('generator'), dict):
+            generator = copy.deepcopy(defaults['generator'])
+        if generator is not None:
+            if 'by' not in generator and cmeta.get('authors'):
+                generator['by'] = cmeta['authors']
+            cmeta['generator'] = generator
+
+    return cmeta
+
+
 class Category(InitCategory):
     """
     Standard Base Category with artifact management functions
@@ -493,6 +597,9 @@ class Category(InitCategory):
                    cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
                else:
                    cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
+
+               # A task or agent that updates the artifact leaves its record (CMETA_GENERATOR)
+               apply_artifact_defaults(cmeta, cfg=self.cm.cfg, creating=False)
 
                r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
                if r['return']>0: return r
@@ -994,11 +1101,8 @@ class Category(InitCategory):
         else:
             cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
 
-        if 'authors' not in cmeta and os.environ.get(self.cm.cfg['env_var_cmeta_authors'], '') != '':
-            cmeta['authors'] = os.environ[self.cm.cfg['env_var_cmeta_authors']]
-
-        if 'copyright' not in cmeta and os.environ.get(self.cm.cfg['env_var_cmeta_copyright'], '') != '':
-            cmeta['copyright'] = os.environ[self.cm.cfg['env_var_cmeta_copyright']]
+        # Authors, copyright and generator: the meta, the environment and the repository defaults
+        apply_artifact_defaults(cmeta, repo_meta=repo_cmeta, cfg=self.cm.cfg, creating=True)
 
         # Save meta
         if not virtual:
