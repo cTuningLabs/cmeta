@@ -500,7 +500,19 @@ class CMeta:
                     for log_path in paths_list:
                         print (log_path)
 
-                        
+                # How this cMeta was installed decides how it is updated: `uv tool`,
+                # uv or pip in an environment, from PyPI or from git, or a checkout
+                install = utils.sys.cmeta_install_info()
+                result['install'] = install
+
+                if con:
+                    print ('')
+                    print (f'Installed as: {install["label"]}')
+                    for c in install['update']:
+                        print (f'Update with:  {c}')
+                    if install.get('note'):
+                        print (f'              ({install["note"]})')
+
                 # Check latest version
                 r = utils.net.access_api(url = self.cfg['default_ctuning_api'],
                                          params = {'command':'get-last-cmeta-version'},
@@ -520,7 +532,8 @@ class CMeta:
                                     print ('')
                                     print (f'WARNING: Your cMeta version ({__version__}) is outdated.')
                                     print (f'         Latest version: {last_cmeta_version}')
-                                    print (f'         Update via: pip install -U cmeta')
+                                    for c in install['update'] or ['see docs/installation.md, "Updating cMeta"']:
+                                        print (f'         Update with: {c}')
                             else:
                                 if con:
                                     print ('')

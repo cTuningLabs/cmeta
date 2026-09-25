@@ -123,6 +123,61 @@ Extras combine with the direct reference as usual:
 
 ---
 
+## Updating cMeta
+
+**Start with `cx --version`.** It says how this cMeta was installed, prints the
+command that updates it, and warns when a newer release is out:
+
+```text
+Installed as: uv tool, from PyPI
+Update with:  uv tool upgrade cmeta
+```
+
+The update command depends on how cMeta was installed, not on the OS:
+
+| Installed with | Update with |
+|---|---|
+| `uv tool install "cmeta[server]"` (Option 1, and the website installer) | `uv tool upgrade cmeta` — keeps the extras it was installed with |
+| `uv tool install ... "cmeta[server] @ git+https://...@main"` | `uv tool install --force "cmeta[server] @ git+https://github.com/cTuningLabs/cmeta.git@main"` — the version number does not change between commits, so `--force` is what makes it reinstall |
+| `uv pip install cmeta` in a venv (Option 2) | `uv pip install -U cmeta`, with the venv activated |
+| `pip install cmeta` in a venv (Option 3) | `pip install -U cmeta`, with the venv activated (or `python -m pip install -U cmeta`) |
+| `uv pip` / `pip install ... @ git+https://...` | `uv pip install --force-reinstall "cmeta @ git+https://github.com/cTuningLabs/cmeta.git@main"` (or the same with `pip install`) |
+| an editable install (`pip install -e .`, `install.sh --editable`) | `git pull` in the checkout; reinstall only if the dependencies in `pyproject.toml` changed |
+| `install.sh` / `install.ps1` from a copied source tree | run it again: it installs with `--force`, so it upgrades in place |
+
+The website installer
+([cTuning.ai/project/cmeta/cmeta.install](https://cTuning.ai/project/cmeta/cmeta.install/))
+has an **Update** mode that turns the same choices (OS, route, version,
+repositories) into these commands.
+
+**A specific version**, to pin or to go back:
+
+```bash
+uv tool install --force "cmeta[server]==0.32.2"
+pip install "cmeta==0.32.2"
+```
+
+**Moving an install from git to PyPI** (or back) is a reinstall from the other
+source: `uv tool install --force "cmeta[server]"`.
+
+### Updating the repositories you use
+
+A content repository is updated by cMeta itself, not by pip or uv. One fetched
+with `cx repo get` (a git clone) is updated with a pull, which also refreshes the
+index:
+
+```bash
+cx repo list                             # what is plugged in
+cx repo pull ctuninglabs@cmeta-aops      # git pull + reindex
+```
+
+A repository fetched as a zip (`cx repo get cmeta://<name>`) has no history to
+pull: remove it with `cx repo delete <alias>` (this deletes the local copy,
+including any local changes) and get it again — or get the git clone instead.
+After a `git pull` done by hand inside a repository, run `cx --reindex`.
+
+---
+
 ## Choosing where repositories live
 
 One directory — the **cMeta home** — holds `repos.json`, the plugged
@@ -293,6 +348,16 @@ Common flags for category `program` include
   writable location with enough free space (model/build caches can be large).
 - **Tool/version detection issues** — run with `-v` to see how cMeta is detecting
   compilers, Python and accelerators.
+- **`cx --version` still shows the old version after an update** — another `cx`
+  comes first on `PATH`: typically a `pip install` into a system Python next to a
+  `uv tool` install. `which -a cx` (Linux, macOS) or `where cx` (Windows) lists
+  them all, and `cx --version` prints the one that runs (its `python path` and
+  `package path`). Update that one, or uninstall the one you do not use
+  (`uv tool uninstall cmeta`, `pip uninstall cmeta`).
+- **An update seems to do nothing** — an install from git keeps the same version
+  number between commits, so a plain upgrade decides there is nothing to do: use
+  `uv tool install --force ...` or `pip install --force-reinstall ...`, as
+  [Updating cMeta](#updating-cmeta) shows.
 
 ---
 

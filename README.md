@@ -325,6 +325,22 @@ package manager lives at
 [docs/installation.md](docs/installation.md) covers every route,
 install-from-source, where repositories live, configuration, and troubleshooting.
 
+### Updating
+
+`cx --version` says how this cMeta was installed and prints the command that
+updates it — and warns when a newer release is out. The common cases:
+
+```bash
+uv tool upgrade cmeta                    # installed with "uv tool install" (keeps the extras)
+uv pip install -U cmeta                  # uv, inside the virtual environment
+pip install -U cmeta                     # pip, inside the virtual environment
+cx repo pull ctuninglabs@cmeta-aops      # a content repository cloned with "cx repo get"
+```
+
+An install from git, a local directory, or a checkout, the interactive
+installer's **Update** mode, and what to do when `cx --version` still shows the
+old version: [Updating cMeta](docs/installation.md#updating-cmeta).
+
 ---
 
 ## Documentation

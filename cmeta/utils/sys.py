@@ -1513,3 +1513,158 @@ def plus_env(
                 env[k] = v.split(os.pathsep)
 
     return {'return':0}
+
+##########################################################################################
+def describe_cmeta_install(
+    installer: str = '',      # INSTALLER of the cmeta dist-info: "uv", "pip", or ''.
+    direct_url: dict = None,  # Parsed direct_url.json of that dist-info (PEP 610), or None.
+    receipt: str = '',        # Text of uv-receipt.toml in the environment root ('' when absent).
+    executable: str = '',     # The Python running cMeta (sys.executable).
+    frozen: bool = False,     # True for a standalone executable (PyInstaller).
+    source_dir: str = '',     # A git checkout cMeta runs from without being installed from it.
+):
+    """
+        How this cMeta was installed, and the command that updates it. Pure: every input is
+        passed in, so it can be tested; cmeta_install_info() gathers them from the running
+        interpreter.
+
+        Returns:
+            dict: {'return': 0, 'method': 'uv tool' | 'uv' | 'pip' | 'editable' | 'source' |
+                   'frozen', 'source': 'pypi' | 'git' | 'local', 'label': str,
+                   'update': [commands], 'note': str}
+    """
+
+    import re
+
+    exe = executable or 'python'
+    direct_url = direct_url or {}
+    url = str(direct_url.get('url') or '')
+    vcs = direct_url.get('vcs_info') or {}
+    editable = bool((direct_url.get('dir_info') or {}).get('editable'))
+
+    def local_path(u):
+        path = u[len('file://'):] if u.startswith('file://') else u
+        if re.match(r'^/[A-Za-z]:/', path):          # file:///C:/... on Windows
+            path = path[1:]
+        return path.replace('%20', ' ')
+
+    info = {'return': 0, 'note': ''}
+
+    if frozen:
+        info.update({'method': 'frozen', 'source': 'local', 'label': 'a standalone executable',
+                     'update': [], 'note': 'download the executable of the new release'})
+        return info
+
+    if editable or source_dir:
+        path = source_dir or local_path(url)
+        info.update({'method': 'editable' if editable else 'source', 'source': 'local',
+                     'label': ('an editable install of ' if editable else 'a git checkout at ') + path,
+                     'update': ['git -C "%s" pull' % path],
+                     'note': 'the code in that directory is what runs; reinstall only if the '
+                             'dependencies in pyproject.toml changed'})
+        return info
+
+    # Where the package came from: a git repository, a local directory, or PyPI
+    if vcs.get('vcs') == 'git' and url:
+        source, rev = 'git', vcs.get('requested_revision') or ''
+        target = 'git+%s%s' % (url, '@' + rev if rev else '')
+    elif url.startswith('file:'):
+        source, rev = 'local', ''
+        target = local_path(url)
+    else:
+        source, rev, target = 'pypi', '', ''
+
+    # Which tool installed it. uv writes uv-receipt.toml into a `uv tool` environment,
+    # with the requirement (and its extras) the tool was installed from.
+    extras = ''
+    if receipt:
+        method = 'uv tool'
+        m = re.search(r'name\s*=\s*"cmeta"[^}]*?extras\s*=\s*\[([^\]]*)\]', receipt)
+        if m:
+            names = [x.strip().strip('"\'') for x in m.group(1).split(',') if x.strip()]
+            extras = '[%s]' % ','.join(names) if names else ''
+    elif installer.strip().lower() == 'uv':
+        method = 'uv'
+    else:
+        method = 'pip'
+
+    where = {'pypi': 'from PyPI', 'git': 'from git' + (' (%s)' % rev if rev else ''),
+             'local': 'from ' + target}[source]
+    spec = 'cmeta%s @ %s' % (extras, target) if target else 'cmeta' + extras
+
+    if method == 'uv tool':
+        update = ['uv tool upgrade cmeta'] if source == 'pypi' else \
+                 ['uv tool install --force "%s"' % spec]
+    elif method == 'uv':
+        update = ['uv pip install -U --python "%s" cmeta' % exe] if source == 'pypi' else \
+                 ['uv pip install --force-reinstall --python "%s" "%s"' % (exe, spec)]
+    else:
+        update = ['"%s" -m pip install -U cmeta' % exe] if source == 'pypi' else \
+                 ['"%s" -m pip install --force-reinstall "%s"' % (exe, spec)]
+
+    info.update({'method': method, 'source': source, 'label': '%s, %s' % (method, where),
+                 'update': update})
+    if source == 'git' and rev:
+        info['note'] = 'reinstalls the same revision (%s); change it after "@" to follow another' % rev
+    elif source == 'local':
+        info['note'] = 'update that directory first'
+    return info
+
+##########################################################################################
+def cmeta_install_info():
+    """
+        How the running cMeta was installed, and the command that updates it - read from the
+        dist-info next to the imported package (the copy that is actually running), uv's
+        receipt in the environment root, and the interpreter. See describe_cmeta_install().
+
+        Returns:
+            dict: As describe_cmeta_install().
+    """
+
+    import glob
+    import json
+    import sys
+
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    site = os.path.dirname(package_dir)
+
+    installer, direct_url, source_dir = '', None, ''
+
+    dists = sorted(glob.glob(os.path.join(site, 'cmeta-*.dist-info')))
+    if dists:
+        def read(name):
+            p = os.path.join(dists[-1], name)
+            if os.path.isfile(p):
+                with open(p, encoding='utf-8') as f:
+                    return f.read()
+            return ''
+        installer = read('INSTALLER')
+        try:
+            direct_url = json.loads(read('direct_url.json') or 'null')
+        except ValueError:
+            direct_url = None
+    elif os.path.isdir(os.path.join(site, '.git')):
+        # Running from a checkout: an editable install keeps its dist-info in
+        # site-packages, not here - read it through importlib then.
+        try:
+            from importlib import metadata
+            dist = metadata.distribution('cmeta')
+            installer = dist.read_text('INSTALLER') or ''
+            direct_url = json.loads(dist.read_text('direct_url.json') or 'null')
+        except Exception:
+            direct_url = None
+        if not ((direct_url or {}).get('dir_info') or {}).get('editable'):
+            source_dir = site
+
+    receipt = ''
+    p = os.path.join(sys.prefix, 'uv-receipt.toml')
+    if os.path.isfile(p):
+        try:
+            with open(p, encoding='utf-8') as f:
+                receipt = f.read()
+        except OSError:
+            receipt = ''
+
+    return describe_cmeta_install(installer=installer, direct_url=direct_url, receipt=receipt,
+                                  executable=sys.executable, frozen=bool(getattr(sys, 'frozen', False)),
+                                  source_dir=source_dir)

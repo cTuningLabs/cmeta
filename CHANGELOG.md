@@ -4,6 +4,21 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## 0.32.2
+- **`cx --version` says how cMeta was installed and prints the command that updates it.** The
+  newer-release warning used to say `pip install -U cmeta` whatever the install: wrong for the
+  recommended `uv tool` route (its environment has no pip), and a no-op for an install from git,
+  whose version number does not change between commits. cMeta now reads the dist-info next to the
+  package that is actually running (`INSTALLER`, PEP 610 `direct_url.json`) and uv's
+  `uv-receipt.toml`, and prints for example `Installed as: uv tool, from git (dev)` with
+  `Update with: uv tool install --force "cmeta[server] @ git+https://github.com/cTuningLabs/cmeta@dev"`
+  (extras taken from the receipt) - or `uv tool upgrade cmeta`, `uv pip install -U --python <exe>
+  cmeta`, `<python> -m pip install -U cmeta`, a `--force-reinstall` from git, or `git pull` for an
+  editable install or a checkout. `utils.sys.describe_cmeta_install()` (pure, 11 tests) and
+  `cmeta_install_info()`; the result of `cx --version -j` carries it as `install`.
+  `docs/installation.md` gains "Updating cMeta" (every route, pinning a version, moving between git
+  and PyPI, updating content repositories with `cx repo pull`, zip-fetched repositories) and two
+  troubleshooting entries (an older `cx` first on `PATH`; an update from git that seems to do
+  nothing), and the README an "Updating" section.
 - **A repository sets the authors, copyright and generator of its new artifacts; a running task or agent
   records how it made them.** `CMETA_AUTHORS` and `CMETA_COPYRIGHT` were the only source, and they are
   global: one machine working on repositories of different owners stamped the same copyright on all of
