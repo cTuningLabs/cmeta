@@ -1,11 +1,11 @@
 cMeta Documentation
 ===================
 
-Welcome to cMeta v0.32.1 documentation!
+Welcome to cMeta v0.32.2 documentation!
 
 .. toctree::
    :maxdepth: 2
-   :caption: cMeta v0.32.1 Contents:
+   :caption: cMeta v0.32.2 Contents:
 
    home
 

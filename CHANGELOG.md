@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.32.1.1)
+## 0.32.2
 - **A repository sets the authors, copyright and generator of its new artifacts; a running task or agent
   records how it made them.** `CMETA_AUTHORS` and `CMETA_COPYRIGHT` were the only source, and they are
   global: one machine working on repositories of different owners stamped the same copyright on all of
