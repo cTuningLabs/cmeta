@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.32.2.1)
+## 0.32.3
 - **`cx repo get|clone|checkout|pull --depth=N`: shallow git repositories.**
   - **Clone:** `git clone --depth N`. With `--checkout`, a branch or a tag is cloned directly
     (`--branch`, only that ref). A commit (full SHA) is fetched right after the clone, since
