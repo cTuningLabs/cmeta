@@ -151,6 +151,7 @@ cx repo list
 cx repo get cmeta://<name>                       # default cTuning zip mirror
 cx repo get <alias> --url=https://github.com/<org>/<repo>
 cx repo get <alias> --url=<git-url> --checkout=main
+cx repo get <alias> --url=<git-url> --depth=1 --checkout=<branch>  # shallow: no older history
 cx repo get <alias> --path=<local-path> --local  # register an existing folder
 cx repo pull <alias>
 cx repo status <alias>

@@ -706,6 +706,32 @@ cx repo get <name>                     # -> https://github.com/ctuninglabs/<name
 cx repo get <org>@<name>               # -> https://github.com/<org>/<name>
 ```
 
+**Shallow clones (`--depth`).** `--depth=N` clones only the last N commits, with no older
+history. Use it for large repositories, and for any repository whose old history should not
+land on your disk (a secret that was committed and later removed stays in the history).
+
+```bash
+cx repo get <alias> --url=<git-url> --depth=1                     # the default branch, one commit
+cx repo get <alias> --url=<git-url> --depth=1 --checkout=<branch> # a branch or a tag, cloned directly
+cx repo get <alias> --url=<git-url> --depth=1 --checkout=<sha>    # a commit: use its full SHA
+cx repo checkout <alias> <other-branch>   # a shallow clone fetches a missing ref first
+cx repo pull <alias>                      # new commits only; the clone stays shallow
+```
+
+The same flag works for `cx repo clone`. `pull` does not pass `--depth` on to `git pull`: a plain pull
+already keeps a shallow clone shallow, while `git pull --depth` would cut the history under your
+local commits, and git then refuses to merge them.
+
+**A cMeta repo inside another project (`--subdir`).** A project that is not a cMeta repository can
+carry one in a sub-folder, without touching the rest of its tree. The first time, `--subdir` writes
+`subdir: <dir>` into a new `_cmr.yaml` at the project root, and artifacts then live in `<dir>/`:
+
+```bash
+cx repo get <org>@<project> --url=<git-url> --subdir=_cmr        # first time: writes _cmr.yaml
+# commit _cmr.yaml and _cmr/ in the project - after that, everyone uses the plain command:
+cx repo get <org>@<project> --url=<git-url>
+```
+
 Where things end up:
 - Git clone / zip extract → `<CMETA_HOME>/repos/<alias>/` (unless you pass
   `--path=<other-dir>` or `--folder=<name>`).
