@@ -55,6 +55,7 @@ class Category(InitCategory):
         update: bool = False,  # If True, update existing repository.
         status: bool = False,  # If True, only query git status.
         checkout: str = None,  # Branch, tag, or commit to checkout.
+        depth: int = None,  # Shallow git clone: fetch only the last N commits (a branch, a tag or a full SHA with --checkout).
         keep: bool = False,  # If True, keep existing repo metadata on reindex.
         pre: str = '',  # Command to run before repository retrieval.
         post: str = '',  # Command to run after repository retrieval.
@@ -78,6 +79,10 @@ class Category(InitCategory):
                                 update (bool): If True, update existing repository.
                                 status (bool): If True, only query git status.
                                 checkout (str): Branch, tag, or commit to checkout.
+                                depth (int): Shallow git clone with only the last N commits - no older history is
+                                    downloaded. With --checkout, a branch or a tag is cloned directly and a commit
+                                    (full SHA) is fetched after the clone. A later pull keeps a shallow clone shallow,
+                                    and a checkout of a ref that is not there yet fetches it at the same depth.
                                 keep (bool): If True, keep existing repo metadata on reindex.
                                 pre (str): Command to run before repository retrieval.
                                 post (str): Command to run after repository retrieval.
@@ -97,6 +102,16 @@ class Category(InitCategory):
 
         con = ctx.get('control',{}).get('con', False)
         verbose = ctx.get('control',{}).get('verbose', False)
+
+        if depth is not None and depth != '':
+            try:
+                depth = int(depth)
+            except (TypeError, ValueError):
+                depth = 0
+            if depth < 1:
+                return {'return':1, 'error':'--depth must be a positive number of commits'}
+        else:
+            depth = None
 
         repos_path = self.cm.repos_path
         repos_config_path = self.cm.repos_config_path
@@ -251,23 +266,21 @@ class Category(InitCategory):
 
                         else:
                             if checkout is not None and checkout != '':
-                                cmd = f'git checkout {checkout}'
-
                                 if con:
                                     print ('')
                                     print (f'Checking out repository in {repo_path} ...')
 
-                                r = utils.sys.run(cmd, work_dir=repo_path, con=con)
+                                r = self._git_checkout(repo_path, checkout, depth, con)
                                 if r['return']>0: return r
-
-                                rc = r['returncode']
-                                if rc != 0:
-                                    return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
 
                             else:
                                 print ('')
                                 print ('Updating git repository ...')
 
+                                # No --depth here even when it is given: a plain "git pull" keeps a shallow
+                                # clone shallow (only the new commits are fetched), while "git pull --depth N"
+                                # moves the shallow boundary past local commits and git then refuses to merge
+                                # them ("refusing to merge unrelated histories")
                                 cmd = 'git pull'
 
                                 r = utils.sys.run(cmd, work_dir=repo_path, con=con)
@@ -366,7 +379,17 @@ class Category(InitCategory):
                     xpre = '' if pre == '' else ' ' + pre
                     xpost = '' if post == '' else ' ' + post
 
-                    cmd = f'git clone{xpre} "{url}" "{path}"{xpost}'
+                    # --depth: a branch or a tag is cloned directly (only that ref, no older history);
+                    # a commit is fetched after the clone, since git clone cannot start at a SHA
+                    xdepth = ''
+                    checkout_after_clone = checkout is not None and checkout != ''
+                    if depth:
+                        xdepth = f' --depth {depth}'
+                        if checkout_after_clone and not self._is_commit_sha(checkout):
+                            xdepth += f' --branch {checkout}'
+                            checkout_after_clone = False
+
+                    cmd = f'git clone{xdepth}{xpre} "{url}" "{path}"{xpost}'
 
                     if con:
                         print ('')
@@ -380,19 +403,13 @@ class Category(InitCategory):
                     if rc != 0:
                         return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
 
-                    if checkout is not None and checkout != '':
-                        cmd = f'git checkout {checkout}'
-
+                    if checkout_after_clone:
                         if con:
                             print ('')
                             print (f'Checking out repository in {path} ...')
 
-                        r = utils.sys.run(cmd, work_dir=path, con=con)
+                        r = self._git_checkout(path, checkout, depth, con)
                         if r['return']>0: return r
-
-                        rc = r['returncode']
-                        if rc != 0:
-                            return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
                     
 
                 elif method == 'local_zip':
@@ -584,6 +601,110 @@ class Category(InitCategory):
 
             r = self.cm.repos.index(clean=False, con=con, verbose=verbose, add_repo_paths = add_repo_paths_to_index)
             if r['return']>0: return r
+
+        return {'return':0}
+
+
+    ###############################################################################################
+    @staticmethod
+    def _is_commit_sha(
+        ref: str,  # Branch, tag or commit.
+    ):
+        """
+            Tell whether a checkout reference looks like a commit SHA (7 to 40 hex digits).
+
+            Args:
+                ref (str): Branch, tag or commit.
+
+            Returns:
+                bool: True for a SHA, False for anything else.
+        """
+
+        import re
+
+        return re.fullmatch(r'[0-9a-fA-F]{7,40}', ref or '') is not None
+
+
+    ###############################################################################################
+    def _git_checkout(
+        self,
+        repo_path: str,  # Path to the git repository.
+        checkout: str,  # Branch, tag, or commit to checkout.
+        depth: int = None,  # Depth to fetch a missing ref at in a shallow clone (default: 1).
+        con: bool = False,  # If True, print progress.
+    ):
+        """
+            Run "git checkout <ref>", fetching the ref first when a shallow clone does not have it.
+
+            A full clone behaves exactly as before: just "git checkout <ref>". A shallow clone
+            only holds what was fetched, so a branch, a tag or a commit that is not there yet is
+            fetched at the given depth (1 by default) - as a branch, then as a tag, then as a
+            commit (a full SHA) - and then checked out.
+
+            Args:
+                repo_path (str): Path to the git repository.
+                checkout (str): Branch, tag, or commit to checkout.
+                depth (int): Depth to fetch a missing ref at in a shallow clone (default: 1).
+                con (bool): If True, print progress.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error.
+                    - **error** (str): Error message if `return > 0`.
+        """
+
+        def quiet_run(cmd):
+            r = utils.sys.run(cmd, work_dir=repo_path, con=False, capture_output=True)
+            return r['return'] == 0 and r.get('returncode') == 0, r
+
+        ok, r = quiet_run('git rev-parse --is-shallow-repository')
+        shallow = ok and (r.get('stdout') or '').strip() == 'true'
+
+        cmd = f'git checkout {checkout}'
+
+        if shallow:
+            local_ref, _ = quiet_run(f'git rev-parse --verify --quiet "{checkout}^{{commit}}"')
+            remote_branch = False
+            if not local_ref:
+                remote_branch, _ = quiet_run(f'git rev-parse --verify --quiet "refs/remotes/origin/{checkout}^{{commit}}"')
+
+            if not local_ref and not remote_branch:
+                xdepth = depth if depth else 1
+
+                fetches = [('branch', f'git fetch --depth {xdepth} origin +refs/heads/{checkout}:refs/remotes/origin/{checkout}'),
+                           ('tag', f'git fetch --depth {xdepth} origin +refs/tags/{checkout}:refs/tags/{checkout}'),
+                           ('commit', f'git fetch --depth {xdepth} origin {checkout}')]
+
+                fetched = None
+                for kind, xcmd in fetches:
+                    ok, _ = quiet_run(xcmd)
+                    if ok:
+                        fetched = kind
+                        if con:
+                            print (f'Fetched {kind} "{checkout}" into the shallow clone: {xcmd}')
+                        break
+
+                if fetched is None:
+                    return {'return':1, 'error':f'"{checkout}" is not in this shallow clone and could not be fetched '
+                                                f'as a branch, a tag or a commit (a commit needs its full SHA)'}
+
+                if fetched == 'branch':
+                    # A shallow clone is also a single-branch clone: its fetch refspec maps only the
+                    # branch it was cloned at, so later fetches and pulls would ignore this one
+                    quiet_run(f'git remote set-branches --add origin {checkout}')
+                    remote_branch = True
+
+            if remote_branch:
+                # "git checkout <branch>" guesses the remote branch only through the remote's
+                # fetch refspec - create the tracking branch explicitly instead
+                cmd = f'git checkout -b {checkout} --track origin/{checkout}'
+
+        r = utils.sys.run(cmd, work_dir=repo_path, con=con)
+        if r['return']>0: return r
+
+        rc = r['returncode']
+        if rc != 0:
+            return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
 
         return {'return':0}
 

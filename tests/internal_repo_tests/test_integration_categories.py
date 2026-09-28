@@ -441,8 +441,11 @@ def test_detect_repo_rejects_a_missing_directory(cm, tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def tagged_assets(cm):
+def tagged_assets(cm, monkeypatch):
     """Two assets sharing one tag and differing in another."""
+    # New artifacts take their authors from CMETA_AUTHORS or the repository's artifact_defaults;
+    # a fresh CMETA_HOME has no defaults, so without this the authors depend on the machine
+    monkeypatch.setenv('CMETA_AUTHORS', 'Test Author')
     cm.access({'category': 'asset', 'command': 'create', 'arg1': 'alpha',
                'tags': 'red,shared', 'yaml': True, 'con': False})
     cm.access({'category': 'asset', 'command': 'create', 'arg1': 'beta',

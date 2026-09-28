@@ -3,6 +3,32 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.32.2.1)
+- **`cx repo get|clone|checkout|pull --depth=N`: shallow git repositories.**
+  - **Clone:** `git clone --depth N`. With `--checkout`, a branch or a tag is cloned directly
+    (`--branch`, only that ref). A commit (full SHA) is fetched right after the clone, since
+    `git clone` cannot start at a SHA.
+  - **Checkout:** a checkout in a shallow clone fetches a branch, a tag or a commit it does not have
+    yet, at the same depth (1 by default). A fetched branch becomes a tracking branch and is added
+    to the remote's fetch list, so later pulls update it too.
+  - **Pull:** `--depth` is not passed on to `git pull`. A plain pull keeps a shallow clone shallow,
+    while `git pull --depth` cuts the history under local commits, and git then refuses to merge
+    ("refusing to merge unrelated histories").
+  - **Full clones are unchanged.**
+
+  The use case is a large repository, or one whose old history should not land on disk (a secret
+  that was committed and then removed). The docs gain a recipe for a cMeta repository inside
+  another project: `--subdir=_cmr` the first time, then a committed `_cmr.yaml` and a plain
+  `cx repo get` for everyone.
+
+  Tested by 19 new integration tests on Windows and Linux: branch, tag and SHA checkouts; a
+  checkout of a ref missing from a shallow clone; a pull with local commits; `--subdir`; input
+  errors.
+- **Tests: `test_smart_match_is_a_substring_match` no longer depends on the machine.** Its artifacts
+  take their authors from `CMETA_AUTHORS`, which was set on the author's machine but not in a
+  clean Linux container, so the test failed there. The fixture now sets the variable itself.
+
+
 ## 0.32.2
 - **`cx --version` says how cMeta was installed and prints the command that updates it.** The
   newer-release warning used to say `pip install -U cmeta` whatever the install: wrong for the

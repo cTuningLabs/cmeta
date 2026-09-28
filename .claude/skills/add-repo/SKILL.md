@@ -56,7 +56,14 @@ extracts under `<CMETA_HOME>/repos/<name>/`.
 cx repo get <alias> --url=https://github.com/<org>/<repo>
 cx repo get <alias> --url=git@github.com:<org>/<repo>.git --checkout=main
 cx repo clone <alias> --url=<git-url>          # equivalent (forces method=git)
+cx repo get <alias> --url=<git-url> --depth=1 --checkout=<branch>   # shallow: no older history
 ```
+
+`--depth=N` keeps only the last N commits. Use it for big repositories, and whenever old history
+must not reach the disk (a secret committed and later removed is still in it). A `--checkout`
+branch or tag is cloned directly; a commit needs its full SHA. Later, `cx repo checkout` fetches a
+missing ref at the same depth, and `cx repo pull` keeps the clone shallow. `--depth` is never passed
+to `git pull`, which would cut the history under local commits.
 
 Alias short-hand for cTuning-hosted git repos:
 
@@ -197,7 +204,10 @@ cx --reindex
   flag first if you truly want to delete.
 - **`subdir:` in `_cmr.yaml`.** Only that sub-tree is scanned for artifacts —
   useful for git repos where cMeta content lives under one folder alongside
-  other code.
+  other code. To add a cMeta repo to a project that is not one:
+  `cx repo get <org>@<project> --url=<git-url> --subdir=_cmr` the first time, which writes
+  `subdir: _cmr` into a new root `_cmr.yaml`. Then commit `_cmr.yaml` and `_cmr/` in the project;
+  after that, a plain `cx repo get` works for everyone, with the same UID.
 
 ---
 
