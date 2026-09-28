@@ -105,6 +105,12 @@ Examples:
 # Nested meta from CLI:
 cx experiment add e1 --meta.description="pilot run" --meta.hw.gpu=A100
 
+# Tasks (the task engine in cmeta-aops): reach ANY sub-task of a run by its storage key,
+# e.g. the Python some deep dependency sets up, or a control switch of one step:
+cxt <task> --use.python.version=3.12.13
+cxt <task> --use.<storage key>.update
+# (keys and rules: cmeta-aops docs/cmeta-aops/task-engine.md, "Changing a dependency anywhere in a pipeline")
+
 # List value (base commands split on ',' automatically for tags):
 cx repo find --tags=demo,gpu
 
