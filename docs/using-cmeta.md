@@ -816,7 +816,7 @@ cx repo list                     # list registered repos (unsorted, insertion or
 cx repo find <alias-or-uid>      # find a repo by alias/UID
 cx repo status <alias>           # git status + remote URL for git-backed repos
 cx repo pull <alias>             # git pull; also refreshes the index
-cx repo pull                     # every git-backed repo, the same way
+cx repo pull                     # every git-backed repo, the same way (asks first; -q does not ask)
 cx repo update <alias>           # same as pull
 cx repo checkout <alias> <ref>   # git checkout branch/tag/commit
 cx repo space <alias>            # disk usage for the repo

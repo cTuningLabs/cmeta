@@ -15,6 +15,13 @@ All notable changes to cMeta are documented here, newest first.
   - **Other details:** `list` marks stubs; `--follow_migrated=no` returns a stub itself; a chain of
     migrations resolves to the last name; a category alias is not migrated.
   - **Tests:** 13 integration tests, and a task run by its old alias checked from the CLI.
+- **`cx repo pull` with no name asks before it updates every repository.** It lists the git
+  repositories and asks `Continue [Y/n]?`; Enter means yes. It does not ask:
+  - with `--quiet` (`-q`);
+  - when no terminal is attached (a script, a pipe, CI);
+  - when a repository is named.
+
+  `cx repo get` with no name does the same.
 - **A repository fetched by its short name updates by it too.** `cx repo get cmeta-aops` clones into
   the alias `ctuninglabs@cmeta-aops`, so `cx repo pull cmeta-aops` and a second
   `cx repo get cmeta-aops` failed with "directory ... already exists". Both now find that clone and
