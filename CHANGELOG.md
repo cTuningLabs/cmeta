@@ -3,6 +3,20 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.32.4.1)
+- **The release procedure is written down**, for maintainers and AI agents alike:
+  [`docs/releasing.md`](docs/releasing.md). It covers:
+  - every file that carries the version;
+  - the build check, the PR, the tag and the GitHub release;
+  - the PyPI upload;
+  - the `cmeta_last_version` setting behind `cx --version`.
+
+  `AGENTS.md` §5.2 and a new skill, `release-cmeta`, point to it.
+- **The docs build writes LF line endings.** On Windows, every build had rewritten the tracked `.rst`
+  files under `docs/en/` with CRLF, so git showed them as changed when their text was not.
+- `uv.lock` includes `httpx`, which the `dev` extra needs since 0.32.4.
+
+
 ## 0.32.4
 - **The `cserver` home page lists every page of the server.** `cx app run cserver` now opens on
   `/projects`. It shows every `cserver.*` page of every plugged repository as a card, grouped by

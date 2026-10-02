@@ -228,7 +228,9 @@ class CMataDocBuilder:
         rst_filename = module_name.replace(".", "_") + ".rst"
         rst_path = self.api_dir / rst_filename
         
-        with open(rst_path, "w", encoding="utf-8") as f:
+        # newline="\n": these files are tracked; a build on Windows would otherwise rewrite every
+        # line ending to CRLF and leave them looking modified in git with no change in their text
+        with open(rst_path, "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(rst_content))
         
         return rst_filename
@@ -264,7 +266,7 @@ class CMataDocBuilder:
         for rst_file in sorted(module_files):
             rst_content.append(f"   {rst_file[:-4]}")  # Remove .rst extension
         
-        with open(self.api_dir / "index.rst", "w", encoding="utf-8") as f:
+        with open(self.api_dir / "index.rst", "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(rst_content))
     
     def generate_main_index_rst(self, guide_entries=None):
@@ -337,7 +339,7 @@ class CMataDocBuilder:
             "* :ref:`search`"
         ]
 
-        with open(self.docs_dir / "index.rst", "w", encoding="utf-8") as f:
+        with open(self.docs_dir / "index.rst", "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(rst_content))
 
     def _rewrite_guide_link(self, target: str, copied: set) -> str:

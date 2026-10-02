@@ -318,6 +318,19 @@ the project plus this attribution summary. It is a research/testing feature —
 tool support is inconsistent and it overrides nothing in `LICENSE`, `NOTICE` or
 this file.
 
+### 5.2 Releasing
+
+A release follows [`docs/releasing.md`](docs/releasing.md), whichever tool runs it; the Claude Code skill
+`release-cmeta` points to the same file. Agents do the checks, the version bump (in every file that
+carries the version), the build check, the PR, the tag and the release on request. Four steps belong to
+the maintainer:
+
+- picking the version;
+- merging into `main`;
+- the PyPI upload;
+- deciding when users are told: the cTuning platform's `cmeta_last_version`, which `cx --version` reads
+  through the cTuning.ai API.
+
 ---
 
 ## 6. Pointers
@@ -326,6 +339,7 @@ this file.
 - Using cMeta (repos, plugins, artifacts, reindex): `docs/using-cmeta.md`
 - Sphinx docs source: `docs/`
 - Changelog: `CHANGELOG.md`
+- Releasing: `docs/releasing.md`
 - Skills for agents extending cMeta: `.claude/skills/`
   - `use-cmeta-python` — programmatic API surface, `access()`, `ctx` (agent
     state), base commands, `cm.utils`, `cm.packages`
@@ -333,4 +347,5 @@ this file.
     scripting patterns
   - `add-plugin` — scaffold a new category & artifacts
   - `add-repo` — pull / init / plug content repositories
+  - `release-cmeta` — release a new version (points to `docs/releasing.md`)
 - Lineage (background only): Collective Knowledge → Collective Mind → CMX → cMeta.
