@@ -177,7 +177,17 @@ Notable shipped artifacts:
   an HTTP middleware, so it covers pages, artifact files and AJAX alike; note
   that Starlette runs the most recently added middleware first, which is why
   `SessionMiddleware` is registered *after* it in `src/app.py`. Details:
-  `docs/using-cmeta.md` §8.2.1.
+  `docs/using-cmeta.md` §8.2.1. `/` renders the page named by `default_page` in
+  the same config (`/projects` by default) through `_serve_page`, the helper
+  behind every `/<page>` route; when that page cannot be shown (`none`, missing,
+  an error, a refused `api_key`) it falls back to `templates/welcome.html`.
+- `category/cserver.projects/` — the home page of `cserver` (UID
+  `5c7646fb6db54600`): every `cserver.*` category of every plugged repository,
+  found through `category find cserver.*` (no registry); those with `web_` are
+  cards, the rest a footnote. It leaves itself out of its cards, reads
+  `hide_repos` from the `cserver` config on every request, and takes
+  `?repo=<text>`. `cx cserver.projects pages` prints the same list. Details:
+  `docs/using-cmeta.md` §8.2.2.
 - `category/category/` — the *category* category itself (UID
   `dd9ea50e7f76467f`). Its `create` is what `cx category add <name>` invokes; it
   also copies `v1-template.py` into the new category as `api/v1.py`.

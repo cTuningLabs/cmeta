@@ -14,3 +14,8 @@ Classes
    :members:
    :undoc-members:
    :show-inheritance:
+
+Functions
+---------
+
+.. autofunction:: cmeta.category_api_v1.apply_artifact_defaults

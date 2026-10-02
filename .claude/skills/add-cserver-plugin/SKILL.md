@@ -36,6 +36,12 @@ cx category add <repo>:cserver.<name>     # creates the folder, _cmeta.yaml, api
 cx category find cserver.<name>           # confirm it resolves; note the UID
 ```
 
+**Give it a `name` and a `desc` in `_cmeta.yaml`: they are its card.** The home page
+of the internal cserver (`/`, which is `/projects`, category `cserver.projects`) lists
+every `cserver.*` category whose api defines `web_`, straight from the index, with no
+registration. The part of `name` before ` - ` is the card's title, and `desc` (or the
+rest of `name`) its text. `cx cserver.projects pages` prints the same list.
+
 If you create the folder **by hand** (`mkdir` + `_cmeta.yaml`), register just
 that one artifact instead of rebuilding the whole home:
 
@@ -308,6 +314,8 @@ curl -s -X POST 'http://127.0.0.1:8004/<name>/?native_action=load_graph' \
 Then in a browser, on **both** hosts:
 
 - [ ] Page renders; no console errors.
+- [ ] Internal cserver: the page is a card on the home page `/` (only a footnote
+      there means its api has no `web_`).
 - [ ] `?<param>=N` in the URL changes the result **and** seeds the matching UI input.
 - [ ] Changing an input + Reload re-fetches and updates the URL.
 - [ ] The loaded asset URLs carry a `?v=` stamp matching your latest edit.

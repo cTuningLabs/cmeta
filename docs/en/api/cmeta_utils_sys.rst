@@ -10,6 +10,10 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 Functions
 ---------
 
+.. autofunction:: cmeta.utils.sys.cmeta_install_info
+
+.. autofunction:: cmeta.utils.sys.describe_cmeta_install
+
 .. autofunction:: cmeta.utils.sys.find_command_func
 
 .. autofunction:: cmeta.utils.sys.find_func_definition

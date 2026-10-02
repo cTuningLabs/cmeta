@@ -98,11 +98,14 @@ Options:
                      directory is temporary.
   --extras <a,b>     pip extras (default: server, which is what cserver needs)
   --no-extras        install the bare package with no extras at all
-  --home <path>      value for CMETA_HOME (default: $HOME/CMETA). Always
-                     wins, even inside an activated virtual environment.
+  --home <path>      keep cMeta's repositories, index and caches in <path>:
+                     sets CMETA_HOME, which always wins, even inside an
+                     activated virtual environment. Without it nothing is
+                     set and cMeta uses ~/CMETA (<venv>/CMETA while a
+                     virtual environment is active).
   --home2 <path>     set CMETA_HOME2 instead: the same home, except that an
                      activated virtual environment is still allowed to win
-  --no-home          set neither; let cMeta resolve the home on its own
+  --no-home          set neither (the default; kept for older scripts)
   --aops             also plug in the cmeta-aops automation repository
   --no-modify-path   do not touch PATH or any shell rc file
   --dry-run          print every command without running anything
@@ -130,7 +133,9 @@ parse_args() {
     # the only cure is a reinstall. Drop it with --no-extras, or replace the
     # whole list with --extras.
     WITH_DEPS=0; EXTRAS="server"; EDITABLE=0
-    HOME_DIR="$HOME/CMETA"; SET_HOME=1; HOME_VAR=CMETA_HOME; WANT_AOPS=0
+    # No home by default: cMeta finds one on its own (~/CMETA, or <venv>/CMETA
+    # while a virtual environment is active). --home / --home2 set one.
+    HOME_DIR=""; SET_HOME=0; HOME_VAR=CMETA_HOME; WANT_AOPS=0
     NO_MODIFY_PATH=0; QUIET=0; DRY_RUN=0
 
     while [ $# -gt 0 ]; do
@@ -141,11 +146,11 @@ parse_args() {
             --extras=*)       EXTRAS="${1#*=}" ;;
             --no-extras)      EXTRAS="" ;;
             --home)           shift; [ $# -gt 0 ] || err "--home needs a value"
-                              HOME_DIR="$1"; HOME_VAR=CMETA_HOME ;;
-            --home=*)         HOME_DIR="${1#*=}"; HOME_VAR=CMETA_HOME ;;
+                              HOME_DIR="$1"; HOME_VAR=CMETA_HOME; SET_HOME=1 ;;
+            --home=*)         HOME_DIR="${1#*=}"; HOME_VAR=CMETA_HOME; SET_HOME=1 ;;
             --home2)          shift; [ $# -gt 0 ] || err "--home2 needs a value"
-                              HOME_DIR="$1"; HOME_VAR=CMETA_HOME2 ;;
-            --home2=*)        HOME_DIR="${1#*=}"; HOME_VAR=CMETA_HOME2 ;;
+                              HOME_DIR="$1"; HOME_VAR=CMETA_HOME2; SET_HOME=1 ;;
+            --home2=*)        HOME_DIR="${1#*=}"; HOME_VAR=CMETA_HOME2; SET_HOME=1 ;;
             --no-home)        SET_HOME=0 ;;
             --aops)           WANT_AOPS=1 ;;
             --no-modify-path) NO_MODIFY_PATH=1 ;;
@@ -412,15 +417,16 @@ shell_rc() {
 
 set_home() {
     if [ "$SET_HOME" = 0 ]; then
-        step "Leaving CMETA_HOME unset (--no-home)"
-        say "     cMeta will resolve it: an active venv wins, else ~/CMETA."
+        step "cMeta home: ~/CMETA (the default - nothing to set)"
+        say "     Inside an activated virtual environment it is <venv>/CMETA instead."
+        say "     To keep it elsewhere: re-run with --home <path>, or set CMETA_HOME."
         return 0
     fi
 
     step "Pointing cMeta at $HOME_DIR via $HOME_VAR"
     if [ "$HOME_VAR" = CMETA_HOME ]; then
-        say "     A global command does not imply a global home: with CMETA_HOME"
-        say "     unset, an activated virtual environment captures it instead."
+        say "     CMETA_HOME always wins, even inside an activated virtual"
+        say "     environment (which would otherwise hold its own home)."
     else
         say "     CMETA_HOME2 is the fallback home: an activated virtual"
         say "     environment still takes precedence over it."
@@ -490,11 +496,13 @@ verify() {
 
 epilogue() {
     [ "$QUIET" = 1 ] && return 0
+    picked="PATH is"
+    [ "$SET_HOME" = 1 ] && picked="PATH and $HOME_VAR are"
     cat <<EOF
 
 cMeta is installed from $SRC_DIR
 
-  Open a new shell (so PATH and CMETA_HOME are picked up), then:
+  Open a new shell (so $picked picked up), then:
 
     cx --version                 # prints the version and the home it resolved
     cx repo list                 # what is plugged in

@@ -44,6 +44,11 @@ cx config set ctuning_server --meta.api_key={your API Access Token}
 cx config set cserver --meta.param.host=0.0.0.0 --meta.param.port=8004
 cx config set cserver --meta.password="a passphrase of your own"
 
+# What its home page "/" shows (/projects by default; none = a plain welcome),
+# and repositories to leave off that list on a shared server:
+cx config set cserver --meta.default_page=/projects
+cx config set cserver --meta.hide_repos=my-private-repo
+
 # Inspect and confirm:
 cx config show default
 cx config show ctuning_server
@@ -86,6 +91,8 @@ cx config set cserver --meta.password_sha256=<the digest it printed>
 - [cplatform.md](cplatform.md) — connecting to the cTuning.ai platform.
 - [using-cmeta.md](using-cmeta.md#821-a-shared-password-in-front-of-cserver)
   §8.2.1 — every `cserver` password key, and what that protection is and is not.
+- [using-cmeta.md](using-cmeta.md#822-the-home-page-every-page-of-the-server)
+  §8.2.2 — the `cserver` home page, `default_page` and `hide_repos`.
 - [using-cmeta.md](using-cmeta.md) §8 — full `config` reference, including the
   `uses_categories:` pattern for reading a config from your own category in
   Python.

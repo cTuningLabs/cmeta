@@ -79,9 +79,11 @@ of one project — which is how it is normally used. It also sidesteps PEP 668
 entirely, since it never touches the system interpreter, and
 `uv tool upgrade cmeta` upgrades the CLI in isolation.
 
-**Set `CMETA_HOME` alongside it** — see
-[Choosing where repositories live](#choosing-where-repositories-live). A global
-command does *not* by itself imply a global home.
+**Nothing else to set up.** Repositories, the index and the caches go to
+`~/CMETA` (`%USERPROFILE%\CMETA` on Windows). Set `CMETA_HOME` only to keep them
+somewhere else, or to keep that one folder even while a project's virtual
+environment is active; see
+[Choosing where repositories live](#choosing-where-repositories-live).
 
 ## Option 2 — `uv` + a project virtual environment
 
@@ -153,8 +155,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force "cmeta[server]==0.32.3"
-pip install "cmeta==0.32.3"
+uv tool install --force "cmeta[server]==0.32.4"
+pip install "cmeta==0.32.4"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other
@@ -182,7 +184,9 @@ After a `git pull` done by hand inside a repository, run `cx --reindex`.
 
 One directory — the **cMeta home** — holds `repos.json`, the plugged
 repositories under `repos/`, the fast lookup index under `index/`, and the task
-caches. cMeta picks it the first time it runs, in this order:
+caches. **By default it is `~/CMETA`** (`%USERPROFILE%\CMETA` on Windows), created
+on first use, so there is nothing to configure. cMeta looks for it every time it
+starts, in this order:
 
 | | Source | Becomes | When |
 |---|---|---|---|
@@ -195,11 +199,12 @@ caches. cMeta picks it the first time it runs, in this order:
 `cx --version` prints the home it resolved, and `cx --home=<path> …` overrides
 it for a single command.
 
-**Installing globally and having a global home are two separate things.** Rule 2
-reads an environment variable, not the location of the `cx` you invoked — so a
-`uv tool`-installed `cx`, run from a shell with a project venv activated, will
-still put its repositories in `$VIRTUAL_ENV/CMETA`. If you want one home
-everywhere, say so:
+**Set `CMETA_HOME` only to choose another folder**, or to keep one home even
+while a project's virtual environment is active. Rule 2 reads an environment
+variable, not the location of the `cx` you invoked. So a `uv tool`-installed
+`cx`, run from a shell with a project venv activated, puts its repositories in
+`$VIRTUAL_ENV/CMETA`. To have one home everywhere, or a home in another place,
+set it once:
 
 ```bash
 export CMETA_HOME="$HOME/CMETA"
