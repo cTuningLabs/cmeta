@@ -3,6 +3,43 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.32.4
+- **The `cserver` home page lists every page of the server.** `cx app run cserver` now opens on
+  `/projects`. It shows every `cserver.*` page of every plugged repository as a card, grouped by
+  repository:
+  - a search box: `/` focuses it, and Enter opens the first match;
+  - pins and copy-URL buttons, kept in the browser;
+  - a dark theme;
+  - the same list as JSON (`?native_action=projects`).
+
+  Under the cards: the version of the server, and links to cMeta and cMeta AOps on GitHub and to
+  cTuning.ai/project/cmeta.
+  - **Found, not registered.** The list is read from the index (`category find cserver.*`). A page
+    appears as soon as its repository is plugged in and vanishes when it is unplugged. A card is the
+    category's `name` and `desc`. A `cserver.*` category without `web_` goes into a footnote, not a
+    card.
+  - **In a terminal:** `cx cserver.projects pages [--repo=<text>] [--all] [--as_json]`.
+  - **What `/` shows** is set by `default_page` in the `cserver` config. The key appeared in one
+    docs example but was never read; now it is. The default is `/projects`. It can be any other
+    page, or `none` for a plain welcome page with the version and the same links.
+  - **`/` never turns into an error.** When its page cannot be shown, `/` falls back to the welcome
+    page. `/?out=json` answers as before.
+  - **On a shared server,** `projects_hide_repos` (aliases or patterns, read on every request) leaves
+    repositories off the list. Their pages stay at their own URLs, behind the same password and
+    `api_keys` as before. With `api_keys` set, `/` without a key shows the welcome page, not the
+    list.
+  - **Tests:** 12 new:
+    - the page on a fresh home, the repository filter and hidden repositories;
+    - `/` with its default page, the welcome fallback, and `api_keys`.
+
+    The `dev` extra gains `httpx`, which FastAPI's TestClient needs.
+- **Docs.**
+  - The home page is described in `using-cmeta.md` §8.2.2, `common-commands.md`, `configuration.md`,
+    the README and the `add-cserver-plugin` skill.
+  - `docs/en/api` lists the functions added in 0.32.2.
+  - The `use-cmeta-cli` skill documents `--use.<storage key>` for the sub-tasks of a task.
+
+
 ## 0.32.3
 - **`cx repo get|clone|checkout|pull --depth=N`: shallow git repositories.**
   - **Clone:** `git clone --depth N`. With `--checkout`, a branch or a tag is cloned directly
