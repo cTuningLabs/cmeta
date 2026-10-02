@@ -224,11 +224,41 @@ cx <category> add <repo>:<alias> --tags=t1,t2  # create in a specific repo
 cx <category> update <alias> --meta.description="..."   # merge metadata
 cx <category> tags <alias> --add=t1,t2 --remove=t3
 cx <category> mv <old> <new>                   # move within/between repos
+cx <category> migrate <old> [<repo>:]<new>     # rename, and keep the old alias working
 cx <category> rm <alias>                       # delete (blocked if permanent: true)
 ```
 
 Prefer YAML sidecars (`--yaml`) — they match the shipped artifacts and are
 easy to read/edit by hand.
+
+**Renaming without breaking the old alias: `migrate`.** `mv` keeps the UID, so
+`alias,UID` and UID references survive a rename, but a command that names the
+artifact by its old alias alone (`cx task run <old>` in a script, a doc, a
+scheduler) stops resolving. `migrate` moves the artifact the same way and leaves
+a **stub** under the old alias:
+
+- **The stub:** a new UID and two keys:
+  - `migrated_to`, the new `alias,UID`;
+  - `migrated_when`, the date and time of the migration (ISO 8601, UTC).
+- **Commands that use an artifact** (`find`, `info`, `read`, `cx task run`, …)
+  and look up the old alias alone get the artifact behind the stub. They print
+  the notice `<category> "<old>" was migrated to "<new>,<UID>" …` once per
+  process.
+- **Commands that change artifacts** (`update`, `tags`, `mv`, `rm`) act on the
+  stub itself. `cx <category> rm <old>` removes the stub once nobody uses the old
+  alias.
+- **Lookups with a UID** always return exactly what they name.
+- **`list`** shows the stub as `<old>  -> <new>,<UID> (migrated)`.
+- **`find <old> --follow_migrated=no`** returns the stub itself.
+
+```bash
+cx task migrate my-task my-project-task          # task/my-task becomes task/my-project-task
+cx task run my-task                              # still runs it, with the notice
+cx task migrate local:my-task shared:my-task-v2  # to another repository, under a new alias
+```
+
+A category alias is not migrated: the `category` category refuses to rename one,
+so `migrate` stops before it leaves a stub.
 
 ### 5.3 From Python
 
@@ -513,7 +543,8 @@ Additional forms:
   `category,dd9ea50e7f76467f::repo,f4f792ab40c7498f`.
 
 Because `alias,UID` resolution only looks at the UID, references written in
-that form remain valid even if the alias is later renamed. This is what makes
+that form remain valid even if the alias is later renamed (a bare old alias
+keeps working only when the rename was a `migrate`, §5.2). This is what makes
 cMeta references **semantically portable** across projects, forks and time —
 recommended for anything you share, publish, or automate against.
 

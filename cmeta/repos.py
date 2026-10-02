@@ -11,11 +11,18 @@ import logging
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 import os
+import sys
 import fnmatch
 import time
 
 from . import utils
 from .utils.common import _error
+
+# Migration stubs followed in this process, so that each notice is printed once
+_migrated_notices = set()
+
+# How many stubs in a row a lookup follows before it gives up (a stub pointing to a stub)
+MAX_MIGRATED_HOPS = 8
 
 class Repos:
     """
@@ -500,6 +507,7 @@ class Repos:
         match_empty_version: bool = False,  # Value for match empty version.
         match_empty_values: bool = False,
         all_tags: str = None,  # match all tags in cmeta
+        follow_migrated: bool = True,  # Follow a migration stub found by its alias alone to its artifact.
     ):
         """
             Find artifacts by cMeta reference.
@@ -514,6 +522,10 @@ class Repos:
                 match_empty_version (bool): Value for match empty version.
                 match_empty_values (bool): Match when queried values or key components are empty.
                 all_tags (str): match all tags in cmeta
+                follow_migrated (bool): When an artifact is looked up by its alias alone (no UID, no
+                    wildcards) and the alias is a migration stub (meta key `migrated_to`, see the
+                    `migrate` command), return the artifact the stub points to instead, with a notice
+                    on stderr. A lookup with a UID always returns exactly what it names.
             Returns:
                 dict: Dictionary with 'return': 0 and 'artifacts' list on success,
                       or 'return' > 0 and 'error' on failure.
@@ -602,12 +614,21 @@ class Repos:
 
                 else:
                     r = self.find_in_index(category_alias, category_uid, artifact_alias, artifact_uid, repos = artifact_repo_artifacts, add_index_file = add_index_file, skip_uids=skip_uids)
-                    if r['return'] >0: 
+                    if r['return'] >0:
                         if r['return'] == 16:
                             # If index not found
                             continue
 
                         return r
+
+                # An old alias left behind by "migrate" stands for the artifact it points to
+                if follow_migrated and (artifact_uid is None or artifact_uid == '') and \
+                   artifact_alias and '*' not in artifact_alias and '?' not in artifact_alias:
+                    rr = self._follow_migrated(r['artifacts'], category_cmeta, category_alias, category_uid,
+                                               add_index_file = add_index_file)
+                    if rr['return'] > 0: return rr
+
+                    r['artifacts'] = rr['artifacts']
 
                 # Check conditions
                 add_artifacts = []
@@ -682,6 +703,86 @@ class Repos:
             return _error(f'{category_alias} {x_artifact_alias} not found', 16, None, False) #self.fail_on_error)
 
         return {'return':0, 'artifacts':artifacts}
+
+    ###################################################################################################
+    def _follow_migrated(
+        self,
+        artifacts,  # Artifacts found by alias in one category.
+        category_meta,  # Metadata of that category.
+        category_alias,  # Category alias.
+        category_uid,  # Category UID.
+        add_index_file = False,  # If True, include index_file path in the result.
+    ):
+        """
+            Replace the migration stubs among artifacts by the artifacts they point to.
+
+            A stub is what `migrate` leaves under an old alias: an artifact whose meta has
+            `migrated_to` (the new "alias,UID") and `migrated_when`. The target is found by its UID,
+            in any repository; a stub pointing to a stub is followed too, up to MAX_MIGRATED_HOPS.
+            Each stub followed prints one notice per process on stderr.
+
+            Args:
+                artifacts: Artifacts found by alias in one category.
+                category_meta: Metadata of that category.
+                category_alias: Category alias.
+                category_uid: Category UID.
+                add_index_file: If True, include index_file path in the result.
+            Returns:
+                dict: {'return': 0, 'artifacts': [...]} with the stubs replaced (and no artifact
+                      twice), or an error if a stub points to an artifact that does not exist.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        result = []
+        seen = set()
+
+        for artifact in artifacts:
+            current = artifact
+            hops = 0
+
+            while (current.get('cmeta') or {}).get('migrated_to'):
+                stub_meta = current['cmeta']
+                stub_alias = current['cmeta_ref_parts'].get('artifact_alias', current['cmeta_ref_parts'].get('artifact_uid'))
+                migrated_to = str(stub_meta['migrated_to'])
+
+                hops += 1
+                if hops > MAX_MIGRATED_HOPS:
+                    return _error(f'{category_alias} "{stub_alias}": more than {MAX_MIGRATED_HOPS} migration stubs in a row', 1, None, self.fail_on_error)
+
+                r = utils.names.parse_cmeta_name(migrated_to)
+                if r['return'] > 0: return r
+
+                target_uid = r['name'].get('uid')
+                if not target_uid:
+                    return _error(f'{category_alias} "{stub_alias}" was migrated to "{migrated_to}", which has no UID', 1, None, self.fail_on_error)
+
+                if category_meta.get('no_index', False):
+                    r = self.find_in_file_system(category_meta, category_alias, category_uid, None, target_uid)
+                else:
+                    r = self.find_in_index(category_alias, category_uid, None, target_uid, add_index_file = add_index_file)
+
+                if r['return'] > 0 or len(r.get('artifacts', [])) == 0:
+                    if r['return'] > 0 and r['return'] != 16: return r
+                    return _error(f'{category_alias} "{stub_alias}" was migrated to "{migrated_to}", which is not found', 16, None, False)
+
+                key = (category_alias, stub_alias, migrated_to)
+                if key not in _migrated_notices:
+                    _migrated_notices.add(key)
+                    when = str(stub_meta.get('migrated_when', ''))[:10]
+                    x = f' on {when}' if when else ''
+                    print(f'{self.cfg["con_error_prefix"]}{category_alias} "{stub_alias}" was migrated to "{migrated_to}"{x}; '
+                          f'using it - please update the reference', file=sys.stderr)
+
+                current = r['artifacts'][0]
+
+            uid = current['cmeta_ref_parts'].get('artifact_uid')
+            if uid not in seen:
+                seen.add(uid)
+                result.append(current)
+
+        return {'return': 0, 'artifacts': result}
 
 
 

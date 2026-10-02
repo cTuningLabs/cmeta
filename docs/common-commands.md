@@ -98,6 +98,7 @@ cx <category> add <repo>:<alias> --meta.owner="me"
 cx <category> update <alias> --meta.description="..."
 cx <category> tags <alias> --add=t1,t2 --remove=t3
 cx <category> mv <alias> <new-alias>
+cx <category> migrate <alias> <new-alias>   # the same, plus a stub: the old alias keeps working
 cx <category> rm <alias>
 ```
 
