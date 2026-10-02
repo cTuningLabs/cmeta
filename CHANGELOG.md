@@ -4,6 +4,10 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## DEV VERSION (0.32.4.1)
+- **`cx <category> index <repo>:<name>` keeps the UID of the artifact's meta.** Indexing a folder
+  made or copied by hand (it already has `_cmeta.yaml` with `artifact: <UID>`) put a new random UID
+  in the index, so `alias,UID` and UID references to it did not resolve until `cx --reindex`. It
+  now takes the UID from the meta (also from an `alias,UID` value).
 - **The release procedure is written down**, for maintainers and AI agents alike:
   [`docs/releasing.md`](docs/releasing.md). It covers:
   - every file that carries the version;
