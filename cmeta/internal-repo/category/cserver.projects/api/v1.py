@@ -25,7 +25,7 @@ Two keys of the cserver config shape it:
 
     cx config set cserver --meta.default_page=/projects        what "/" shows (read by the cserver app at
                                                                 startup); none = the plain welcome page
-    cx config set cserver --meta.projects_hide_repos=a,b*      repositories left off this page (aliases or
+    cx config set cserver --meta.hide_repos=a,b*               repositories left off this page (aliases or
                                                                 fnmatch patterns); read on every request, and
                                                                 their pages stay reachable at their own URLs
 """
@@ -156,13 +156,13 @@ class Category(InitCategory):
         """The JSON the page renders: the other pages with their hrefs, repos in order, counts, the version.
 
         This page itself is left out of the cards (it is the page being looked at); repositories matching
-        projects_hide_repos of the cserver config are left out, and ?repo=<text> keeps only the repositories
+        hide_repos of the cserver config are left out, and ?repo=<text> keeps only the repositories
         whose alias contains the text.
         """
         r = self._scan()
         if r['return'] > 0:
             return r
-        hide = _patterns(self._cserver_config().get('projects_hide_repos'))
+        hide = _patterns(self._cserver_config().get('hide_repos'))
         want = str((query or {}).get('repo') or '').strip().lower()
 
         def keep(p):

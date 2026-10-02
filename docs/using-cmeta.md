@@ -992,7 +992,7 @@ Two keys of the `cserver` config shape it:
 | Key | Default | What it does |
 |---|---|---|
 | `default_page` | `/projects` | The page `/` shows: any `cserver.<name>` as `/<name>`, or `none` for a plain welcome page with the version and the same links. Read at startup, so restart the server after changing it. |
-| `projects_hide_repos` | — | Repositories left off the list: aliases or `fnmatch` patterns, comma-separated (`a,b*`) or a list (`--meta.projects_hide_repos,=a,b*`). Read on every request. |
+| `hide_repos` | — | Repositories the server's pages leave out; today that is the list of this home page. Aliases or `fnmatch` patterns, comma-separated (`a,b*`) or a list (`--meta.hide_repos,=a,b*`). Read on every request. |
 
 `/` never turns into an error. When its page cannot be shown (its repository is not
 plugged in, it fails, or it refuses the `api_key`), `/` shows the welcome page instead.

@@ -24,7 +24,7 @@ All notable changes to cMeta are documented here, newest first.
     page, or `none` for a plain welcome page with the version and the same links.
   - **`/` never turns into an error.** When its page cannot be shown, `/` falls back to the welcome
     page. `/?out=json` answers as before.
-  - **On a shared server,** `projects_hide_repos` (aliases or patterns, read on every request) leaves
+  - **On a shared server,** `hide_repos` (aliases or patterns, read on every request) leaves
     repositories off the list. Their pages stay at their own URLs, behind the same password and
     `api_keys` as before. With `api_keys` set, `/` without a key shows the welcome page, not the
     list.

@@ -115,7 +115,7 @@ def test_repo_filter(cm):
 def test_repositories_hidden_by_the_cserver_config(cm):
     _add_category(cm, 'cserver.hello')
     r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver',
-                   'meta': {'projects_hide_repos': 'other, loc*'}, 'con': False})
+                   'meta': {'hide_repos': 'other, loc*'}, 'con': False})
     assert r['return'] == 0, r
 
     assert _web(cm, native_action='projects')['json']['pages'] == []

@@ -185,7 +185,7 @@ Notable shipped artifacts:
   `5c7646fb6db54600`): every `cserver.*` category of every plugged repository,
   found through `category find cserver.*` (no registry); those with `web_` are
   cards, the rest a footnote. It leaves itself out of its cards, reads
-  `projects_hide_repos` from the `cserver` config on every request, and takes
+  `hide_repos` from the `cserver` config on every request, and takes
   `?repo=<text>`. `cx cserver.projects pages` prints the same list. Details:
   `docs/using-cmeta.md` §8.2.2.
 - `category/category/` — the *category* category itself (UID
