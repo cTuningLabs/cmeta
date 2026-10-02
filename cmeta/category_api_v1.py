@@ -1065,6 +1065,12 @@ class Category(InitCategory):
 
                         meta = r['data']
 
+                        # Index the artifact under the UID of its meta (an "alias,UID" too),
+                        # not a new one, or alias,UID references to it would not resolve
+                        meta_uid = str(meta.get('artifact') or '').split(',')[-1].strip()
+                        if meta_uid:
+                            artifact_uid = meta_uid
+
                     else:
                         return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
 

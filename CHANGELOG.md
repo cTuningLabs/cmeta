@@ -4,6 +4,10 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## 0.32.4
+- **`cx <category> index <repo>:<name>` keeps the UID of the artifact's meta.** Indexing a folder
+  made or copied by hand (it already has `_cmeta.yaml` with `artifact: <UID>`) put a new random UID
+  in the index, so `alias,UID` and UID references to it did not resolve until `cx --reindex`. It
+  now takes the UID from the meta (also from an `alias,UID` value).
 - **The `cserver` home page lists every page of the server.** `cx app run cserver` now opens on
   `/projects`. It shows every `cserver.*` page of every plugged repository as a card, grouped by
   repository:
