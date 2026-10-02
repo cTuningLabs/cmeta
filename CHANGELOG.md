@@ -3,7 +3,18 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.32.4.1)
+## 0.32.5
+- **`cx <category> migrate <old> [<repo>:]<new>` renames an artifact without breaking its old
+  alias.** The artifact moves as with `mv`, under the same UID. A stub with a new UID stays under the
+  old alias, holding `migrated_to` (the new `alias,UID`) and `migrated_when` (ISO 8601, UTC).
+  - **Commands that use an artifact** follow a lookup of the old alias alone (no UID, no wildcard)
+    to the artifact behind the stub, with a notice once per process. That covers `find`, `info`,
+    `read`, `cx task run <old>` and everything that resolves through them.
+  - **Commands that change artifacts** (`update`, `tags`, `mv`, `rm`) act on the stub itself;
+    `cx <category> rm <old>` removes it.
+  - **Other details:** `list` marks stubs; `--follow_migrated=no` returns a stub itself; a chain of
+    migrations resolves to the last name; a category alias is not migrated.
+  - **Tests:** 13 integration tests, and a task run by its old alias checked from the CLI.
 - **A repository fetched by its short name updates by it too.** `cx repo get cmeta-aops` clones into
   the alias `ctuninglabs@cmeta-aops`, so `cx repo pull cmeta-aops` and a second
   `cx repo get cmeta-aops` failed with "directory ... already exists". Both now find that clone and
@@ -20,6 +31,10 @@ All notable changes to cMeta are documented here, newest first.
   - the `cmeta_last_version` setting behind `cx --version`.
 
   `AGENTS.md` §5.2 and a new skill, `release-cmeta`, point to it.
+- **One working branch.** `AGENTS.md` §5.0 and `CONTRIBUTING.md`:
+  - the maintainer, and the AI agents working for the maintainer, commit on `dev`, which reaches
+    `main` through one pull request;
+  - contributors branch from `dev` (`YYYYMMDD-<topic>`) and open their pull requests into `dev`.
 - **The docs build writes LF line endings.** On Windows, every build had rewritten the tracked `.rst`
   files under `docs/en/` with CRLF, so git showed them as changed when their text was not.
 - `uv.lock` includes `httpx`, which the `dev` extra needs since 0.32.4.
