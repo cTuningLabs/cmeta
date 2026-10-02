@@ -170,7 +170,8 @@ index:
 
 ```bash
 cx repo list                             # what is plugged in
-cx repo pull ctuninglabs@cmeta-aops      # git pull + reindex
+cx repo pull                             # every repository fetched with git: git pull + reindex each
+cx repo pull cmeta-aops                  # one, by the name it was fetched with or by its alias (ctuninglabs@cmeta-aops)
 ```
 
 A repository fetched as a zip (`cx repo get cmeta://<name>`) has no history to

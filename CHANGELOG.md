@@ -4,6 +4,10 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## DEV VERSION (0.32.4.1)
+- **A repository fetched by its short name updates by it too.** `cx repo get cmeta-aops` clones into
+  the alias `ctuninglabs@cmeta-aops`, so `cx repo pull cmeta-aops` and a second
+  `cx repo get cmeta-aops` failed with "directory ... already exists". Both now find that clone and
+  pull it. `cx repo init <name>` still creates a new local repository under exactly that name.
 - **`cx <category> index <repo>:<name>` keeps the UID of the artifact's meta.** Indexing a folder
   made or copied by hand (it already has `_cmeta.yaml` with `artifact: <UID>`) put a new random UID
   in the index, so `alias,UID` and UID references to it did not resolve until `cx --reindex`. It

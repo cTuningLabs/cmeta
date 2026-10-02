@@ -214,6 +214,23 @@ class Category(InitCategory):
 
             repo_artifacts = r.get('artifacts',[])
 
+            # A short name ("cmeta-aops") becomes the alias "<default_git_repo>@<name>" when it is
+            # cloned (below). Look that alias up too, so that "cx repo pull <name>" and a second
+            # "cx repo get <name>" update the clone instead of trying to clone it again
+            if len(repo_artifacts) == 0 and command != 'init' and repo_name and \
+               (url is None or url == '') and zip_file is None and method != 'local' and \
+               not any(c in repo_name for c in '@*?,:'):
+                default_git_repo = config_cmeta.get('default_git_repo')
+                if not default_git_repo:
+                    default_git_repo = self.cm.cfg['default_git_repo']
+
+                p['arg1'] = default_git_repo + '@' + repo_name
+
+                r = self.cm.access(p)
+                if r['return']>0 and r['return']!=16: return r
+
+                repo_artifacts = r.get('artifacts',[])
+
         ######################################################################################################################
         if len(repo_artifacts)>0:
             # If some rep   os are already registered
