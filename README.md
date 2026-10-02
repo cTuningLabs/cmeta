@@ -45,15 +45,19 @@ curl -fLo uv-install.sh https://astral.sh/uv/install.sh   # uv, if you have none
 sh uv-install.sh
 . "$HOME/.local/bin/env"                           # put uv on PATH in this shell
 uv tool install "cmeta[server]"                    # cx / cmeta / cserver on PATH, in their own environment
-export CMETA_HOME="$HOME/CMETA"                    # one home for all your content repositories
 
-cx --version                                       # the engine version and the home it resolved
+cx --version                                       # the engine version and its home folder, ~/CMETA
 cx repo get ctuninglabs@cmeta-aops                 # pull the reusable automations from GitHub
 cx tool setup python                               # detect (or install) a tool and pin its version
 cx program run test-nmm-c-cpu cpu                  # compile and run a small matmul benchmark
 cx task run test-python -j                         # run a task; the trace shows every step it reused
 cx app run cserver                                 # every web page as cards at http://127.0.0.1:8004
 ```
+
+There is nothing to configure. Everything cMeta fetches or creates goes into one
+folder, its home: `~/CMETA` (`%USERPROFILE%\CMETA` on Windows). To keep it
+elsewhere, set `CMETA_HOME` to another path; `cx --version` always shows the home in
+use.
 
 The web app answers on `127.0.0.1` alone until you tell it otherwise. Serving
 it to your own phone, tablet, or another machine takes one flag, and one shared
@@ -299,8 +303,7 @@ sh uv-install.sh
 uv tool install "cmeta[server]"
 uv tool update-shell                               # put the shims on PATH
 
-export CMETA_HOME="$HOME/CMETA"                    # one home for every project
-cx --version                                       # also prints the home it resolved
+cx --version                                       # also prints its home, ~/CMETA
 ```
 
 On Windows (in `cmd.exe`), the same steps:
@@ -311,13 +314,18 @@ powershell -ExecutionPolicy ByPass -File uv-install.ps1
 set "PATH=%USERPROFILE%\.local\bin;%PATH%"
 uv tool install "cmeta[server]"
 uv tool update-shell
-setx CMETA_HOME "%USERPROFILE%\CMETA"
 ```
 
-Installing globally and having a global home are two separate things: with no
-`CMETA_HOME` set, an activated virtual environment still captures the home, even
-for a globally installed `cx`. And `pip install cmeta` inside a project virtual
-environment stays perfectly good when cMeta *is* a dependency of that project.
+**Where your files go.** cMeta keeps its repositories, its index and its caches in
+one folder, its home: `~/CMETA` (`%USERPROFILE%\CMETA` on Windows). Nothing needs
+to be set.
+
+- **Another folder.** Set `CMETA_HOME` to another path, or pass `--home=<path>`
+  for one command.
+- **Inside a Python virtual environment.** While one is active (or a conda
+  environment), the home moves to `<env>/CMETA`, unless `CMETA_HOME` is set. That
+  suits a project-local cMeta, and `pip install cmeta` inside a project virtual
+  environment is perfectly good when cMeta *is* a dependency of that project.
 
 An interactive installer that assembles the commands for your OS, shell, and
 package manager lives at

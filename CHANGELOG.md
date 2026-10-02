@@ -33,6 +33,16 @@ All notable changes to cMeta are documented here, newest first.
     - `/` with its default page, the welcome fallback, and `api_keys`.
 
     The `dev` extra gains `httpx`, which FastAPI's TestClient needs.
+- **`CMETA_HOME` is optional, and the docs now say so.**
+  - **The default.** With nothing set, cMeta has always kept its repositories, index and caches in
+    `~/CMETA` (`%USERPROFILE%\CMETA` on Windows), or in `<env>/CMETA` while a virtual or conda
+    environment is active.
+  - **The docs.** The README quick start and the installation guide no longer ask you to set it.
+    They state the default, how to choose another folder, and the virtual-environment caveat.
+  - **The installers.** `install.sh` and `install.ps1` no longer write
+    `CMETA_HOME=~/CMETA` into the shell profile (or the Windows user environment). They set a home
+    only when asked: `--home <path>` / `-CmetaHome <path>`, or `--home2` / `-CmetaHome2`.
+    `--no-home` / `-NoHome` is still accepted and is now the default.
 - **Docs.**
   - The home page is described in `using-cmeta.md` §8.2.2, `common-commands.md`, `configuration.md`,
     the README and the `add-cserver-plugin` skill.

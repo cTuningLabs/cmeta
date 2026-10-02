@@ -101,11 +101,13 @@ Options:
                    temporary.
   -Extras a,b      pip extras (default: server, needed by cserver)
   -NoExtras        install the bare package with no extras at all
-  -CmetaHome  P    set CMETA_HOME to P (default: %USERPROFILE%\CMETA).
-                   Always wins, even inside an activated venv.
+  -CmetaHome  P    keep cMeta's repositories, index and caches in P: sets
+                   CMETA_HOME, which always wins, even inside an activated
+                   venv. Without it nothing is set and cMeta uses
+                   %USERPROFILE%\CMETA (<venv>\CMETA while a venv is active).
   -CmetaHome2 P    set CMETA_HOME2 instead: the same home, except that an
                    activated virtual environment is still allowed to win
-  -NoHome          set neither; let cMeta resolve the home on its own
+  -NoHome          set neither (the default; kept for older scripts)
   -Aops            also plug in the cmeta-aops automation repository
   -NoModifyPath    do not touch PATH or any persisted variable
   -DryRun          print every command without running anything
@@ -159,11 +161,14 @@ function Resolve-Options {
     if ($h -and $h2) {
         Fail '-CmetaHome and -CmetaHome2 are mutually exclusive'
     }
+    # No home by default: cMeta finds one on its own (%USERPROFILE%\CMETA, or
+    # <venv>\CMETA while a virtual environment is active).
     if ($h2) {
         $script:HomeVar = 'CMETA_HOME2'; $script:HomeDir = $h2
+    } elseif ($h) {
+        $script:HomeVar = 'CMETA_HOME'; $script:HomeDir = $h
     } else {
-        $script:HomeVar = 'CMETA_HOME'
-        $script:HomeDir = if ($h) { $h } else { Join-Path $env:USERPROFILE 'CMETA' }
+        $script:NoHomeMode = $true
     }
 }
 
@@ -358,14 +363,15 @@ function Install-Cmeta {
 
 function Set-CmetaHome {
     if ($script:NoHomeMode) {
-        Step 'Leaving the cMeta home unset (-NoHome)'
-        Say '     cMeta will resolve it: an active venv wins, else ~/CMETA.'
+        Step 'cMeta home: %USERPROFILE%\CMETA (the default - nothing to set)'
+        Say '     Inside an activated virtual environment it is <venv>\CMETA instead.'
+        Say '     To keep it elsewhere: re-run with -CmetaHome <path>, or set CMETA_HOME.'
         return
     }
     Step "Pointing cMeta at $script:HomeDir via $script:HomeVar"
     if ($script:HomeVar -eq 'CMETA_HOME') {
-        Say '     A global command does not imply a global home: with CMETA_HOME'
-        Say '     unset, an activated virtual environment captures it instead.'
+        Say '     CMETA_HOME always wins, even inside an activated virtual'
+        Say '     environment (which would otherwise hold its own home).'
     } else {
         Say '     CMETA_HOME2 is the fallback home: an activated virtual'
         Say '     environment still takes precedence over it.'
@@ -428,11 +434,12 @@ function Test-LongPaths {
 
 function Show-Epilogue {
     if ($script:Q) { return }
+    $picked = if ($script:NoHomeMode) { 'PATH is' } else { "PATH and $script:HomeVar are" }
     Write-Host @"
 
 cMeta is installed from $script:SrcDir
 
-  Open a new shell (so PATH and $script:HomeVar are picked up), then:
+  Open a new shell (so $picked picked up), then:
 
     cx --version                        # version, and the home it resolved
     cx repo list                        # what is plugged in
