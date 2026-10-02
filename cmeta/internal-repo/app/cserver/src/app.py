@@ -374,18 +374,44 @@ app.add_middleware(
 )
 
 ##################################################################################################
+# The home page
+#
+# "/" shows the page named by `default_page` in the cserver config. By default that is /projects: the cards of
+# every cserver.* page plugged into this machine, with the version of this server and where cMeta lives under
+# them.
+#
+#   cx config set cserver --meta.default_page=/projects     # the default
+#   cx config set cserver --meta.default_page=/<page>       # any other cserver.<page>
+#   cx config set cserver --meta.default_page=none          # the plain welcome page
+#
+# When that page cannot be shown (its category is not plugged in, it fails, or it refuses the api_key), "/"
+# shows the plain welcome page instead, so the home page never turns into an error. `/?out=json` answers as
+# it always did.
+
+def _default_page():
+    """The page "/" shows, without slashes ('' for the plain welcome page)."""
+    page = _cfg_str('default_page', '/projects').strip('/')
+    return '' if page.lower() in ('', 'none', 'off', 'no', 'false') else page
+
+
+def _welcome(request):
+    """The plain welcome page: the version of this server and where cMeta lives."""
+    html_meta = {'request': request, 'page_title': 'cMeta server', 'version': cm.__version__}
+    return templates.TemplateResponse(request, 'welcome.html', html_meta, status_code = 200)
+
+
 @app.get("/")
 async def home(
     request: Request,  # Input dictionary used by this function.
 ):
     """
-    home function.
+    home function: the page named by `default_page` (by default /projects), else the plain welcome page.
 
     Args:
         request (Request): Input dictionary used by this function.
 
     Returns:
-        dict: Operation result.
+        Response: the page, the welcome page, or {'return': 0, 'text': ...} for ?out=json.
 
     Raises:
         Exception: Propagated runtime errors, if any.
@@ -405,9 +431,14 @@ async def home(
     out = query.get('out', '')
     if out == 'json':
         return JSONResponse(content = {'return': 0, 'text': txt})
-    else:
-        html_meta = {'request': request, 'html': f'<h3>{txt}</h3>'}
-        return templates.TemplateResponse(request, 'task.html', html_meta, status_code = 200)
+
+    page = _default_page()
+    if page:
+        response = await _serve_page(request, page, query, quiet = True)
+        if response is not None:
+            return response
+
+    return _welcome(request)
 
 
 ##################################################################################################
@@ -457,8 +488,22 @@ async def task_handler(
         # "'dict' object has no attribute 'encode'" and a 500.
         return JSONResponse(content = r, status_code = 400)
 
-    query = r['query']
+    return await _serve_page(request, task, r['query'])
 
+
+async def _serve_page(
+    request: Request,  # Input dictionary used by this function.
+    task: str,  # The page: category cserver.<task>.
+    query: dict,  # The unified query (GET parameters and the POST JSON body).
+    quiet: bool = False,  # The home page: None instead of an error page, so "/" can fall back to the welcome.
+):
+    """
+    Render the page of category cserver.<task> (command `web` unless ?command= says otherwise) or answer its
+    AJAX call with JSON. Shared by /<task> and by "/" (the default page).
+
+    Returns:
+        Response, or None when `quiet` and the page cannot be shown.
+    """
     force_json = query.get('force_json', False)
 
     # Check if API KEYS (very basic, native and insecure implementation just for testing)
@@ -479,6 +524,9 @@ async def task_handler(
                 validated_api_key = api_key
 
         if err != '':
+            if quiet:
+                return None
+
             r = {'return':1, 'error': err}
 
             if force_json:
@@ -515,7 +563,10 @@ async def task_handler(
     cmeta_params['query'] = query
 
     r = await cm.access(cmeta_params)
-    if r['return']>0: 
+    if r['return']>0:
+        if quiet:
+            return None
+
         if force_json:
             return JSONResponse(content = r)
 

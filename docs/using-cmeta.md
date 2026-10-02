@@ -860,7 +860,7 @@ cx config set ctuning_server --meta.api_key=$CTUNING_API_KEY --meta.skip_ssl_cer
 
 # Configure the local web server (used by `cserver` / `cx app run cserver`):
 cx config set cserver --meta.api_keys,=key1,key2
-cx config set cserver --meta.default_page=/repos
+cx config set cserver --meta.default_page=/projects    # what "/" shows (§8.2.2)
 
 # Ask for one shared password before showing any page (§8.2.1):
 cx config set cserver --meta.password="a passphrase of your own"
@@ -957,6 +957,51 @@ A request carrying a valid `api_keys` value is let through without the prompt,
 so existing automation keeps working; an AJAX call is answered with a JSON
 `401` rather than the HTML prompt, so a page can report it instead of rendering
 a form into its own data.
+
+### 8.2.2 The home page: every page of the server
+
+`cserver` opens on `/projects`. That page is category `cserver.projects`, shipped in
+the internal repository. It shows every `cserver.*` page of every plugged repository
+as a card, grouped by repository, with:
+
+- a search box: `/` focuses it, and Enter opens the first match;
+- pins and copy-URL buttons, kept in the browser;
+- a dark theme.
+
+Under the cards come the version of the server and links to cMeta and cMeta AOps on
+GitHub and to cTuning.ai/project/cmeta.
+
+There is no list to maintain. The page asks the index for `cserver.*` categories, so a
+page appears as soon as its repository is plugged in and vanishes when it is
+unplugged. Each category is shown in one of two ways:
+
+- **with `web_`**: a card, made of the `name` and `desc` of its `_cmeta.yaml`;
+- **without `web_`** (helper actions only): a footnote.
+
+```bash
+cx cserver.projects pages                  # the same list in a terminal
+cx cserver.projects pages --repo=aops      # only the repositories whose alias contains "aops"
+cx cserver.projects pages --all --as_json  # with the footnote categories, as JSON
+```
+
+The page takes `?repo=<text>` for the same filter, and answers `?native_action=projects`
+with the list as JSON.
+
+Two keys of the `cserver` config shape it:
+
+| Key | Default | What it does |
+|---|---|---|
+| `default_page` | `/projects` | The page `/` shows: any `cserver.<name>` as `/<name>`, or `none` for a plain welcome page with the version and the same links. Read at startup, so restart the server after changing it. |
+| `projects_hide_repos` | — | Repositories left off the list: aliases or `fnmatch` patterns, comma-separated (`a,b*`) or a list (`--meta.projects_hide_repos,=a,b*`). Read on every request. |
+
+`/` never turns into an error. When its page cannot be shown (its repository is not
+plugged in, it fails, or it refuses the `api_key`), `/` shows the welcome page instead.
+With `api_keys` set, a request without a key gets the welcome page rather than the
+list. `/?out=json` still answers `{"return": 0, "text": "Welcome to the cMeta server
+v<version>!"}`.
+
+Hiding a repository takes it off the list only. Its pages stay reachable at their own
+URLs, so on a shared server put the password of §8.2.1 in front of them as well.
 
 ### 8.3 The pattern from Python — reading a config from any category
 

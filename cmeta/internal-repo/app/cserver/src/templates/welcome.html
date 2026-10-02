@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<!-- The plain welcome page of "/": shown when `default_page` of the cserver config is none, or when that page
+     cannot be shown. The same welcome sits under the cards of /projects (category cserver.projects). -->
+<style>
+ .cw {max-width: 660px; margin: 12vh auto 48px; padding: 0 16px; box-sizing: border-box; color: #14161a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;}
+ .cw h1 {margin: 0 0 8px; font-size: 24px; font-weight: 650; letter-spacing: -.01em;}
+ .cw .v {margin-left: 8px; padding: 2px 9px; font-size: 13px; font-weight: 560; color: #5c0fc9;
+         background: rgba(92, 15, 201, .10); border-radius: 99px; vertical-align: 3px;}
+ .cw p {margin: 0 0 18px; font-size: 14px; line-height: 1.55; color: #6b7180;}
+ .cw code {font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em;}
+ .cw ul {margin: 0; padding: 0; list-style: none; display: grid; gap: 10px;}
+ .cw li {padding: 12px 14px; border: 1px solid #e3e6ec; border-radius: 10px;}
+ .cw a {color: #5c0fc9; font-weight: 560; text-decoration: none;}
+ .cw a:hover {text-decoration: underline; text-underline-offset: 2px;}
+ .cw li span {display: block; margin-top: 2px; font-size: 12.5px; color: #6b7180;}
+ .cw .hint {margin: 22px 0 0; font-size: 12.5px;}
+ @media (prefers-color-scheme: dark) {
+   body {background: #14161a;}
+   .cw {color: #e8eaee;}
+   .cw p, .cw li span {color: #9aa1ad;}
+   .cw li {border-color: #2c3038; background: #1b1e24;}
+   .cw a {color: #a98cf0;}
+   .cw .v {color: #a98cf0; background: rgba(169, 140, 240, .14);}
+ }
+</style>
+<main class="cw">
+  <h1>Welcome to the cMeta server<span class="v">v{{ version }}</span></h1>
+  <p>cMeta turns code, data, models, workflows and web pages into reusable artifacts with one interface:
+     <code>cx &lt;category&gt; &lt;command&gt;</code> in a terminal, <code>cm.access({...})</code> from Python.</p>
+  <ul>
+    <li><a href="https://github.com/cTuningLabs/cmeta" target="_blank" rel="noopener">cMeta on GitHub</a>
+        <span>the framework, its docs and this server</span></li>
+    <li><a href="https://github.com/cTuningLabs/cmeta-aops" target="_blank" rel="noopener">cMeta AOps on GitHub</a>
+        <span>tools, tasks, programs, models and datasets</span></li>
+    <li><a href="https://cTuning.ai/project/cmeta" target="_blank" rel="noopener">cTuning.ai/project/cmeta</a>
+        <span>the course from 0 to 1, the installer and the catalogues</span></li>
+  </ul>
+  <p class="hint">The pages of this server open at <code>/&lt;name&gt;</code>, one for each <code>cserver.&lt;name&gt;</code>
+     category of a plugged repository; <a href="projects">/projects</a> lists them.</p>
+</main>
+{% endblock %}

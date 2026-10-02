@@ -52,6 +52,7 @@ dev = [
     "pytest>=6.0",
     "pytest-cov",
     "flake8",
+    "httpx",          # FastAPI's TestClient, for the tests of the cserver app
 ]
 
 # asyncio is part of the Python standard library — no PyPI package required.
@@ -117,6 +118,7 @@ exclude = ["tests*", "*.tests", "*.tests.*", "cmeta.tests*"]
     "internal-repo/**/*.ico",
     "internal-repo/**/*.js",
     "internal-repo/**/*.html",
+    "internal-repo/**/*.css",
 ]
 
 [tool.setuptools.exclude-package-data]

@@ -248,8 +248,11 @@ cx config set default --meta.default_git=git@github.com:
 # Move the big file/build cache off the system drive
 cx config set task --meta.file_cache=/path/to/large/cache
 
-# Run the local web app
+# Run the local web app: http://127.0.0.1:8004/ shows every page of the server as cards
 cx app run cserver
+
+# The same list of pages in a terminal
+cx cserver.projects pages
 
 # Serve it to your own devices, behind one shared password
 cx config set cserver --meta.password="a passphrase of your own"

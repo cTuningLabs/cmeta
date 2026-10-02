@@ -1,0 +1,57 @@
+<!-- Licensed under the Apache License, Version 2.0. See the COPYRIGHT and LICENSE files in the project root for details. -->
+<!-- cserver.projects: the body only; the host wraps it in its own <html>/<head>. -->
+<script>var CONFIG = %%CONFIG%%;</script>
+
+<div id="cpj" class="cpj">
+  <header class="cpj-head">
+    <div class="cpj-title">
+      <h1>cMeta server pages</h1>
+      <p class="cpj-sub">Every <code>cserver.*</code> page plugged into this machine, grouped by repository.
+        <span id="cpj-count"></span></p>
+    </div>
+    <div class="cpj-tools">
+      <input id="cpj-search" type="search" placeholder="Filter by name, alias, repo or tag - Enter opens the first match"
+             autocomplete="off" spellcheck="false">
+      <button id="cpj-theme" class="cpj-btn" type="button" title="Toggle dark / light">◐</button>
+      <a id="cpj-json" class="cpj-btn" href="#" title="The same list as JSON">JSON</a>
+      <button id="cpj-reload" class="cpj-btn" type="button" title="Rescan the index">↻</button>
+    </div>
+  </header>
+
+  <div id="cpj-error" class="cpj-error" hidden></div>
+  <div id="cpj-groups" class="cpj-groups"><p class="cpj-muted">Scanning the index ...</p></div>
+
+  <div id="cpj-empty" class="cpj-empty" hidden>
+    <h2>No pages yet</h2>
+    <p>A page is a <code>cserver.&lt;name&gt;</code> category whose <code>api/v1.py</code> defines <code>web_</code>.
+      It shows up here as soon as the repository that holds it is plugged in (<code>cx repo get &lt;repo&gt;</code>),
+      and opens at <code>/&lt;name&gt;</code>. To write your own: <code>cx category add &lt;repo&gt;:cserver.&lt;name&gt;</code>.</p>
+  </div>
+
+  <details id="cpj-others" class="cpj-others" hidden>
+    <summary>Other <code>cserver.*</code> categories without a page (<span id="cpj-others-count">0</span>)</summary>
+    <ul id="cpj-others-list"></ul>
+  </details>
+
+  <hr class="cpj-hr">
+
+  <section class="cpj-welcome" aria-label="About this server">
+    <h2>Welcome to the cMeta server <span class="cpj-version">v%%VERSION%%</span></h2>
+    <p>cMeta turns code, data, models, workflows and these pages into reusable artifacts with one interface:
+      <code>cx &lt;category&gt; &lt;command&gt;</code> in a terminal, <code>cm.access({...})</code> from Python.</p>
+    <ul class="cpj-links">
+      <li><a href="https://github.com/cTuningLabs/cmeta" target="_blank" rel="noopener">cMeta on GitHub</a>
+        <span>the framework, its docs and this server</span></li>
+      <li><a href="https://github.com/cTuningLabs/cmeta-aops" target="_blank" rel="noopener">cMeta AOps on GitHub</a>
+        <span>tools, tasks, programs, models and datasets</span></li>
+      <li><a href="https://cTuning.ai/project/cmeta" target="_blank" rel="noopener">cTuning.ai/project/cmeta</a>
+        <span>the course from 0 to 1, the installer and the catalogues</span></li>
+    </ul>
+  </section>
+
+  <footer class="cpj-foot">
+    <span>Pins are kept in this browser only.</span>
+    <span>Open a page directly as <code>&lt;server&gt;/&lt;alias without cserver.&gt;</code>; the same list in the
+      terminal: <code>cx cserver.projects pages</code>.</span>
+  </footer>
+</div>

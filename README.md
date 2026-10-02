@@ -52,7 +52,7 @@ cx repo get ctuninglabs@cmeta-aops                 # pull the reusable automatio
 cx tool setup python                               # detect (or install) a tool and pin its version
 cx program run test-nmm-c-cpu cpu                  # compile and run a small matmul benchmark
 cx task run test-python -j                         # run a task; the trace shows every step it reused
-cx app run cserver                                 # browse everything at http://127.0.0.1:8004
+cx app run cserver                                 # every web page as cards at http://127.0.0.1:8004
 ```
 
 The web app answers on `127.0.0.1` alone until you tell it otherwise. Serving
@@ -580,6 +580,7 @@ added at any time with `cx category add <name>`.
 | **config**    | Named configuration artifacts — `get`, `set`, `unset`, `read`, `show`. |
 | **utils**     | General helpers — UID/UUID, JSON⇄YAML conversion, clipboard helpers, artifact utilities. Skips base CRUD commands. |
 | **app**       | Runnable applications. Ships the `cserver` local FastAPI web app (`cx app run cserver`). |
+| **cserver.projects** | The home page of `cserver`: every `cserver.*` page of the plugged repositories as cards, then the version and where cMeta lives (`cx cserver.projects pages` prints the same list). |
 | **script**    | Portable shell/Python scripts. |
 | **asset**     | Data/model/file assets managed as first-class artifacts. |
 | **cache**     | Content-addressed cache entries — `show`, `clean`, `delete`. |
