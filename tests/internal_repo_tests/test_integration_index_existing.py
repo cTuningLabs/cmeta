@@ -55,3 +55,14 @@ def test_index_takes_the_uid_of_an_alias_uid_meta(cm, tmp_path):
     assert r['return'] == 0, r.get('error')
     r = cm.access({'category': 'log', 'command': 'find', 'arg1': UID, 'con': False})
     assert r['return'] == 0 and uids(r) == [UID]
+
+
+def test_index_ignores_an_artifact_value_that_is_no_uid(cm, tmp_path):
+    # A hand-written "artifact: <alias>" is no UID: the index gives the artifact a new one
+    hand_made(cm, tmp_path, 'no-uid', 'no-uid')
+    r = cm.access({'category': 'log', 'command': 'index', 'arg1': 'local:no-uid', 'con': False})
+    assert r['return'] == 0, r.get('error')
+    r = cm.access({'category': 'log', 'command': 'find', 'arg1': 'no-uid', 'con': False})
+    assert r['return'] == 0, r.get('error')
+    found = uids(r)
+    assert len(found) == 1 and found[0] != 'no-uid' and len(found[0]) == 16

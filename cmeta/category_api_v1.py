@@ -1068,7 +1068,7 @@ class Category(InitCategory):
                         # Index the artifact under the UID of its meta (an "alias,UID" too),
                         # not a new one, or alias,UID references to it would not resolve
                         meta_uid = str(meta.get('artifact') or '').split(',')[-1].strip()
-                        if meta_uid:
+                        if meta_uid and utils.names.is_valid_cmeta_uid(meta_uid):
                             artifact_uid = meta_uid
 
                     else:
