@@ -454,6 +454,7 @@
 
   /* ------------------------------------------------------------------ Graph view */
   var graph = null;
+  var stopGraph = null;      // stops the animation of the graph on screen before another one is drawn
   function loadGraph() {
     var max = parseInt($('cbr-gmax').value, 10) || 150;
     var nb = $('cbr-gnb').checked;
@@ -538,7 +539,10 @@
       t0.textContent = 'Nothing matches the query.'; gt.appendChild(t0);
     }
 
-    // A small force simulation: repulsion between all nodes, springs along the connections, a pull to the centre
+    // A small force simulation: repulsion between all nodes, springs along the connections, a pull to the centre.
+    // Most of it runs before the first paint, so the picture is already still when it appears and is fitted
+    // once; the rest settles in a few frames without moving the view.
+    if (stopGraph) stopGraph();
     var alpha = 1, raf = 0, n = nodes.length;
     var k = Math.sqrt(W * H / Math.max(1, n)) * 0.55;
     function tick() {
@@ -582,12 +586,8 @@
       var steps = n > 350 ? 1 : (n > 150 ? 2 : 3);
       for (var s = 0; s < steps; s++) tick();
       paint();
-      if (alpha > 0.015) raf = requestAnimationFrame(loop);
-      else if (!fitted) { fitted = true; fit(); }
+      raf = alpha > 0.015 ? requestAnimationFrame(loop) : 0;
     }
-    var fitted = false;
-    cancelAnimationFrame(raf);
-    loop();
 
     // Zoom, pan, drag, hover, click
     var tx = 0, ty = 0, sc = 1;
@@ -601,12 +601,37 @@
       tx = W / 2 - sc * (x0 + w / 2); ty = H / 2 - sc * (y0 + hh / 2);
       apply();
     }
+
+    // Settle most of the layout now (within ~0.6 s), fit it once, then let the last of it settle on screen
+    var started = Date.now();
+    while (alpha > 0.06 && Date.now() - started < 600) tick();
+    paint();
+    fit();
+    raf = requestAnimationFrame(loop);
+    stopGraph = function () { cancelAnimationFrame(raf); raf = 0; cancelAnimationFrame(wheelRaf); wheelRaf = 0; };
+
+    // Zoom by how far the wheel actually turned, applied at most once per frame. A smooth wheel or a touchpad
+    // sends a burst of small events for one notch, and a few more after the hand stops: a fixed step per event
+    // made one small turn zoom many times over and drift on. Now the zoom is proportional to the turn, so it
+    // stops when the wheel stops, and it stays between 1/20 and 20 times.
+    var wheelDy = 0, wheelX = 0, wheelY = 0, wheelRaf = 0;
+    function zoomStep() {
+      wheelRaf = 0;
+      var f = Math.exp(-Math.max(-300, Math.min(300, wheelDy)) * 0.0015);
+      wheelDy = 0;
+      var nsc = Math.max(0.05, Math.min(20, sc * f));
+      f = nsc / sc;
+      tx = wheelX - (wheelX - tx) * f; ty = wheelY - (wheelY - ty) * f; sc = nsc;
+      apply();
+    }
     svg.onwheel = function (e) {
       e.preventDefault();
-      var r = svg.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-      var f = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      tx = mx - (mx - tx) * f; ty = my - (my - ty) * f; sc *= f;
-      apply();
+      var dy = e.deltaY * (e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? H : 1));
+      if (Math.abs(dy) < 0.5) return;
+      var r = svg.getBoundingClientRect();
+      wheelX = e.clientX - r.left; wheelY = e.clientY - r.top;
+      wheelDy += dy;
+      if (!wheelRaf) wheelRaf = requestAnimationFrame(zoomStep);
     };
     svg.ondblclick = function (e) { if (e.target === svg) fit(); };
     var drag = null;
