@@ -66,13 +66,17 @@ def _add_category(cm, alias, page=True):
 def test_the_terminal_lists_the_page_itself(cm):
     r = cm.access({'category': 'cserver.projects', 'command': 'pages', 'con': False})
     assert r['return'] == 0
-    assert [(p['alias'], p['page'], p['repo']) for p in r['pages']] == [('cserver.projects', 'projects', 'internal')]
+    pages = [(p['alias'], p['page'], p['repo']) for p in r['pages']]
+    assert ('cserver.projects', 'projects', 'internal') in pages
+    assert ('cserver.browse', 'browse', 'internal') in pages      # the other page the engine ships
 
 
-def test_a_fresh_home_has_no_cards(cm):
+def test_a_fresh_home_has_the_browse_card(cm):
     j = _web(cm, native_action='projects')['json']
     assert 'error' not in j
-    assert j['pages'] == [] and j['count'] == 0      # the page leaves itself out
+    # The page leaves itself out; the engine's other page, cserver.browse, is the one card of a fresh home
+    assert [(p['alias'], p['href']) for p in j['pages']] == [('cserver.browse', URLS['url_server'] + 'browse')]
+    assert j['count'] == 1
     assert j['version'] == __version__
     assert j['url_server'] == URLS['url_server']
 
@@ -99,10 +103,10 @@ def test_a_page_becomes_a_card_and_a_helper_a_footnote(cm):
     _add_category(cm, 'cserver.helper', page=False)
 
     j = _web(cm, native_action='projects')['json']
-    assert [(p['alias'], p['repo'], p['href']) for p in j['pages']] == \
+    assert [(p['alias'], p['repo'], p['href']) for p in j['pages'] if p['repo'] == 'local'] == \
         [('cserver.hello', 'local', URLS['url_server'] + 'hello')]
     assert [p['alias'] for p in j['others']] == ['cserver.helper']
-    assert j['repos'] == ['local'] and j['count'] == 1
+    assert 'local' in j['repos'] and j['count'] == 2              # with the engine's cserver.browse
     assert all('path' not in p for p in j['pages'] + j['others'])   # no local paths on the page
 
 
@@ -118,7 +122,7 @@ def test_repositories_hidden_by_the_cserver_config(cm):
                    'meta': {'hide_repos': 'other, loc*'}, 'con': False})
     assert r['return'] == 0, r
 
-    assert _web(cm, native_action='projects')['json']['pages'] == []
+    assert [p for p in _web(cm, native_action='projects')['json']['pages'] if p['repo'] == 'local'] == []
     # Hidden from the page, not from the terminal or from its own URL.
     r = cm.access({'category': 'cserver.projects', 'command': 'pages', 'con': False})
     assert 'cserver.hello' in [p['alias'] for p in r['pages']]

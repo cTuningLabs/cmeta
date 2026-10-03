@@ -4,6 +4,27 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## 0.32.5
+- **`/browse`: search, browse and graph the artifacts of every plugged repository** (category
+  `cserver.browse`, a second page of the engine's `cserver`). One query in three views:
+  - **Search**: a list, best matches first;
+  - **Browse**: a sortable table with facets;
+  - **Graph**: the results joined by their connections.
+
+  The rest of the page:
+  - **Narrowing:** pickers for repositories and categories, created-after / created-before
+    dates, and the query syntax (`repo:`, `cat:`, `tag:`, `-tag:`, `after:`, `before:`,
+    `has:`, `<key>:<value>`, cRefs, patterns).
+  - **The detail of an artifact:** its cRef, meta, `_desc`, connections and the `cx`
+    commands that reach it.
+  - **Shareable state:** the state is in the URL, and a spinner shows during every wait.
+  - **Speed:** it reads the index, so on ten thousand artifacts the first load takes about
+    0.1-3 s and each search a few milliseconds; only the detail and the graph read `_desc`
+    files.
+  - **On a shared server:** key-bundle categories are hidden by default
+    (`browse_hide_categories`), and so are the repositories in `hide_repos`; paths are shown
+    only on localhost.
+  - **In a terminal:** `cx cserver.browse query "..."`.
+  - **Tests:** 13.
 - **`cx <category> migrate <old> [<repo>:]<new>` renames an artifact without breaking its old
   alias.** The artifact moves as with `mv`, under the same UID. A stub with a new UID stays under the
   old alias, holding `migrated_to` (the new `alias,UID`) and `migrated_when` (ISO 8601, UTC).

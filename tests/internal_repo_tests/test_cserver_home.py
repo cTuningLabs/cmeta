@@ -63,7 +63,7 @@ def test_home_json_is_unchanged(server):
 def test_projects_json(server):
     _, client = server
     j = client.post('/projects?native_action=projects', json={}).json()
-    assert j['count'] == 0 and j['version'] == __version__
+    assert j['count'] == 1 and j['version'] == __version__      # the engine's cserver.browse
 
 
 @pytest.mark.parametrize('value', ['none', '/no-such-page'])

@@ -1024,7 +1024,7 @@ Two keys of the `cserver` config shape it:
 | Key | Default | What it does |
 |---|---|---|
 | `default_page` | `/projects` | The page `/` shows: any `cserver.<name>` as `/<name>`, or `none` for a plain welcome page with the version and the same links. Read at startup, so restart the server after changing it. |
-| `hide_repos` | — | Repositories the server's pages leave out; today that is the list of this home page. Aliases or `fnmatch` patterns, comma-separated (`a,b*`) or a list (`--meta.hide_repos,=a,b*`). Read on every request. |
+| `hide_repos` | — | Repositories the server's pages leave out: the cards of this home page and the artifacts of `/browse` (§8.2.3). Aliases or `fnmatch` patterns, comma-separated (`a,b*`) or a list (`--meta.hide_repos,=a,b*`). Read on every request. |
 
 `/` never turns into an error. When its page cannot be shown (its repository is not
 plugged in, it fails, or it refuses the `api_key`), `/` shows the welcome page instead.
@@ -1034,6 +1034,64 @@ v<version>!"}`.
 
 Hiding a repository takes it off the list only. Its pages stay reachable at their own
 URLs, so on a shared server put the password of §8.2.1 in front of them as well.
+
+### 8.2.3 Browse: search, browse and graph every artifact
+
+`/browse` (category `cserver.browse`, shipped in the internal repository) shows the
+artifacts of every plugged repository through one query in three views:
+
+- **Search**: the results as a list, best matches first, with the text that matched;
+- **Browse**: a sortable table with facets (repositories, categories, tags, years,
+  how the artifacts were made); a click on a facet narrows the query;
+- **Graph**: the results as nodes, joined by the `connections` in their `_desc`, coloured
+  by category; optionally with the artifacts they connect to.
+
+Next to the search box: pickers for repositories and categories (one, several or all),
+and created-after / created-before dates. A click on an artifact opens its detail:
+
+- its cRef, its meta and its `_desc`;
+- its connections, each a link;
+- the `cx` commands that reach it (find, info, read, tags, update), with copy buttons.
+
+The query lives in the URL, so a view can be shared or bookmarked. The footer shows the
+same query as a command.
+
+The query reads the index: every artifact's `_cmeta` with its repository and category.
+Loading it takes a few seconds once per server start, and again only when the index
+changes; after that, a search over ten thousand artifacts takes milliseconds. Only the
+detail and the graph read `_desc` files. A spinner shows during every wait.
+
+| Query | Meaning |
+|---|---|
+| `word "a phrase"` | in the alias, UID, tags or any value of the meta (case-insensitive) |
+| `-word` | not there |
+| `repo:<name>` `cat:<name>` | a repository / category: alias, UID or the part after `@`; several = any of them |
+| `tag:<tag>` `-tag:<tag>` | has / has not this tag |
+| `after:2026-09-01` `before:2026-10` | created on or after / before (a year or a month works too) |
+| `has:<key>` `-has:<key>` | the meta has / has not this key (dotted keys: `generator.method`) |
+| `<key>:<value>` | a meta value contains it (any item of a list) |
+| `uid:<prefix>` | the UID starts with it |
+| `<category>::<artifact>` | a cRef |
+| `*` `?` | patterns: `repo:myorg@*`, `tag:sla*` |
+
+```bash
+cx cserver.browse query "tag:report after:2026-09-01"          # the same search in a terminal
+cx cserver.browse query "" --repos=myorg@my-repo --cats=task    # the pickers as flags
+cx cserver.browse query "sla" --sort=updated --limit=50 --as_json
+```
+
+(`search` is a global alias of `find`, so the terminal command is `query`.)
+`?native_action=search|options|artifact|graph` answer with JSON.
+
+On a shared server:
+
+- `hide_repos` leaves repositories out, as on the home page.
+- `browse_hide_categories` leaves categories out. By default it leaves out anything
+  matching `*crypt*`, `*secret*` or `*credential*`, so that key bundles never show; `none`
+  shows every category.
+- An artifact's local path is shown only when the server is reached as
+  `127.0.0.1`/`localhost`.
+- The page reads and never writes: changes go through the `cx` commands it shows.
 
 ### 8.3 The pattern from Python — reading a config from any category
 

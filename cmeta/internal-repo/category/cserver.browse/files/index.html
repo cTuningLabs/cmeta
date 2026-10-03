@@ -1,0 +1,109 @@
+<!-- Licensed under the Apache License, Version 2.0. See the COPYRIGHT and LICENSE files in the project root for details. -->
+<!-- cserver.browse: the body only; the host wraps it in its own <html>/<head>. -->
+<script>var CONFIG = %%CONFIG%%;</script>
+
+<div id="cbr" class="cbr">
+  <header class="cbr-head">
+    <div class="cbr-title">
+      <h1>cMeta browse</h1>
+      <p class="cbr-sub" id="cbr-sub">Search, browse and graph the artifacts of every plugged repository.</p>
+    </div>
+    <div class="cbr-tools">
+      <button id="cbr-theme" class="cbr-btn" type="button" title="Dark / light">&#9680;</button>
+      <a id="cbr-json" class="cbr-btn" href="#" target="_blank" rel="noopener" title="These results as JSON">JSON</a>
+      <button id="cbr-reload" class="cbr-btn" type="button" title="Reload the index">&#8635;</button>
+    </div>
+  </header>
+
+  <nav class="cbr-tabs" role="tablist" aria-label="Views">
+    <button type="button" class="cbr-tab" data-view="search" role="tab">Search</button>
+    <button type="button" class="cbr-tab" data-view="browse" role="tab">Browse</button>
+    <button type="button" class="cbr-tab" data-view="graph" role="tab">Graph</button>
+  </nav>
+
+  <form id="cbr-form" class="cbr-bar" autocomplete="off">
+    <div class="cbr-row1">
+      <input id="cbr-q" type="search" spellcheck="false"
+             placeholder="Names, tags, anything in meta  -  e.g.  sla tag:report after:2026-09-01      ( / to focus )">
+      <button type="submit" class="cbr-go">Search</button>
+    </div>
+    <div class="cbr-row2">
+      <div class="cbr-pick" data-kind="repos">
+        <button type="button" class="cbr-pick-btn">Repositories: <b>all</b> &#9662;</button>
+        <div class="cbr-pick-pop" hidden></div>
+      </div>
+      <div class="cbr-pick" data-kind="cats">
+        <button type="button" class="cbr-pick-btn">Categories: <b>all</b> &#9662;</button>
+        <div class="cbr-pick-pop" hidden></div>
+      </div>
+      <label class="cbr-date">created after <input id="cbr-after" type="date"></label>
+      <label class="cbr-date">before <input id="cbr-before" type="date"></label>
+      <button type="button" id="cbr-clear" class="cbr-link">clear</button>
+      <button type="button" id="cbr-help-btn" class="cbr-link">syntax</button>
+    </div>
+  </form>
+
+  <div id="cbr-help" class="cbr-help" hidden>
+    <table>
+      <tr><td><code>word "a phrase"</code></td><td>in the alias, UID, tags or any value of the meta</td></tr>
+      <tr><td><code>-word</code></td><td>not there</td></tr>
+      <tr><td><code>repo:name</code> <code>cat:name</code></td><td>a repository / category (alias, UID, or the part after @); several = any of them</td></tr>
+      <tr><td><code>tag:sla</code> <code>-tag:draft</code></td><td>has / has not this tag</td></tr>
+      <tr><td><code>after:2026-09-01</code> <code>before:2026-10</code></td><td>created on or after / before (a year or a month works too)</td></tr>
+      <tr><td><code>has:generator</code> <code>-has:connections</code></td><td>the meta has / has not this key (dotted keys work)</td></tr>
+      <tr><td><code>generator.method:task</code></td><td>a meta value contains it (any item of a list)</td></tr>
+      <tr><td><code>uid:14b2</code></td><td>the UID starts with it</td></tr>
+      <tr><td><code>dapple.sla.model::*</code></td><td>a cRef: category::artifact</td></tr>
+      <tr><td><code>* ?</code></td><td>patterns: <code>repo:dappledev@*</code>, <code>tag:sla*</code></td></tr>
+    </table>
+  </div>
+
+  <div id="cbr-status" class="cbr-status" aria-live="polite"></div>
+  <div id="cbr-error" class="cbr-error" hidden></div>
+
+  <section id="cbr-view-search" class="cbr-view">
+    <ol id="cbr-list" class="cbr-list"></ol>
+    <div class="cbr-pager" data-pager="search"></div>
+  </section>
+
+  <section id="cbr-view-browse" class="cbr-view" hidden>
+    <aside id="cbr-facets" class="cbr-facets" aria-label="Facets"></aside>
+    <div class="cbr-tablewrap">
+      <table id="cbr-table" class="cbr-table">
+        <thead><tr>
+          <th data-sort="alias">Artifact</th>
+          <th data-sort="cat">Category</th>
+          <th data-sort="repo">Repository</th>
+          <th>Tags</th>
+          <th data-sort="created">Created</th>
+          <th data-sort="updated">Updated</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="cbr-pager" data-pager="browse"></div>
+    </div>
+  </section>
+
+  <section id="cbr-view-graph" class="cbr-view" hidden>
+    <div class="cbr-gbar">
+      <label>nodes <input id="cbr-gmax" type="number" min="10" max="600" step="10" value="150"></label>
+      <label><input id="cbr-gnb" type="checkbox"> add the artifacts they connect to</label>
+      <span id="cbr-gstat" class="cbr-muted"></span>
+      <span class="cbr-muted cbr-ghint">wheel: zoom &middot; drag: pan or move a node &middot; click: details &middot; double-click: fit</span>
+    </div>
+    <div class="cbr-gwrap">
+      <svg id="cbr-svg" role="img" aria-label="Connections between the results"></svg>
+      <div id="cbr-legend" class="cbr-legend"></div>
+    </div>
+  </section>
+
+  <aside id="cbr-detail" class="cbr-detail" hidden aria-label="Artifact"></aside>
+
+  <div id="cbr-busy" class="cbr-busy" hidden><div class="spin"></div><span class="what">loading</span></div>
+
+  <footer class="cbr-foot">
+    <span>cMeta v%%VERSION%%</span>
+    <span>The same query in a terminal: <code id="cbr-cli">cx cserver.browse query ""</code>
+      <button type="button" class="cbr-copy" data-copy-from="cbr-cli" title="Copy">copy</button></span>
+  </footer>
+</div>

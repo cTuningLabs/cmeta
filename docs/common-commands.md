@@ -255,6 +255,10 @@ cx app run cserver
 # The same list of pages in a terminal
 cx cserver.projects pages
 
+# Search every artifact of every plugged repository (the /browse page does the same in a browser)
+cx cserver.browse query "tag:report after:2026-09-01"
+cx cserver.browse query "" --repos=myorg@my-repo --cats=task --sort=updated
+
 # Serve it to your own devices, behind one shared password
 cx config set cserver --meta.password="a passphrase of your own"
 cx app run cserver --param.host=0.0.0.0 --param.port=8004
