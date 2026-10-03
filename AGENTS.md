@@ -257,6 +257,11 @@ those an AI agent creates on the author's behalf:
   - **Workflow:** `git switch dev && git pull --ff-only`, then commit and push to
     `dev`. One pull request `dev` → `main` carries the work to `main`; after its
     merge commit, `dev` is fast-forwarded to `main` (`docs/releasing.md`).
+  - **Agents commit and push only when the maintainer explicitly says so.**
+    Develop and test, leave the changes uncommitted, show what changed, and wait
+    for a go-ahead for that piece of work; one go-ahead does not carry over to
+    the next. The same for anything that changes the remote: pull requests,
+    branch deletions, tags, releases.
   - **Shared working copy:** several sessions may share one, so stage only your
     own files and check `git status` before committing.
   - **Never push to `main`.**
