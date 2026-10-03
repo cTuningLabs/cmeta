@@ -7,6 +7,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 import os
+import sys
 from cmeta.category import InitCategory
 
 from cmeta import utils
@@ -214,6 +215,23 @@ class Category(InitCategory):
 
             repo_artifacts = r.get('artifacts',[])
 
+            # A short name ("cmeta-aops") becomes the alias "<default_git_repo>@<name>" when it is
+            # cloned (below). Look that alias up too, so that "cx repo pull <name>" and a second
+            # "cx repo get <name>" update the clone instead of trying to clone it again
+            if len(repo_artifacts) == 0 and command != 'init' and repo_name and \
+               (url is None or url == '') and zip_file is None and method != 'local' and \
+               not any(c in repo_name for c in '@*?,:'):
+                default_git_repo = config_cmeta.get('default_git_repo')
+                if not default_git_repo:
+                    default_git_repo = self.cm.cfg['default_git_repo']
+
+                p['arg1'] = default_git_repo + '@' + repo_name
+
+                r = self.cm.access(p)
+                if r['return']>0 and r['return']!=16: return r
+
+                repo_artifacts = r.get('artifacts',[])
+
         ######################################################################################################################
         if len(repo_artifacts)>0:
             # If some rep   os are already registered
@@ -221,6 +239,21 @@ class Category(InitCategory):
 
             if command in ['init']:
                 return {'return':1, 'error':f'repository {arg1} already exists'}
+
+            # No name: every git repository is about to be updated. Ask first in a terminal
+            # (Enter means yes); --quiet (-q), a script or a pipe goes ahead without asking
+            if (repo_name is None or repo_name == '') and not status and con and \
+               not ctx['control'].get('quiet', False) and sys.stdin is not None and sys.stdin.isatty():
+                git_repos = [a['cmeta_ref_parts'].get('artifact_alias', a['cmeta_ref_parts'].get('artifact_uid'))
+                             for a in repo_artifacts if (a.get('cmeta') or {}).get('method') == 'git']
+
+                if len(git_repos) > 0:
+                    print (f'This updates all {len(git_repos)} git repositories: {", ".join(git_repos)}')
+                    x = input('Continue [Y/n]? ').strip().lower()
+
+                    if x not in ['', 'y', 'yes']:
+                        print ('Nothing updated.')
+                        return {'return':0, 'skipped': True}
 
             r = utils.files.safe_read_file(repos_config_path, lock=False, fail_on_error=self.fail_on_error, logger=self.logger)
             if r['return']>0: return r

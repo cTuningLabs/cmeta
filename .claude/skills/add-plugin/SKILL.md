@@ -291,7 +291,13 @@ cx <category> update <alias> --meta.k=v      # merge into metadata
 cx <category> tags <alias> --add=t1 --remove=t2
 cx <category> rm <alias>
 cx <category> mv <old> <new>
+cx <category> migrate <old> <new>            # mv + a stub under <old>: the old alias keeps resolving
 ```
+
+`migrate` is the rename to use once an alias may be written somewhere (docs,
+scripts, other repos). The stub carries `migrated_to` (new `alias,UID`) and
+`migrated_when`. Lookups of the old alias alone follow it with a notice;
+`update`/`tags`/`mv`/`rm` act on the stub itself. See `docs/using-cmeta.md` §5.2.
 
 `--yaml` writes `_cmeta.yaml` instead of `_cmeta.json` (prefer YAML — it's
 what shipped artifacts use). Use `--virtual --path=<dir>` to register an

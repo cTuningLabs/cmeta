@@ -589,6 +589,7 @@ added at any time with `cx category add <name>`.
 | **utils**     | General helpers — UID/UUID, JSON⇄YAML conversion, clipboard helpers, artifact utilities. Skips base CRUD commands. |
 | **app**       | Runnable applications. Ships the `cserver` local FastAPI web app (`cx app run cserver`). |
 | **cserver.projects** | The home page of `cserver`: every `cserver.*` page of the plugged repositories as cards, then the version and where cMeta lives (`cx cserver.projects pages` prints the same list). |
+| **cserver.browse** | `/browse`: search, browse and graph the artifacts of every plugged repository - one query box, repository and category pickers, dates, a sortable table with facets, the connection graph, the detail of an artifact with the `cx` commands that reach it (`cx cserver.browse query "..."` in a terminal). |
 | **script**    | Portable shell/Python scripts. |
 | **asset**     | Data/model/file assets managed as first-class artifacts. |
 | **cache**     | Content-addressed cache entries — `show`, `clean`, `delete`. |

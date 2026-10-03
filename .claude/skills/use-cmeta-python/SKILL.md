@@ -100,6 +100,7 @@ via `cm.access({'category': ..., 'command': <name>, ...})`.
 | `update` | Merge `meta=` into existing artifact (recursive, list-aware). | `new_tags=`, `replace=`, `replace_lists=`, `create=True` (create if missing). |
 | `delete` | Remove artifact + de-index. | `force=`, `ignore_errors=`, respects `permanent: true`. |
 | `move`   | Move/rename within/between repos. | Renaming category alias is blocked upstream. |
+| `migrate` | `move` + a stub under the old alias (`migrated_to`, `migrated_when`); lookups of the old alias alone follow it. | `arg1` (one artifact), `arg2` (`[repo:]new-alias`); `find(..., follow_migrated=False)` returns a stub itself. |
 | `copy`   | Copy an artifact. | `arg1`→`arg2`. |
 | `info`   | Print path + cRef (also puts on clipboard). | `clip=`, `url=`, `name=`. |
 | `tags`   | Show unique tags across matched artifacts. | `sort=`. |

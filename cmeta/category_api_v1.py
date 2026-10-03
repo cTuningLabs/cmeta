@@ -277,6 +277,7 @@ class Category(InitCategory):
         match_empty_values: bool = False,  # Match when queried values or keys are empty.
         all_tags: str = None,  # Value for all tags.
         load_files = [],  # Load files (omit extension to load either yaml or json)
+        follow_migrated: bool = True,  # Follow an old alias left by "migrate" to its artifact.
     ):
         """
             Find artifacts.
@@ -293,6 +294,9 @@ class Category(InitCategory):
                 match_empty_values (bool): Match artifacts whose queried values or keys are empty.
                 all_tags (str): Value for all tags.
                 load_files (list): Metadata file basenames to load from each matched artifact.
+                follow_migrated (bool): An alias given alone that is a migration stub (left by
+                    `migrate`) stands for the artifact it points to, with a notice; False returns
+                    the stub itself. A UID always finds exactly what it names.
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -304,6 +308,10 @@ class Category(InitCategory):
         """
 
         con = ctx['control'].get('con', False)
+
+        # From the command line the value is a string (--follow_migrated=no)
+        if isinstance(follow_migrated, str):
+            follow_migrated = follow_migrated.strip().lower() not in ('0', 'off', 'false', 'no', '')
 
         artifact_ref_parts = {}
 
@@ -330,6 +338,7 @@ class Category(InitCategory):
               match_empty_version = match_empty_version, 
               match_empty_values = match_empty_values, 
               all_tags = all_tags,
+              follow_migrated = follow_migrated,
            )
         if r['return']>0: return r
 
@@ -406,7 +415,7 @@ class Category(InitCategory):
         if self.cm.debug:
             self.logger.debug(f"  self.cm.repos.tags({artifact_ref_parts})")
 
-        r = self.cm.repos.find(artifact_ref_parts, tags = tags)
+        r = self.cm.repos.find(artifact_ref_parts, tags = tags, follow_migrated = False)
         if r['return']>0: return r
 
         artifacts = r['artifacts']
@@ -501,6 +510,7 @@ class Category(InitCategory):
                        match=match,
                        match_empty_version=match_empty_version,
                        all_tags=all_tags,
+                       follow_migrated=False,
         )
         if r['return']>0:
             if r['return']!=16 or not create: 
@@ -518,6 +528,7 @@ class Category(InitCategory):
                            match=match,
                            match_empty_version=match_empty_version,
                            all_tags=all_tags,
+                           follow_migrated=False,
             )
             if r['return']>0: return r
 
@@ -662,7 +673,7 @@ class Category(InitCategory):
 
         ctx['control']['con'] = False
 
-        r = self.find_(ctx, arg1, tags=tags, sort=sort, skip_uids = skip_uids)
+        r = self.find_(ctx, arg1, tags=tags, sort=sort, skip_uids = skip_uids, follow_migrated = False)
         if r['return']>0: return r
 
         if sort:
@@ -672,6 +683,10 @@ class Category(InitCategory):
             for a in r['artifacts']:
                 cmeta_ref_parts = a['cmeta_ref_parts']
                 artifact_alias_or_uid = cmeta_ref_parts.get('artifact_alias', cmeta_ref_parts.get('artifact_uid'))
+
+                migrated_to = (a.get('cmeta') or {}).get('migrated_to')
+                if migrated_to:
+                    artifact_alias_or_uid += f'  -> {migrated_to} (migrated)'
 
                 print (artifact_alias_or_uid)
 
@@ -800,15 +815,17 @@ class Category(InitCategory):
 
         ctx['control']['con'] = False
 
-        r = self.find_(ctx, 
-                       arg1, 
-                       tags, 
-                       sort, 
-                       add_index_file=True, 
+        # A migration stub is deleted as itself, never through to the artifact it points to
+        r = self.find_(ctx,
+                       arg1,
+                       tags,
+                       sort,
+                       add_index_file=True,
                        skip_uids=skip_uids,
                        match=match,
                        match_empty_version=match_empty_version,
                        all_tags=all_tags,
+                       follow_migrated=False,
         )
         if r['return']>0: return r
 
@@ -957,7 +974,7 @@ class Category(InitCategory):
                 return {'return':1, 'error':f"artifact can't have wildcards during creation ({arg1})"}
 
             # Check if artifact already exists (relatively fast - should be in index)
-            r = self.find_(ctx, arg1, tags)
+            r = self.find_(ctx, arg1, tags, follow_migrated = False)
             if r['return'] == 0:
                artifacts = r['artifacts']
                if len(artifacts)>0:
@@ -1064,6 +1081,12 @@ class Category(InitCategory):
                         if r['return']>0: return r
 
                         meta = r['data']
+
+                        # Index the artifact under the UID of its meta (an "alias,UID" too),
+                        # not a new one, or alias,UID references to it would not resolve
+                        meta_uid = str(meta.get('artifact') or '').split(',')[-1].strip()
+                        if meta_uid and utils.names.is_valid_cmeta_uid(meta_uid):
+                            artifact_uid = meta_uid
 
                     else:
                         return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
@@ -1186,7 +1209,7 @@ class Category(InitCategory):
 
         ctx['control']['con'] = False
 
-        r = self.find_(ctx, arg1, tags, sort, add_index_file=True, skip_uids=skip_uids)
+        r = self.find_(ctx, arg1, tags, sort, add_index_file=True, skip_uids=skip_uids, follow_migrated=False)
         if r['return']>0: return r
 
         artifacts = r['artifacts']
@@ -1471,6 +1494,145 @@ class Category(InitCategory):
         p['copy'] = True
 
         return self.cm.access(p)
+
+    ############################################################
+    def migrate_(
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str,  # The artifact to migrate: alias, UID or alias,UID (one artifact, no wildcards).
+        arg2: str,  # Its new alias, optionally in another repository: [repo:]alias.
+        tags: str = None,  # Prune the source artifact by tags.
+    ):
+        """
+            Rename an artifact (or move it to another repository under a new alias) and leave a
+            stub under its old alias that points to it.
+
+            The artifact keeps its UID, as with `move`, so `alias,UID` and UID references to it keep
+            working. The stub gets the old alias, a new UID and two keys: `migrated_to`, the new
+            `alias,UID`, and `migrated_when`, the date and time of the migration (ISO 8601, UTC).
+            A lookup of the old alias alone - `cx task run <old>`, `cx <category> find <old>` - then
+            follows the stub to the artifact and prints a notice once. Commands that change
+            artifacts (update, tags, move, delete) act on the stub itself, so `cx <category> rm <old>`
+            removes it when nobody uses the old alias any more.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): The artifact to migrate: alias, UID or alias,UID (one artifact, no wildcards).
+                arg2 (str): Its new alias, optionally in another repository: [repo:]alias.
+                tags (str | list | None): Prune the source artifact by tags.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error.
+                    - **error** (str): Error message if `return > 0`.
+                    - **artifact** (dict): The migrated artifact (its new alias, the same UID).
+                    - **stub_path** (str): Path of the stub left under the old alias.
+                    - **stub_meta** (dict): Meta of the stub.
+                    - **migrated_to** (str): The new `alias,UID`.
+                    - **migrated_when** (str): When, ISO 8601 in UTC.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        from datetime import datetime, timezone
+
+        con = ctx.get('control',{}).get('con', False)
+        ctx['control']['con'] = False
+
+        if arg1 is None or arg1 == '' or arg2 is None or arg2 == '':
+            return {'return':1, 'error':'migrate needs the artifact and its new alias: migrate <artifact> [repo:]<new alias>'}
+
+        if '*' in arg1 or '?' in arg1:
+            return {'return':1, 'error':'migrate takes one artifact - no wildcards'}
+
+        # The source, exactly as named (a stub is not followed here)
+        r = self.find_(ctx, arg1, tags, follow_migrated=False)
+        if r['return']>0: return r
+
+        artifacts = r['artifacts']
+        if len(artifacts) != 1:
+            return {'return':1, 'error':f'"{arg1}" names {len(artifacts)} artifacts - give its UID or repo:alias'}
+
+        artifact = artifacts[0]
+        cmeta = artifact.get('cmeta') or {}
+        parts = artifact['cmeta_ref_parts']
+
+        old_alias = parts.get('artifact_alias')
+        artifact_uid = parts['artifact_uid']
+
+        if cmeta.get('migrated_to'):
+            return {'return':1, 'error':f'"{old_alias}" is already a migration stub (migrated to "{cmeta["migrated_to"]}")'}
+
+        if old_alias is None or old_alias == '':
+            return {'return':1, 'error':f'artifact {artifact_uid} has no alias, so there is no old alias to keep - use move'}
+
+        # The target: a new alias, the same UID
+        r = utils.names.parse_cmeta_obj(arg2)
+        if r['return']>0: return r
+
+        target_parts = r['obj_parts']
+        new_alias = target_parts.get('alias')
+
+        if target_parts.get('uid') is not None:
+            return {'return':1, 'error':'migrate keeps the UID of the artifact - give the new alias without a UID'}
+
+        if new_alias is None or new_alias == '':
+            return {'return':1, 'error':'migrate needs a new alias: migrate <artifact> [repo:]<new alias>'}
+
+        if '*' in new_alias or '?' in new_alias:
+            return {'return':1, 'error':'the new alias should not have wildcards'}
+
+        if new_alias.lower() == old_alias.lower():
+            return {'return':1, 'error':'the new alias is the old one - to move the artifact to another repository under the same alias, use move'}
+
+        # Move it with the category's own "move", so that the category's rules apply. The source is
+        # given as alias,UID: the UID finds exactly this artifact, and the alias shows "move" that
+        # this is a rename (the "category" category, for one, refuses to rename an alias)
+        r = self.cm.access({'category': dict(ctx['category']),
+                            'command': 'move',
+                            'arg1': f'{old_alias},{artifact_uid}',
+                            'arg2': arg2,
+                            'con': False})
+        if r['return']>0: return r
+
+        r = self.find_(ctx, artifact_uid, follow_migrated=False)
+        if r['return']>0: return r
+
+        moved = r['artifacts'][0]
+        moved_alias = moved['cmeta_ref_parts'].get('artifact_alias', new_alias)
+
+        migrated_to = f'{moved_alias},{artifact_uid}'
+        migrated_when = datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+        # The stub: the old alias, a new UID, in the repository the artifact was in, with the
+        # base "create" (a category's own create may scaffold a full artifact)
+        stub_repo = parts.get('repo_uid') or parts.get('repo_alias')
+        stub_name = f'{stub_repo}:{old_alias}' if stub_repo else old_alias
+
+        stub_yaml = os.path.isfile(os.path.join(moved['path'], self.cm.cfg['meta_filename_base'] + '.yaml'))
+
+        r = self.cm.access({'category': dict(ctx['category']),
+                            'command': 'create',
+                            'base': True,
+                            'arg1': stub_name,
+                            'meta': {'migrated_to': migrated_to, 'migrated_when': migrated_when},
+                            'yaml': stub_yaml,
+                            'con': False})
+        if r['return']>0:
+            return {'return':1, 'error':f'"{old_alias}" was moved to "{migrated_to}" but its stub could not be created: {r["error"]}'}
+
+        stub_path = r['path']
+        stub_meta = r['meta']
+
+        if con:
+            print (f'Migrated "{old_alias}" to "{migrated_to}": {moved["path"]}')
+            print (f'Stub left under "{old_alias}" (UID {stub_meta.get("artifact")}): {stub_path}')
+            print (f'  migrated_to:   {migrated_to}')
+            print (f'  migrated_when: {migrated_when}')
+
+        return {'return':0, 'artifact': moved, 'stub_path': stub_path, 'stub_meta': stub_meta,
+                'migrated_to': migrated_to, 'migrated_when': migrated_when}
 
     ############################################################
     def index(
