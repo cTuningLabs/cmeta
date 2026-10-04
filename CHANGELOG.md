@@ -6,6 +6,8 @@ All notable changes to cMeta are documented here, newest first.
 ## 0.32.5
 - **`utils.net.download`:** a download with a progress bar failed when the server sent no
   `Content-Length` (GitHub's tag archives, for example): tqdm's bar has no truth value without a total.
+  A `file://` URL downloads too: the size is read from the response's `headers`, which every urllib
+  response carries (a local file's response has no `getheader()`); a size that is not a number is unknown.
 - **`utils.common.copy_text_to_clipboard`:** a clipboard that cannot be opened (a locked desktop, no
   display) gives an error, or a warning with `do_not_fail`, instead of a traceback; `cx utils uid` and
   the other copy commands no longer crash there.

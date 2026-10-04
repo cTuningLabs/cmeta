@@ -49,3 +49,15 @@ def test_download(server, tmp_path, path, show_progress):
     r = net.download(server + path, filename='file.bin', path=str(tmp_path), show_progress=show_progress)
     assert r['return'] == 0, r.get('error')
     assert (tmp_path / 'file.bin').read_bytes() == BODY
+
+
+def test_download_file_url(tmp_path):
+    """A file:// URL copies the local file (a response without getheader())."""
+    src = tmp_path / 'src.bin'
+    src.write_bytes(BODY)
+    url = src.resolve().as_uri()
+    r = net.download(url, filename='copy.bin', path=str(tmp_path / 'out'), show_progress=False)
+    assert r['return'] == 0, r.get('error')
+    assert (tmp_path / 'out' / 'copy.bin').read_bytes() == BODY
+    r = net.download(url, filename='copy2.bin', path=str(tmp_path / 'out'), show_progress=True)
+    assert r['return'] == 0, r.get('error')
