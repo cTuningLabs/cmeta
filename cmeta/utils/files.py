@@ -494,6 +494,7 @@ def write_file(
     file_format: str = None,  # Force specific format ('json', 'yaml', 'pickle', 'text'). If None, auto-detected.
     newline: str = '\n',  # Newline character for text files. Default is '
     safe_dump: bool = False, # If True, write non-serializable vars as "#NON-SERIALIZABLE#"
+    keep: bool = False,  # If True, YAML is written in the keep style: the key order of YAML_META_KEY_ORDER, nothing folded, lists indented (yaml_dump_keep). Other formats are not affected.
 ):
     """
         Write data to file with format-specific serialization.
@@ -511,6 +512,10 @@ def write_file(
                 newline (str): Newline character for text files. Default is '
         '.
                 safe_dump (bool): Replace non-serializable JSON values with a marker string.
+                keep (bool): Write YAML in the keep style (the style of a new _cmeta.yaml): the keys of
+                             YAML_META_KEY_ORDER first, then the rest in the order given; long strings on
+                             one line, multi-line strings as literal blocks, list items indented under
+                             their key. JSON, pickle and text are written as without it.
 
             Returns:
                 dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
@@ -540,7 +545,10 @@ def write_file(
                     json.dump(data, f, indent=2, sort_keys=sort_keys)
                 f.write("\n")
             elif file_format == "yaml":
-                yaml.safe_dump(data, f, sort_keys=sort_keys)
+                if keep:
+                    f.write(yaml_dump_keep(order_meta_keys(data), indent_lists=True))
+                else:
+                    yaml.safe_dump(data, f, sort_keys=sort_keys)
             elif file_format == "pickle":
                 pickle.dump(data, f)
             else:
@@ -612,6 +620,44 @@ def yaml_dump_keep(
 def _yaml_lists_are_indented(text):
     """True when the text indents the items of its lists under their keys ("  - a")."""
     return re.search(r'^[ \t]+- ', text, re.M) is not None
+
+##########################################################################################
+# The order of the top-level keys of a NEW YAML meta (the _cmeta.yaml that `cx <category> add --yaml`,
+# a migrate stub or any other command creates): the identity, what it is, the attribution, the
+# bookkeeping, what the engine needs; every other key follows in the order given. Only new files are
+# ordered this way - an existing file keeps its own order (edit_yaml_text and the fallback dump of
+# _write_yaml_keeping_text never reorder) - and JSON metas stay sorted as before.
+YAML_META_KEY_ORDER = (
+    'artifact', 'alias', 'category', 'name',                                       # identity
+    'tags', 'desc', 'note',                                                        # what it is
+    'authors', 'copyright', 'license',                                             # attribution
+    'creation_timestamp', 'last_update_timestamp', 'generator', 'last_generator',
+    'migrated_to', 'migrated_when',                                                # bookkeeping
+    'min_cmeta_version', 'min_cmeta_version_api', 'last_api_version',
+    'uses_categories', 'uses_artifacts',                                           # what the engine needs
+)
+
+##########################################################################################
+def order_meta_keys(
+    data,  # A mapping; anything else is returned as it is.
+):
+    """
+        A copy of a meta mapping with the keys of YAML_META_KEY_ORDER first, in that order, and every
+        other key after them in the order given (the order of a new _cmeta.yaml).
+
+        Args:
+            data: A mapping; anything else is returned unchanged.
+
+        Returns:
+            dict: The reordered (shallow) copy.
+    """
+    if not isinstance(data, dict):
+        return data
+    ordered = {k: data[k] for k in YAML_META_KEY_ORDER if k in data}
+    for k, v in data.items():
+        if k not in ordered:
+            ordered[k] = v
+    return ordered
 
 ##########################################################################################
 def _yaml_last_index(node):
@@ -806,7 +852,8 @@ def safe_write_file(
     fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
     logger = None,  # Optional logger for debug messages.
     sort_keys: bool = True,  # If True, sorts dictionary keys in JSON/YAML output.
-    preserve: bool = False,  # If True, an existing YAML file is edited in place: only the keys that changed are rewritten (see _write_yaml_keeping_text).
+    preserve: bool = False,  # If True, an existing YAML file is edited in place: only the keys that changed are rewritten (see _write_yaml_keeping_text); a YAML file that does not exist yet is written in the keep style.
+    keep: bool = False,  # If True, a YAML file is written in the keep style of a new _cmeta.yaml (write_file keep=True). Other formats are not affected.
 ):
     """
         Safely write data to file with locking and optional atomic write.
@@ -817,8 +864,9 @@ def safe_write_file(
         With `preserve`, an existing YAML file keeps its text: only the top-level keys whose values
         changed are rewritten, new keys are appended, and the result is read back and compared with
         `data` before it replaces the file (a full dump that keeps the order of the keys and does not
-        rewrap long strings is the fallback). Other formats, and files that do not exist yet, are
-        written as without `preserve`.
+        rewrap long strings is the fallback). A YAML file that does not exist yet is written in the
+        keep style of a new meta (`keep`: the key order of YAML_META_KEY_ORDER, nothing folded, lists
+        indented). Other formats are written as without `preserve` or `keep`.
 
         WARNING: This function uses blocking I/O operations. Not suitable for
         async contexts - use aiofiles and async locking instead.
@@ -833,7 +881,9 @@ def safe_write_file(
             fail_on_error (bool): If True, raises exception on error instead of returning error dict.
             logger: Optional logger for debug messages.
             sort_keys (bool): If True, sorts dictionary keys in JSON/YAML output.
-            preserve (bool): If True, an existing YAML file is edited in place and validated.
+            preserve (bool): If True, an existing YAML file is edited in place and validated; a new one is
+                             written in the keep style.
+            keep (bool): If True, a YAML file is written in the keep style of a new _cmeta.yaml.
 
         Returns:
             dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
@@ -879,7 +929,10 @@ def safe_write_file(
         else:
             temp_path = f"{filepath}.tmp" if atomic else filepath
 
-            r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format)
+            # A new YAML meta gets the keep style whether asked for it or for `preserve`
+            keep_style = keep or (preserve and file_format == 'yaml')
+
+            r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format, keep=keep_style)
             if r['return']>0: return r
 
             if atomic:

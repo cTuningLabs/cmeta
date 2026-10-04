@@ -25,6 +25,16 @@ All notable changes to cMeta are documented here, newest first.
   New files (`cx <category> add`) are written as before. `-v` on `update` says whether the file was
   edited in place or rewritten. API: `utils.files.safe_write_file(..., preserve=True)`, `edit_yaml_text`,
   `yaml_dump_keep`.
+- **A new `_cmeta.yaml` is written in the same keep style** (`cx <category> add --yaml`, a `migrate` stub, any
+  command that creates one): the keys in a fixed order - identity (`artifact`, `alias`, `category`, `name`),
+  what it is (`tags`, `desc`, `note`), attribution (`authors`, `copyright`, `license`), bookkeeping
+  (`creation_timestamp`, `last_update_timestamp`, `generator`, `last_generator`, `migrated_*`), what the
+  engine needs (`min_cmeta_version*`, `last_api_version`, `uses_*`), then every other key as given
+  (`utils.files.YAML_META_KEY_ORDER`, `order_meta_keys`) - long strings on one line, multi-line strings as
+  `|` blocks, list items indented under their key, unicode as it is. Before, a new file was the sorted,
+  80-column `yaml.safe_dump`. An existing file keeps its own order; JSON metas stay sorted. API:
+  `write_file(..., keep=True)`, `safe_write_file(..., keep=True)` (and `preserve=True` on a file that
+  does not exist yet).
 - **`/browse`: search, browse and graph the artifacts of every plugged repository** (category
   `cserver.browse`, a second page of the engine's `cserver`). One query in three views:
   - **Search**: a list, best matches first;

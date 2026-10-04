@@ -15,7 +15,8 @@ import yaml
 
 from cmeta import CMeta
 from cmeta.utils import files
-from cmeta.utils.files import edit_yaml_text, safe_write_file, yaml_dump_keep
+from cmeta.utils.files import (YAML_META_KEY_ORDER, edit_yaml_text, order_meta_keys, safe_write_file,
+                               write_file, yaml_dump_keep)
 
 UID = '0123456789abcdef'
 
@@ -239,7 +240,7 @@ def test_crlf_and_bom_survive_the_fallback_dump(tmp_path):
     assert read_text(path) == '\ufeffa: 1\r\nb: 2\r\n'
 
 
-def test_without_preserve_or_without_a_file_the_old_dump_is_written(tmp_path):
+def test_without_preserve_the_old_dump_is_written(tmp_path):
     path = str(tmp_path / '_cmeta.yaml')
     write_text(path, TEXT)
     data = loaded(TEXT)
@@ -247,10 +248,57 @@ def test_without_preserve_or_without_a_file_the_old_dump_is_written(tmp_path):
     assert r['return'] == 0 and 'method' not in r
     assert read_text(path) == yaml.safe_dump(data, sort_keys=True)          # the old style: sorted, folded
 
+
+def test_preserve_on_a_file_that_does_not_exist_writes_the_keep_style(tmp_path):
+    data = loaded(TEXT)
     new_path = str(tmp_path / 'new.yaml')
     r = safe_write_file(new_path, data, preserve=True)
     assert r['return'] == 0 and 'method' not in r
-    assert read_text(new_path) == yaml.safe_dump(data, sort_keys=True)
+    assert read_text(new_path) == yaml_dump_keep(order_meta_keys(data), indent_lists=True)
+    assert loaded(read_text(new_path)) == data
+
+
+# --- new files: the keep style with the key order of a new meta -------------------------------------
+
+def test_order_meta_keys_puts_the_known_keys_first_and_the_rest_as_given():
+    data = {'zeta': 1, 'note': 'n', 'creation_timestamp': 't', 'category': 'c', 'alpha': 2, 'tags': ['t'],
+            'artifact': UID, 'authors': 'a', 'uses_categories': {'tool': 'tool,1'}, 'last_generator': {'agent': 'x'}}
+    out = order_meta_keys(data)
+    assert list(out) == ['artifact', 'category', 'tags', 'note', 'authors', 'creation_timestamp', 'last_generator',
+                         'uses_categories', 'zeta', 'alpha']
+    assert out == data and out is not data                                  # a copy, same content
+    assert order_meta_keys(['not', 'a', 'dict']) == ['not', 'a', 'dict']
+    assert YAML_META_KEY_ORDER[:3] == ('artifact', 'alias', 'category')
+    assert len(set(YAML_META_KEY_ORDER)) == len(YAML_META_KEY_ORDER)          # no key twice
+
+
+def test_write_file_keep_writes_a_new_meta_in_the_keep_style(tmp_path):
+    path = str(tmp_path / '_cmeta.yaml')
+    data = {'note': LONG_NOTE, 'tags': ['b', 'a'], 'artifact': UID, 'text': 'line 1\nline 2', 'desc': 'café — ü',
+            'zeta': {'k': 'v', 'list': [1, 2]}, 'category': 'task,c36be4b9314a45e0', 'authors': 'Grigori Fursin'}
+    r = write_file(path, data, keep=True)
+    assert r['return'] == 0, r.get('error')
+    text = read_text(path)
+    assert text == ('artifact: ' + UID + '\n'
+                    'category: task,c36be4b9314a45e0\n'
+                    'tags:\n  - b\n  - a\n'
+                    'desc: café — ü\n'
+                    'note: ' + LONG_NOTE + '\n'
+                    'authors: Grigori Fursin\n'
+                    'text: |-\n  line 1\n  line 2\n'
+                    'zeta:\n  k: v\n  list:\n    - 1\n    - 2\n')
+    assert loaded(text) == data
+    # without keep: the old sorted, folded dump
+    r = write_file(path, data)
+    assert r['return'] == 0 and read_text(path) == yaml.safe_dump(data, sort_keys=True)
+
+
+def test_keep_leaves_json_sorted_as_before(tmp_path):
+    path = str(tmp_path / '_cmeta.json')
+    data = {'zeta': 1, 'artifact': UID}
+    r = safe_write_file(path, data, keep=True)
+    assert r['return'] == 0 and 'method' not in r
+    assert read_text(path) == json.dumps(data, indent=2, sort_keys=True) + '\n'
 
 
 def test_json_files_are_written_as_before(tmp_path):
@@ -338,6 +386,32 @@ def test_update_edits_a_hand_made_yaml_in_place(cm, tmp_path):
     assert meta['tags'] == ['a', 'b', 'c'] and 'creation_timestamp' in meta
     r = cm.access({'category': 'log', 'command': 'find', 'arg1': f'edited,{UID}', 'con': False})
     assert r['return'] == 0 and r['artifacts'][0]['cmeta'] == meta        # the index holds what the file holds
+
+
+def test_add_writes_a_new_yaml_meta_in_the_keep_style(cm, tmp_path):
+    r = cm.access({'category': 'log', 'command': 'add', 'arg1': 'local:fresh', 'yaml': True, 'tags': 'x,y',
+                   'meta': {'zeta': {'k': 'v'}, 'note': LONG_NOTE, 'desc': 'café — ü'}, 'con': False})
+    assert r['return'] == 0, r.get('error')
+    path = os.path.join(r['path'], '_cmeta.yaml')
+    text = read_text(path)
+    meta = loaded(text)
+    assert meta == r['meta'] and meta['tags'] == ['x', 'y'] and 'creation_timestamp' in meta
+    keys = list(meta)                                                  # the order of the file
+    assert keys[:2] == ['artifact', 'category'] and keys.index('tags') < keys.index('desc') < keys.index('note')
+    assert keys.index('note') < keys.index('creation_timestamp') < keys.index('zeta')   # bookkeeping, then the rest
+    assert 'tags:\n  - x\n  - y\n' in text                              # lists indented under their key
+    assert f'note: {LONG_NOTE}\n' in text                               # a long line is not folded
+    assert 'desc: café — ü\n' in text                    # unicode as it is
+    assert text == yaml_dump_keep(order_meta_keys(meta), indent_lists=True)
+    r = cm.access({'category': 'log', 'command': 'find', 'arg1': 'local:fresh', 'con': False})
+    assert r['return'] == 0 and r['artifacts'][0]['cmeta'] == meta        # the index holds what the file holds
+
+
+def test_add_of_a_json_meta_is_sorted_as_before(cm, tmp_path):
+    r = cm.access({'category': 'log', 'command': 'add', 'arg1': 'local:fresh-json', 'meta': {'zeta': 1, 'alpha': 2}, 'con': False})
+    assert r['return'] == 0, r.get('error')
+    path = os.path.join(r['path'], '_cmeta.json')
+    assert read_text(path) == json.dumps(r['meta'], indent=2, sort_keys=True) + '\n'
 
 
 def test_update_of_a_json_meta_stays_json(cm, tmp_path):

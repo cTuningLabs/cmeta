@@ -1151,7 +1151,9 @@ class Category(InitCategory):
             else:
                 tmp_cmeta_filename = cmeta_filename_yaml if yaml else cmeta_filename_json
 
-                r = utils.files.safe_write_file(tmp_cmeta_filename, data=cmeta, fail_on_error = self.fail_on_error)
+                # A new YAML meta is written in the keep style (the key order of YAML_META_KEY_ORDER,
+                # nothing folded, lists indented), the style `update` keeps; a JSON meta is sorted as before
+                r = utils.files.safe_write_file(tmp_cmeta_filename, data=cmeta, fail_on_error = self.fail_on_error, keep=True)
                 if r['return']>0: return r
 
         if path is not None:
