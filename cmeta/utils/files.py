@@ -17,6 +17,7 @@ from pathlib import Path
 import uuid
 import hashlib
 import fnmatch
+import re
 
 from .common import _error
 
@@ -568,6 +569,233 @@ def safe_json_dumps(obj, sobj = "#NON-SERIALIZABLE#", **kwargs):
     return json.dumps(obj, default=default, **kwargs)
 
 ##########################################################################################
+# The "keep" style for YAML that is written over an existing file: the order of the keys is kept, a long
+# string stays on one line (nothing is rewrapped), a multi-line string is a literal block. Comments can
+# only be kept by editing the text (edit_yaml_text); this is the style of every rewritten or appended part.
+YAML_DUMP_KEEP = {'sort_keys': False, 'allow_unicode': True, 'width': 1000000, 'default_flow_style': False}
+
+if yaml is not None:
+    class _YamlKeepDumper(yaml.SafeDumper):
+        pass
+
+    def _represent_str_keep(dumper, value):
+        return dumper.represent_scalar('tag:yaml.org,2002:str', value, style = '|' if '\n' in value else None)
+
+    _YamlKeepDumper.add_representer(str, _represent_str_keep)
+
+    class _YamlKeepIndentDumper(_YamlKeepDumper):
+        """The same, with the items of a list indented under their key (the style of most hand-written files)."""
+        def increase_indent(self, flow=False, indentless=False):
+            return super().increase_indent(flow, False)
+
+##########################################################################################
+def yaml_dump_keep(
+    data,  # Data to dump (a dict or a list).
+    indent_lists: bool = False,  # If True, the items of a list are indented under their key.
+):
+    """
+        Dump YAML in the "keep" style: the order of the keys as given, long strings on one line, multi-line
+        strings as literal blocks (YAML_DUMP_KEEP). Used for the parts of an existing file that are rewritten.
+
+        Args:
+            data: Data to dump.
+            indent_lists (bool): If True, the items of a list are indented under their key ("  - a");
+                                 PyYAML's default puts them at the key's column ("- a").
+
+        Returns:
+            str: The YAML text, ending with a line break.
+    """
+    dumper = _YamlKeepIndentDumper if indent_lists else _YamlKeepDumper
+    return yaml.dump(data, Dumper=dumper, **YAML_DUMP_KEEP)
+
+##########################################################################################
+def _yaml_lists_are_indented(text):
+    """True when the text indents the items of its lists under their keys ("  - a")."""
+    return re.search(r'^[ \t]+- ', text, re.M) is not None
+
+##########################################################################################
+def _yaml_last_index(node):
+    """The character index right after the last content of a node (a block collection's own end mark
+    points at the next key, past the comments and blank lines in between)."""
+    if isinstance(node, yaml.CollectionNode) and not node.flow_style and node.value:
+        last = node.value[-1]
+        if isinstance(node, yaml.MappingNode):
+            last = last[1]
+        return _yaml_last_index(last)
+    return node.end_mark.index
+
+##########################################################################################
+def edit_yaml_text(
+    text: str,  # The YAML text of a file: a block mapping at the top level.
+    data: dict,  # The mapping the text must load as afterwards.
+):
+    """
+        Edit the text of a YAML mapping so that it loads as `data`, touching only the top-level keys whose
+        values changed: the lines of such a key are replaced by a fresh dump of that key (yaml_dump_keep),
+        removed keys are deleted, new keys are appended at the end. Comments, blank lines, quoting, the
+        order of the keys and the line endings everywhere else stay byte-identical. A comment inside or at
+        the end of a value that changed goes with the value.
+
+        Args:
+            text (str): The YAML text of a file.
+            data (dict): The mapping the text must load as afterwards (string keys).
+
+        Returns:
+            str or None: The new text, or None when the text cannot be edited this way: not a block mapping
+            at the top level, several documents, anchors or aliases, duplicate or non-string keys, a parse
+            error. The caller then dumps the whole file.
+    """
+    if yaml is None or not isinstance(data, dict) or not all(isinstance(k, str) for k in data):
+        return None
+
+    try:
+        for token in yaml.scan(text):
+            if isinstance(token, (yaml.AnchorToken, yaml.AliasToken)):
+                return None
+
+        loader = yaml.SafeLoader(text)
+        try:
+            node = loader.get_single_node()
+            if node is None or not isinstance(node, yaml.MappingNode) or node.flow_style:
+                return None
+            pairs = list(node.value)
+            old = loader.construct_document(node)
+        finally:
+            loader.dispose()
+    except yaml.YAMLError:
+        return None
+
+    if not isinstance(old, dict) or len(old) != len(pairs) or not all(isinstance(k, str) for k in old):
+        return None
+
+    bom = text.startswith('\ufeff')
+    newline = '\r\n' if '\r\n' in text else '\n'
+    indent = ' ' * pairs[0][0].start_mark.column if pairs else ''
+    indent_lists = _yaml_lists_are_indented(text)
+
+    def chunk(key):
+        lines = yaml_dump_keep({key: data[key]}, indent_lists=indent_lists).split('\n')
+        return newline.join(indent + line if line != '' else line for line in lines)
+
+    # The lines of every key: from the start of the key's line to the end of the last line of its value
+    edits = []
+    previous_end = 1 if bom else 0
+    for (key_node, value_node), key in zip(pairs, old):
+        start = text.rfind('\n', 0, key_node.start_mark.index) + 1
+        if bom and start == 0:
+            start = 1
+
+        end = max(_yaml_last_index(value_node), key_node.end_mark.index)
+        while end > start and text[end - 1] in ' \t\r\n':
+            end -= 1
+        nl = text.find('\n', end)
+        end = len(text) if nl < 0 else nl + 1
+
+        if start < previous_end or end < start:
+            return None
+        previous_end = end
+
+        if key not in data:
+            edits.append((start, end, ''))
+        elif old[key] != data[key]:
+            edits.append((start, end, chunk(key)))
+
+    for start, end, replacement in reversed(edits):
+        text = text[:start] + replacement + text[end:]
+
+    new_keys = [k for k in data if k not in old]
+    if new_keys:
+        if text != '' and not text.endswith(('\n', '\r')):
+            text += newline
+        text += ''.join(chunk(k) for k in new_keys)
+
+    return text
+
+##########################################################################################
+def _replace_file(
+    temp_path: str,  # The file just written.
+    filepath: str,  # The file it replaces.
+    logger = None,  # Optional logger for debug messages.
+):
+    """Replace a file atomically, with the retries that Windows needs after a lock."""
+    for attempt in range(RETRY_REPLACE_FILE + 1):
+        try:
+            os.replace(temp_path, filepath)
+            return
+        except Exception as e:
+            if attempt < RETRY_REPLACE_FILE:
+                if logger is not None:
+                    logger.debug(f"utils.files._replace_file - retrying replace for '{temp_path}' -> '{filepath}' (attempt {attempt + 1}) due to error: {str(e)}")
+                time.sleep(RETRY_DELAY)
+            else:
+                raise
+
+##########################################################################################
+def _write_yaml_keeping_text(
+    filepath: str,  # An existing YAML file.
+    data: dict,  # The mapping the file must load as afterwards.
+    encoding: str = 'utf-8',  # Encoding of the file.
+    logger = None,  # Optional logger for debug messages.
+):
+    """
+        Rewrite an existing YAML file so that it loads as `data`: a textual edit of the keys that changed
+        (edit_yaml_text) when possible, else a full dump in the keep style (yaml_dump_keep). Either text is
+        written next to the file, read back with the engine's own loader and compared with `data`; only a
+        text that loads as `data` replaces the file (atomically). A full dump that loads but differs (a tuple
+        becomes a list) is written too, as before. The file is never left broken or half-written.
+
+        Returns:
+            dict: {'return': 0, 'method': 'edit' | 'dump', 'validated': bool}, or 'return' > 0 and 'error'.
+    """
+    with open(filepath, 'r', encoding=encoding, newline='') as f:
+        text = f.read()
+
+    candidates = []
+
+    edited = edit_yaml_text(text, data)
+    if edited is not None:
+        candidates.append(('edit', edited))
+
+    dumped = yaml_dump_keep(data, indent_lists=_yaml_lists_are_indented(text))
+    if '\r\n' in text:
+        dumped = dumped.replace('\n', '\r\n')
+    if text.startswith('\ufeff'):
+        dumped = '\ufeff' + dumped
+    candidates.append(('dump', dumped))
+
+    temp_path = f"{filepath}.tmp"
+
+    try:
+        for method, new_text in candidates:
+            with open(temp_path, 'w', encoding=encoding, newline='') as f:
+                f.write(new_text)
+
+            # Read back what is on disk with the engine's YAML loader (the .tmp name hides the format)
+            try:
+                with open(temp_path, 'r', encoding=encoding) as f:
+                    loaded = yaml.safe_load(f)
+                parsed = True
+            except Exception as e:
+                loaded = e
+                parsed = False
+
+            if logger is not None and not (parsed and loaded == data):
+                logger.debug(f"utils.files._write_yaml_keeping_text - the {method} of '{filepath}' does not load as expected: {loaded if not parsed else 'different data'}")
+
+            if (parsed and loaded == data) or (method == 'dump' and parsed):
+                _replace_file(temp_path, filepath, logger)
+                return {'return': 0, 'method': method, 'validated': parsed and loaded == data}
+
+    finally:
+        if os.path.isfile(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+    return {'return': 1, 'error': f"'{filepath}' could not be written as valid YAML; the file was left unchanged"}
+
+##########################################################################################
 def safe_write_file(
     filepath: str,  # Path where file should be written.
     data,  # Data to write (dict/list for JSON/YAML, any object for pickle/text).
@@ -578,12 +806,19 @@ def safe_write_file(
     fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
     logger = None,  # Optional logger for debug messages.
     sort_keys: bool = True,  # If True, sorts dictionary keys in JSON/YAML output.
+    preserve: bool = False,  # If True, an existing YAML file is edited in place: only the keys that changed are rewritten (see _write_yaml_keeping_text).
 ):
     """
         Safely write data to file with locking and optional atomic write.
 
         Provides thread/process-safe file writing with file locking support.
         Supports atomic writes via temp file + rename for data integrity.
+
+        With `preserve`, an existing YAML file keeps its text: only the top-level keys whose values
+        changed are rewritten, new keys are appended, and the result is read back and compared with
+        `data` before it replaces the file (a full dump that keeps the order of the keys and does not
+        rewrap long strings is the fallback). Other formats, and files that do not exist yet, are
+        written as without `preserve`.
 
         WARNING: This function uses blocking I/O operations. Not suitable for
         async contexts - use aiofiles and async locking instead.
@@ -598,9 +833,11 @@ def safe_write_file(
             fail_on_error (bool): If True, raises exception on error instead of returning error dict.
             logger: Optional logger for debug messages.
             sort_keys (bool): If True, sorts dictionary keys in JSON/YAML output.
+            preserve (bool): If True, an existing YAML file is edited in place and validated.
 
         Returns:
             dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error' on failure.
+                  With `preserve` on an existing YAML file also 'method' ('edit' or 'dump') and 'validated'.
 
         Raises:
             Exception: Propagated runtime errors, if any.
@@ -619,35 +856,42 @@ def safe_write_file(
 
     file_format = _detect_file_format(filepath)
 
-    temp_path = f"{filepath}.tmp" if atomic else filepath
-
-    r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format)
-    if r['return']>0: return r
-
+    result = {'return': 0}
     release_error = None
 
     try:
-        if atomic:
+        if preserve and file_format == 'yaml' and yaml is not None and Path(filepath).is_file():
             try:
                 _check_lock(filepath, file_lock, logger)
             except Exception as e:
                 return _error(None, 1, e, fail_on_error)
 
-            # Retry replacing the file with RETRY_REPLACE_FILE attempts
-            for attempt in range(RETRY_REPLACE_FILE + 1):
-                try:
-                    os.replace(temp_path, filepath)
-                    break  # Success, exit retry loop
-                except Exception as e:
-                    if attempt < RETRY_REPLACE_FILE:
-                        if logger is not None:
-                            logger.debug(f"utils.files.safe_read_file - retrying replace for '{temp_path}' -> '{filepath}' (attempt {attempt + 1}) due to error: {str(e)}")
-                        time.sleep(RETRY_DELAY)
-                    else:
-                        return _error(None, 1, e, fail_on_error)
+            try:
+                r = _write_yaml_keeping_text(filepath, data, encoding=_get_encoding(encoding, file_format), logger=logger)
+            except Exception as e:
+                return _error(None, 1, e, fail_on_error)
 
-    except Exception as e:
-        return _error(None, 1, e, fail_on_error)
+            if r['return'] > 0:
+                return _error(r['error'], r['return'], None, fail_on_error)
+
+            result = r
+
+        else:
+            temp_path = f"{filepath}.tmp" if atomic else filepath
+
+            r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format)
+            if r['return']>0: return r
+
+            if atomic:
+                try:
+                    _check_lock(filepath, file_lock, logger)
+                except Exception as e:
+                    return _error(None, 1, e, fail_on_error)
+
+                try:
+                    _replace_file(temp_path, filepath, logger)
+                except Exception as e:
+                    return _error(None, 1, e, fail_on_error)
 
     finally:
         # Always release the lock: either if it was locked externally for writing
@@ -660,7 +904,7 @@ def safe_write_file(
     if release_error:
         return _error(None, 1, release_error, fail_on_error)
 
-    return {'return': 0}
+    return result
 
 ##########################################################################################
 def safe_delete_directory(

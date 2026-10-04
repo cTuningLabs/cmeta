@@ -1093,7 +1093,7 @@ class Repos:
 
                             category_meta_desc_file_yaml = os.path.join(category_full_path, category, self.cfg['meta_filename_base'] + '.yaml')
 
-                            r = utils.files.safe_write_file(category_meta_desc_file_yaml, category_meta, fail_on_error=self.fail_on_error, logger=self.logger)
+                            r = utils.files.safe_write_file(category_meta_desc_file_yaml, category_meta, fail_on_error=self.fail_on_error, logger=self.logger, preserve=True)
                             if r['return']>0: return r
 
                     if category_meta:

@@ -1287,8 +1287,8 @@ class Category(InitCategory):
                 # Merge with provided meta (meta takes precedence)
                 merged_data = {**existing_data, **meta}
 
-                # Save back to the same file
-                r = self.cm.utils.files.safe_write_file(cmeta_file, merged_data)
+                # Save back to the same file (a YAML file keeps its text: only the merged keys are rewritten)
+                r = self.cm.utils.files.safe_write_file(cmeta_file, merged_data, preserve=True)
                 if r['return'] > 0:
                     error_msg = f"Failed to write {cmeta_file}: {r.get('error', 'Unknown error')}"
                     errors.append(error_msg)

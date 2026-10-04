@@ -612,8 +612,15 @@ class Category(InitCategory):
                # A task or agent that updates the artifact leaves its record (CMETA_GENERATOR)
                apply_artifact_defaults(cmeta, cfg=self.cm.cfg, creating=False)
 
-               r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
+               # A YAML meta file written by hand keeps its text: only the keys that changed are
+               # rewritten, and the result is read back and checked before it replaces the file
+               r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger, preserve=True)
                if r['return']>0: return r
+
+               if con and ctx['control'].get('verbose', False):
+                   how = {'edit': 'edited in place (only the keys that changed)', 'dump': 'rewritten (full dump)'}.get(r.get('method'))
+                   if how is not None:
+                       print (f'  meta file {how}: {found_cmeta_filename}')
 
                updated = True
 
@@ -1066,6 +1073,9 @@ class Category(InitCategory):
         cmeta_filename_json = os.path.join(artifact_path, self.cm.cfg['meta_filename_base'] + '.json')
         cmeta_filename_yaml = os.path.join(artifact_path, self.cm.cfg['meta_filename_base'] + '.yaml')
 
+        # The meta file of an artifact that is indexed as it is (made or copied by hand)
+        existing_meta_file = None
+
         if not virtual:
             if os.path.isdir(artifact_path):
                 if os.path.isfile(cmeta_filename_json) or os.path.isfile(cmeta_filename_yaml):
@@ -1081,6 +1091,7 @@ class Category(InitCategory):
                         if r['return']>0: return r
 
                         meta = r['data']
+                        existing_meta_file = f
 
                         # Index the artifact under the UID of its meta (an "alias,UID" too),
                         # not a new one, or alias,UID references to it would not resolve
@@ -1117,22 +1128,31 @@ class Category(InitCategory):
 
             cmeta['tags'] = meta_tags
 
-        from datetime import datetime, timezone
+        if existing_meta_file is None:
+            from datetime import datetime, timezone
 
-        if 'creation_timestamp' not in cmeta:
-            cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
-        else:
-            cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
+            if 'creation_timestamp' not in cmeta:
+                cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
+            else:
+                cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
 
-        # Authors, copyright and generator: the meta, the environment and the repository defaults
-        apply_artifact_defaults(cmeta, repo_meta=repo_cmeta, cfg=self.cm.cfg, creating=True)
+            # Authors, copyright and generator: the meta, the environment and the repository defaults
+            apply_artifact_defaults(cmeta, repo_meta=repo_cmeta, cfg=self.cm.cfg, creating=True)
 
         # Save meta
         if not virtual:
-            tmp_cmeta_filename = cmeta_filename_yaml if yaml else cmeta_filename_json
+            if existing_meta_file is not None:
+                # Indexing leaves the meta file as it was written; only what the request adds (the tags,
+                # an identity key the file lacks) is added in place, without rewriting the rest
+                if cmeta != meta:
+                    r = utils.files.safe_write_file(existing_meta_file, data=cmeta, fail_on_error = self.fail_on_error, logger=self.logger, preserve=True)
+                    if r['return']>0: return r
 
-            r = utils.files.safe_write_file(tmp_cmeta_filename, data=cmeta, fail_on_error = self.fail_on_error)
-            if r['return']>0: return r
+            else:
+                tmp_cmeta_filename = cmeta_filename_yaml if yaml else cmeta_filename_json
+
+                r = utils.files.safe_write_file(tmp_cmeta_filename, data=cmeta, fail_on_error = self.fail_on_error)
+                if r['return']>0: return r
 
         if path is not None:
             artifact_path = path 
@@ -1444,7 +1464,7 @@ class Category(InitCategory):
                    else:
                        cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
 
-                   r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
+                   r = utils.files.safe_write_file(found_cmeta_filename, cmeta, file_lock=cmeta_file_lock, fail_on_error=self.fail_on_error, logger=self.logger, preserve=True)
                    if r['return']>0: return r
 
             # Delete root if empty

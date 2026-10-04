@@ -13,6 +13,18 @@ All notable changes to cMeta are documented here, newest first.
   the other copy commands no longer crash there.
 - **`utils.common.restricted_bool_eval`:** the error of an expression that cannot be evaluated quotes
   the expression (it said `<class 'str'>`).
+- **`cx <category> update` keeps a hand-written `_cmeta.yaml` as it is.** Only the top-level keys whose
+  values changed are rewritten, new keys are appended and removed keys deleted; comments, blank lines,
+  quoting, the order of the keys, the indentation of lists and the line endings everywhere else stay
+  byte-identical. The new text is written next to the file, read back with the engine's own YAML loader
+  and compared with the intended meta before it replaces the file (atomically); a text that cannot be
+  edited that way (anchors or aliases, duplicate keys, a flow mapping at the top level) is dumped in full
+  in a style that keeps the order of the keys and never folds a long string. `cx <category> index` no
+  longer rewrites the meta of an artifact made by hand (no timestamp, no generator) and only appends
+  what the file lacks; `move`/`copy` with a new UID and `cx utils convert_old_entries` edit in place too.
+  New files (`cx <category> add`) are written as before. `-v` on `update` says whether the file was
+  edited in place or rewritten. API: `utils.files.safe_write_file(..., preserve=True)`, `edit_yaml_text`,
+  `yaml_dump_keep`.
 - **`/browse`: search, browse and graph the artifacts of every plugged repository** (category
   `cserver.browse`, a second page of the engine's `cserver`). One query in three views:
   - **Search**: a list, best matches first;
