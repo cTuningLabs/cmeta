@@ -155,8 +155,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force "cmeta[server]==0.32.4"
-pip install "cmeta==0.32.4"
+uv tool install --force "cmeta[server]==0.32.5"
+pip install "cmeta==0.32.5"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other
@@ -170,7 +170,8 @@ index:
 
 ```bash
 cx repo list                             # what is plugged in
-cx repo pull ctuninglabs@cmeta-aops      # git pull + reindex
+cx repo pull                             # every repository fetched with git: git pull + reindex each (asks first; -q does not ask)
+cx repo pull cmeta-aops                  # one, by the name it was fetched with or by its alias (ctuninglabs@cmeta-aops)
 ```
 
 A repository fetched as a zip (`cx repo get cmeta://<name>`) has no history to

@@ -137,8 +137,13 @@ def download(
             ssl_context = ssl._create_unverified_context()
 
         with urlopen(request, context=ssl_context) as response, open(target_path, 'wb') as out_file:
-            total_size = response.getheader('Content-Length')
-            total_size = int(total_size) if total_size is not None else None
+            # HTTP responses have getheader(); a file:// response (urllib's addinfourl) has headers only
+            response_headers = getattr(response, 'headers', None)
+            total_size = response_headers.get('Content-Length') if response_headers is not None else None
+            try:
+                total_size = int(total_size) if total_size is not None else None
+            except (TypeError, ValueError):
+                total_size = None
             downloaded = 0
 
             progress = (
@@ -158,10 +163,11 @@ def download(
                         break
                     out_file.write(chunk)
                     downloaded += len(chunk)
-                    if progress:
+                    # tqdm without a total (no Content-Length) refuses bool(): compare with None
+                    if progress is not None:
                         progress.update(len(chunk))
             finally:
-                if progress:
+                if progress is not None:
                     progress.close()
 
     except Exception as e:

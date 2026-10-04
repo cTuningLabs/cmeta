@@ -3,6 +3,102 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.32.5
+- **`utils.net.download`:** a download with a progress bar failed when the server sent no
+  `Content-Length` (GitHub's tag archives, for example): tqdm's bar has no truth value without a total.
+  A `file://` URL downloads too: the size is read from the response's `headers`, which every urllib
+  response carries (a local file's response has no `getheader()`); a size that is not a number is unknown.
+- **`utils.common.copy_text_to_clipboard`:** a clipboard that cannot be opened (a locked desktop, no
+  display) gives an error, or a warning with `do_not_fail`, instead of a traceback; `cx utils uid` and
+  the other copy commands no longer crash there.
+- **`utils.common.restricted_bool_eval`:** the error of an expression that cannot be evaluated quotes
+  the expression (it said `<class 'str'>`).
+- **`cx <category> update` keeps a hand-written `_cmeta.yaml` as it is.** Only the top-level keys whose
+  values changed are rewritten, new keys are appended and removed keys deleted; comments, blank lines,
+  quoting, the order of the keys, the indentation of lists and the line endings everywhere else stay
+  byte-identical. The new text is written next to the file, read back with the engine's own YAML loader
+  and compared with the intended meta before it replaces the file (atomically); a text that cannot be
+  edited that way (anchors or aliases, duplicate keys, a flow mapping at the top level) is dumped in full
+  in a style that keeps the order of the keys and never folds a long string. `cx <category> index` no
+  longer rewrites the meta of an artifact made by hand (no timestamp, no generator) and only appends
+  what the file lacks; `move`/`copy` with a new UID and `cx utils convert_old_entries` edit in place too.
+  New files (`cx <category> add`) are written as before. `-v` on `update` says whether the file was
+  edited in place or rewritten. API: `utils.files.safe_write_file(..., preserve=True)`, `edit_yaml_text`,
+  `yaml_dump_keep`.
+- **A new `_cmeta.yaml` is written in the same keep style** (`cx <category> add --yaml`, a `migrate` stub, any
+  command that creates one): the keys in a fixed order - identity (`artifact`, `alias`, `category`, `name`),
+  what it is (`tags`, `desc`, `note`), attribution (`authors`, `copyright`, `license`), bookkeeping
+  (`creation_timestamp`, `last_update_timestamp`, `generator`, `last_generator`, `migrated_*`), what the
+  engine needs (`min_cmeta_version*`, `last_api_version`, `uses_*`), then every other key as given
+  (`utils.files.YAML_META_KEY_ORDER`, `order_meta_keys`) - long strings on one line, multi-line strings as
+  `|` blocks, list items indented under their key, unicode as it is. Before, a new file was the sorted,
+  80-column `yaml.safe_dump`. An existing file keeps its own order; JSON metas stay sorted. API:
+  `write_file(..., keep=True)`, `safe_write_file(..., keep=True)` (and `preserve=True` on a file that
+  does not exist yet).
+- **`/browse`: search, browse and graph the artifacts of every plugged repository** (category
+  `cserver.browse`, a second page of the engine's `cserver`). One query in three views:
+  - **Search**: a list, best matches first;
+  - **Browse**: a sortable table with facets;
+  - **Graph**: the results joined by their connections.
+
+  The rest of the page:
+  - **Narrowing:** pickers for repositories and categories, created-after / created-before
+    dates, and the query syntax (`repo:`, `cat:`, `tag:`, `-tag:`, `after:`, `before:`,
+    `has:`, `<key>:<value>`, cRefs, patterns).
+  - **The detail of an artifact:** its cRef, meta, `_desc`, connections and the `cx`
+    commands that reach it.
+  - **Shareable state:** the state is in the URL, and a spinner shows during every wait.
+  - **Speed:** it reads the index, so on ten thousand artifacts the first load takes about
+    0.1-3 s and each search a few milliseconds; only the detail and the graph read `_desc`
+    files.
+  - **On a shared server:** key-bundle categories are hidden by default
+    (`browse_hide_categories`), and so are the repositories in `hide_repos`; paths are shown
+    only on localhost.
+  - **In a terminal:** `cx cserver.browse query "..."`.
+  - **Tests:** 13.
+- **`cx <category> migrate <old> [<repo>:]<new>` renames an artifact without breaking its old
+  alias.** The artifact moves as with `mv`, under the same UID. A stub with a new UID stays under the
+  old alias, holding `migrated_to` (the new `alias,UID`) and `migrated_when` (ISO 8601, UTC).
+  - **Commands that use an artifact** follow a lookup of the old alias alone (no UID, no wildcard)
+    to the artifact behind the stub, with a notice once per process. That covers `find`, `info`,
+    `read`, `cx task run <old>` and everything that resolves through them.
+  - **Commands that change artifacts** (`update`, `tags`, `mv`, `rm`) act on the stub itself;
+    `cx <category> rm <old>` removes it.
+  - **Other details:** `list` marks stubs; `--follow_migrated=no` returns a stub itself; a chain of
+    migrations resolves to the last name; a category alias is not migrated.
+  - **Tests:** 13 integration tests, and a task run by its old alias checked from the CLI.
+- **`cx repo pull` with no name asks before it updates every repository.** It lists the git
+  repositories and asks `Continue [Y/n]?`; Enter means yes. It does not ask:
+  - with `--quiet` (`-q`);
+  - when no terminal is attached (a script, a pipe, CI);
+  - when a repository is named.
+
+  `cx repo get` with no name does the same.
+- **A repository fetched by its short name updates by it too.** `cx repo get cmeta-aops` clones into
+  the alias `ctuninglabs@cmeta-aops`, so `cx repo pull cmeta-aops` and a second
+  `cx repo get cmeta-aops` failed with "directory ... already exists". Both now find that clone and
+  pull it. `cx repo init <name>` still creates a new local repository under exactly that name.
+- **`cx <category> index <repo>:<name>` keeps the UID of the artifact's meta.** Indexing a folder
+  made or copied by hand (it already has `_cmeta.yaml` with `artifact: <UID>`) put a new random UID
+  in the index, so `alias,UID` and UID references to it did not resolve until `cx --reindex`. It
+  now takes the UID from the meta (also from an `alias,UID` value).
+- **The release procedure is written down**, for maintainers and AI agents alike:
+  [`docs/releasing.md`](docs/releasing.md). It covers:
+  - every file that carries the version;
+  - the build check, the PR, the tag and the GitHub release;
+  - the PyPI upload;
+  - the `cmeta_last_version` setting behind `cx --version`.
+
+  `AGENTS.md` §5.2 and a new skill, `release-cmeta`, point to it.
+- **One working branch.** `AGENTS.md` §5.0 and `CONTRIBUTING.md`:
+  - the maintainer, and the AI agents working for the maintainer, commit on `dev`, which reaches
+    `main` through one pull request;
+  - contributors branch from `dev` (`YYYYMMDD-<topic>`) and open their pull requests into `dev`.
+- **The docs build writes LF line endings.** On Windows, every build had rewritten the tracked `.rst`
+  files under `docs/en/` with CRLF, so git showed them as changed when their text was not.
+- `uv.lock` includes `httpx`, which the `dev` extra needs since 0.32.4.
+
+
 ## 0.32.4
 - **The `cserver` home page lists every page of the server.** `cx app run cserver` now opens on
   `/projects`. It shows every `cserver.*` page of every plugged repository as a card, grouped by

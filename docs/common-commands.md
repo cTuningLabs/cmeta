@@ -98,6 +98,7 @@ cx <category> add <repo>:<alias> --meta.owner="me"
 cx <category> update <alias> --meta.description="..."
 cx <category> tags <alias> --add=t1,t2 --remove=t3
 cx <category> mv <alias> <new-alias>
+cx <category> migrate <alias> <new-alias>   # the same, plus a stub: the old alias keeps working
 cx <category> rm <alias>
 ```
 
@@ -253,6 +254,10 @@ cx app run cserver
 
 # The same list of pages in a terminal
 cx cserver.projects pages
+
+# Search every artifact of every plugged repository (the /browse page does the same in a browser)
+cx cserver.browse query "tag:report after:2026-09-01"
+cx cserver.browse query "" --repos=myorg@my-repo --cats=task --sort=updated
 
 # Serve it to your own devices, behind one shared password
 cx config set cserver --meta.password="a passphrase of your own"

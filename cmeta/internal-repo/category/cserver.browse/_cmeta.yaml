@@ -1,0 +1,30 @@
+artifact: 14b2334988864507
+authors: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
+base_category_default_api_versions:
+  '1': 1
+category: category,dd9ea50e7f76467f
+creation_timestamp: '2026-10-03T09:21:47.687528+00:00'
+desc: 'Search, browse and graph the artifacts of every plugged repository: one search box over aliases,
+  UIDs, tags and anything in the meta, repository and category pickers, date filters, a sortable table
+  with facets, the connection graph of the results, and the detail of one artifact with its cRef and the
+  commands that reach it. Read from the index, so a search over thousands of artifacts takes milliseconds.'
+generator:
+  agent: Claude Code 2.1.287
+  by: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
+  effort: max
+  method: agent
+  model: claude-opus-5-5
+last_api_version: 1
+name: cMeta browse - search, browse and graph the artifacts of every plugged repository
+permanent: true
+tags:
+- cserver
+- web
+- browse
+- search
+- graph
+- artifacts
+uses_categories:
+  category: category,dd9ea50e7f76467f
+  config: config,cc6bfe174be847ed
+  repo: repo,f4f792ab40c7498f

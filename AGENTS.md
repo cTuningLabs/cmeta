@@ -252,18 +252,32 @@ those an AI agent creates on the author's behalf:
   merge. If one slipped through, repair it *before* pushing:
   `git commit --amend -s --no-edit` for the last commit, or
   `git rebase --signoff <base>` for a range.
-- **Name PR branches `YYYYMMDD-<short-branch-name>`.** Creation date first, then
-  a short kebab-case topic — e.g. `20260808-fix-repo-resolution`,
-  `20260808-add-repo-zip-support`. The date prefix keeps branches chronologically
-  sortable and makes a pile of open PRs analyzable. Always branch before
-  committing; don't push work directly to the default branch.
-- **Prefix the PR title the same way: `YYYYMMDD - <Title of PR>`.** The date, a
+- **The maintainer, and AI agents working for the maintainer, commit on
+  `dev`.** That means every agent session: Claude Code, Codex, OpenCode.
+  - **Workflow:** `git switch dev && git pull --ff-only`, then commit and push to
+    `dev`. One pull request `dev` → `main` carries the work to `main`; after its
+    merge commit, `dev` is fast-forwarded to `main` (`docs/releasing.md`).
+  - **Agents commit and push only when the maintainer explicitly says so.**
+    Develop and test, leave the changes uncommitted, show what changed, and wait
+    for a go-ahead for that piece of work; one go-ahead does not carry over to
+    the next. The same for anything that changes the remote: pull requests,
+    branch deletions, tags, releases.
+  - **Shared working copy:** several sessions may share one, so stage only your
+    own files and check `git status` before committing.
+  - **Never push to `main`.**
+- **Everyone else names PR branches `YYYYMMDD-<short-branch-name>`** and opens
+  the pull request into `dev`. The name is the creation date first, then a short
+  kebab-case topic, e.g. `20260808-fix-repo-resolution` or
+  `20260808-add-repo-zip-support`. The date prefix keeps branches
+  chronologically sortable and makes a pile of open PRs analyzable.
+- **Prefix the PR title with the date: `YYYYMMDD - <Title of PR>`.** The date, a
   spaced hyphen, then the normal human-readable title — e.g.
   `20260808 - Fix repo resolution for mixed-case aliases`. This is the subject
-  line visible on GitHub, so the same date ordering that helps on branches also
-  helps when scanning or scripting over the PR list
-  (`gh pr create --title "20260808 - …"`, `gh pr list`). Use the same date as the
-  branch prefix — the day the work was branched, not the day it merges.
+  line visible on GitHub, so the date ordering helps when scanning or scripting
+  over the PR list (`gh pr create --title "20260808 - …"`, `gh pr list`).
+  - **Which date:** for `dev` → `main`, the day the PR is opened; for a dated
+    branch, the same date as its prefix (the day the work was branched, not the
+    day it merges).
 
 ### 5.1 Attribution, provenance and citation
 
@@ -318,6 +332,19 @@ the project plus this attribution summary. It is a research/testing feature —
 tool support is inconsistent and it overrides nothing in `LICENSE`, `NOTICE` or
 this file.
 
+### 5.2 Releasing
+
+A release follows [`docs/releasing.md`](docs/releasing.md), whichever tool runs it; the Claude Code skill
+`release-cmeta` points to the same file. Agents do the checks, the version bump (in every file that
+carries the version), the build check, the PR, the tag and the release on request. Four steps belong to
+the maintainer:
+
+- picking the version;
+- merging into `main`;
+- the PyPI upload;
+- deciding when users are told: the cTuning platform's `cmeta_last_version`, which `cx --version` reads
+  through the cTuning.ai API.
+
 ---
 
 ## 6. Pointers
@@ -326,6 +353,7 @@ this file.
 - Using cMeta (repos, plugins, artifacts, reindex): `docs/using-cmeta.md`
 - Sphinx docs source: `docs/`
 - Changelog: `CHANGELOG.md`
+- Releasing: `docs/releasing.md`
 - Skills for agents extending cMeta: `.claude/skills/`
   - `use-cmeta-python` — programmatic API surface, `access()`, `ctx` (agent
     state), base commands, `cm.utils`, `cm.packages`
@@ -333,4 +361,5 @@ this file.
     scripting patterns
   - `add-plugin` — scaffold a new category & artifacts
   - `add-repo` — pull / init / plug content repositories
+  - `release-cmeta` — release a new version (points to `docs/releasing.md`)
 - Lineage (background only): Collective Knowledge → Collective Mind → CMX → cMeta.

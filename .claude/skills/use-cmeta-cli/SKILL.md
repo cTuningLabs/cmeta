@@ -291,6 +291,7 @@ cx <category> add <repo>:<alias> --meta.description="..." --meta.owner=me
 cx <category> update <alias> --meta.results.accuracy=0.91 --new-tags=validated
 cx <category> tags <alias> --add=t1,t2 --remove=t3
 cx <category> mv <old> <new>
+cx <category> migrate <old> <new>     # mv + a stub: the old alias keeps working (find <old> --follow_migrated=no shows the stub)
 cx <category> rm <alias>              # blocked if permanent: true
 ```
 

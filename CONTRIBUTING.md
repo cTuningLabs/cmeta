@@ -14,11 +14,11 @@ contributing, you agree that your contribution is licensed under the same terms.
 ```bash
 git clone https://github.com/cTuningLabs/cmeta && cd cmeta
 pip install -e ".[dev]"
-git checkout -b my-fix
+git checkout dev && git checkout -b 20260808-my-fix   # from dev; the date, then a short topic
 # ... make your change, add a test ...
 python -m pytest tests && flake8 cmeta
 git commit -s -m "Short imperative summary"      # -s is the whole agreement
-git push && gh pr create
+git push -u origin HEAD && gh pr create --base dev
 ```
 
 That is the entire process. **Apache 2.0, no CLA to sign, no account to
@@ -115,10 +115,10 @@ request. See [`AGENTS.md`](AGENTS.md) for architecture and conventions.
 
 1. Open an issue first for anything beyond a small fix, so the approach can be
    agreed before you invest time.
-2. Create a branch, make your change, and add or update tests.
+2. Create a branch from `dev` (`YYYYMMDD-<short-topic>`), make your change, and add or update tests.
 3. Ensure `python -m pytest tests` and `flake8 cmeta` pass locally.
 4. Commit with `-s` (DCO sign-off).
-5. Open a pull request describing the change and referencing any related issue.
+5. Open a pull request into `dev`, describing the change and referencing any related issue.
 
 Please do not include local paths, credentials, API keys, or personal workflow
 scripts in commits. Interactive/manual test scratch belongs outside the
