@@ -231,6 +231,18 @@ cx <category> rm <alias>                       # delete (blocked if permanent: t
 Prefer YAML sidecars (`--yaml`) — they match the shipped artifacts and are
 easy to read/edit by hand.
 
+**Hand-written YAML stays as written.** `update`, `tags`, `mv`/copy with a new UID and
+the other commands that rewrite an existing `_cmeta.yaml` edit only the top-level keys
+whose values changed — comments, blank lines, quoting, the order of the keys and the
+line endings stay byte-identical elsewhere — and the result is read back and compared
+with the intended meta before it replaces the file. A text that cannot be edited that
+way (anchors, duplicate keys, a flow mapping at the top level) is dumped in full in a
+style that keeps the order of the keys and never folds a long string. `index` adds only
+what a hand-made file lacks (tags, a missing `artifact` or `category`), and a new file
+from `add --yaml` is written in the same style with a fixed key order (identity, then
+`tags`/`desc`/`note`, authors and copyright, timestamps, the engine's keys). `-v` on
+`update` says whether the file was edited in place or rewritten.
+
 **Renaming without breaking the old alias: `migrate`.** `mv` keeps the UID, so
 `alias,UID` and UID references survive a rename, but a command that names the
 artifact by its old alias alone (`cx task run <old>` in a script, a doc, a
