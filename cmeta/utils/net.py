@@ -158,10 +158,11 @@ def download(
                         break
                     out_file.write(chunk)
                     downloaded += len(chunk)
-                    if progress:
+                    # tqdm without a total (no Content-Length) refuses bool(): compare with None
+                    if progress is not None:
                         progress.update(len(chunk))
             finally:
-                if progress:
+                if progress is not None:
                     progress.close()
 
     except Exception as e:

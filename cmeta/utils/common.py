@@ -530,7 +530,7 @@ def detect_cid_in_the_current_directory(
 def copy_text_to_clipboard(
     text: str = '',  # Text string to copy to clipboard.
     add_quotes: bool = False,  # If True, wraps text in double quotes before copying.
-    do_not_fail: bool = False,  # If True, returns warning instead of error if pyperclip not installed.
+    do_not_fail: bool = False,  # If True, returns a warning instead of an error if pyperclip or the clipboard is missing.
 ):
     """
         Copy text to system clipboard using pyperclip.
@@ -538,7 +538,7 @@ def copy_text_to_clipboard(
         Args:
             text (str): Text string to copy to clipboard.
             add_quotes (bool): If True, wraps text in double quotes before copying.
-            do_not_fail (bool): If True, returns warning instead of error if pyperclip not installed.
+            do_not_fail (bool): If True, returns a warning instead of an error if pyperclip or the clipboard is missing.
 
         Returns:
             dict: Dictionary with 'return': 0 on success, or 'return' > 0 and 'error'/'warning' on failure.
@@ -562,7 +562,16 @@ def copy_text_to_clipboard(
     if add_quotes:
         text = '"' + text + '"'
 
-    pc.copy(text)
+    # No clipboard (a headless system, a locked desktop, another program holding it) is not fatal
+    try:
+        pc.copy(text)
+    except Exception as e:
+        err = f'could not copy to the clipboard ({e})'
+
+        if do_not_fail:
+            return {'return':0, 'warning':err}
+
+        return {'return':1, 'error':err}
 
     return {'return':0}
 
@@ -1262,7 +1271,7 @@ def restricted_bool_eval(
             variables
         ))
     except Exception as e :
-        return {'return':1, 'error':f'can\'t evaluate expression "{str}": {e}'}
+        return {'return':1, 'error':f'can\'t evaluate expression "{expression}": {e}'}
 
     return {'return':0, 'result': result}
 

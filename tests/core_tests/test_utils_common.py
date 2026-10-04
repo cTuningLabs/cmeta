@@ -294,3 +294,16 @@ def test_first_digit_pos_found():
 
 def test_first_digit_pos_not_found():
     assert first_digit_pos('abcdef') == -1
+
+
+# ---------------------------------------------------------------------------
+# restricted_bool_eval
+# ---------------------------------------------------------------------------
+
+def test_restricted_bool_eval_result_and_error():
+    from cmeta.utils.common import restricted_bool_eval
+
+    assert restricted_bool_eval('1 < 2', {}) == {'return': 0, 'result': True}
+    assert restricted_bool_eval('x == 3', {'x': 3})['result'] is True
+    r = restricted_bool_eval('"cpu" in', {})          # a broken expression: the error names it
+    assert r['return'] == 1 and '"cpu" in' in r['error'] and 'str' not in r['error'].split('"')[0]
