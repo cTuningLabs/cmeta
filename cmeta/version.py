@@ -7,4 +7,4 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 __version__ = "0.32.5"
-__release_date__ = "2026-10-02"
+__release_date__ = "2026-10-04"
