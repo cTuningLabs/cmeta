@@ -5,9 +5,11 @@ base_category_default_api_versions:
 category: category,dd9ea50e7f76467f
 creation_timestamp: '2026-10-03T09:21:47.687528+00:00'
 desc: 'Search, browse and graph the artifacts of every plugged repository: one search box over aliases,
-  UIDs, tags and anything in the meta, repository and category pickers, date filters, a sortable table
-  with facets, the connection graph of the results, and the detail of one artifact with its cRef and the
-  commands that reach it. Read from the index, so a search over thousands of artifacts takes milliseconds.'
+  UIDs, tags, anything in the meta and the text of the _desc files, repository and category pickers, date
+  filters, a sortable table with facets, the connection graph of the results, and the detail of one artifact
+  with its cRef, its files, the commands that reach it and, on the server''s own machine, buttons that open
+  its folder in the file manager, a shell or Far. The meta comes from the index and the _desc files from the
+  cache artifact cache::cserver--browse, so a search over thousands of artifacts takes milliseconds.'
 generator:
   agent: Claude Code 2.1.287
   by: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
@@ -25,6 +27,13 @@ tags:
 - graph
 - artifacts
 uses_categories:
+  cache: cache,1ebdcc1cc30c4022
   category: category,dd9ea50e7f76467f
   config: config,cc6bfe174be847ed
   repo: repo,f4f792ab40c7498f
+last_update_timestamp: '2026-10-05T15:12:08.494273+00:00'
+last_generator:
+  method: agent
+  agent: Claude Code 2.1.289
+  by: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
+  date: '2026-10-05'

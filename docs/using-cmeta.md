@@ -1055,33 +1055,75 @@ artifacts of every plugged repository through one query in three views:
 - **Search**: the results as a list, best matches first, with the text that matched;
 - **Browse**: a sortable table with facets (repositories, categories, tags, years,
   how the artifacts were made); a click on a facet narrows the query;
-- **Graph**: the results as nodes, joined by the `connections` in their `_desc`, coloured
-  by category; optionally with the artifacts they connect to.
+- **Graph**: the results joined by their connections (below).
 
 Next to the search box: pickers for repositories and categories (one, several or all),
 and created-after / created-before dates. A click on an artifact opens its detail:
 
 - its cRef, its meta and its `_desc`;
-- its connections, each a link;
+- what it connects to, what it uses (a task: the tasks it runs), and what connects to it,
+  each a link;
+- **Focus the graph here**, with a depth;
+- its files, when the browser runs on the server's machine (below): `_cmeta` and `_desc`
+  first, a click shows one (text inline, images and PDFs as they are);
+- **Open folder**, **Shell** and **Far**, when the browser runs on the server's machine:
+  its folder in the file manager, a terminal (`cmd` on Windows, Terminal on macOS, the
+  first terminal emulator found on Linux) or Far Manager (far2l on macOS and Linux), on
+  that machine; a button shows only when its program is there;
 - the `cx` commands that reach it (find, info, read, tags, update), with copy buttons.
+
+**The graph.** Each artifact hangs off its category node (that is the layout); the
+connections in each `_desc` are dashed lines, drawn for the node under the pointer and
+the selected one, or all at once with **Connections**; a `uses` edge (a task and what it
+runs) is an arrow, and so is an `ai_uses` edge (an artifact and the artifacts whose memory
+and skills its AI sessions read - the directed counterpart of `connections`, written once
+at the artifact that reads; drawn dashed with an arrow). The detail lists "AI uses" and,
+among what connects into an artifact, who reads it. Hover a node and the rest fades;
+names never cover each other (the hovered node and its neighbours first, then the biggest
+categories). The switches:
+
+| Switch | What it does |
+|---|---|
+| categories | off: artifacts only, laid out by their connections; isolated ones hidden unless **isolated** |
+| cMeta | the cMeta node in the middle, joined to every category |
+| + connected | adds what the results connect to, and what connects to them (one hop) |
+| nodes | at most this many artifacts (300); over it, a sample spread across categories, the best connected first |
+| all names | every artifact's name, even where names overlap |
+
+Focus (the button in the detail, or double-click a node) shows everything within N
+connections of one artifact; the pickers still apply, the query words do not, and a new
+query leaves the focus. Double-click a category node for the graph of that category.
+Wheel to zoom, drag to pan or to move a node, **Fit** / **1:1** / **Re-layout** above
+the drawing. A line under it times every stage: on the server (catalog, connections,
+selection, graph), the transfer, the drawing and the layout.
 
 The query lives in the URL, so a view can be shared or bookmarked. The footer shows the
 same query as a command.
 
-The query reads the index: every artifact's `_cmeta` with its repository and category.
-Loading it takes a few seconds once per server start, and again only when the index
-changes; after that, a search over ten thousand artifacts takes milliseconds. Only the
-detail and the graph read `_desc` files. A spinner shows during every wait.
+The meta comes from the index (every artifact's `_cmeta` with its repository and
+category), so a search over ten thousand artifacts takes milliseconds. The `_desc` files -
+their connections and their text - are read in the background as the page opens. What each
+one declared is kept in the cache artifact `cache::cserver--browse` of the `local`
+repository, by file, modification time and size, so a new server process, a restart or
+the terminal command read again only the `_desc` files that changed (on ten thousand
+artifacts: about 0.3 s instead of 1-3 s). The artifact is made on first use; `cx cache rm
+cserver--browse` removes it, and it comes back with one full read. After an index change,
+a reload (↻), or on a request more than 30 s after the last check, the changed files are
+read again; the first search with words and the first graph wait for them, a graph then
+takes about 0.1 s on the server. A spinner shows during every wait.
 
 | Query | Meaning |
 |---|---|
-| `word "a phrase"` | in the alias, UID, tags or any value of the meta (case-insensitive) |
-| `-word` | not there |
+| `word "a phrase"` | in the alias, UID, tags, any value of the meta or the text of the `_desc` - not its `connections`, `uses` and `ai_uses` lists, which the graph shows (case-insensitive) |
+| `-word` | in none of them |
 | `repo:<name>` `cat:<name>` | a repository / category: alias, UID or the part after `@`; several = any of them |
 | `tag:<tag>` `-tag:<tag>` | has / has not this tag |
 | `after:2026-09-01` `before:2026-10` | created on or after / before (a year or a month works too) |
 | `has:<key>` `-has:<key>` | the meta has / has not this key (dotted keys: `generator.method`) |
 | `<key>:<value>` | a meta value contains it (any item of a list) |
+| `_desc:<text>` `-_desc:<text>` | the `_desc` contains it (keys and values, its links too) / does not |
+| `_desc.<key>:<value>` | a value at that key of the `_desc` contains it (dotted keys, any item of a list) |
+| `has:_desc` `has:_desc.<key>` | has a `_desc` / its `_desc` has this key (`-has:` for not) |
 | `uid:<prefix>` | the UID starts with it |
 | `<category>::<artifact>` | a cRef |
 | `*` `?` | patterns: `repo:myorg@*`, `tag:sla*` |
@@ -1093,7 +1135,19 @@ cx cserver.browse query "sla" --sort=updated --limit=50 --as_json
 ```
 
 (`search` is a global alias of `find`, so the terminal command is `query`.)
-`?native_action=search|options|artifact|graph` answer with JSON.
+`?native_action=search|options|artifact|graph|index|files|file|open` answer with JSON; the
+graph takes `focus`, `depth`, `max_nodes`, `categories`, `core`, `isolated` and `neighbors`
+next to the query; `open` takes `uid`, `what` (`folder`, `shell`, `far`) and `dry=1` (say
+what would run, run nothing).
+
+A company's own view: a bare `/browse` (a URL without a query) opens with what the
+`cserver` config says, and the page carries its title:
+
+```bash
+cx config set cserver --meta.browse_title="Acme knowledge"
+cx config set cserver --meta.browse_default_repos="acme@*" --meta.browse_default_view=graph
+cx config set cserver --meta.browse_default_cats=report,person --meta.browse_default_query="after:2026"
+```
 
 On a shared server:
 
@@ -1101,9 +1155,19 @@ On a shared server:
 - `browse_hide_categories` leaves categories out. By default it leaves out anything
   matching `*crypt*`, `*secret*` or `*credential*`, so that key bundles never show; `none`
   shows every category.
-- An artifact's local path is shown only when the server is reached as
-  `127.0.0.1`/`localhost`.
-- The page reads and never writes: changes go through the `cx` commands it shows.
+- An artifact's local path, its files and the open buttons are only for a browser on the
+  server's own machine: the engine `cserver` tells the page when the request comes from a
+  loopback address, with no proxy header and a `Host` that names the machine (`localhost`,
+  a loopback address), so a page reached by DNS rebinding does not count. `browse_files:
+  yes` shows the files to everyone, `no` to no one. Dot-files, key-like files (`id_*`,
+  `*.pem`, `*token*`, ...) and anything outside the artifact's folder are never shown.
+- The open buttons start programs, so they also need a request that a page of this server
+  sent (the browser's `Sec-Fetch-Site` / `Origin`): another web site open in the same
+  browser cannot use them. They open only the folder of an artifact the page shows, never a
+  path from the request. `browse_open: no` turns them off; `browse_far` and
+  `browse_terminal` name the programs when they are not found (or `CMETA_FAR`,
+  `CMETA_TERMINAL`).
+- The page writes nothing into the artifacts: changes go through the `cx` commands it shows.
 
 ### 8.3 The pattern from Python — reading a config from any category
 

@@ -5,7 +5,7 @@
 <div id="cbr" class="cbr">
   <header class="cbr-head">
     <div class="cbr-title">
-      <h1>cMeta browse</h1>
+      <h1>%%TITLE%%</h1>
       <p class="cbr-sub" id="cbr-sub">Search, browse and graph the artifacts of every plugged repository.</p>
     </div>
     <div class="cbr-tools">
@@ -24,7 +24,7 @@
   <form id="cbr-form" class="cbr-bar" autocomplete="off">
     <div class="cbr-row1">
       <input id="cbr-q" type="search" spellcheck="false"
-             placeholder="Names, tags, anything in meta  -  e.g.  sla tag:report after:2026-09-01      ( / to focus )">
+             placeholder="Names, tags, meta, descriptions  -  e.g.  sla tag:report after:2026-09-01      ( / to focus )">
       <button type="submit" class="cbr-go">Search</button>
     </div>
     <div class="cbr-row2">
@@ -45,16 +45,22 @@
 
   <div id="cbr-help" class="cbr-help" hidden>
     <table>
-      <tr><td><code>word "a phrase"</code></td><td>in the alias, UID, tags or any value of the meta</td></tr>
-      <tr><td><code>-word</code></td><td>not there</td></tr>
+      <tr><td><code>word "a phrase"</code></td><td>in the alias, UID, tags, any value of the meta or the text of the <code>_desc</code>
+        (not its <code>connections</code>, <code>uses</code> and <code>ai_uses</code>: the graph shows those)</td></tr>
+      <tr><td><code>-word</code></td><td>in none of them</td></tr>
       <tr><td><code>repo:name</code> <code>cat:name</code></td><td>a repository / category (alias, UID, or the part after @); several = any of them</td></tr>
       <tr><td><code>tag:sla</code> <code>-tag:draft</code></td><td>has / has not this tag</td></tr>
       <tr><td><code>after:2026-09-01</code> <code>before:2026-10</code></td><td>created on or after / before (a year or a month works too)</td></tr>
       <tr><td><code>has:generator</code> <code>-has:connections</code></td><td>the meta has / has not this key (dotted keys work)</td></tr>
       <tr><td><code>generator.method:task</code></td><td>a meta value contains it (any item of a list)</td></tr>
+      <tr><td><code>_desc:mlperf</code> <code>-_desc:draft</code></td><td>the <code>_desc</code> contains it (keys and values, its links too) / does not</td></tr>
+      <tr><td><code>_desc.connections:fursin</code></td><td>a value at that key of the <code>_desc</code> contains it (dotted keys, any item of a list)</td></tr>
+      <tr><td><code>has:_desc</code> <code>-has:_desc.ai_uses</code></td><td>has a <code>_desc</code> / its <code>_desc</code> has not this key</td></tr>
       <tr><td><code>uid:14b2</code></td><td>the UID starts with it</td></tr>
-      <tr><td><code>dapple.sla.model::*</code></td><td>a cRef: category::artifact</td></tr>
-      <tr><td><code>* ?</code></td><td>patterns: <code>repo:dappledev@*</code>, <code>tag:sla*</code></td></tr>
+      <tr><td><code>task::setup*</code></td><td>a cRef: category::artifact</td></tr>
+      <tr><td><code>* ?</code></td><td>patterns: <code>repo:ctuninglabs@*</code>, <code>tag:sla*</code></td></tr>
+      <tr><td>Graph</td><td>the same query, joined by the connections in each <code>_desc</code>; <b>focus</b> (from the detail of an
+        artifact, or double-click it) shows everything within N connections of it - the pickers still apply, the words do not</td></tr>
     </table>
   </div>
 
@@ -86,14 +92,32 @@
 
   <section id="cbr-view-graph" class="cbr-view" hidden>
     <div class="cbr-gbar">
-      <label>nodes <input id="cbr-gmax" type="number" min="10" max="600" step="10" value="150"></label>
-      <label><input id="cbr-gnb" type="checkbox"> add the artifacts they connect to</label>
-      <span id="cbr-gstat" class="cbr-muted"></span>
-      <span class="cbr-muted cbr-ghint">wheel: zoom &middot; drag: pan or move a node &middot; click: details &middot; double-click: fit</span>
+      <label title="Each artifact hangs off its category node: that is the layout"><input id="cbr-g-categories" type="checkbox"> categories</label>
+      <label title="The cMeta node in the middle, joined to every category"><input id="cbr-g-core" type="checkbox"> cMeta</label>
+      <label title="With categories off, also draw the artifacts that connect to nothing drawn"><input id="cbr-g-isolated" type="checkbox"> isolated</label>
+      <label title="Add what the results connect to, and what connects to them (one hop)"><input id="cbr-g-neighbors" type="checkbox"> + connected</label>
+      <label title="At most this many artifacts; over it, a sample spread across categories, the best connected first">nodes
+        <input id="cbr-g-max" type="number" min="10" step="10" inputmode="numeric"></label>
+      <label title="Every artifact's name, not only around the node under the pointer"><input id="cbr-g-labels" type="checkbox"> all names</label>
+      <span id="cbr-g-focus" class="cbr-focus" hidden></span>
     </div>
+    <div id="cbr-g-notices" class="cbr-notices" aria-live="polite"></div>
     <div class="cbr-gwrap">
-      <svg id="cbr-svg" role="img" aria-label="Connections between the results"></svg>
+      <svg id="cbr-svg" role="img" aria-label="The results and their connections"></svg>
       <div id="cbr-legend" class="cbr-legend"></div>
+      <div class="cbr-gtools">
+        <button type="button" id="cbr-g-fit" title="Fit everything in view (or double-click the background)">Fit</button>
+        <button type="button" id="cbr-g-one" title="Zoom 100%, centred">1:1</button>
+        <button type="button" id="cbr-g-relayout" title="Lay the graph out again from the start">Re-layout</button>
+        <button type="button" id="cbr-g-links" aria-pressed="false"
+                title="Draw every connection at once (otherwise those of the node under the pointer and of the selected one)">Connections</button>
+        <span id="cbr-g-zoom" class="cbr-muted">100%</span>
+      </div>
+    </div>
+    <div class="cbr-gfoot">
+      <span id="cbr-g-time" class="cbr-muted"></span>
+      <span class="cbr-muted cbr-ghint">wheel: zoom &middot; drag: pan or move a node &middot; click: details &middot;
+        double-click: focus on it (on the background: fit)</span>
     </div>
   </section>
 

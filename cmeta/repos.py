@@ -796,7 +796,8 @@ class Repos:
         """
             Clean index and reindex all repositories.
 
-            Removes existing index files and rebuilds them by scanning all repositories.
+            Rebuilds the index from scratch by scanning all repositories; the previous index
+            is replaced only when the new one is complete (see `index`).
 
             Args:
                 con: If True, print console messages during reindexing.
@@ -822,6 +823,10 @@ class Repos:
         """
             Index repos
 
+            With `clean`, the new index is built completely in a temporary sibling folder of the index
+            (`index.tmp-<pid>`) and swapped in place of the old one only when it is complete, so that
+            an aborted reindex leaves the previous index intact and usable.
+
             Args:
                 clean: If True, clear and rebuild index artifacts from scratch.
                 con: If True, print output to console.
@@ -834,12 +839,66 @@ class Repos:
                 Exception: Propagated runtime errors, if any.
         """
 
+        if not clean:
+            return self._index(self.index_path, clean, con, verbose, add_repo_paths, delete_repo_paths)
+
+        import shutil
+
+        index_path = os.path.normpath(str(self.index_path))
+        index_tmp_path = f'{index_path}.tmp-{os.getpid()}'
+        index_old_path = f'{index_path}.old-{os.getpid()}'
+
+        # Leftovers of an earlier run of this process
+        for path in [index_tmp_path, index_old_path]:
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+
+        os.makedirs(index_tmp_path)
+
+        try:
+            r = self._index(index_tmp_path, clean, con, verbose, add_repo_paths, delete_repo_paths)
+        except BaseException:
+            shutil.rmtree(index_tmp_path, ignore_errors=True)
+            raise
+
+        if r['return']>0:
+            shutil.rmtree(index_tmp_path, ignore_errors=True)
+            return r
+
+        # The new index is complete: move the old one away, put the new one in its place, remove the old one
+        # (os.replace with the retries that Windows needs when another process still reads a file)
+        try:
+            if os.path.isdir(index_path):
+                utils.files._replace_file(index_path, index_old_path, self.logger)
+            utils.files._replace_file(index_tmp_path, index_path, self.logger)
+        except Exception as e:
+            if not os.path.isdir(index_path) and os.path.isdir(index_old_path):
+                os.rename(index_old_path, index_path)
+            shutil.rmtree(index_tmp_path, ignore_errors=True)
+            return {'return':1, 'error': f'failed to replace the index in {index_path} ({e}) - the previous index is kept'}
+
+        shutil.rmtree(index_old_path, ignore_errors=True)
+
+        return r
+
+
+    def _index(
+        self,
+        index_path,  # Folder for the index files: the index itself, or an empty temporary folder for a full rebuild.
+        clean = False,  # If True, build the index from scratch (index_path must be empty).
+        con = False,  # If True, print output to console.
+        verbose = False,  # If True, enable verbose output.
+        add_repo_paths = [],  # Repository paths to add before indexing.
+        delete_repo_paths = [],  # Repository paths to remove before indexing.
+    ):
+        """
+            Index repos into `index_path` (see `index`).
+        """
+
         from tqdm import tqdm
 
         import time
         time_start = time.time()
-
-        index_path = self.index_path
 
         conx = True if verbose else False
 
@@ -850,29 +909,6 @@ class Repos:
         if conx:
             print ('')
             print (f'Index path:     {index_path}')
-
-
-        ######################################################################################################################
-        # Clean index files besides repo and category
-        if clean:
-            if conx:
-                print('')
-                print(f'Cleaning existing index files in {index_path} ...')
-            
-            try:
-                for filename in os.listdir(index_path):
-                    if filename.endswith(self.index_extension):
-                        file_path = os.path.join(index_path, filename)
-                        if os.path.isfile(file_path):
-                            os.remove(file_path)
-#                            if conx:
-#                                print(f'  Removed: {filename}')
-
-            except Exception as e:
-                if self.fail_on_error:
-                    return {'return': 1, 'error': f'Failed to clean index files: {str(e)}'}
-                else:
-                    self.logger.warning(f'Failed to clean some index files: {str(e)}')
 
 
         ######################################################################################################################
@@ -1099,15 +1135,6 @@ class Repos:
                     if category_meta:
                         category_path = os.path.join(category_full_path, category)
 
-                        category_entry = {'category':category, 'meta':category_meta}
-
-                        categories.append(category_entry)
-
-                        if path in add_repo_paths:
-                            categories_to_index.append(category_entry)
-# ??? FGG 20260611 - we actually need to check all existing categories and not just in the pulled repo
-# because it can have artifacts with categories defined somewhere else
-
                         category_name = category_meta['artifact']
 #                        if conx:
 #                            print (f'    Found category "{category}"')
@@ -1123,12 +1150,26 @@ class Repos:
                         if alias != None:
                             lowercase_alias = alias.lower()
 
+                        if uid is not None and uid in index_categories[self.KEY_INDEX_UIDS]:
+                            # The same category UID in two repositories: the first copy stays in the index, this one is skipped
+                            xpath = index_categories[self.KEY_INDEX_UIDS][uid]['path']
+                            print (f'      Warning: category "{alias}" with the same UID "{uid}" is already in the index - keeping the first copy and skipping this one:')
+                            print (f'               * kept:    {xpath}')
+                            print (f'               * skipped: {category_path}')
+                            self.logger.warning(f'duplicate category UID "{uid}": kept "{xpath}", skipped "{category_path}"')
+                            continue
+
                         if alias is not None and lowercase_alias in index_categories[self.KEY_INDEX_LOWERCASE_ALIASES]:
                             print (f'      Warning: category "{alias}" already exists in the index!')
 
-                            if uid is not None and uid in index_categories[self.KEY_INDEX_LOWERCASE_ALIASES][lowercase_alias]:
-                                xpath = index_categories[self.KEY_INDEX_UIDS][uid]['path']
-                                return {'return':1, 'error': f'ambiguity - category "{alias}" with the same UID "{uid}" and path "{xpath}" alredy exists in the index - please fix it!'}
+                        category_entry = {'category':category, 'meta':category_meta}
+
+                        categories.append(category_entry)
+
+                        if path in add_repo_paths:
+                            categories_to_index.append(category_entry)
+# ??? FGG 20260611 - we actually need to check all existing categories and not just in the pulled repo
+# because it can have artifacts with categories defined somewhere else
 
                         cmeta_ref_parts = {'category_alias':'category', 'category_uid':'dd9ea50e7f76467f', 'artifact_uid':uid}
 

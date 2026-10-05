@@ -3,6 +3,55 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.33.0
+- **`cx --reindex` builds the new index completely before it replaces the old one.** The index files
+  are written to a temporary sibling folder of the index (`index.tmp-<pid>`) and swapped in place of the
+  previous index only when every category has been indexed; a reindex that fails or is interrupted midway
+  removes that folder and leaves the previous index intact and usable. Before, the index files were
+  deleted first, so an aborted reindex left an index with `repo.pkl` alone and every command failed.
+- **A category UID found in two repositories is a warning, not an error that aborts the reindex.** The
+  warning names the path kept (the first repository in `repos.json`) and the path skipped; the artifacts
+  of both repositories resolve through the kept copy. The same holds when the second repository is
+  plugged or pulled (the incremental index).
+- **`ai_uses` in `_desc`:** the directed counterpart of `connections` - the list of artifacts whose memory and
+  skills an artifact's AI sessions read (one list, one direction, like `uses` in tasks; an entry is a cRef string
+  or a dict with `cref`). `cserver.browse` reads it into its connection index, draws it as a dashed arrow, lists
+  "AI uses" in the detail and marks who reads an artifact among its incoming links; the index line and the graph
+  status count it. `connections` stay the undirected links of the graph.
+- **`/browse` searches the text of the `_desc` files.** Words and phrases find the description of an
+  artifact as well as its meta (not its `connections`, `uses` and `ai_uses` lists, which the graph shows);
+  the snippet says where (`_desc.notes: ...`). New qualifiers: `_desc:<text>` (the whole `_desc`, its links
+  too), `_desc.<key>:<value>` (dotted keys, any item of a list, `*` `?` patterns) and `has:_desc` /
+  `has:_desc.<key>`, each with `-` for not. The status line says how many descriptions were searched. The
+  terminal command `cx cserver.browse query` searches them too.
+- **`/browse` keeps what every `_desc` declares in the cache artifact `cache::cserver--browse`** (the
+  `local` repository; created on first use, made again after `cx cache rm cserver--browse`), never in the
+  index folder: connections, uses, ai_uses and the text, by file, mtime and size. A new worker process of
+  the server, a restart or the terminal command read again only the `_desc` files that changed (11,000
+  artifacts: ~0.3 s instead of 1-3 s); the file is replaced atomically, so processes never read half of
+  it. The index is also checked again, in the background, on a request more than 30 s after the last
+  check, so an edited `_desc` is found without a reload; only the first build, one after an index change
+  and one after a reload are waited for.
+- **`/browse` opens an artifact's folder on the server's machine:** **Open folder**, **Shell** and
+  **Far** in the detail (the file manager; `cmd` on Windows, Terminal on macOS, the first terminal
+  emulator found on Linux; Far Manager, or far2l). Only for a browser on that machine, only for a request a
+  page of this server sent, only the folder of an artifact the page shows (by UID, never a path from the
+  request), never a category that holds keys; a button shows only when its program is found. `browse_open:
+  no` turns them off; `browse_far` / `browse_terminal` (or `CMETA_FAR` / `CMETA_TERMINAL`) name the
+  programs. `?native_action=open&uid=...&what=folder|shell|far&dry=1` says what would run.
+- **A company's own `/browse`:** `browse_title` in the `cserver` config titles the page, and
+  `browse_default_query`, `browse_default_repos`, `browse_default_cats`, `browse_default_view` are what a
+  bare `/browse` (a URL without a query) opens with.
+- **The engine `cserver` tells a page more precisely where a request comes from.** `misc.client_local`
+  now also needs a `Host` header that names the machine (`localhost`, `*.localhost`, a loopback address),
+  so a page that reaches the server through DNS rebinding no longer counts as local; `misc.same_origin` is
+  false when the browser says the request came from another site's page (`Sec-Fetch-Site`, `Origin`).
+- **`CLAUDE.md` follows the one-branch rule of `AGENTS.md` §5.0:** the maintainer and the agents working for the
+  maintainer commit on `dev` and only with the maintainer's go-ahead; dated `YYYYMMDD-…` branches are for other
+  contributors. It still told agents to branch first. It also lists every skill in `.claude/skills/` and points to
+  `docs/releasing.md`.
+
+
 ## 0.32.5
 - **`utils.net.download`:** a download with a progress bar failed when the server sent no
   `Content-Length` (GitHub's tag archives, for example): tqdm's bar has no truth value without a total.
@@ -45,17 +94,31 @@ All notable changes to cMeta are documented here, newest first.
   - **Narrowing:** pickers for repositories and categories, created-after / created-before
     dates, and the query syntax (`repo:`, `cat:`, `tag:`, `-tag:`, `after:`, `before:`,
     `has:`, `<key>:<value>`, cRefs, patterns).
-  - **The detail of an artifact:** its cRef, meta, `_desc`, connections and the `cx`
-    commands that reach it.
+  - **The detail of an artifact:** its cRef, meta, `_desc`, the `cx` commands that reach it,
+    and its connections both ways: what it connects to, what it uses, what connects to it.
+  - **The graph:** artifacts hang off their category nodes; connections are dashed lines on hover, on the
+    selected node or all at once; `uses` are arrows; focus on an artifact with a depth (from
+    the detail, or double-click); categories / cMeta / isolated / + connected switches; at
+    most N nodes, sampled fairly across categories, the best connected first; names that
+    never cover each other; readable when zoomed out; notices that say what was left out;
+    a line of timings for every stage.
+  - **A connection index:** every `_desc` is read in a background thread as the page opens
+    (1.5-3 s on 11,000 artifacts and 21,000 connections), then only the files that changed.
+  - **The files of an artifact** in the detail (text inline, images and PDFs), for a browser
+    on the server's machine; `browse_files` in the cserver config changes that. Key-like
+    files, dot-files and paths outside the artifact are never shown.
   - **Shareable state:** the state is in the URL, and a spinner shows during every wait.
   - **Speed:** it reads the index, so on ten thousand artifacts the first load takes about
-    0.1-3 s and each search a few milliseconds; only the detail and the graph read `_desc`
-    files.
+    0.1-3 s and each search a few milliseconds; a graph takes about 0.1 s on the server.
   - **On a shared server:** key-bundle categories are hidden by default
-    (`browse_hide_categories`), and so are the repositories in `hide_repos`; paths are shown
-    only on localhost.
+    (`browse_hide_categories`), and so are the repositories in `hide_repos`; paths and files
+    are shown only to a browser on the server's machine.
   - **In a terminal:** `cx cserver.browse query "..."`.
-  - **Tests:** 13.
+  - **Tests:** 18.
+- **The engine `cserver` tells a page whether the browser runs on its machine:** `misc` now
+  carries `client_local`, true for a request from a loopback address with no proxy header (the
+  same rule as the password's local exemption). A page can offer more to its own user than to the
+  network; `cserver.browse` shows paths and files only then.
 - **`cx <category> migrate <old> [<repo>:]<new>` renames an artifact without breaking its old
   alias.** The artifact moves as with `mv`, under the same UID. A stub with a new UID stays under the
   old alias, holding `migrated_to` (the new `alias,UID`) and `migrated_when` (ISO 8601, UTC).

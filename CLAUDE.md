@@ -58,7 +58,9 @@ separate content repos (e.g. `cmeta-aops`).
 - This is the public Apache-2.0 framework — keep product vision/strategy prose
   out; public docs describe *functionality*.
 
-## Git workflow — sign-off, branch names, PR titles
+## Git workflow — sign-off, `dev`, PR titles
+
+The full rule is `AGENTS.md` §5.0; in short:
 
 - **Every commit is signed off: `git commit -s -m "…"`.** The `-s`/`--signoff`
   flag appends the DCO `Signed-off-by:` line required by `CONTRIBUTING.md` and
@@ -67,15 +69,24 @@ separate content repos (e.g. `cmeta-aops`).
   and an unsigned commit blocks the merge. Repair before pushing:
   `git commit --amend -s --no-edit` (last commit) or
   `git rebase --signoff <base>` (a range).
-- **PR branches are named `YYYYMMDD-<short-branch-name>`** — creation date, then
-  a short kebab-case topic (e.g. `20260808-fix-repo-resolution`). The date prefix
-  keeps branches sortable and a set of open PRs analyzable. Branch first; never
-  commit straight to the default branch.
-- **Prefix the PR title the same way: `YYYYMMDD - <Title of PR>`** — date, spaced
-  hyphen, human-readable title, e.g.
-  `20260808 - Fix repo resolution for mixed-case aliases`. That is the subject
-  line shown on GitHub, so the date ordering carries over to the PR list:
-  `gh pr create --title "20260808 - …"`. Use the branch's date.
+- **The maintainer, and AI agents working for the maintainer, commit on `dev`.**
+  `git switch dev && git pull --ff-only`, then commit and push to `dev`. One pull
+  request `dev` → `main` carries the work; the maintainer merges it with a merge
+  commit (not a squash), and `dev` is then fast-forwarded to `main`
+  (`docs/releasing.md`). Never push to `main`.
+- **Agents commit and push only when the maintainer explicitly says so.** Develop
+  and test, leave the changes uncommitted, show what changed, and wait for a
+  go-ahead for that piece of work. The same holds for pull requests, branch
+  deletions, tags and releases. Several sessions may share one working copy:
+  check `git status` and stage only your own files.
+- **Everyone else branches from `dev` as `YYYYMMDD-<short-branch-name>`** —
+  creation date, then a short kebab-case topic (e.g.
+  `20260808-fix-repo-resolution`) — and opens the pull request into `dev`.
+- **PR titles are `YYYYMMDD - <Title of PR>`** — date, spaced hyphen,
+  human-readable title, e.g.
+  `20260808 - Fix repo resolution for mixed-case aliases`
+  (`gh pr create --title "20260808 - …"`). For `dev` → `main`, use the day the
+  PR is opened; for a dated branch, the date of its prefix.
 
 ## Resolution & reindex — two things to internalize
 
@@ -103,7 +114,8 @@ separate content repos (e.g. `cmeta-aops`).
 
 - User-facing walkthrough (repos, plugins, artifacts, reindex):
   `docs/using-cmeta.md`
-- Add-a-plugin skill: `.claude/skills/add-plugin/SKILL.md`
-- Add-a-web-plugin skill (a `cserver.*` category that renders a page and runs on
-  both the internal `cserver` app and cPlatform):
-  `.claude/skills/add-cserver-plugin/SKILL.md`
+- Releasing a version: `docs/releasing.md` (skill `release-cmeta`)
+- Skills in `.claude/skills/<name>/SKILL.md`: `add-plugin`, `add-cserver-plugin`
+  (a `cserver.*` category that renders a page and runs on both the internal
+  `cserver` app and cPlatform), `add-repo`, `use-cmeta-cli`,
+  `use-cmeta-python`, `release-cmeta`

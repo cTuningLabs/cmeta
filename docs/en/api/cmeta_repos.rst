@@ -14,3 +14,8 @@ Classes
    :members:
    :undoc-members:
    :show-inheritance:
+
+Constants
+---------
+
+.. autodata:: cmeta.repos.MAX_MIGRATED_HOPS

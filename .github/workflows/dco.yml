@@ -73,7 +73,7 @@ jobs:
             echo ""
             echo "One or more commits are missing a matching 'Signed-off-by' line."
             echo "Sign off your commits and update the pull request:"
-            echo "  git rebase --signoff ${BASE_SHA}..HEAD"
+            echo "  git rebase --signoff ${BASE_SHA}"
             echo "  git push --force-with-lease"
             echo "See CONTRIBUTING.md and the DCO file for details."
             exit 1

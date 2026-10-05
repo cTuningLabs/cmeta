@@ -11,13 +11,18 @@ Three views of one query:
     Browse   a sortable table with facets: repositories, categories, tags, years, generators
     Graph    the results as nodes, joined by the connections in their _desc
 
-Everything is read from the index (every artifact's _cmeta with its repository and category), so a search over
-ten thousand artifacts takes milliseconds once the index is loaded (a few seconds, once per server start, and
-again only when the index changes). Only the detail of one artifact and the graph read _desc files.
+The meta of every artifact comes from the index (its _cmeta with its repository and category), so a search over
+ten thousand artifacts takes milliseconds. The _desc files are read by a background thread into the connection
+index (what each artifact connects to, runs and reads) together with their text, so that words find the
+descriptions too. What each _desc declared is kept in the cache artifact cache::cserver--browse (local
+repository), by file, mtime and size: a new server process, a restart or the terminal command then re-reads only
+the _desc files that changed. The artifact is created on first use; removing it (cx cache rm cserver--browse)
+only costs one full read.
 
 Query syntax (one box; everything must hold):
-    word  "a phrase"       in the alias, UID, tags or any value of the meta (case-insensitive)
-    -word                  not in them
+    word  "a phrase"       in the alias, UID, tags, any value of the meta or the text of the _desc - not in its
+                           link lists: connections, uses, ai_uses (case-insensitive)
+    -word                  in none of them
     repo:<name>            repository alias or UID; the part after "@" is enough (several repo: = any of them)
     cat:<name>             category alias or UID (also category:); several cat: = any of them
     tag:<tag>              has this tag (each tag: must hold); -tag:<tag> has not
@@ -25,30 +30,72 @@ Query syntax (one box; everything must hold):
     after:YYYY-MM-DD       created on or after (a year or a year-month works too); before: created before
     has:<key>              the meta has the key (dotted: generator.method); -has:<key> has not
     <key>:<value>          a meta value contains it (dotted keys; any item of a list)
+    _desc:<text>           the _desc contains it (keys and values, the link lists too); -_desc:<text> does not
+    _desc.<key>:<value>    a value at that key of the _desc contains it (dotted keys; any item of a list)
+    has:_desc              the artifact has a _desc; has:_desc.<key> its _desc has the key
     <cat>::<artifact>      a cRef: that category, and the artifact's alias or UID
-    Values with * or ? are fnmatch patterns: repo:dappledev@*, tag:sla*.
+    Values with * or ? are fnmatch patterns: repo:ctuninglabs@*, tag:sla*.
 
     cx cserver.browse query "sla tag:report after:2026-09-01"      the same in a terminal (--as_json for JSON)
     ?native_action=search&q=...                                    the JSON the page renders (GET or POST)
 
-On a shared server two keys of the cserver config apply:
+The graph (?native_action=graph, the Graph tab) draws the results of the query, or - with focus=<artifact> and
+depth=N - everything within N connections of one artifact (the query words are then not applied; the
+repository and category pickers still are, as a scope):
+    categories=1          each artifact hangs off its category node (that is the layout); 0 = artifacts only
+    core=1                the cMeta node in the middle, joined to every category
+    isolated=1            with categories off, also draw the artifacts that connect to nothing drawn
+    neighbors=1           add what the results connect to, and what connects to them (one hop, in the scope)
+    max_nodes=300         a cap; over it, a sample spread evenly across categories, best connected first
+Connections come from each _desc's `connections` (both ways), `uses` (one way: a task and the tasks it runs) and
+`ai_uses` (one way: whose memory an artifact's AI sessions read). A background thread reads every _desc into a
+connection index as the page opens (about a second on ten thousand artifacts, a fraction of it from the cache
+artifact); after an index change, a reload, or on a request more than REFRESH_AFTER seconds after the last build,
+it re-reads only the _desc files that changed. The graph and a search with words wait for the first build and
+for one after an index change or a reload, never for a routine refresh; the detail lists what connects INTO an
+artifact from it. Every graph carries its timings: catalog, connections, selection, graph.
+
+The detail of an artifact can list its files and show one (text inline, images and PDFs as they are): only to
+a browser on the server's own machine, unless browse_files says otherwise; never key-like files, never
+dot-files, never outside the artifact's own folder. The same browser can open the artifact's folder in the file
+manager, a shell or Far Manager on that machine (?native_action=open&uid=...&what=folder|shell|far): only the
+folder of an artifact the page shows, never a path from the request, and only for a request a page of this
+server sent (the engine cserver checks Sec-Fetch-Site / Origin), so another web site cannot start programs.
+
+These keys of the cserver config apply (cx config set cserver --meta.<key>=<value>):
     hide_repos                repositories left out (aliases or fnmatch patterns) - the same key as /projects
     browse_hide_categories    categories left out; by default anything matching *crypt*, *secret* or
                               *credential*, so that key bundles never show; "none" shows every category
+    browse_files              yes = the file browser for everyone; no = for no one; default: a browser on the
+                              server's own machine only (the real peer address, no proxy header, a loopback Host)
+    browse_open               no = no Open folder / Shell / Far buttons; default: a browser on the server's machine
+    browse_far                Far Manager (or far2l) to run, when it is not found on PATH or in its usual folder
+    browse_terminal           the terminal for "Shell" (default: COMSPEC on Windows, Terminal on macOS, the first
+                              terminal emulator found on Linux)
+    browse_title              the heading and title of the page (default "cMeta browse")
+    browse_default_query      what a bare /browse opens with (a URL that carries a query keeps its own):
+    browse_default_repos        the query, the repository and category pickers (comma-separated) and the tab
+    browse_default_cats         (search, browse or graph) - a company's own view of a shared workspace
+    browse_default_view
 """
 
+import base64
 import datetime
 import fnmatch
 import html
+import itertools
 import json
 import os
+import pickle
 import re
+import shutil
+import subprocess
+import sys
 import threading
 import time
 import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlparse
 
 from cmeta.category import InitCategory
 
@@ -56,18 +103,87 @@ CATEGORY_UID = 'dd9ea50e7f76467f'
 SECRET_CATEGORIES = ['*crypt*', '*secret*', '*credential*']
 PAGE_DEFAULT = 50
 LIMIT_MAX = 1000
-GRAPH_DEFAULT = 150
-GRAPH_MAX = 600
+GRAPH_DEFAULT = 300
+GRAPH_MAX = 1000
+DEPTH_MAX = 12
 DESC_MAX_BYTES = 400000          # a larger _desc is summarised, not sent
+
+# What the URL of the page keeps: the query, the view, the open artifact and the graph controls
+STATE_KEYS = ('q', 'repos', 'cats', 'after', 'before', 'view', 'sort', 'dir', 'uid',
+              'focus', 'depth', 'max_nodes', 'categories', 'core', 'isolated', 'neighbors', 'labels', 'links')
 
 UID_RE = re.compile(r'^[0-9a-fA-F]{16}$')
 KEY_RE = re.compile(r'^[A-Za-z_][\w.\-]*$')
 TOKEN_RE = re.compile(r'-?[^\s"]*"[^"]*"|\S+')
+USES_RE = re.compile(r'^(.+),([0-9a-fA-F]{16})$')      # a `uses:` value: <alias>,<UID>
+
+# The file browser: what it never shows - folders named like a key store, files that look like key material
+SECRET_DIR_RE = re.compile(r'crypt|secret|credential', re.I)
+SECRET_FILE_RE = re.compile(
+    r'^id_|_(rsa|dsa|ecdsa|ed25519)$'                                      # SSH key pairs
+    r'|\.(pem|key|p12|pfx|ppk|jks|keystore|kdbx|gpg|pgp|asc|ovpn)$'       # keys, keystores, vaults
+    r'|^(known_hosts|authorized_keys)'
+    r'|(^|[._-])(tokens?|secrets?)(\.[a-z0-9]+)?$|passw(or)?d|credential',  # api_token.txt, not tokenizer.json
+    re.I)
+TEXT_EXT = {'.md', '.txt', '.yaml', '.yml', '.json', '.py', '.js', '.html', '.htm', '.css', '.csv', '.tsv', '.log',
+            '.toml', '.ini', '.cfg', '.sh', '.bat', '.ps1', '.xml', '.rst', '.tex', '.bib', '.svg', '.sql', '.r',
+            '.c', '.h', '.cpp', '.java', '.ts', '.tsx', '.jsx', '.go', '.rs', '.jsonl'}
+BINARY_MIME = {'.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+               '.gif': 'image/gif', '.webp': 'image/webp'}
+META_FILES = ('_cmeta.yaml', '_cmeta.json', '_desc.yaml', '_desc.json')
+TEXT_CAP = 512 * 1024
+BINARY_CAP = 12 * 1024 * 1024
+FILES_DEFAULT = 200
+FILES_SCAN_MAX = 20000           # a listing stops counting there (a dataset can hold millions of files)
+INDEX_WAIT = 120                 # seconds the graph and a search with words wait for the first connection index
+REFRESH_AFTER = 30               # seconds: an older connection index is checked again (in the background) on the
+                                 # next request, so that an edited _desc is found without a reload
+ARTIFACT_WAIT = 10               # ... and the detail of one artifact, when there is no index yet
+INCOMING_MAX = 300               # incoming connections listed in the detail of one artifact
+DESC_TEXT_MAX = 65536            # the text of a _desc kept for search (characters; the rest is not searched)
+LINK_KEYS = ('connections', 'uses', 'ai_uses')   # the link lists of a _desc: not searched by plain words
+
+# The cache artifact of this page: cache::cserver--browse in the local repository, created on first use
+CACHE_CATEGORY = 'cache,1ebdcc1cc30c4022'
+CACHE_ALIAS = 'cserver--browse'
+CACHE_TAGS = ['cserver.browse', '14b2334988864507']
+CACHE_NAME = 'cserver.browse: what every _desc declares (connections, uses, ai_uses) and its text, by file'
+CACHE_GENERATOR = {'method': 'script', 'script': 'cserver.browse (the /browse page of the cMeta engine)'}
+CACHE_FILE = 'desc_index.pickle'
+CACHE_FORMAT = 1                 # a file of another format is ignored and rewritten
+
+# Open an artifact's folder on the server's own machine
+OPEN_WHAT = ('folder', 'shell', 'far')
+WIN_FAR_DIRS = ('C:\\Program Files\\Far Manager', 'C:\\Program Files (x86)\\Far Manager',
+                'C:\\Program Files\\Far', 'C:\\Program Files (x86)\\Far')
+LINUX_TERMINALS = (              # (program, the flag that sets the working directory, when cwd is not enough)
+    ('x-terminal-emulator', None), ('gnome-terminal', '--working-directory='), ('konsole', '--workdir='),
+    ('xfce4-terminal', '--working-directory='), ('mate-terminal', '--working-directory='),
+    ('tilix', '--working-directory='), ('terminator', '--working-directory='),
+    ('alacritty', '--working-directory='), ('kitty', '--directory='), ('foot', '--working-directory='),
+    ('xterm', None))
+
+# What a bare /browse opens with: page state key -> cserver config key
+DEFAULT_KEYS = (('q', 'browse_default_query'), ('repos', 'browse_default_repos'),
+                ('cats', 'browse_default_cats'), ('view', 'browse_default_view'))
+PAGE_TITLE = 'cMeta browse'
 
 # One catalog per process: rebuilt when the index changes (its files' mtimes and count)
 _lock = threading.Lock()
-_catalog = {'stamp': None, 'items': [], 'by_uid': {}, 'built': '', 'ms': 0}
+_catalog = {'stamp': None, 'items': [], 'by_uid': {}, 'by_key': {}, 'built': '', 'ms': 0}
 _desc_cache = {}                 # path of _desc -> (mtime, data)
+
+# The connection index: what every artifact connects to (`connections`, both ways), runs (`uses`, one way) and
+# reads (`ai_uses`, one way), and the text of its _desc, read from all _desc files in a background thread; kept per
+# process, rebuilt when the catalog changes or a reload asks for it. _links_cache keeps what each _desc declared,
+# by mtime and size, so a rebuild re-reads only edits; the cache artifact keeps it across processes (_disk).
+_conn_lock = threading.Lock()
+_conn = {'stamp': None, 'want': 0, 'ready': False, 'building': False, 'thread': None, 'done': 0, 'total': 0,
+         'ms': 0, 'built': '', 'error': '', 'out': {}, 'uses': {}, 'inn': {}, 'adj': {}, 'links': 0, 'uses_n': 0,
+         'text': {}, 'reread': 0}
+_links_cache = {}                # path of _desc -> ((mtime, size), connections, uses, ai_uses, text)
+_disk = {'key': None, 'dir': '', 'loaded': '', 'files': frozenset(), 'load_ms': 0, 'saved': '', 'error': ''}
+_launchers = {}                  # what the open buttons can start here, found once per process
 
 
 # ---------------------------------------------------------------------- helpers
@@ -169,11 +285,85 @@ def _name_matches(alias, uid, want):
     return want in (alias, uid) or ('@' in alias and alias.split('@', 1)[1] == want)
 
 
+def _flatten(data, out, prefix=''):
+    if isinstance(data, dict):
+        for k, v in data.items():
+            _flatten(v, out, '%s.%s' % (prefix, k) if prefix else str(k))
+    elif isinstance(data, (list, tuple)):
+        for v in data:
+            _flatten(v, out, prefix)
+    elif data is not None:
+        out.append('%s: %s' % (prefix, ' '.join(str(data).split())))
+
+
+def _desc_text(data):
+    """The text of a _desc that search reads -> (text, cut): one line per value, 'dotted.key: value' (an item of a
+    list under the key of the list, whitespace collapsed), at most DESC_TEXT_MAX characters. The lines of the link
+    lists (connections, uses, ai_uses) come after cut: words skip them, so that an artifact is not found by what it
+    links to (the graph shows that); the _desc: qualifiers read everything."""
+    out, links = [], []
+    if isinstance(data, dict):
+        for k, v in data.items():
+            _flatten(v, links if k in LINK_KEYS else out, str(k))
+    else:
+        _flatten(data, out)
+    text = '\n'.join(out)
+    cut = len(text)
+    if links:
+        text += ('\n' if text else '') + '\n'.join(links)
+    return text[:DESC_TEXT_MAX], min(cut, DESC_TEXT_MAX)
+
+
+def _desc_key(key):
+    """A query key that names the _desc: '_desc' -> '', '_desc.<key>' -> '<key>'; any other key -> None."""
+    if key == '_desc':
+        return ''
+    if key.startswith('_desc.') and len(key) > 6:
+        return key[6:]
+    return None
+
+
+def _desc_values(text_l, key):
+    """The values at a dotted key of a _desc (and under it), from its lower-cased text."""
+    for line in text_l.split('\n'):
+        k, sep, v = line.partition(': ')
+        if sep and (k == key or k.startswith(key + '.')):
+            yield v
+
+
+def _desc_match(text_l, key, want):
+    """The lower-cased text of a _desc against a wanted text. With a key: a value at that key (or under it) contains
+    it; without: the text does, keys and values. With * or ?, a whole value matches the pattern instead."""
+    if key:
+        return any(fnmatch.fnmatchcase(v, want) if _wild(want) else want in v for v in _desc_values(text_l, key))
+    if _wild(want):
+        return any(fnmatch.fnmatchcase(line.partition(': ')[2], want) for line in text_l.split('\n'))
+    return want in text_l
+
+
+def _desc_snippet(t, w):
+    """Where a word is in the text of a _desc (before its link lists): '_desc.<key>: ...text...' ('' when it is
+    not there)."""
+    text, low, cut = t
+    i = low.find(w, 0, cut)
+    if i < 0:
+        return ''
+    ls = low.rfind('\n', 0, i) + 1
+    le = low.find('\n', i)
+    key, sep, val = text[ls:le if le >= 0 else len(text)].partition(': ')
+    j = max(0, i - ls - len(key) - len(sep))       # where the word starts in the value (0: it is in the key)
+    start = max(0, j - 40)
+    return '_desc.%s: %s%s%s' % (key, '...' if start else '', val[start:j + len(w) + 60],
+                                 '...' if j + len(w) + 60 < len(val) else '')
+
+
 def parse_query(q):
     """The query text -> {'words', 'not_words', 'repos', 'cats', 'tags', 'not_tags', 'uids', 'after', 'before',
-    'has', 'not_has', 'fields': [(key, value, negated)], 'aliases'}."""
+    'has', 'not_has', 'fields': [(key, value, negated)], 'aliases', 'desc': [(key in the _desc or '', value,
+    negated)], 'desc_has': [(key in the _desc or '', negated)]}."""
     out = {'words': [], 'not_words': [], 'repos': [], 'cats': [], 'tags': [], 'not_tags': [], 'uids': [],
-           'after': '', 'before': '', 'has': [], 'not_has': [], 'fields': [], 'aliases': []}
+           'after': '', 'before': '', 'has': [], 'not_has': [], 'fields': [], 'aliases': [], 'desc': [],
+           'desc_has': []}
     for tok in TOKEN_RE.findall(q or ''):
         neg = tok.startswith('-') and len(tok) > 1
         t = tok[1:] if neg else tok
@@ -210,8 +400,12 @@ def parse_query(q):
                 out['after'] = value
             elif key in ('before', 'until'):
                 out['before'] = value
+            elif key == 'has' and _desc_key(value.lower()) is not None:
+                out['desc_has'].append((_desc_key(value.lower()), neg))
             elif key == 'has':
                 out['not_has' if neg else 'has'].append(value)
+            elif _desc_key(key) is not None:
+                out['desc'].append((_desc_key(key), value.lower(), neg))
             else:
                 out['fields'].append((key, value.lower(), neg))
             continue
@@ -223,8 +417,10 @@ def parse_query(q):
     return out
 
 
-def _item_matches(it, pq, ui_repos, ui_cats, after, before):
-    """True when the catalog item holds everything the parsed query and the pickers ask for."""
+def _item_matches(it, pq, ui_repos, ui_cats, after, before, texts=None):
+    """True when the catalog item holds everything the parsed query and the pickers ask for. texts: the text of
+    every _desc by UID, (text, lower-cased, where its link lists start) - None when the _desc files have not been
+    read (then words search the meta alone, and nothing passes a _desc qualifier)."""
     if ui_repos and not any(_name_matches(it['repo'], it['repo_uid'], w) for w in ui_repos):
         return False
     if ui_cats and not any(_name_matches(it['cat'], it['cat_uid'], w) for w in ui_cats):
@@ -259,12 +455,23 @@ def _item_matches(it, pq, ui_repos, ui_cats, after, before):
         if _value_matches(_dotted(it['meta'], key), value) == neg:
             return False
     hay = it['hay']
+    t = texts.get(it['uid']) if texts is not None else None
+    tl, cut = (t[1], t[2]) if t else ('', 0)
     for w in pq['words']:
-        if w not in hay:
+        if w not in hay and tl.find(w, 0, cut) < 0:
             return False
     for w in pq['not_words']:
-        if w in hay:
+        if w in hay or tl.find(w, 0, cut) >= 0:
             return False
+    if pq['desc'] or pq['desc_has']:
+        if texts is None:
+            return False
+        for key, want, neg in pq['desc']:
+            if (t is not None and _desc_match(tl, key, want)) == neg:
+                return False
+        for key, neg in pq['desc_has']:
+            if (t is not None and (not key or any(True for _ in _desc_values(tl, key)))) == neg:
+                return False
     return True
 
 
@@ -281,41 +488,53 @@ def _score(it, words):
         elif w in (it['name_l'] or ''):
             s += 2
         else:
-            s += 1
+            s += 1 if w in it['hay'] else 0.5         # elsewhere in the meta, or only in the _desc
     return s
 
 
-def _snippet(it, words):
-    """Where the first word that is not in the alias was found: 'key: ...text...' (or '')."""
+def _snippet(it, words, texts=None):
+    """Where the first word that is not in the alias was found: 'key: ...text...' from the meta, else
+    '_desc.key: ...text...' from the _desc (or '')."""
     for w in words:
         if w in it['alias_l']:
             continue
-        stack = [('', it['meta'])]
-        while stack:
-            prefix, cur = stack.pop()
-            if isinstance(cur, dict):
-                for k, v in cur.items():
-                    stack.append(((prefix + '.' if prefix else '') + str(k), v))
-            elif isinstance(cur, (list, tuple)):
-                for v in cur:
-                    stack.append((prefix, v))
-            else:
-                text = str(cur)
-                i = text.lower().find(w)
-                if i >= 0:
-                    start = max(0, i - 40)
-                    return '%s: %s%s%s' % (prefix, '...' if start else '', text[start:i + len(w) + 60],
-                                           '...' if i + len(w) + 60 < len(text) else '')
+        found = _meta_snippet(it, w)
+        if not found and texts:
+            t = texts.get(it['uid'])
+            found = _desc_snippet(t, w) if t else ''
+        if found:
+            return found
     return ''
 
 
-def _row(it, words=None):
+def _meta_snippet(it, w):
+    """Where a word is in the meta: 'key: ...text...' (or '')."""
+    stack = [('', it['meta'])]
+    while stack:
+        prefix, cur = stack.pop()
+        if isinstance(cur, dict):
+            for k, v in cur.items():
+                stack.append(((prefix + '.' if prefix else '') + str(k), v))
+        elif isinstance(cur, (list, tuple)):
+            for v in cur:
+                stack.append((prefix, v))
+        else:
+            text = str(cur)
+            i = text.lower().find(w)
+            if i >= 0:
+                start = max(0, i - 40)
+                return '%s: %s%s%s' % (prefix, '...' if start else '', text[start:i + len(w) + 60],
+                                       '...' if i + len(w) + 60 < len(text) else '')
+    return ''
+
+
+def _row(it, words=None, texts=None):
     """What the page shows of an item (no meta, no haystack)."""
     r = {'uid': it['uid'], 'alias': it['alias'], 'name': it['name'], 'cat': it['cat'], 'cat_uid': it['cat_uid'],
          'repo': it['repo'], 'created': _stamp(it['created_full']), 'updated': _stamp(it['updated_full']),
          'tags': it['tags'][:12], 'migrated_to': it['meta'].get('migrated_to') or ''}
     if words:
-        r['snippet'] = _snippet(it, words)
+        r['snippet'] = _snippet(it, words, texts)
     return r
 
 
@@ -347,41 +566,70 @@ def _facets(items):
             'year': sorted(years.items(), reverse=True), 'generator': gens.most_common()}
 
 
-def _read_desc(path):
-    """The _desc of an artifact folder, cached by mtime: (data, file name, size) or (None, '', 0)."""
+def _flag(value, default):
+    """A switch from the query: '' or absent -> the default; 0, false, no, off -> False; anything else -> True."""
+    if value is None or str(value).strip() == '':
+        return default
+    return str(value).strip().lower() not in ('0', 'false', 'no', 'off')
+
+
+def _load(f):
+    """A JSON or YAML file (the C YAML loader when there is one: thousands of _desc files are read)."""
+    with open(f, encoding='utf-8') as fh:
+        if f.endswith('.json'):
+            return json.load(fh)
+        import yaml
+        return yaml.load(fh, Loader=getattr(yaml, 'CSafeLoader', yaml.SafeLoader))
+
+
+def _desc_file(path):
+    """The _desc file of an artifact folder and its stat: (file, stat) or ('', None)."""
     for fn in ('_desc.json', '_desc.yaml'):
         f = os.path.join(path, fn)
         try:
-            st = os.stat(f)
+            return f, os.stat(f)
         except OSError:
             continue
-        hit = _desc_cache.get(f)
-        if hit and hit[0] == st.st_mtime:
-            return hit[1], fn, st.st_size
-        try:
-            with open(f, encoding='utf-8') as fh:
-                if fn.endswith('.json'):
-                    data = json.load(fh)
-                else:
-                    import yaml
-                    data = yaml.safe_load(fh)
-        except Exception as e:
-            data = {'_error': '%s: %s' % (type(e).__name__, e)}
-        if not isinstance(data, dict):
-            data = {'_value': data}
-        _desc_cache[f] = (st.st_mtime, data)
-        return data, fn, st.st_size
-    return None, '', 0
+    return '', None
+
+
+def _read_desc(path):
+    """The _desc of an artifact folder, cached by mtime: (data, file name, size) or (None, '', 0)."""
+    f, st = _desc_file(path)
+    if not f:
+        return None, '', 0
+    fn = os.path.basename(f)
+    hit = _desc_cache.get(f)
+    if hit and hit[0] == st.st_mtime:
+        return hit[1], fn, st.st_size
+    try:
+        data = _load(f)
+    except Exception as e:
+        data = {'_error': '%s: %s' % (type(e).__name__, e)}
+    if not isinstance(data, dict):
+        data = {'_value': data}
+    _desc_cache[f] = (st.st_mtime, data)
+    return data, fn, st.st_size
 
 
 def _cref_uid(cref):
     """The artifact of a cRef like 'cat,UID::alias,UID' -> (its UID or '', its alias or '')."""
-    s = str(cref or '')
-    art = s.split('::', 1)[1] if '::' in s else s
-    parts = [p.strip() for p in art.split(',') if p.strip()]
+    _cat, _cat_uid, alias, uid = _parse_cref(cref)
+    return uid, alias
+
+
+def _parse_cref(cref):
+    """'cat,UID::alias,UID' (or 'cat::alias', 'alias,UID', a bare alias or UID) -> (cat, cat UID, alias, UID);
+    the UIDs lower-cased, '' for what is missing."""
+    s = str(cref or '').strip()
+    left, sep, right = s.partition('::')
+    if not sep:
+        left, right = '', s
+    cat, _, cat_uid = left.partition(',')
+    parts = [p.strip() for p in right.split(',') if p.strip()]
     uid = next((p.lower() for p in reversed(parts) if UID_RE.match(p)), '')
     alias = next((p for p in parts if not UID_RE.match(p)), '')
-    return uid, alias
+    return cat.strip(), cat_uid.strip().lower(), alias, uid
 
 
 def _connections(desc, meta):
@@ -391,6 +639,388 @@ def _connections(desc, meta):
         if isinstance(src, list):
             out.extend(str(x) for x in src if x)
     return out
+
+
+def _uses_refs(desc):
+    """What an artifact runs, from the `uses:` list of its _desc: [(category, alias, UID)]. An entry mixes one
+    reference (the value shaped <alias>,<UID>) with parameters: `- task: setup,a2f9b61079ce4333`."""
+    out = []
+    for entry in (desc or {}).get('uses') or []:
+        if isinstance(entry, dict):
+            for k, v in entry.items():
+                m = USES_RE.match(v.strip()) if isinstance(v, str) else None
+                if m:
+                    out.append((str(k).strip(), m.group(1).strip(), m.group(2).lower()))
+    return out
+
+
+def _ai_uses_refs(desc):
+    """Whose memory and skills an artifact's AI sessions read, from the `ai_uses:` list of its _desc - the directed
+    counterpart of `connections`, in the spirit of `uses`: parsed cRefs. An entry is a cRef string
+    "category,UID::artifact,UID" or a dict with "cref"."""
+    out = []
+    for entry in (desc or {}).get('ai_uses') or []:
+        c = entry.get('cref') if isinstance(entry, dict) else entry
+        if isinstance(c, str) and '::' in c:
+            out.append(_parse_cref(c))
+    return out
+
+
+def _resolve(ref, by_uid, by_key):
+    """A parsed reference (cat, cat UID, alias, UID) -> the UID of a catalog artifact, or ''. The UID decides when
+    there is one; a reference by alias alone needs its category."""
+    cat, cat_uid, alias, uid = ref
+    if uid:
+        return uid if uid in by_uid else ''
+    if alias and (cat or cat_uid):
+        a = alias.lower()
+        return by_key.get((cat_uid, a)) or by_key.get((cat.lower(), a)) or ''
+    return ''
+
+
+def _links_raw(path, fresh=None):
+    """What the _desc of an artifact folder declares, unresolved: (its file or '', connections as parsed cRefs,
+    uses, ai_uses, (its text, where its link lists start)). Cached by the file's mtime and size, so a rebuild of the
+    index re-reads only the _desc files that changed; fresh (a list) collects the files that were read now."""
+    f, st = _desc_file(path)
+    if not f:
+        return '', [], [], [], None
+    key = (st.st_mtime, st.st_size)
+    hit = _links_cache.get(f)
+    if hit and hit[0] == key:
+        return f, hit[1], hit[2], hit[3], hit[4]
+    try:
+        data = _load(f)
+    except Exception:
+        data = None
+    doc = _desc_text(data) if data is not None else ('', 0)
+    if not isinstance(data, dict):
+        data = {}
+    conns = [_parse_cref(c) for c in _connections(data, None)]
+    uses = _uses_refs(data)
+    ai = _ai_uses_refs(data)
+    _links_cache[f] = (key, conns, uses, ai, doc)
+    if fresh is not None:
+        fresh.append(f)
+    return f, conns, uses, ai, doc
+
+
+# ---------------------------------------------------------------------- the cache artifact (cache::cserver--browse)
+def _cache_load():
+    """What the cache artifact holds, into _links_cache: once per process and cache folder. Entries are checked
+    against each file's mtime and size when they are used, so a stale entry is simply read again."""
+    d = _disk['dir']
+    if not d or _disk['loaded'] == d:
+        return
+    t0 = time.time()
+    _disk['loaded'] = d
+    try:
+        with open(os.path.join(d, CACHE_FILE), 'rb') as fh:
+            data = pickle.load(fh)
+        if isinstance(data, dict) and data.get('format') == CACHE_FORMAT and isinstance(data.get('files'), dict):
+            for f, entry in data['files'].items():
+                if isinstance(entry, tuple) and len(entry) == 5 and isinstance(entry[4], tuple):
+                    _links_cache.setdefault(f, entry)
+            _disk['files'] = frozenset(data['files'])
+    except FileNotFoundError:
+        pass
+    except Exception as e:                       # unreadable or of another Python: read the files again
+        _disk['error'] = 'the cache could not be read (%s: %s); the _desc files were read again' % (
+            type(e).__name__, e)
+    _disk['load_ms'] = int((time.time() - t0) * 1000)
+
+
+def _cache_save(files):
+    """Write what the _desc files of the catalog declare into the cache artifact, when it changed: atomically, so
+    another server process never reads half a file. A cache folder removed meanwhile is left alone (the next
+    request asks for the artifact again, which creates it properly)."""
+    d = _disk['dir']
+    if not d:
+        return
+    if not os.path.isdir(d):
+        _disk['dir'] = ''
+        return
+    keep = {f: _links_cache[f] for f in files if f in _links_cache}
+    tmp = os.path.join(d, '%s.tmp-%d-%d' % (CACHE_FILE, os.getpid(), threading.get_ident()))
+    try:
+        with open(tmp, 'wb') as fh:
+            pickle.dump({'format': CACHE_FORMAT, 'files': keep,
+                         'written': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, fh, protocol=4)
+        for attempt in range(10):               # Windows: another process may be reading it right now
+            try:
+                os.replace(tmp, os.path.join(d, CACHE_FILE))
+                break
+            except PermissionError:
+                time.sleep(0.05)
+        else:
+            raise PermissionError('the cache file stayed locked')
+        _disk['files'] = frozenset(keep)
+        _disk['saved'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        _disk['error'] = ''
+    except Exception as e:
+        _disk['error'] = 'the cache could not be written (%s: %s)' % (type(e).__name__, e)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+def _conn_compute(items, by_uid, by_key):
+    """The connection index of the catalog items: out (connections, as declared), uses (what each runs), ai (whose
+    memory each reads: `ai_uses`), inn (who connects to, uses or reads each), adj (every neighbour, either way),
+    text (the text of each _desc, lower-cased, and where its link lists start), files (every _desc read) and reread
+    (how many were read now, the rest came from the cache)."""
+    counter = itertools.count(1)
+    fresh = []
+
+    def read(it):
+        try:
+            r = _links_raw(it['path'], fresh)
+        except Exception:
+            r = ('', [], [], [], None)
+        _conn['done'] = next(counter)
+        return r
+
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        raw = list(ex.map(read, items))
+    out, uses, ai, inn, adj, texts, files = {}, {}, {}, {}, {}, {}, []
+    n_links = n_uses = n_ai = 0
+    for it, (f, conns, us, ais, doc) in zip(items, raw):
+        src = it['uid']
+        if f:
+            text, cut = doc or ('', 0)
+            files.append(f)
+            texts[src] = (text, text.lower(), cut)
+        legacy = [_parse_cref(c) for c in _connections(None, it['meta'])]
+        o, u, a = [], [], []
+        for ref in conns + legacy:
+            t = _resolve(ref, by_uid, by_key)
+            if t and t != src and t not in o:
+                o.append(t)
+        for c, al, uid in us:
+            t = _resolve((c, '', al, uid), by_uid, by_key)
+            if t and t != src and t not in u:
+                u.append(t)
+        for ref in ais:
+            t = _resolve(ref, by_uid, by_key)
+            if t and t != src and t not in a:
+                a.append(t)
+        if o:
+            out[src] = o
+            n_links += len(o)
+        if u:
+            uses[src] = u
+            n_uses += len(u)
+        if a:
+            ai[src] = a
+            n_ai += len(a)
+        for t in o + u + a:
+            inn.setdefault(t, set()).add(src)
+            adj.setdefault(t, set()).add(src)
+            adj.setdefault(src, set()).add(t)
+    return {'out': out, 'uses': uses, 'ai': ai, 'inn': inn, 'adj': adj, 'links': n_links, 'uses_n': n_uses,
+            'ai_n': n_ai, 'text': texts, 'files': files, 'reread': len(fresh)}
+
+
+def _conn_run():
+    """The background build of the connection index; it runs again while the catalog changed or a reload asked
+    for a newer one during the build. The first build of a process starts from the cache artifact; a build that
+    read anything new, or found files gone, writes it back."""
+    while True:
+        with _lock:
+            items, by_uid, by_key, stamp = (_catalog['items'], _catalog['by_uid'], _catalog['by_key'],
+                                            _catalog['stamp'])
+        with _conn_lock:
+            want = _conn['want']
+            _conn.update(done=0, total=len(items))
+        t0 = time.time()
+        try:
+            _cache_load()
+            res, err = _conn_compute(items, by_uid, by_key), ''
+            if res['reread'] or frozenset(res['files']) != _disk['files']:
+                _cache_save(res['files'])
+            res.pop('files')
+        except Exception as e:
+            res, err = None, '%s: %s' % (type(e).__name__, e)
+        with _conn_lock:
+            if res is not None:
+                _conn.update(res)
+                _conn.update(ready=True, stamp=stamp, want_built=want, t=time.time(),
+                             ms=int((time.time() - t0) * 1000),
+                             built=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            _conn['error'] = err
+            if res is None or (_conn['want'] == want and _catalog['stamp'] == stamp):
+                _conn['building'] = False
+                return
+
+
+def _conn_request(force=False):
+    """Start a build of the connection index when the catalog changed, when the last build is older than
+    REFRESH_AFTER (it re-reads only the _desc files that changed), or on force (a reload) - unless one runs; a
+    running build picks the request up when it ends. Returns the building thread (None when none runs)."""
+    with _conn_lock:
+        if force:
+            _conn['want'] += 1
+        due = _conn['ready'] and time.time() - _conn.get('t', 0) > REFRESH_AFTER
+        if (force or due or _conn['stamp'] != _catalog['stamp']) and not _conn['building']:
+            _conn['building'] = True
+            t = threading.Thread(target=_conn_run, name='cserver.browse connection index', daemon=True)
+            _conn['thread'] = t
+            t.start()
+        return _conn['thread'] if _conn['building'] else None
+
+
+def _conn_behind():
+    """True when an answer should wait for the build that runs: there is no index yet, the index changed since the
+    last build (new or removed artifacts), or a reload asked for one. A routine refresh is not waited for."""
+    return (not _conn['ready'] or _conn['stamp'] != _catalog['stamp']
+            or _conn['want'] != _conn.get('want_built', 0))
+
+
+def _conn_status():
+    return {'ready': _conn['ready'], 'building': _conn['building'], 'done': _conn['done'], 'total': _conn['total'],
+            'ms': _conn['ms'], 'built': _conn['built'], 'error': _conn['error'], 'links': _conn['links'],
+            'uses': _conn['uses_n'], 'ai_uses': _conn.get('ai_n', 0), 'descs': len(_conn['text']),
+            'reread': _conn['reread'], 'stale': bool(_conn['ready'] and _conn['stamp'] != _catalog['stamp']),
+            'cache': {'artifact': 'cache::' + CACHE_ALIAS if _disk['dir'] else '', 'load_ms': _disk['load_ms'],
+                      'saved': _disk['saved'], 'error': _disk['error']}}
+
+
+def _fair_sample(uids, items, layer, deg, gdeg, rank, cap):
+    """At most cap of the uids, taken layer by layer (the hops from a focus; 0 = the results, 1 = what was added),
+    and within a layer round-robin across categories - the best connected first in each - so that one large
+    category cannot take the whole budget and leave the others looking empty."""
+    layers = {}
+    for u in uids:
+        layers.setdefault(layer.get(u, 0), []).append(u)
+    picked = []
+    for d in sorted(layers):
+        by_cat = {}
+        for u in layers[d]:
+            by_cat.setdefault(items[u]['cat'], []).append(u)
+        for c in by_cat:
+            by_cat[c].sort(key=lambda u: (-deg.get(u, 0), -gdeg.get(u, 0), rank.get(u, 0)))
+        order = sorted(by_cat, key=lambda c: (-deg.get(by_cat[c][0], 0), -len(by_cat[c]), c))
+        i = 0
+        while len(picked) < cap:
+            took = False
+            for c in order:
+                if i < len(by_cat[c]):
+                    picked.append(by_cat[c][i])
+                    took = True
+                    if len(picked) >= cap:
+                        break
+            if not took:
+                break
+            i += 1
+        if len(picked) >= cap:
+            break
+    return picked
+
+
+def _secret_dir(name):
+    """A folder the file browser never enters: a dot-folder or one named like a key store."""
+    return name.startswith('.') or bool(SECRET_DIR_RE.search(name)) or name in ('__pycache__', 'node_modules')
+
+
+def _secret_file(name):
+    """A file the file browser never lists or shows: a dot-file or one that looks like key material."""
+    return name.startswith('.') or bool(SECRET_FILE_RE.search(name))
+
+
+def _file_kind(name):
+    ext = os.path.splitext(name)[1].lower()
+    if ext in TEXT_EXT or name in META_FILES or name.upper().startswith('README'):
+        return 'text'
+    return 'binary' if ext in BINARY_MIME else 'other'
+
+
+# ---------------------------------------------------------------------- open a folder on this machine
+def _find_far(cfg):
+    """Far Manager (far2l on macOS and Linux): browse_far in the config, CMETA_FAR, PATH, its usual folders on
+    Windows. A .bat / .cmd wrapper on PATH comes last: cmd re-parses its arguments. -> (program, is a wrapper)."""
+    for cand in (cfg.get('browse_far'), os.environ.get('CMETA_FAR')):
+        cand = str(cand or '').strip()
+        if cand:
+            found = cand if os.path.isfile(cand) else shutil.which(cand)
+            if found:
+                return found, os.path.splitext(found)[1].lower() in ('.bat', '.cmd')
+    wrapper = ''
+    for name in ('far2l', 'far'):
+        found = shutil.which(name)
+        if found and os.path.splitext(found)[1].lower() in ('.bat', '.cmd'):
+            wrapper = wrapper or found
+        elif found:
+            return found, False
+    if os.name == 'nt':
+        for d in WIN_FAR_DIRS:
+            f = os.path.join(d, 'Far.exe')
+            if os.path.isfile(f):
+                return f, False
+    return wrapper, bool(wrapper)
+
+
+def _desktop():
+    """True when programs started here can show a window: always on Windows and macOS; on Linux, a display."""
+    return os.name == 'nt' or sys.platform == 'darwin' or bool(os.environ.get('DISPLAY') or
+                                                               os.environ.get('WAYLAND_DISPLAY'))
+
+
+def _open_cmd(what, path, cfg):
+    """The command that opens path in the file manager, a shell or Far -> (argv, error). The folder is also the
+    working directory of the program, so a program that takes no folder argument still starts there."""
+    if not _desktop():
+        return None, 'this server has no desktop to open a window on (no DISPLAY)'
+    term = str(cfg.get('browse_terminal') or os.environ.get('CMETA_TERMINAL') or '').strip()
+    if what == 'far':
+        far, wrapper = _find_far(cfg)
+        if not far:
+            return None, ('Far Manager was not found: put it on PATH, or set browse_far in the cserver config '
+                          '(far2l on macOS and Linux)')
+        return ([far] if wrapper else [far, path]), ''     # a wrapper starts in the folder, without arguments
+    if os.name == 'nt':
+        if what == 'folder':
+            return ['explorer', path], ''
+        return [term or os.environ.get('COMSPEC') or 'cmd.exe'], ''
+    if sys.platform == 'darwin':
+        return (['open', path] if what == 'folder' else ['open', '-a', term or 'Terminal', path]), ''
+    if what == 'folder':
+        x = shutil.which('xdg-open') or shutil.which('gio')
+        if not x:
+            return None, 'no file manager found (xdg-open or gio)'
+        return ([x, 'open', path] if os.path.basename(x) == 'gio' else [x, path]), ''
+    for name, flag in ([(term, None)] if term else []) + list(LINUX_TERMINALS):
+        exe = shutil.which(name)
+        if exe:
+            return ([exe, flag + path] if flag else [exe]), ''
+    return None, 'no terminal found: set browse_terminal in the cserver config'
+
+
+def _launch(argv, cwd):
+    """Start a program in cwd and do not wait: a console of its own on Windows (cmd and Far draw there), a session
+    of its own elsewhere, so it outlives the server and never shares its input and output."""
+    if os.name == 'nt':
+        if argv[0] == 'explorer':
+            os.startfile(argv[1])
+            return
+        flags = subprocess.CREATE_NEW_CONSOLE | getattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0)
+        try:
+            subprocess.Popen(argv, cwd=cwd, creationflags=flags, close_fds=True)
+        except OSError:                            # a job object that forbids breaking away
+            subprocess.Popen(argv, cwd=cwd, creationflags=subprocess.CREATE_NEW_CONSOLE, close_fds=True)
+        return
+    subprocess.Popen(argv, cwd=cwd, start_new_session=True, close_fds=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _open_buttons(cfg):
+    """Which open buttons work on this machine: {'folder', 'shell', 'far'} -> True/False (found once)."""
+    key = (cfg.get('browse_far'), cfg.get('browse_terminal'))
+    if _launchers.get('key') != key:
+        _launchers.clear()
+        _launchers['key'] = key
+        _launchers['buttons'] = {w: _open_cmd(w, os.getcwd(), cfg)[0] is not None for w in OPEN_WHAT}
+    return dict(_launchers['buttons'])
 
 
 # ---------------------------------------------------------------------- the category
@@ -433,7 +1063,7 @@ class Category(InitCategory):
             if not force and _catalog['stamp'] == stamp:
                 return _catalog
             t0 = time.time()
-            items, by_uid = [], {}
+            items, by_uid, by_key = [], {}, {}
             r = self.cm.repos.find_in_index('category', CATEGORY_UID)
             cats = r.get('artifacts', []) if r.get('return', 1) == 0 else []
             skipped = []
@@ -467,7 +1097,9 @@ class Category(InitCategory):
                                           json.dumps(meta, ensure_ascii=False, default=str)]).lower()
                     items.append(it)
                     by_uid[it['uid']] = it
-            _catalog.update({'stamp': stamp, 'items': items, 'by_uid': by_uid, 'skipped': skipped,
+                    by_key[(it['cat'].lower(), it['alias_l'])] = it['uid']          # cat::alias references
+                    by_key[(it['cat_uid'].lower(), it['alias_l'])] = it['uid']
+            _catalog.update({'stamp': stamp, 'items': items, 'by_uid': by_uid, 'by_key': by_key, 'skipped': skipped,
                              'built': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                              'ms': int((time.time() - t0) * 1000), 'categories': len(cats)})
             return _catalog
@@ -490,18 +1122,58 @@ class Category(InitCategory):
                 if not (hide_repos and it['repo'] and _matches_any(it['repo'], hide_repos))
                 and not (hide_cats and _matches_any(it['cat'], hide_cats))]
 
+    # ------------------------------------------------------------ the connection index and its cache
+    def _cache_dir(self):
+        """The folder of cache::cserver--browse (local repository), created on first use: '' when it cannot be
+        had. Asked once per process and workspace, and again after the folder was removed."""
+        key = getattr(self.cm.repos, 'index_path', '')
+        if _disk['key'] != key:
+            _disk.update(key=key, dir='', loaded='', files=frozenset(), load_ms=0, saved='', error='')
+        if _disk['dir'] and os.path.isdir(_disk['dir']):
+            return _disk['dir']
+        try:
+            r = self.cm.access({'category': self._uses('cache', CACHE_CATEGORY), 'command': 'get',
+                                'arg1': CACHE_ALIAS, 'tags': list(CACHE_TAGS), 'con': False,
+                                'meta': {'name': CACHE_NAME, 'generator': dict(CACHE_GENERATOR)}})
+            path = (r.get('artifact') or {}).get('path', '') if r.get('return', 1) == 0 else ''
+            _disk['error'] = '' if path else 'cache::%s: %s' % (CACHE_ALIAS, r.get('error', 'not available'))
+        except Exception as e:
+            path = ''
+            _disk['error'] = 'cache::%s: %s: %s' % (CACHE_ALIAS, type(e).__name__, e)
+        _disk['dir'] = path if path and os.path.isdir(path) else ''
+        return _disk['dir']
+
+    def _conn_start(self, force=False):
+        """Start (or join) the build of the connection index: the cache artifact first - creating it changes the
+        index, so the catalog is looked at after it. Returns the building thread, or None."""
+        self._cache_dir()
+        self._catalog()
+        return _conn_request(force)
+
+    def _desc_texts(self):
+        """The text of every _desc by UID for a search, or None when they cannot be had. A build is waited for when
+        the answer depends on it (the first one, after an index change, after a reload); a routine refresh is not:
+        the last texts serve meanwhile."""
+        th = self._conn_start()
+        if th is not None and _conn_behind():
+            th.join(INDEX_WAIT)
+        return _conn['text'] if _conn['ready'] else None
+
     # ------------------------------------------------------------ actions
     def _search(self, params, items=None):
-        """The query, the pickers and the dates -> one page of rows, the total, the facets and the timing."""
+        """The query, the pickers and the dates -> one page of rows, the total, the facets and the timing. Words
+        and _desc qualifiers read the text of the _desc files too (the first search of a process waits for it)."""
         t0 = time.time()
         params = params or {}
         items = self._visible() if items is None else items
         pq = parse_query(params.get('q', ''))
+        asked = bool(pq['words'] or pq['not_words'] or pq['desc'] or pq['desc_has'])
+        texts = self._desc_texts() if asked else None
         ui_repos = _list(params.get('repos'))
         ui_cats = _list(params.get('cats'))
         after = str(params.get('after') or pq['after'] or '').strip()
         before = str(params.get('before') or pq['before'] or '').strip()
-        found = [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before)]
+        found = [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before, texts)]
         sort = str(params.get('sort') or ('relevance' if pq['words'] else 'updated'))
         desc = str(params.get('dir') or ('asc' if sort in ('alias', 'cat', 'repo', 'uid') else 'desc')) == 'desc'
         found = _sort(found, sort, desc, pq['words'])
@@ -509,8 +1181,9 @@ class Category(InitCategory):
         offset = _int(params.get('offset'), 0, 0)
         page = found[offset:offset + limit]
         out = {'total': len(found), 'offset': offset, 'limit': limit, 'sort': sort,
-               'dir': 'desc' if desc else 'asc', 'rows': [_row(it, pq['words']) for it in page],
-               'of': len(items), 'ms': int((time.time() - t0) * 1000), 'catalog': self._catalog_info()}
+               'dir': 'desc' if desc else 'asc', 'rows': [_row(it, pq['words'], texts) for it in page],
+               'of': len(items), 'ms': int((time.time() - t0) * 1000), 'catalog': self._catalog_info(),
+               'descs': {'asked': asked, 'searched': texts is not None, 'count': len(texts or {})}}
         if str(params.get('facets', '1')).lower() not in ('0', 'no', 'false'):
             out['facets'] = _facets(found)
         out['_found'] = found
@@ -531,13 +1204,22 @@ class Category(InitCategory):
                 'cats': sorted(cats.items(), key=lambda x: x[0].lower()),
                 'total': len(items), 'catalog': self._catalog_info()}
 
-    def _artifact(self, uid, local):
-        """One artifact: its meta, its _desc, its connections resolved to the catalog, and its commands."""
+    def _item(self, uid):
+        """A catalog item this server shows, by UID (None when it is unknown or hidden)."""
+        it = self._catalog()['by_uid'].get(str(uid or '').strip().lower())
+        if it is None:
+            return None
+        return it if any(x is it for x in self._visible()) else None
+
+    def _artifact(self, uid, local, files_on):
+        """One artifact: its meta, its _desc, what it connects to and what it uses (resolved to the catalog), what
+        connects to it (from the connection index), and its commands."""
         cat = self._catalog()
-        uid = str(uid or '').strip().lower()
-        it = cat['by_uid'].get(uid)
-        if it is None or id(it) not in set(id(x) for x in self._visible()):
+        it = self._item(uid)
+        if it is None:
             return {'error': 'artifact %s is not in the index of this server' % uid}
+        by_uid, by_key = cat['by_uid'], cat['by_key']
+        shown = set(x['uid'] for x in self._visible())
         desc, desc_file, size = _read_desc(it['path'])
         desc_out = desc
         if desc is not None and size > DESC_MAX_BYTES:
@@ -545,18 +1227,43 @@ class Category(InitCategory):
                         '_keys': sorted(desc.keys())}
         links = []
         for cref in _connections(desc, it['meta']):
-            tuid, talias = _cref_uid(cref)
-            t = cat['by_uid'].get(tuid) if tuid else None
-            links.append({'cref': cref, 'uid': tuid, 'alias': t['alias'] if t else talias,
+            ref = _parse_cref(cref)
+            tuid = _resolve(ref, by_uid, by_key)
+            t = by_uid.get(tuid) if tuid in shown else None
+            links.append({'cref': cref, 'uid': tuid if t else ref[3], 'alias': t['alias'] if t else ref[2],
                           'cat': t['cat'] if t else '', 'found': t is not None})
+        uses, seen = [], set()
+        for c, a, u in _uses_refs(desc):
+            if u in seen:
+                continue
+            seen.add(u)
+            t = by_uid.get(u) if u in shown else None
+            uses.append({'ref': '%s: %s,%s' % (c, a, u), 'uid': u, 'alias': t['alias'] if t else a,
+                         'cat': t['cat'] if t else c, 'found': t is not None})
+        ai_uses = []
+        for ref in _ai_uses_refs(desc):
+            tuid = _resolve(ref, by_uid, by_key)
+            t = by_uid.get(tuid) if tuid in shown else None
+            ai_uses.append({'cref': '%s,%s::%s,%s' % ref, 'uid': tuid if t else ref[3], 'alias': t['alias'] if t else ref[2],
+                            'cat': t['cat'] if t else ref[0], 'found': t is not None})
+        incoming, n_in = [], 0
+        if _conn['ready']:
+            with _conn_lock:
+                srcs, used_by, read_by = _conn['inn'].get(it['uid'], ()), _conn['uses'], _conn.get('ai', {})
+                rows = [{'uid': s, 'alias': by_uid[s]['alias'], 'cat': by_uid[s]['cat'],
+                         'uses': it['uid'] in used_by.get(s, ()), 'ai': it['uid'] in read_by.get(s, ())} for s in srcs if s in shown]
+            rows.sort(key=lambda x: (x['cat'].lower(), x['alias'].lower()))
+            n_in, incoming = len(rows), rows[:INCOMING_MAX]
         mig = it['meta'].get('migrated_to')
         mig_uid = _cref_uid(mig)[0] if mig else ''
         ref = '%s,%s' % (it['alias'], it['uid'])
         cmd_cat = it['cat'] or 'category'
         out = {'row': _row(it), 'repo_uid': it['repo_uid'], 'meta': it['meta'], 'desc': desc_out,
-               'desc_file': desc_file, 'connections': links,
+               'desc_file': desc_file, 'connections': links, 'uses': uses, 'ai_uses': ai_uses, 'incoming': incoming,
+               'incoming_total': n_in, 'index': _conn_status(),
+               'files': bool(files_on) and not SECRET_DIR_RE.search(it['cat']),
                'cref': '%s,%s::%s' % (it['cat'], it['cat_uid'], ref),
-               'migrated_to_uid': mig_uid if mig_uid in cat['by_uid'] else '',
+               'migrated_to_uid': mig_uid if mig_uid in shown else '',
                'commands': ['cx %s find %s' % (cmd_cat, ref),
                             'cx %s info %s' % (cmd_cat, ref),
                             'cx %s read %s' % (cmd_cat, ref),
@@ -566,57 +1273,335 @@ class Category(InitCategory):
             out['path'] = it['path']
         return out
 
+    @staticmethod
+    def _find_one(ref, scope):
+        """The UID of the artifact a focus names - a UID, alias,UID, a cRef, or an alias (the first one in the
+        scope) - or '' when the scope has no such artifact."""
+        cat, cat_uid, alias, uid = _parse_cref(ref)
+        if uid:
+            return uid if uid in scope else ''
+        a = alias.lower()
+        for u, it in scope.items():
+            if it['alias_l'] == a and (not (cat or cat_uid) or _name_matches(it['cat'], it['cat_uid'],
+                                                                               cat_uid or cat)):
+                return u
+        return ''
+
     def _graph(self, params):
-        """The results as nodes (up to max_nodes) and the connections between them as links; with
-        neighbors, the artifacts the results connect to join too (within the same limit)."""
-        t0 = time.time()
+        """The graph of the query, or of everything within depth hops of a focus: the artifacts (a fair sample
+        when there are more than max_nodes), their categories, the cMeta node, and the connections and uses
+        between what is drawn - with the notices and the timings of every stage."""
+        T, t0 = {}, time.time()
         cat = self._catalog()
-        max_nodes = _int(params.get('max_nodes'), GRAPH_DEFAULT, 1, GRAPH_MAX)
-        r = self._search(dict(params, limit=max_nodes, offset=0, facets='0'))
-        found = r['_found']
-        visible = set(id(it) for it in self._visible()) if cat['items'] else set()
-        nodes = list(found[:max_nodes])
-        ids = set(it['uid'] for it in nodes)
+        T['catalog'] = int((time.time() - t0) * 1000)
 
-        def descs(chunk):
-            with ThreadPoolExecutor(max_workers=16) as ex:
-                return list(ex.map(lambda it: _read_desc(it['path'])[0], chunk))
+        t1 = time.time()
+        th = self._conn_start()
+        if th is not None and _conn_behind():        # the first build, or one after an index change or a reload:
+            th.join(INDEX_WAIT)                      # wait for it (a routine refresh is not waited for)
+        T['index'] = int((time.time() - t1) * 1000)
+        if not _conn['ready']:
+            return {'error': 'the connections are still being read (%d of %d artifacts) - try again in a moment'
+                             % (_conn['done'], _conn['total']), 'index': _conn_status()}
+        with _conn_lock:
+            out, uses, ai, adj = _conn['out'], _conn['uses'], _conn.get('ai', {}), _conn['adj']
 
-        out_links = {}
-        for it, d in zip(nodes, descs(nodes)):
-            out_links[it['uid']] = [u for u in (_cref_uid(c)[0] for c in _connections(d, it['meta'])) if u]
-        neighbors = str(params.get('neighbors', '')).lower() in ('1', 'yes', 'true', 'on')
-        extra = []
-        if neighbors:
-            for it in list(nodes):
-                for u in out_links.get(it['uid'], []):
-                    t = cat['by_uid'].get(u)
-                    if t is not None and u not in ids and id(t) in visible and len(nodes) + len(extra) < max_nodes:
-                        ids.add(u)
-                        extra.append(t)
-            for it, d in zip(extra, descs(extra)):
-                out_links[it['uid']] = [u for u in (_cref_uid(c)[0] for c in _connections(d, it['meta'])) if u]
-        links, seen = [], set()
-        for src, targets in out_links.items():
-            for t in targets:
-                if t in ids and t != src and (src, t) not in seen:
-                    seen.add((src, t))
-                    links.append({'source': src, 'target': t})
-        rows = [dict(_row(it), neighbor=False) for it in nodes] + [dict(_row(it), neighbor=True) for it in extra]
-        cats = Counter(x['cat'] for x in rows)
-        return {'nodes': rows, 'links': links, 'total': r['total'], 'shown': len(rows),
-                'truncated': r['total'] > len(nodes), 'cats': cats.most_common(),
-                'ms': int((time.time() - t0) * 1000)}
+        t2 = time.time()
+        by_uid = cat['by_uid']
+        vis = self._visible()
+        ui_repos, ui_cats = _list(params.get('repos')), _list(params.get('cats'))
+        scope = {it['uid']: it for it in vis
+                 if (not ui_repos or any(_name_matches(it['repo'], it['repo_uid'], w) for w in ui_repos))
+                 and (not ui_cats or any(_name_matches(it['cat'], it['cat_uid'], w) for w in ui_cats))}
+        show_cats = _flag(params.get('categories'), True)
+        show_core = show_cats and _flag(params.get('core'), False)
+        show_iso = _flag(params.get('isolated'), False)
+        grow = _flag(params.get('neighbors'), False)
+        max_nodes = _int(params.get('max_nodes'), GRAPH_DEFAULT, 10, GRAPH_MAX)
+        depth = _int(params.get('depth'), 2, 1, DEPTH_MAX)
+        focus = str(params.get('focus') or '').strip()
+
+        layer, rank, notices = {}, {}, []
+        start, focus_next, grown = '', 0, 0
+        if focus:
+            start = self._find_one(focus, scope)
+            if start:
+                layer[start] = 0
+                frontier = [start]
+                for d in range(1, depth + 1):
+                    nxt = []
+                    for u in frontier:
+                        for v in adj.get(u, ()):
+                            if v in scope and v not in layer:
+                                layer[v] = d
+                                nxt.append(v)
+                    frontier = nxt
+                    if not nxt:
+                        break
+                focus_next = len({v for u in frontier for v in adj.get(u, ()) if v in scope and v not in layer})
+            cand = sorted(layer, key=lambda u: layer[u])
+        else:
+            r = self._search(dict(params, limit=1, offset=0, facets='0'), items=vis)
+            cand = [it['uid'] for it in r['_found']]
+            rank = {u: i for i, u in enumerate(cand)}
+            if grow and len(cand) < len(scope):
+                chosen = set(cand)
+                for u in list(cand):
+                    for v in adj.get(u, ()):
+                        if v in scope and v not in chosen:
+                            chosen.add(v)
+                            layer[v] = 1                   # sampled after the results themselves
+                            cand.append(v)
+                            grown += 1
+        matched = len(cand) - grown
+        T['select'] = int((time.time() - t2) * 1000)
+
+        t3 = time.time()
+        cset = set(cand)
+        deg = {u: sum(1 for v in adj.get(u, ()) if v in cset) for u in cand}
+        iso_hidden = 0
+        if not show_cats and not show_iso:                 # nothing to hang an unconnected artifact on
+            keep = [u for u in cand if deg[u] or u == start]
+            iso_hidden, cand = len(cand) - len(keep), keep
+        capped = 0
+        if len(cand) > max_nodes:
+            gdeg = {u: len(adj.get(u, ())) for u in cand}
+            picked = _fair_sample(cand, by_uid, layer, deg, gdeg, rank, max_nodes)
+            capped = len(cand) - len(picked)
+        else:
+            picked = cand
+
+        drawn = set(picked)
+        links, pairs = [], set()
+        for u in picked:                                   # uses: directed, drawn once with an arrow
+            for v in uses.get(u, ()):
+                if v in drawn:
+                    links.append({'s': u, 't': v, 'k': 'uses'})
+                    pairs.add((u, v) if u < v else (v, u))
+        for u in picked:                                   # ai_uses: directed too (whose memory an artifact reads)
+            for v in ai.get(u, ()):
+                if v in drawn:
+                    links.append({'s': u, 't': v, 'k': 'ai'})
+                    pairs.add((u, v) if u < v else (v, u))
+        for u in picked:
+            for v in out.get(u, ()):
+                p = (u, v) if u < v else (v, u)
+                if v in drawn and p not in pairs:
+                    pairs.add(p)
+                    links.append({'s': u, 't': v, 'k': 'link'})
+        n_uses = sum(1 for x in links if x['k'] == 'uses')
+        n_ai = sum(1 for x in links if x['k'] == 'ai')
+        n_links = len(links) - n_uses - n_ai
+        ddeg = Counter()
+        for x in links:
+            ddeg[x['s']] += 1
+            ddeg[x['t']] += 1
+
+        nodes = []
+        if show_core:
+            nodes.append({'id': '__cmeta__', 'kind': 'core', 'label': 'cMeta'})
+        per_cat, cat_alias = Counter(), {}
+        for u in picked:
+            cuid = by_uid[u]['cat_uid'].lower()
+            per_cat[cuid] += 1
+            cat_alias[cuid] = by_uid[u]['cat']
+        if show_cats:
+            in_scope = Counter(it['cat_uid'].lower() for it in scope.values())
+            shown = set(it['uid'] for it in vis)           # a category node opens the category artifact
+            for cuid, n in per_cat.most_common():
+                nodes.append({'id': '__cat__' + cuid, 'kind': 'category', 'label': cat_alias[cuid],
+                              'cat': cat_alias[cuid], 'uid': cuid if cuid in shown else '',
+                              'n': n, 'total': in_scope[cuid]})
+                if show_core:
+                    links.append({'s': '__cmeta__', 't': '__cat__' + cuid, 'k': 'core'})
+        for u in picked:
+            it = by_uid[u]
+            n = {'id': u, 'kind': 'artifact', 'label': it['alias'], 'cat': it['cat'], 'repo': it['repo'],
+                 'deg': ddeg[u]}
+            if it['name'] and it['name'] != it['alias']:
+                n['name'] = it['name']
+            if focus and u in layer:
+                n['hop'] = layer[u]
+            elif u in layer:
+                n['added'] = 1
+            nodes.append(n)
+            if show_cats:
+                links.append({'s': '__cat__' + it['cat_uid'].lower(), 't': u, 'k': 'member'})
+        T['graph'] = int((time.time() - t3) * 1000)
+
+        n_drawn = len(picked)
+        if focus and not start:
+            notices.append('Nothing to focus on: "%s" is not an artifact this page shows (hidden, outside the '
+                           'pickers, or not in the index).' % focus)
+        elif start:
+            notices.append('Focused on %s: %d artifact%s within %d hop%s. %s The query words are not applied '
+                           'while focused; the pickers are.' %
+                           (by_uid[start]['alias'], len(layer), '' if len(layer) == 1 else 's', depth,
+                            '' if depth == 1 else 's',
+                            ('One more hop would add %d.' % focus_next) if focus_next else
+                            'Nothing further is reachable.'))
+        elif not matched:
+            notices.append('Nothing matches the query.')
+        if capped:
+            notices.append('Showing %d of %d artifacts: "nodes" is %d. The sample is spread evenly across '
+                           'categories, the best connected first - raise "nodes", or narrow the query.'
+                           % (n_drawn, n_drawn + capped, max_nodes))
+        if iso_hidden and not n_drawn:
+            notices.append('Nothing to draw: categories are off and none of the %d artifacts connects to '
+                           'another one here. Tick "categories" to group them, or "isolated" to show them as '
+                           'dots.' % iso_hidden)
+        elif iso_hidden:
+            notices.append('%d artifact%s that connect%s to nothing drawn %s hidden - tick "isolated" to show '
+                           'them.' % (iso_hidden, '' if iso_hidden == 1 else 's', 's' if iso_hidden == 1 else '',
+                                      'is' if iso_hidden == 1 else 'are'))
+        status = _conn_status()
+        if status['stale']:
+            notices.append('The connections are being read again after an index change; these are as of %s.'
+                           % status['built'])
+        if status['error']:
+            notices.append('The connections could not all be read: %s' % status['error'])
+        T['server'] = int((time.time() - t0) * 1000)
+        return {'nodes': nodes, 'links': links,
+                'cats': [[cat_alias[c], n, c] for c, n in per_cat.most_common()],
+                'stats': {'matched': matched, 'drawn': n_drawn, 'capped': capped, 'grown': grown,
+                          'isolated_hidden': iso_hidden, 'links': n_links, 'uses': n_uses, 'ai_uses': n_ai,
+                          'categories': len(per_cat), 'scope': len(scope)},
+                'focus': ({'uid': start, 'alias': by_uid[start]['alias'], 'cat': by_uid[start]['cat'],
+                           'depth': depth, 'next': focus_next} if start else None),
+                'notices': notices, 'timing': T, 'index': status,
+                'options': {'categories': show_cats, 'core': show_core, 'isolated': show_iso,
+                            'neighbors': grow, 'max_nodes': max_nodes, 'depth': depth}}
+
+    # ------------------------------------------------------------ the file browser
+    def _files(self, uid, limit):
+        """The files of an artifact folder: _cmeta and _desc first, then READMEs, the top level, the rest."""
+        it = self._item(uid)
+        if it is None:
+            return {'error': 'artifact %s is not in the index of this server' % uid}
+        if SECRET_DIR_RE.search(it['cat']):
+            return {'error': 'not shown: this artifact is in a category that holds keys or secrets'}
+        root = os.path.realpath(it['path'])
+        if not os.path.isdir(root):
+            return {'error': 'the folder of this artifact is missing'}
+        limit = _int(limit, FILES_DEFAULT, 5, 2000)
+        rels, more = [], False
+        for dp, dns, fns in os.walk(root):
+            dns[:] = sorted(d for d in dns if not _secret_dir(d))
+            for fn in sorted(fns):
+                if not _secret_file(fn):
+                    rels.append(os.path.relpath(os.path.join(dp, fn), root).replace(os.sep, '/'))
+            if len(rels) >= FILES_SCAN_MAX:
+                more = True
+                break
+
+        def order(rel):
+            name = rel.rsplit('/', 1)[-1]
+            top = '/' not in rel
+            return (0 if top and name in META_FILES else 1 if name.upper().startswith('README') else
+                    2 if top else 3, rel.lower())
+
+        rels.sort(key=order)
+        files = []
+        for rel in rels[:limit]:
+            try:
+                st = os.stat(os.path.join(root, *rel.split('/')))
+            except OSError:
+                continue
+            files.append({'rel': rel, 'size': st.st_size, 'kind': _file_kind(rel.rsplit('/', 1)[-1]),
+                          'mtime': time.strftime('%Y-%m-%d %H:%M', time.localtime(st.st_mtime))})
+        return {'uid': it['uid'], 'total': len(rels), 'more': more, 'limit': limit, 'files': files}
+
+    def _file(self, uid, rel):
+        """One file of an artifact folder: text inline (the first 512 KB), a PDF or an image as base64."""
+        it = self._item(uid)
+        if it is None:
+            return {'error': 'artifact %s is not in the index of this server' % uid}
+        if SECRET_DIR_RE.search(it['cat']):
+            return {'error': 'not shown: this artifact is in a category that holds keys or secrets'}
+        rel = str(rel or '').replace('\\', '/')
+        parts = rel.split('/')
+        if not rel or rel.startswith('/') or ':' in rel or any(p in ('', '.', '..') for p in parts):
+            return {'error': 'rel must be a path inside the folder of the artifact'}
+        if any(_secret_dir(p) for p in parts[:-1]) or _secret_file(parts[-1]):
+            return {'error': 'not shown: the file looks like a key or a secret'}
+        root = os.path.realpath(it['path'])
+        full = os.path.realpath(os.path.join(root, *parts))
+        if not os.path.normcase(full).startswith(os.path.normcase(root.rstrip('\\/') + os.sep)) \
+                or not os.path.isfile(full):
+            return {'error': 'no such file in this artifact'}
+        size = os.path.getsize(full)
+        ext = os.path.splitext(full)[1].lower()
+        if ext in BINARY_MIME:
+            if size > BINARY_CAP:
+                return {'rel': rel, 'kind': 'other', 'size': size,
+                        'note': 'over %d MB - open it on the machine itself' % (BINARY_CAP // (1024 * 1024))}
+            with open(full, 'rb') as f:
+                data = f.read()
+            return {'rel': rel, 'kind': 'binary', 'mime': BINARY_MIME[ext], 'size': size,
+                    'b64': base64.b64encode(data).decode('ascii')}
+        with open(full, 'rb') as f:
+            raw = f.read(TEXT_CAP + 1)
+        truncated, raw = len(raw) > TEXT_CAP, raw[:TEXT_CAP]
+        if b'\x00' in raw[:4096] and ext not in TEXT_EXT:
+            return {'rel': rel, 'kind': 'other', 'size': size,
+                    'note': 'a binary file (%s); not shown' % (ext or 'no extension')}
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            text = raw.decode('latin-1')
+        return {'rel': rel, 'kind': 'text', 'size': size, 'truncated': truncated, 'text': text}
 
     @staticmethod
-    def _is_local(urls):
-        host = (urlparse((urls or {}).get('url_server') or '').hostname or '').lower()
-        return host in ('127.0.0.1', 'localhost', '::1')
+    def _client_local(misc):
+        """True when the request came straight from the server's own machine: the engine cserver says so in
+        misc (the real peer address, no proxy header, and a Host that names this machine)."""
+        return bool((misc or {}).get('client_local'))
+
+    def _files_on(self, misc, cfg):
+        v = str(cfg.get('browse_files') or '').strip().lower()
+        if v in ('yes', 'on', 'true', '1', 'all'):
+            return True
+        if v in ('no', 'off', 'false', '0', 'none'):
+            return False
+        return self._client_local(misc)
+
+    def _open_on(self, misc, cfg):
+        """The open buttons: only for a browser on the server's own machine (there is no setting that offers them
+        to the network: they start programs on this machine), unless browse_open turns them off."""
+        if str(cfg.get('browse_open') or '').strip().lower() in ('no', 'off', 'false', '0', 'none'):
+            return False
+        return self._client_local(misc)
+
+    def _open(self, uid, what, misc, cfg, dry=False):
+        """Open the folder of an artifact this page shows in the file manager, a shell or Far, on this machine."""
+        if not self._open_on(misc, cfg):
+            return {'error': 'opening folders is for a browser on the server\'s own machine (browse_open in the '
+                             'cserver config can turn it off there too)'}
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        what = str(what or 'folder').strip().lower()
+        if what not in OPEN_WHAT:
+            return {'error': 'what must be one of %s' % ', '.join(OPEN_WHAT)}
+        it = self._item(uid)
+        if it is None:
+            return {'error': 'artifact %s is not in the index of this server' % uid}
+        if SECRET_DIR_RE.search(it['cat']):
+            return {'error': 'not opened: this artifact is in a category that holds keys or secrets'}
+        path = os.path.realpath(it['path'])
+        if not os.path.isdir(path):
+            return {'error': 'the folder of this artifact is missing'}
+        argv, err = _open_cmd(what, path, cfg)
+        if argv is None:
+            return {'error': err}
+        if not dry:
+            _launch(argv, path)
+        return {'opened': what, 'path': path, 'cmd': argv, 'dry': bool(dry)}
 
     # ------------------------------------------------------------ web
     def web_(self, ctx, urls, query={}, misc={}):
         """Render the page (command web) or answer ?native_action=... with JSON."""
         query = query or {}
+        local = self._client_local(misc)
         na = query.get('native_action', '')
         if na:
             try:
@@ -625,14 +1610,35 @@ class Category(InitCategory):
                     out.pop('_found', None)
                 elif na == 'options':
                     out = self._options()
+                    self._conn_start()                 # start reading the connections as the page opens
+                    out['index'] = _conn_status()
                 elif na == 'reload':
                     self._catalog(force=True)
                     _desc_cache.clear()
                     out = self._options()
+                    self._conn_start(force=True)       # re-reads only the _desc files that changed
+                    out['index'] = _conn_status()
+                elif na == 'index':
+                    self._conn_start()
+                    out = _conn_status()
                 elif na == 'artifact':
-                    out = self._artifact(query.get('uid'), self._is_local(urls))
+                    th = self._conn_start()
+                    if th is not None and not _conn['ready']:
+                        th.join(ARTIFACT_WAIT)         # a fresh worker process: what connects to it comes soon
+                    out = self._artifact(query.get('uid'), local, self._files_on(misc, self._cserver_config()))
                 elif na == 'graph':
                     out = self._graph(query)
+                elif na in ('files', 'file'):
+                    if not self._files_on(misc, self._cserver_config()):
+                        out = {'error': 'the file browser is off here: it is for a browser on the server\'s own '
+                                        'machine (browse_files in the cserver config changes that)'}
+                    elif na == 'files':
+                        out = self._files(query.get('uid'), query.get('limit'))
+                    else:
+                        out = self._file(query.get('uid'), query.get('rel'))
+                elif na == 'open':
+                    out = self._open(query.get('uid'), query.get('what'), misc, self._cserver_config(),
+                                     dry=_flag(query.get('dry'), False))
                 else:
                     out = {'error': 'unknown native_action %r' % na}
                 return {'return': 0, 'json': out}
@@ -641,24 +1647,37 @@ class Category(InitCategory):
                 return {'return': 0, 'json': {'error': '%s: %s' % (type(e).__name__, e)}}
 
         try:
+            cfg = self._cserver_config()
             path_to_files = os.path.join(self.path, 'files')
             url_files = urls.get('url_files') or ''
             theme = (misc or {}).get('theme', '')
             dark = theme == 'dark' or str(query.get('dark', '')).lower() in ('1', 'true', 'yes')
             version = getattr(self.cm, '__version__', '')
-            state = {k: str(query.get(k) or '') for k in ('q', 'repos', 'cats', 'after', 'before', 'view',
-                                                         'sort', 'dir', 'uid')}
+            state = {k: str(query.get(k) or '') for k in STATE_KEYS}
+            if not any(state.values()):                # a bare /browse: what this server opens with
+                for k, key in DEFAULT_KEYS:
+                    v = cfg.get(key)
+                    if v:
+                        state[k] = ','.join(str(x) for x in v) if isinstance(v, (list, tuple)) else str(v).strip()
+            title = str(cfg.get('browse_title') or '').strip() or PAGE_TITLE
+            open_on = self._open_on(misc, cfg)
             config = {'api_url': urls.get('url', '?'), 'url_server': urls.get('url_server') or '/',
-                      'dark_mode': bool(dark), 'version': version, 'local': self._is_local(urls),
+                      'dark_mode': bool(dark), 'version': version, 'local': local, 'title': title,
+                      'files': self._files_on(misc, cfg),
+                      'open': _open_buttons(cfg) if open_on else {},
+                      'graph': {'max_nodes': GRAPH_DEFAULT, 'max': GRAPH_MAX, 'depth_max': DEPTH_MAX},
                       'state': state}
             with open(os.path.join(path_to_files, 'index.html'), encoding='utf-8') as f:
                 body = f.read()
-            body = body.replace('%%CONFIG%%', _js(config)).replace('%%VERSION%%', _esc(version))
+            body = (body.replace('%%CONFIG%%', _js(config)).replace('%%VERSION%%', _esc(version))
+                    .replace('%%TITLE%%', _esc(title)))
             head = (
+                '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +   # phones: no 980px page
                 '<link rel="stylesheet" href="%s">\n' % _asset(path_to_files, url_files, 'css/browse.css') +
+                '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/graph.js') +
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/browse.js')
             )
-            return {'return': 0, 'html_meta': {'html': body, 'page_title': 'cMeta browse',
+            return {'return': 0, 'html_meta': {'html': body, 'page_title': title,
                                                 'page_extra_style': head}}
         except Exception as e:
             return self.cm.error('cserver.browse: %s: %s' % (type(e).__name__, e))
@@ -671,7 +1690,8 @@ class Category(InitCategory):
 
         Args:
             arg1: the query (the first word after the command; or --q=...)
-            q: the query: words, "phrases", repo:, cat:, tag:, -tag:, uid:, after:, before:, has:, <key>:<value>
+            q: the query: words, "phrases", repo:, cat:, tag:, -tag:, uid:, after:, before:, has:, <key>:<value>,
+                _desc:<text>, _desc.<key>:<value>, has:_desc (words search the meta and the text of the _desc)
             repos: repositories, comma-separated (aliases, UIDs or patterns)
             cats: categories, comma-separated (aliases, UIDs or patterns)
             after: created on or after YYYY-MM-DD
