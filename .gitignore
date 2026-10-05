@@ -232,10 +232,14 @@ _run_claude_prompt_*_result.json
 /tests.manual/
 /test.py
 
-# AI coding-session provenance - resume scripts and conversation summaries
-# written into whatever directory the tool was launched from.
-# Claude Code: the SessionStart / Stop / SessionEnd hooks in
-# ~/.claude/hooks/provenance.py.
+# AI sessions run through cMeta (task run-ai) keep their memory, skills, conversations
+# and logs inside the artifact they work on, in a folder named !AI. They belong to
+# whoever ran the session, not to this repository. (The backslash keeps the leading "!"
+# from meaning "negate" in gitignore.)
+\!AI/
+
+# AI coding-session provenance - resume scripts and conversation summaries that
+# session hooks may write into whatever directory the tool was launched from.
 claude-resume-*.bat
 claude-resume-*.sh
 claude-summary-*.md
