@@ -114,9 +114,9 @@ def test_open_a_folder_through_the_app(server):
     app_module, _ = server
     if 'client' not in inspect.signature(TestClient.__init__).parameters:
         pytest.skip('this Starlette TestClient cannot pose as a loopback client')
-    r = cmeta.CMeta().access({'category': 'log', 'command': 'create', 'arg1': 'local:open-me', 'con': False})
-    assert r['return'] == 0, r
-    body = {'uid': r['meta']['artifact'], 'what': 'folder', 'dry': '1'}
+    # The category cserver.browse itself: an artifact of every home. (Not one made here: on Linux, Python 3.14
+    # starts the app's worker processes from a forkserver made by an earlier test, with that test's CMETA_HOME.)
+    body = {'uid': '14b2334988864507', 'what': 'folder', 'dry': '1'}
     with TestClient(app_module.app, base_url='http://localhost:8004', client=('127.0.0.1', 50000)) as local:
         app_module.cfg.clear()
         j = local.post('/browse?native_action=open', json=body, headers={'Sec-Fetch-Site': 'same-origin'}).json()
