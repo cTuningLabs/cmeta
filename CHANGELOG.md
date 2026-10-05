@@ -18,6 +18,10 @@ All notable changes to cMeta are documented here, newest first.
   or a dict with `cref`). `cserver.browse` reads it into its connection index, draws it as a dashed arrow, lists
   "AI uses" in the detail and marks who reads an artifact among its incoming links; the index line and the graph
   status count it. `connections` stay the undirected links of the graph.
+- **`CLAUDE.md` follows the one-branch rule of `AGENTS.md` §5.0:** the maintainer and the agents working for the
+  maintainer commit on `dev` and only with the maintainer's go-ahead; dated `YYYYMMDD-…` branches are for other
+  contributors. It still told agents to branch first. It also lists every skill in `.claude/skills/` and points to
+  `docs/releasing.md`.
 
 
 ## 0.32.5
