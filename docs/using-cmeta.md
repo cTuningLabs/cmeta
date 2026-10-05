@@ -1055,23 +1055,54 @@ artifacts of every plugged repository through one query in three views:
 - **Search**: the results as a list, best matches first, with the text that matched;
 - **Browse**: a sortable table with facets (repositories, categories, tags, years,
   how the artifacts were made); a click on a facet narrows the query;
-- **Graph**: the results as nodes, joined by the `connections` in their `_desc`, coloured
-  by category; optionally with the artifacts they connect to.
+- **Graph**: the results joined by their connections (below).
 
 Next to the search box: pickers for repositories and categories (one, several or all),
 and created-after / created-before dates. A click on an artifact opens its detail:
 
 - its cRef, its meta and its `_desc`;
-- its connections, each a link;
+- what it connects to, what it uses (a task: the tasks it runs), and what connects to it,
+  each a link;
+- **Focus the graph here**, with a depth;
+- its files, when the browser runs on the server's machine (below): `_cmeta` and `_desc`
+  first, a click shows one (text inline, images and PDFs as they are);
 - the `cx` commands that reach it (find, info, read, tags, update), with copy buttons.
+
+**The graph.** Each artifact hangs off its category node (that is the layout); the
+connections in each `_desc` are dashed lines, drawn for the node under the pointer and
+the selected one, or all at once with **Connections**; a `uses` edge (a task and what it
+runs) is an arrow, and so is an `ai_uses` edge (an artifact and the artifacts whose memory
+and skills its AI sessions read - the directed counterpart of `connections`, written once
+at the artifact that reads; drawn dashed with an arrow). The detail lists "AI uses" and,
+among what connects into an artifact, who reads it. Hover a node and the rest fades;
+names never cover each other (the hovered node and its neighbours first, then the biggest
+categories). The switches:
+
+| Switch | What it does |
+|---|---|
+| categories | off: artifacts only, laid out by their connections; isolated ones hidden unless **isolated** |
+| cMeta | the cMeta node in the middle, joined to every category |
+| + connected | adds what the results connect to, and what connects to them (one hop) |
+| nodes | at most this many artifacts (300); over it, a sample spread across categories, the best connected first |
+| all names | every artifact's name, even where names overlap |
+
+Focus (the button in the detail, or double-click a node) shows everything within N
+connections of one artifact; the pickers still apply, the query words do not, and a new
+query leaves the focus. Double-click a category node for the graph of that category.
+Wheel to zoom, drag to pan or to move a node, **Fit** / **1:1** / **Re-layout** above
+the drawing. A line under it times every stage: on the server (catalog, connections,
+selection, graph), the transfer, the drawing and the layout.
 
 The query lives in the URL, so a view can be shared or bookmarked. The footer shows the
 same query as a command.
 
 The query reads the index: every artifact's `_cmeta` with its repository and category.
 Loading it takes a few seconds once per server start, and again only when the index
-changes; after that, a search over ten thousand artifacts takes milliseconds. Only the
-detail and the graph read `_desc` files. A spinner shows during every wait.
+changes; after that, a search over ten thousand artifacts takes milliseconds. The
+connections come from every `_desc`, read in the background as the page opens (about
+2-3 s for ten thousand artifacts); after an index change or a reload (↻), only the
+`_desc` files that changed are read again. The first graph waits for them; a graph then
+takes about 0.1 s on the server. A spinner shows during every wait.
 
 | Query | Meaning |
 |---|---|
@@ -1093,7 +1124,9 @@ cx cserver.browse query "sla" --sort=updated --limit=50 --as_json
 ```
 
 (`search` is a global alias of `find`, so the terminal command is `query`.)
-`?native_action=search|options|artifact|graph` answer with JSON.
+`?native_action=search|options|artifact|graph|index|files|file` answer with JSON; the graph
+takes `focus`, `depth`, `max_nodes`, `categories`, `core`, `isolated` and `neighbors` next
+to the query.
 
 On a shared server:
 
@@ -1101,8 +1134,11 @@ On a shared server:
 - `browse_hide_categories` leaves categories out. By default it leaves out anything
   matching `*crypt*`, `*secret*` or `*credential*`, so that key bundles never show; `none`
   shows every category.
-- An artifact's local path is shown only when the server is reached as
-  `127.0.0.1`/`localhost`.
+- An artifact's local path and its files are shown only to a browser on the server's own
+  machine: the engine `cserver` tells the page when the request comes from a loopback
+  address with no proxy header (a `Host` header proves nothing). `browse_files: yes` shows
+  the files to everyone, `no` to no one. Dot-files, key-like files (`id_*`, `*.pem`,
+  `*token*`, ...) and anything outside the artifact's folder are never shown.
 - The page reads and never writes: changes go through the `cx` commands it shows.
 
 ### 8.3 The pattern from Python — reading a config from any category

@@ -15,20 +15,23 @@
   if (!root) return;
   function $(id) { return document.getElementById(id); }
 
-  // The categorical palette (validated slot order, light and dark steps); a 9th category and beyond is "other"
-  var PALETTE_LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
-  var PALETTE_DARK = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
-  var OTHER = '#8d93a0';
   var THEME_KEY = 'cserver.browse.theme';
   var VIEWS = ['search', 'browse', 'graph'];
+  var GCFG = CFG.graph || {max_nodes: 300, max: 1000, depth_max: 12};
 
-  var st = {q: '', repos: '', cats: '', after: '', before: '', view: 'search', sort: '', dir: '', uid: ''};
+  // The state in the URL: the query, the view, the open artifact, and the graph (focus, depth, nodes, switches:
+  // '' = the default, '1' / '0' = set)
+  var URL_KEYS = ['q', 'repos', 'cats', 'after', 'before', 'sort', 'dir', 'uid', 'focus', 'depth', 'max_nodes',
+                  'categories', 'core', 'isolated', 'neighbors', 'labels', 'links'];
+  var st = {view: 'search'};
+  URL_KEYS.forEach(function (k) { st[k] = ''; });
   Object.keys(st).forEach(function (k) { if (CFG.state && CFG.state[k]) st[k] = CFG.state[k]; });
   if (VIEWS.indexOf(st.view) < 0) st.view = 'search';
   st.offset = 0;
   st.limit = 50;
 
-  var options = null;      // {repos: [[name, n]], cats: [[name, n]], total, catalog}
+  var options = null;      // {repos: [[name, n]], cats: [[name, n]], total, catalog, index}
+  var indexState = null;   // the connection index as the last answer reported it: {ready, links, ...}
   var last = null;         // the last search result
   var busyCount = 0;
   var runToken = 0;
@@ -72,8 +75,10 @@
     var sep = /[?&]$/.test(u) ? '' : (u.indexOf('?') >= 0 ? '&' : '?');
     return u + sep + 'native_action=' + action;
   }
+  // what === null: a quiet call (no spinner) - the progress polls
   function call(action, params, what) {
-    busy(true, what || 'loading');
+    var quiet = what === null;
+    if (!quiet) busy(true, what || 'loading');
     return fetch(apiUrl(action), {method: 'POST', headers: {'Content-Type': 'application/json'},
                                   body: JSON.stringify(params || {})})
       .then(function (res) {
@@ -84,7 +89,15 @@
           return data;
         });
       })
-      .finally(function () { busy(false); });
+      .finally(function () { if (!quiet) busy(false); });
+  }
+  function on(v, dflt) { return v === '' || v == null ? dflt : v !== '0'; }
+  function num(n) { return Number(n || 0).toLocaleString('en-US'); }
+  function msText(ms) { return ms >= 1000 ? (ms / 1000).toFixed(1) + ' s' : Math.round(ms) + ' ms'; }
+  function fmtSize(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
   }
   function qs(o) {
     return Object.keys(o).filter(function (k) { return o[k] !== '' && o[k] != null; })
@@ -115,13 +128,14 @@
   function syncUrl() {
     try {
       var u = new URL(window.location.href);
-      ['q', 'repos', 'cats', 'after', 'before', 'sort', 'dir', 'uid'].forEach(function (k) {
+      URL_KEYS.forEach(function (k) {
         if (st[k]) u.searchParams.set(k, st[k]); else u.searchParams.delete(k);
       });
       if (st.view !== 'search') u.searchParams.set('view', st.view); else u.searchParams.delete('view');
       history.replaceState(null, '', u.toString());
     } catch (e) { /* old browser: the state stays in the page */ }
-    $('cbr-json').href = apiUrl('search') + '&' + qs(params());
+    $('cbr-json').href = st.view === 'graph' ? apiUrl('graph') + '&' + qs(graphParams())
+                                             : apiUrl('search') + '&' + qs(params());
     $('cbr-cli').textContent = cliLine();
   }
   function queryWords() {
@@ -159,7 +173,8 @@
       var dark = !root.classList.contains('dark');
       applyTheme(dark);
       try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
-      if (st.view === 'graph' && graph) graph.recolour();
+      if (graph) graph.setDark(dark);
+      if (gdata) drawLegend(gdata);
     });
   }
 
@@ -388,11 +403,15 @@
     b.addEventListener('click', function () { copy(text, b); });
     return h('div', {class: 'cbr-cmd'}, h('code', {}, text), b);
   }
+  var detailToken = 0;       // a later open or a close wins over an answer still on its way
   function openDetail(uid) {
     if (!uid) return;
     st.uid = uid;
     syncUrl();
+    var my = ++detailToken;
     call('artifact', {uid: uid}, 'reading the artifact').then(function (d) {
+      if (my !== detailToken) return;
+      subtitle({index: d.index});
       var box = $('cbr-detail');
       box.innerHTML = '';
       var close = h('button', {type: 'button', class: 'cbr-d-close', title: 'Close (Esc)'}, '×');
@@ -420,19 +439,24 @@
         d.row.tags.forEach(function (t) { tg.appendChild(chip(t)); });
         box.appendChild(tg);
       }
-      if (d.connections && d.connections.length) {
-        box.appendChild(h('h3', {}, 'Connects to (' + d.connections.length + ')'));
-        var ul = h('ul', {class: 'cbr-links'});
-        d.connections.forEach(function (c) {
-          if (c.found) {
-            var a = h('a', {href: '#', title: c.cref}, c.alias);
-            a.addEventListener('click', function (e) { e.preventDefault(); openDetail(c.uid); });
-            ul.appendChild(h('li', {}, a, h('span', {class: 'cbr-muted'}, '  ' + c.cat)));
-          } else {
-            ul.appendChild(h('li', {class: 'missing', title: 'not in the index of this server'}, c.cref));
-          }
-        });
-        box.appendChild(ul);
+      box.appendChild(focusBar(d.row.uid));
+      linkList(box, 'Connects to', d.connections, function (c) { return c.cref; });
+      linkList(box, 'Uses', d.uses, function (c) { return c.ref; });
+      linkList(box, 'AI uses (reads the memory and skills of)', d.ai_uses, function (c) { return c.cref; });
+      if (d.index && d.index.ready) {
+        linkList(box, 'Connected from', d.incoming, null, d.incoming_total);
+      } else if (d.index) {
+        box.appendChild(h('h3', {}, 'Connected from'));
+        box.appendChild(h('p', {class: 'cbr-muted'}, 'The connections are still being read (' + num(d.index.done) +
+          ' of ' + num(d.index.total) + ' artifacts) - open this artifact again in a moment.'));
+      }
+      if (d.files) {
+        box.appendChild(h('h3', {}, 'Files'));
+        var fbox = h('div', {class: 'cbr-files'});
+        var fbtn = h('button', {type: 'button', class: 'cbr-btn'}, 'List the files');
+        fbtn.addEventListener('click', function () { listFiles(d.row.uid, fbox, fbtn); });
+        box.appendChild(fbtn);
+        box.appendChild(fbox);
       }
       box.appendChild(h('h3', {}, 'Commands'));
       (d.commands || []).forEach(function (c) { box.appendChild(cmdLine(c)); });
@@ -447,248 +471,290 @@
     }).catch(function (e) { showError(e.message); });
   }
   function closeDetail() {
+    detailToken++;
     $('cbr-detail').hidden = true;
     st.uid = '';
     syncUrl();
   }
-
-  /* ------------------------------------------------------------------ Graph view */
-  var graph = null;
-  var stopGraph = null;      // stops the animation of the graph on screen before another one is drawn
-  function loadGraph() {
-    var max = parseInt($('cbr-gmax').value, 10) || 150;
-    var nb = $('cbr-gnb').checked;
-    return call('graph', Object.assign(params(), {max_nodes: max, neighbors: nb ? '1' : ''}), 'building the graph')
-      .then(function (g) {
-        $('cbr-status').textContent = g.total + ' artifacts match · ' + g.shown + ' shown' +
-          (g.truncated ? ' (raise "nodes" to see more)' : '') + ' · ' + g.links.length + ' connections · ' + g.ms + ' ms';
-        $('cbr-gstat').textContent = '';
-        graph = drawGraph(g);
-      })
-      .catch(function (e) { showError(e.message); });
+  // "Focus the graph here": everything within N connections of this artifact, in the Graph tab
+  function depthSelect(cur) {
+    var sel = h('select', {title: 'How many connections away'});
+    [1, 2, 3, 4, 5, 6, GCFG.depth_max].forEach(function (v) {
+      var o = h('option', {value: String(v)}, v === GCFG.depth_max ? 'all' : String(v));
+      if (String(v) === String(cur || 2)) o.selected = true;
+      sel.appendChild(o);
+    });
+    return sel;
+  }
+  function focusBar(uid) {
+    var sel = depthSelect(st.depth);
+    var b = h('button', {type: 'button', class: 'cbr-btn cbr-primary'}, 'Focus the graph here');
+    b.addEventListener('click', function () { focusOn(uid, sel.value); });
+    return h('div', {class: 'cbr-d-graph'}, b, h('label', {}, 'depth ', sel));
+  }
+  function focusOn(uid, depth) {
+    st.focus = uid;
+    st.depth = depth && String(depth) !== '2' ? String(depth) : '';
+    closeDetail();
+    setView('graph');
+  }
+  // A list of linked artifacts: each opens its detail; one not shown here stays as plain text
+  function linkList(box, title, items, refOf, total) {
+    if (!items || !items.length) return;
+    var n = total || items.length;
+    box.appendChild(h('h3', {}, title + ' (' + num(n) + ')'));
+    var ul = h('ul', {class: 'cbr-links'});
+    items.forEach(function (c) {
+      if (c.found === false) {
+        ul.appendChild(h('li', {class: 'missing', title: 'not shown by this server'}, refOf ? refOf(c) : c.alias));
+        return;
+      }
+      var a = h('a', {href: '#', title: refOf ? refOf(c) : c.alias}, c.alias);
+      a.addEventListener('click', function (e) { e.preventDefault(); openDetail(c.uid); });
+      ul.appendChild(h('li', {}, a, h('span', {class: 'cbr-muted'}, '  ' + c.cat + (c.uses ? ' · uses it' : '') +
+        (c.ai ? ' · its AI reads this one' : ''))));
+    });
+    if (n > items.length) {
+      ul.appendChild(h('li', {class: 'cbr-muted'}, '... and ' + num(n - items.length) +
+        ' more: focus the graph here to see them all'));
+    }
+    box.appendChild(ul);
   }
 
-  function drawGraph(g) {
-    var NS = 'http://www.w3.org/2000/svg';
-    var svg = $('cbr-svg');
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-    var W = svg.clientWidth || 900, H = svg.clientHeight || 600;
-    function el(tag, cls) { var e = document.createElementNS(NS, tag); if (cls) e.setAttribute('class', cls); return e; }
-
-    var top = g.cats.slice(0, 8).map(function (x) { return x[0]; });
-    function colour(cat) {
-      var pal = root.classList.contains('dark') ? PALETTE_DARK : PALETTE_LIGHT;
-      var i = top.indexOf(cat);
-      return i >= 0 ? pal[i] : OTHER;
+  /* ------------------------------------------------------------------ the files of one artifact */
+  var blobUrl = null;
+  function listFiles(uid, box, btn) {
+    if (box.getAttribute('data-loaded')) {
+      box.hidden = !box.hidden;
+      btn.textContent = box.hidden ? 'List the files' : 'Hide the files';
+      return;
     }
-    var legend = $('cbr-legend');
-    function drawLegend() {
-      legend.innerHTML = '';
-      g.cats.slice(0, 8).forEach(function (x) {
-        var i = h('i'); i.style.background = colour(x[0]);
-        legend.appendChild(h('div', {title: x[0]}, i, x[0], h('span', {class: 'n'}, String(x[1]))));
+    call('files', {uid: uid}, 'listing the files').then(function (j) {
+      box.innerHTML = '';
+      box.hidden = false;
+      box.setAttribute('data-loaded', '1');
+      btn.textContent = 'Hide the files';
+      box.appendChild(h('div', {class: 'cbr-muted'}, j.files.length + ' of ' + num(j.total) + (j.more ? '+' : '') +
+        ' file' + (j.total === 1 ? '' : 's') + ' - the meta first; click one to read it'));
+      var ul = h('ul', {class: 'cbr-flist'});
+      var view = h('div', {class: 'cbr-fview'});
+      j.files.forEach(function (f) {
+        var li = h('li', {title: f.mtime}, h('span', {class: 'nm'}, f.rel), h('span', {class: 'n'}, fmtSize(f.size)));
+        li.addEventListener('click', function () {
+          ul.querySelectorAll('li.on').forEach(function (x) { x.classList.remove('on'); });
+          li.classList.add('on');
+          openFile(uid, f.rel, view);
+        });
+        ul.appendChild(li);
       });
-      if (g.cats.length > 8) {
-        var rest = g.cats.slice(8).reduce(function (s, x) { return s + x[1]; }, 0);
-        var i2 = h('i'); i2.style.background = OTHER;
-        legend.appendChild(h('div', {}, i2, (g.cats.length - 8) + ' other categories', h('span', {class: 'n'}, String(rest))));
-      }
-      legend.hidden = !g.cats.length;
-    }
-    drawLegend();
-
-    var nodes = g.nodes.map(function (r, i) {
-      var a = 2 * Math.PI * i / Math.max(1, g.nodes.length);
-      var rad = Math.min(W, H) * 0.35 * Math.sqrt((i + 1) / Math.max(1, g.nodes.length));
-      return {r: r, x: W / 2 + rad * Math.cos(a), y: H / 2 + rad * Math.sin(a), vx: 0, vy: 0, deg: 0, fixed: false};
-    });
-    var byId = {};
-    nodes.forEach(function (n) { byId[n.r.uid] = n; });
-    var links = [];
-    g.links.forEach(function (l) {
-      var s = byId[l.source], t = byId[l.target];
-      if (s && t) { links.push({s: s, t: t}); s.deg++; t.deg++; }
-    });
-
-    var view = el('g');
-    var gl = el('g'), gn = el('g'), gt = el('g');
-    view.appendChild(gl); view.appendChild(gn); view.appendChild(gt);
-    svg.appendChild(view);
-    links.forEach(function (l) { l.el = el('line', 'lk'); gl.appendChild(l.el); });
-    // Every label on a small graph; on a large one only the 25 best connected nodes (the rest on hover)
-    var showAllLabels = nodes.length <= 70;
-    var labelled = {};
-    nodes.slice().sort(function (a, b) { return b.deg - a.deg; }).slice(0, 25)
-      .forEach(function (p) { if (p.deg > 0) labelled[p.r.uid] = 1; });
-    nodes.forEach(function (n) {
-      n.rad = 4 + Math.min(9, Math.sqrt(n.deg) * 2);
-      n.el = el('circle', 'nd' + (n.r.neighbor ? ' nb' : ''));
-      n.el.setAttribute('r', n.rad);
-      n.el.setAttribute('fill', colour(n.r.cat));
-      var t = el('title'); t.textContent = n.r.alias + '  (' + n.r.cat + ', ' + (n.r.repo || 'registry') + ')';
-      n.el.appendChild(t);
-      gn.appendChild(n.el);
-      if (showAllLabels || labelled[n.r.uid]) {
-        n.lb = el('text', 'lb');
-        n.lb.textContent = n.r.alias.length > 34 ? n.r.alias.slice(0, 32) + '…' : n.r.alias;
-        gt.appendChild(n.lb);
-      }
-    });
-    if (!nodes.length) {
-      var t0 = el('text', 'lb'); t0.setAttribute('x', W / 2 - 80); t0.setAttribute('y', H / 2);
-      t0.textContent = 'Nothing matches the query.'; gt.appendChild(t0);
-    }
-
-    // A small force simulation: repulsion between all nodes, springs along the connections, a pull to the centre.
-    // Most of it runs before the first paint, so the picture is already still when it appears and is fitted
-    // once; the rest settles in a few frames without moving the view.
-    if (stopGraph) stopGraph();
-    var alpha = 1, raf = 0, n = nodes.length;
-    var k = Math.sqrt(W * H / Math.max(1, n)) * 0.55;
-    function tick() {
-      var i, j, a, b, dx, dy, d2, f;
-      for (i = 0; i < n; i++) {
-        a = nodes[i];
-        for (j = i + 1; j < n; j++) {
-          b = nodes[j];
-          dx = a.x - b.x; dy = a.y - b.y;
-          d2 = dx * dx + dy * dy || 0.01;
-          if (d2 > 90000) continue;
-          f = k * k / d2 * 0.04 * alpha;
-          a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
-        }
-      }
-      links.forEach(function (l) {
-        var lx = l.t.x - l.s.x, ly = l.t.y - l.s.y;
-        var d = Math.sqrt(lx * lx + ly * ly) || 0.01;
-        var s = (d - k * 0.9) / d * 0.06 * alpha;
-        l.s.vx += lx * s; l.s.vy += ly * s; l.t.vx -= lx * s; l.t.vy -= ly * s;
-      });
-      nodes.forEach(function (p) {
-        p.vx += (W / 2 - p.x) * 0.004 * alpha;
-        p.vy += (H / 2 - p.y) * 0.004 * alpha;
-        if (!p.fixed) { p.x += Math.max(-30, Math.min(30, p.vx)); p.y += Math.max(-30, Math.min(30, p.vy)); }
-        p.vx *= 0.55; p.vy *= 0.55;
-      });
-      alpha *= 0.982;
-    }
-    function paint() {
-      links.forEach(function (l) {
-        l.el.setAttribute('x1', l.s.x); l.el.setAttribute('y1', l.s.y);
-        l.el.setAttribute('x2', l.t.x); l.el.setAttribute('y2', l.t.y);
-      });
-      nodes.forEach(function (p) {
-        p.el.setAttribute('cx', p.x); p.el.setAttribute('cy', p.y);
-        if (p.lb) { p.lb.setAttribute('x', p.x + p.rad + 3); p.lb.setAttribute('y', p.y + 4); }
-      });
-    }
-    function loop() {
-      var steps = n > 350 ? 1 : (n > 150 ? 2 : 3);
-      for (var s = 0; s < steps; s++) tick();
-      paint();
-      raf = alpha > 0.015 ? requestAnimationFrame(loop) : 0;
-    }
-
-    // Zoom, pan, drag, hover, click
-    var tx = 0, ty = 0, sc = 1;
-    function apply() { view.setAttribute('transform', 'translate(' + tx + ',' + ty + ') scale(' + sc + ')'); }
-    function fit() {
-      if (!nodes.length) return;
-      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      nodes.forEach(function (p) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); });
-      var w = Math.max(40, x1 - x0), hh = Math.max(40, y1 - y0);
-      sc = Math.min(2.5, 0.9 * Math.min(W / w, H / hh));
-      tx = W / 2 - sc * (x0 + w / 2); ty = H / 2 - sc * (y0 + hh / 2);
-      apply();
-    }
-
-    // Settle most of the layout now (within ~0.6 s), fit it once, then let the last of it settle on screen
-    var started = Date.now();
-    while (alpha > 0.06 && Date.now() - started < 600) tick();
-    paint();
-    fit();
-    raf = requestAnimationFrame(loop);
-    stopGraph = function () { cancelAnimationFrame(raf); raf = 0; cancelAnimationFrame(wheelRaf); wheelRaf = 0; };
-
-    // Zoom by how far the wheel actually turned, applied at most once per frame. A smooth wheel or a touchpad
-    // sends a burst of small events for one notch, and a few more after the hand stops: a fixed step per event
-    // made one small turn zoom many times over and drift on. Now the zoom is proportional to the turn, so it
-    // stops when the wheel stops, and it stays between 1/20 and 20 times.
-    var wheelDy = 0, wheelX = 0, wheelY = 0, wheelRaf = 0;
-    function zoomStep() {
-      wheelRaf = 0;
-      var f = Math.exp(-Math.max(-300, Math.min(300, wheelDy)) * 0.0015);
-      wheelDy = 0;
-      var nsc = Math.max(0.05, Math.min(20, sc * f));
-      f = nsc / sc;
-      tx = wheelX - (wheelX - tx) * f; ty = wheelY - (wheelY - ty) * f; sc = nsc;
-      apply();
-    }
-    svg.onwheel = function (e) {
-      e.preventDefault();
-      var dy = e.deltaY * (e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? H : 1));
-      if (Math.abs(dy) < 0.5) return;
-      var r = svg.getBoundingClientRect();
-      wheelX = e.clientX - r.left; wheelY = e.clientY - r.top;
-      wheelDy += dy;
-      if (!wheelRaf) wheelRaf = requestAnimationFrame(zoomStep);
-    };
-    svg.ondblclick = function (e) { if (e.target === svg) fit(); };
-    var drag = null;
-    function toWorld(e) {
-      var r = svg.getBoundingClientRect();
-      return {x: (e.clientX - r.left - tx) / sc, y: (e.clientY - r.top - ty) / sc};
-    }
-    svg.onpointerdown = function (e) {
-      var hit = null;
-      nodes.forEach(function (p) { if (p.el === e.target) hit = p; });
-      drag = {node: hit, x: e.clientX, y: e.clientY, tx: tx, ty: ty, moved: false};
-      if (hit) { hit.fixed = true; }
-      else svg.classList.add('panning');
-      svg.setPointerCapture(e.pointerId);
-    };
-    svg.onpointermove = function (e) {
-      if (!drag) return;
-      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) drag.moved = true;
-      if (drag.node) {
-        var w = toWorld(e);
-        drag.node.x = w.x; drag.node.y = w.y;
-        if (alpha < 0.05) { alpha = 0.05; cancelAnimationFrame(raf); loop(); } else paint();
+      box.appendChild(ul);
+      box.appendChild(view);
+    }).catch(function (e) { box.hidden = false; box.textContent = e.message; });
+  }
+  function openFile(uid, rel, view) {
+    call('file', {uid: uid, rel: rel}, 'reading ' + rel).then(function (j) {
+      view.innerHTML = '';
+      if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+      var close = h('button', {type: 'button', class: 'cbr-copy'}, 'close');
+      close.addEventListener('click', function () { view.innerHTML = ''; });
+      view.appendChild(h('div', {class: 'cbr-fhead'}, h('b', {}, j.rel), ' · ' + fmtSize(j.size) +
+        (j.truncated ? ' · the first 512 KB' : '') + ' ', close));
+      if (j.kind === 'text') {
+        view.appendChild(h('pre', {}, j.text));
+      } else if (j.kind === 'binary' && j.b64) {
+        var bin = atob(j.b64), arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        blobUrl = URL.createObjectURL(new Blob([arr], {type: j.mime}));
+        view.appendChild(h('a', {href: blobUrl, target: '_blank', rel: 'noopener'}, 'open in a new tab'));
+        if (j.mime.indexOf('image/') === 0) view.appendChild(h('img', {src: blobUrl, alt: j.rel}));
+        else if (j.mime === 'application/pdf') view.appendChild(h('iframe', {src: blobUrl, title: j.rel}));
       } else {
-        tx = drag.tx + e.clientX - drag.x; ty = drag.ty + e.clientY - drag.y;
-        apply();
+        view.appendChild(h('p', {class: 'cbr-muted'}, j.note || 'not shown'));
       }
-    };
-    svg.onpointerup = function () {
-      if (drag && drag.node) {
-        drag.node.fixed = false;
-        if (!drag.moved) openDetail(drag.node.r.uid);
-      }
-      drag = null;
-      svg.classList.remove('panning');
-    };
-    nodes.forEach(function (p) {
-      p.el.addEventListener('mouseenter', function () {
-        p.el.classList.add('hot');
-        links.forEach(function (l) { if (l.s === p || l.t === p) l.el.classList.add('hot'); });
-        if (!p.lb) {
-          p.tmp = el('text', 'lb'); p.tmp.textContent = p.r.alias;
-          p.tmp.setAttribute('x', p.x + p.rad + 3); p.tmp.setAttribute('y', p.y + 4); gt.appendChild(p.tmp);
+    }).catch(function (e) { view.textContent = e.message; });
+  }
+
+  /* ------------------------------------------------------------------ Graph view */
+  var graph = null;          // the graph on screen (CBRGraph)
+  var gdata = null;          // what the server sent for it
+  var gToken = 0;
+  var gTimes = {};           // the stages measured here: transfer, draw, layout
+  function graphParams() {
+    return {q: st.q, repos: st.repos, cats: st.cats, after: st.after, before: st.before, focus: st.focus,
+            depth: st.depth, max_nodes: st.max_nodes, categories: st.categories, core: st.core,
+            isolated: st.isolated, neighbors: st.neighbors};
+  }
+  function loadGraph() {
+    var my = ++gToken, t0 = performance.now();
+    syncGraphControls();
+    // the first graph of a server process waits for the connections to be read (seconds, once)
+    var what = indexState && indexState.ready ? 'building the graph'
+                                              : 'building the graph (the first one reads every connection)';
+    return call('graph', graphParams(), what)
+      .then(function (g) {
+        if (my !== gToken) return;
+        gTimes = {transfer: Math.max(0, performance.now() - t0 - (g.timing.server || 0))};
+        gdata = g;
+        subtitle({index: g.index});
+        renderGraph(g);
+      })
+      .catch(function (e) { if (my === gToken) showError(e.message); });
+  }
+  function isDark() { return root.classList.contains('dark'); }
+  function renderGraph(g) {
+    graph = CBRGraph.create($('cbr-svg'), g, {
+      dark: isDark(),
+      labelsAll: st.labels === '1',
+      showLinks: st.links === '1',
+      onSelect: function (n) {
+        if (n.kind === 'artifact') openDetail(n.id);
+        else if (n.kind === 'category' && n.uid) openDetail(n.uid);
+      },
+      onFocus: function (n) {
+        if (n.kind === 'artifact') focusOn(n.id, st.depth);
+        else if (n.kind === 'category') {         // a category: the graph of that category alone
+          st.cats = n.cat;
+          st.focus = '';
+          pickerLabel('cats');
+          if (options) buildPicker('cats');
+          run();
         }
-      });
-      p.el.addEventListener('mouseleave', function () {
-        p.el.classList.remove('hot');
-        links.forEach(function (l) { l.el.classList.remove('hot'); });
-        if (p.tmp) { gt.removeChild(p.tmp); p.tmp = null; }
+      },
+      onZoom: function (k) { $('cbr-g-zoom').textContent = Math.round(k * 100) + '%'; },
+      onBusy: function (on, n) { busy(on, 'arranging ' + num(n) + ' nodes'); },
+      onSettled: function (ms) { gTimes.layout = ms; showTimes(); }
+    });
+    gTimes.draw = graph.buildMs();
+    drawLegend(g);
+    showNotices(g);
+    showFocus(g);
+    graphStatus(g);
+    showTimes();
+  }
+  function graphStatus(g) {
+    var s = g.stats;
+    var t = num(s.matched) + (g.focus ? ' within ' + g.focus.depth + ' hop' + (g.focus.depth === 1 ? '' : 's')
+                                      : ' matching') +
+      ' · ' + num(s.drawn) + ' drawn in ' + num(s.categories) + ' categor' + (s.categories === 1 ? 'y' : 'ies') +
+      ' · ' + num(s.links) + ' connection' + (s.links === 1 ? '' : 's') +
+      (s.uses ? ', ' + num(s.uses) + ' uses' : '') +
+      (s.ai_uses ? ', ' + num(s.ai_uses) + ' AI uses' : '') +
+      (s.grown ? ' · +' + num(s.grown) + ' connected' : '') +
+      (st.links === '1' || !g.options.categories || !s.links ? '' : ' (drawn on hover)');
+    $('cbr-status').textContent = t;
+  }
+  // One line of timings, so a slow answer shows WHICH stage was slow
+  function showTimes() {
+    if (!gdata) return;
+    var T = gdata.timing || {}, I = gdata.index || {};
+    var bits = ['server <b>' + msText(T.server || 0) + '</b> (catalog ' + msText(T.catalog || 0) +
+                ' · connections ' + msText(T.index || 0) + ' · selection ' + msText(T.select || 0) +
+                ' · graph ' + msText(T.graph || 0) + ')'];
+    if (gTimes.transfer != null) bits.push('transfer ' + msText(gTimes.transfer));
+    if (gTimes.draw != null) bits.push('draw ' + msText(gTimes.draw));
+    bits.push('layout ' + (gTimes.layout == null ? '...' : msText(gTimes.layout)));
+    bits.push(num(gdata.nodes.length) + ' nodes / ' + num(gdata.links.length) + ' edges');
+    if (I.ready) {
+      bits.push('connection index: ' + num(I.total) + ' artifacts, ' + num(I.links) + ' connections, ' +
+                num(I.uses) + ' uses' + (I.ai_uses ? ', ' + num(I.ai_uses) + ' AI uses' : '') + ', read in ' +
+                msText(I.ms) + ' at ' + esc((I.built || '').slice(11, 16)));
+    }
+    $('cbr-g-time').innerHTML = bits.join(' &middot; ');
+  }
+  function showNotices(g) {
+    var box = $('cbr-g-notices');
+    box.innerHTML = '';
+    (g.notices || []).forEach(function (t) { box.appendChild(h('div', {}, t)); });
+  }
+  function showFocus(g) {
+    var el = $('cbr-g-focus');
+    el.innerHTML = '';
+    if (!st.focus) { el.hidden = true; return; }
+    el.hidden = false;
+    el.appendChild(document.createTextNode('Focus: '));
+    el.appendChild(h('b', {}, g.focus ? g.focus.alias : st.focus));
+    var sel = depthSelect(st.depth);
+    sel.addEventListener('change', function () { st.depth = sel.value === '2' ? '' : sel.value; loadGraph(); syncUrl(); });
+    el.appendChild(h('label', {}, ' depth ', sel));
+    var x = h('button', {type: 'button', class: 'cbr-link', title: 'Back to the graph of the query'}, 'exit');
+    x.addEventListener('click', function () { st.focus = ''; st.depth = ''; syncUrl(); loadGraph(); });
+    el.appendChild(x);
+  }
+  function drawLegend(g) {
+    var legend = $('cbr-legend');
+    legend.innerHTML = '';
+    var cats = g.cats || [];
+    cats.slice(0, 12).forEach(function (c) {
+      var sw = h('i');
+      sw.style.background = CBRGraph.colour(c[0], isDark());
+      var row = h('button', {type: 'button', title: c[0] + ': ' + c[1] + ' drawn - click to select it'},
+                  sw, h('span', {class: 'nm'}, c[0]), h('span', {class: 'n'}, num(c[1])));
+      row.addEventListener('click', function () { if (graph) graph.select('__cat__' + c[2]); });
+      legend.appendChild(row);
+    });
+    if (cats.length > 12) {
+      var rest = cats.slice(12).reduce(function (s, c) { return s + c[1]; }, 0);
+      legend.appendChild(h('div', {class: 'cbr-muted'}, '+ ' + (cats.length - 12) + ' more categories (' + num(rest) + ')'));
+    }
+    legend.hidden = !cats.length || !on(st.categories, true);
+  }
+  // The graph switches follow the state (the URL), and change it
+  function syncGraphControls() {
+    var cats = on(st.categories, true);
+    $('cbr-g-categories').checked = cats;
+    $('cbr-g-core').checked = on(st.core, false);
+    $('cbr-g-core').disabled = !cats;
+    $('cbr-g-isolated').checked = on(st.isolated, false);
+    $('cbr-g-isolated').disabled = cats;
+    $('cbr-g-neighbors').checked = on(st.neighbors, false);
+    $('cbr-g-neighbors').disabled = !!st.focus;
+    $('cbr-g-labels').checked = st.labels === '1';
+    $('cbr-g-max').value = st.max_nodes || '';
+    $('cbr-g-max').placeholder = String(GCFG.max_nodes);
+    $('cbr-g-max').max = String(GCFG.max);
+    var lk = $('cbr-g-links');
+    lk.classList.toggle('on', st.links === '1');
+    lk.setAttribute('aria-pressed', st.links === '1' ? 'true' : 'false');
+  }
+  function initGraphControls() {
+    // what changes the server's answer reloads the graph; names and connections are redrawn on the spot
+    [['categories', true], ['core', false], ['isolated', false], ['neighbors', false]].forEach(function (x) {
+      $('cbr-g-' + x[0]).addEventListener('change', function () {
+        var v = $('cbr-g-' + x[0]).checked;
+        st[x[0]] = v === x[1] ? '' : (v ? '1' : '0');
+        syncUrl();
+        loadGraph();
       });
     });
-    apply();
-    return {
-      recolour: function () {
-        nodes.forEach(function (p) { p.el.setAttribute('fill', colour(p.r.cat)); });
-        drawLegend();
-      }
-    };
+    $('cbr-g-max').addEventListener('change', function () {
+      var raw = $('cbr-g-max').value.trim(), v = parseInt(raw, 10);
+      if (raw === '' || !isFinite(v)) st.max_nodes = '';
+      else st.max_nodes = String(Math.max(10, Math.min(GCFG.max, v)));
+      syncUrl();
+      loadGraph();
+    });
+    $('cbr-g-labels').addEventListener('change', function () {
+      st.labels = $('cbr-g-labels').checked ? '1' : '';
+      syncUrl();
+      if (graph) graph.setLabels(st.labels === '1');
+    });
+    $('cbr-g-links').addEventListener('click', function () {
+      st.links = st.links === '1' ? '' : '1';
+      syncUrl();
+      syncGraphControls();
+      if (graph) graph.setLinks(st.links === '1');
+      if (gdata) graphStatus(gdata);
+    });
+    $('cbr-g-fit').addEventListener('click', function () { if (graph) graph.fit(); });
+    $('cbr-g-one').addEventListener('click', function () { if (graph) graph.reset(); });
+    $('cbr-g-relayout').addEventListener('click', function () {
+      if (graph) { gTimes.layout = null; showTimes(); graph.relayout(); }
+    });
+    var rt = 0;
+    window.addEventListener('resize', function () {
+      clearTimeout(rt);
+      rt = setTimeout(function () { if (graph && st.view === 'graph') graph.resize(); }, 150);
+    });
   }
 
   /* ------------------------------------------------------------------ views */
@@ -726,19 +792,21 @@
     root.querySelectorAll('.cbr-tab').forEach(function (b) {
       b.addEventListener('click', function () { setView(b.getAttribute('data-view')); });
     });
+    // a new query (or new dates) leaves a focus: the graph is of the query again; the pickers keep it (a scope)
     $('cbr-form').addEventListener('submit', function (e) {
       e.preventDefault();
       closePickers();
       st.q = $('cbr-q').value.trim();
       st.sort = '';
       st.dir = '';
+      st.focus = '';
       run();
     });
     ['after', 'before'].forEach(function (k) {
-      $('cbr-' + k).addEventListener('change', function () { st[k] = $('cbr-' + k).value; run(); });
+      $('cbr-' + k).addEventListener('change', function () { st[k] = $('cbr-' + k).value; st.focus = ''; run(); });
     });
     $('cbr-clear').addEventListener('click', function () {
-      st.q = st.repos = st.cats = st.after = st.before = st.sort = st.dir = '';
+      st.q = st.repos = st.cats = st.after = st.before = st.sort = st.dir = st.focus = st.depth = '';
       $('cbr-q').value = ''; $('cbr-after').value = ''; $('cbr-before').value = '';
       pickerLabel('repos'); pickerLabel('cats');
       if (options) { buildPicker('repos'); buildPicker('cats'); }
@@ -746,11 +814,15 @@
     });
     $('cbr-help-btn').addEventListener('click', function () { $('cbr-help').hidden = !$('cbr-help').hidden; });
     $('cbr-reload').addEventListener('click', function () {
-      call('reload', {}, 'reloading the index').then(function (o) { options = o; buildPicker('repos'); buildPicker('cats'); run(); })
-        .catch(function (e) { showError(e.message); });
+      call('reload', {}, 'reloading the index').then(function (o) {
+        options = o;
+        subtitle(o);
+        buildPicker('repos');
+        buildPicker('cats');
+        run();
+      }).catch(function (e) { showError(e.message); });
     });
-    $('cbr-gmax').addEventListener('change', function () { if (st.view === 'graph') loadGraph(); });
-    $('cbr-gnb').addEventListener('change', function () { if (st.view === 'graph') loadGraph(); });
+    initGraphControls();
     root.querySelectorAll('[data-copy-from]').forEach(function (b) {
       b.addEventListener('click', function () { copy($(b.getAttribute('data-copy-from')).textContent, b); });
     });
@@ -765,13 +837,22 @@
     var wantUid = st.uid;
     call('options', {}, 'loading the index').then(function (o) {
       options = o;
-      $('cbr-sub').textContent = 'Search, browse and graph ' + o.total + ' artifacts in ' + o.repos.length +
-        ' repositories and ' + o.cats.length + ' categories.';
+      subtitle(o);
       buildPicker('repos');
       buildPicker('cats');
       setView(st.view);
       if (wantUid) openDetail(wantUid);
     }).catch(function (e) { showError(e.message); });
+  }
+  // The connections are read in the background; any answer that carries the state of that index updates this
+  // line (no polling: on the engine cserver every call can land in another worker process, with its own index)
+  function subtitle(o) {
+    if (o && o.total != null) options = o;
+    if (o && o.index) indexState = o.index;
+    if (!options) return;
+    $('cbr-sub').textContent = 'Search, browse and graph ' + num(options.total) + ' artifacts in ' +
+      options.repos.length + ' repositories and ' + options.cats.length + ' categories' +
+      (indexState && indexState.ready ? ', joined by ' + num(indexState.links) + ' connections.' : '.');
   }
   init();
 })();

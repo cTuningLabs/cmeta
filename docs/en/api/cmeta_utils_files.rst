@@ -18,6 +18,8 @@ Functions
 
 .. autofunction:: cmeta.utils.files.diff_env
 
+.. autofunction:: cmeta.utils.files.edit_yaml_text
+
 .. autofunction:: cmeta.utils.files.files_decode
 
 .. autofunction:: cmeta.utils.files.files_encode
@@ -41,6 +43,8 @@ Functions
 .. autofunction:: cmeta.utils.files.lock_path
 
 .. autofunction:: cmeta.utils.files.md5sum
+
+.. autofunction:: cmeta.utils.files.order_meta_keys
 
 .. autofunction:: cmeta.utils.files.parse_env_dump
 
@@ -78,6 +82,8 @@ Functions
 
 .. autofunction:: cmeta.utils.files.write_file
 
+.. autofunction:: cmeta.utils.files.yaml_dump_keep
+
 .. autofunction:: cmeta.utils.files.zip_directory
 
 Constants
@@ -98,3 +104,7 @@ Constants
 .. autodata:: cmeta.utils.files.RETRY_REPLACE_FILE
 
 .. autodata:: cmeta.utils.files.RETRY_TIMESTAMP_FILE
+
+.. autodata:: cmeta.utils.files.YAML_DUMP_KEEP
+
+.. autodata:: cmeta.utils.files.YAML_META_KEY_ORDER

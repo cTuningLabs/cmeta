@@ -562,6 +562,10 @@ async def _serve_page(
 
     cmeta_params['query'] = query
 
+    # Whether the browser runs on this machine: the real peer address, and no proxy header (a Host header proves
+    # nothing). A page may then offer more than to the network - cserver.browse shows the files of an artifact.
+    cmeta_params['misc'] = {'client_local': _is_local(_peer_ip(request)) and not _via_proxy(request)}
+
     r = await cm.access(cmeta_params)
     if r['return']>0:
         if quiet:
