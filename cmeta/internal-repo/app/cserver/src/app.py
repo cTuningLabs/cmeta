@@ -195,6 +195,38 @@ def _is_local(ip):
         return False
 
 
+def _host_local(request):
+    """True when the Host header names this machine: localhost, *.localhost or a loopback address.
+
+    A page that a browser on this machine loads from another name that resolves to 127.0.0.1 (DNS rebinding)
+    reaches the server from loopback too; its Host header still carries that other name.
+    """
+    host = request.headers.get('host', '').strip().lower()
+    if host.startswith('['):
+        name = host[1:].split(']', 1)[0]
+    else:
+        name = host.rsplit(':', 1)[0] if host.count(':') == 1 else host
+    return name == 'localhost' or name.endswith('.localhost') or _is_local(name)
+
+
+def _same_origin(request):
+    """True unless a browser says the request came from a page of another site.
+
+    Browsers send Sec-Fetch-Site (same-origin, same-site, cross-site, or none for a typed address) and, on a POST,
+    Origin. A request with neither did not come from a web page (the CLI, curl, a script).
+    """
+    site = request.headers.get('sec-fetch-site', '').strip().lower()
+    if site:
+        return site in ('same-origin', 'none')
+    origin = request.headers.get('origin', '').strip().lower()
+    if not origin:
+        return True
+    try:
+        return urllib.parse.urlsplit(origin).netloc == request.headers.get('host', '').strip().lower()
+    except ValueError:
+        return False
+
+
 VIA_PROXY_BUCKET = 'via-untrusted-proxy'
 
 
@@ -562,9 +594,13 @@ async def _serve_page(
 
     cmeta_params['query'] = query
 
-    # Whether the browser runs on this machine: the real peer address, and no proxy header (a Host header proves
-    # nothing). A page may then offer more than to the network - cserver.browse shows the files of an artifact.
-    cmeta_params['misc'] = {'client_local': _is_local(_peer_ip(request)) and not _via_proxy(request)}
+    # Whether the browser runs on this machine: the real peer address, no proxy header, and a Host header that
+    # names this machine (a loopback peer alone could be a page reached by DNS rebinding). A page may then offer
+    # more than to the network - cserver.browse shows the files of an artifact and opens its folder.
+    # same_origin: no browser said the request came from a page of another site - for actions with side effects.
+    cmeta_params['misc'] = {'client_local': (_is_local(_peer_ip(request)) and not _via_proxy(request)
+                                             and _host_local(request)),
+                            'same_origin': _same_origin(request)}
 
     r = await cm.access(cmeta_params)
     if r['return']>0:

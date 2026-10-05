@@ -18,6 +18,34 @@ All notable changes to cMeta are documented here, newest first.
   or a dict with `cref`). `cserver.browse` reads it into its connection index, draws it as a dashed arrow, lists
   "AI uses" in the detail and marks who reads an artifact among its incoming links; the index line and the graph
   status count it. `connections` stay the undirected links of the graph.
+- **`/browse` searches the text of the `_desc` files.** Words and phrases find the description of an
+  artifact as well as its meta (not its `connections`, `uses` and `ai_uses` lists, which the graph shows);
+  the snippet says where (`_desc.notes: ...`). New qualifiers: `_desc:<text>` (the whole `_desc`, its links
+  too), `_desc.<key>:<value>` (dotted keys, any item of a list, `*` `?` patterns) and `has:_desc` /
+  `has:_desc.<key>`, each with `-` for not. The status line says how many descriptions were searched. The
+  terminal command `cx cserver.browse query` searches them too.
+- **`/browse` keeps what every `_desc` declares in the cache artifact `cache::cserver--browse`** (the
+  `local` repository; created on first use, made again after `cx cache rm cserver--browse`), never in the
+  index folder: connections, uses, ai_uses and the text, by file, mtime and size. A new worker process of
+  the server, a restart or the terminal command read again only the `_desc` files that changed (11,000
+  artifacts: ~0.3 s instead of 1-3 s); the file is replaced atomically, so processes never read half of
+  it. The index is also checked again, in the background, on a request more than 30 s after the last
+  check, so an edited `_desc` is found without a reload; only the first build, one after an index change
+  and one after a reload are waited for.
+- **`/browse` opens an artifact's folder on the server's machine:** **Open folder**, **Shell** and
+  **Far** in the detail (the file manager; `cmd` on Windows, Terminal on macOS, the first terminal
+  emulator found on Linux; Far Manager, or far2l). Only for a browser on that machine, only for a request a
+  page of this server sent, only the folder of an artifact the page shows (by UID, never a path from the
+  request), never a category that holds keys; a button shows only when its program is found. `browse_open:
+  no` turns them off; `browse_far` / `browse_terminal` (or `CMETA_FAR` / `CMETA_TERMINAL`) name the
+  programs. `?native_action=open&uid=...&what=folder|shell|far&dry=1` says what would run.
+- **A company's own `/browse`:** `browse_title` in the `cserver` config titles the page, and
+  `browse_default_query`, `browse_default_repos`, `browse_default_cats`, `browse_default_view` are what a
+  bare `/browse` (a URL without a query) opens with.
+- **The engine `cserver` tells a page more precisely where a request comes from.** `misc.client_local`
+  now also needs a `Host` header that names the machine (`localhost`, `*.localhost`, a loopback address),
+  so a page that reaches the server through DNS rebinding no longer counts as local; `misc.same_origin` is
+  false when the browser says the request came from another site's page (`Sec-Fetch-Site`, `Origin`).
 - **`CLAUDE.md` follows the one-branch rule of `AGENTS.md` §5.0:** the maintainer and the agents working for the
   maintainer commit on `dev` and only with the maintainer's go-ahead; dated `YYYYMMDD-…` branches are for other
   contributors. It still told agents to branch first. It also lists every skill in `.claude/skills/` and points to

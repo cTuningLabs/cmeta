@@ -5,7 +5,7 @@
 <div id="cbr" class="cbr">
   <header class="cbr-head">
     <div class="cbr-title">
-      <h1>cMeta browse</h1>
+      <h1>%%TITLE%%</h1>
       <p class="cbr-sub" id="cbr-sub">Search, browse and graph the artifacts of every plugged repository.</p>
     </div>
     <div class="cbr-tools">
@@ -24,7 +24,7 @@
   <form id="cbr-form" class="cbr-bar" autocomplete="off">
     <div class="cbr-row1">
       <input id="cbr-q" type="search" spellcheck="false"
-             placeholder="Names, tags, anything in meta  -  e.g.  sla tag:report after:2026-09-01      ( / to focus )">
+             placeholder="Names, tags, meta, descriptions  -  e.g.  sla tag:report after:2026-09-01      ( / to focus )">
       <button type="submit" class="cbr-go">Search</button>
     </div>
     <div class="cbr-row2">
@@ -45,13 +45,17 @@
 
   <div id="cbr-help" class="cbr-help" hidden>
     <table>
-      <tr><td><code>word "a phrase"</code></td><td>in the alias, UID, tags or any value of the meta</td></tr>
-      <tr><td><code>-word</code></td><td>not there</td></tr>
+      <tr><td><code>word "a phrase"</code></td><td>in the alias, UID, tags, any value of the meta or the text of the <code>_desc</code>
+        (not its <code>connections</code>, <code>uses</code> and <code>ai_uses</code>: the graph shows those)</td></tr>
+      <tr><td><code>-word</code></td><td>in none of them</td></tr>
       <tr><td><code>repo:name</code> <code>cat:name</code></td><td>a repository / category (alias, UID, or the part after @); several = any of them</td></tr>
       <tr><td><code>tag:sla</code> <code>-tag:draft</code></td><td>has / has not this tag</td></tr>
       <tr><td><code>after:2026-09-01</code> <code>before:2026-10</code></td><td>created on or after / before (a year or a month works too)</td></tr>
       <tr><td><code>has:generator</code> <code>-has:connections</code></td><td>the meta has / has not this key (dotted keys work)</td></tr>
       <tr><td><code>generator.method:task</code></td><td>a meta value contains it (any item of a list)</td></tr>
+      <tr><td><code>_desc:mlperf</code> <code>-_desc:draft</code></td><td>the <code>_desc</code> contains it (keys and values, its links too) / does not</td></tr>
+      <tr><td><code>_desc.connections:fursin</code></td><td>a value at that key of the <code>_desc</code> contains it (dotted keys, any item of a list)</td></tr>
+      <tr><td><code>has:_desc</code> <code>-has:_desc.ai_uses</code></td><td>has a <code>_desc</code> / its <code>_desc</code> has not this key</td></tr>
       <tr><td><code>uid:14b2</code></td><td>the UID starts with it</td></tr>
       <tr><td><code>task::setup*</code></td><td>a cRef: category::artifact</td></tr>
       <tr><td><code>* ?</code></td><td>patterns: <code>repo:ctuninglabs@*</code>, <code>tag:sla*</code></td></tr>

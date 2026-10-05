@@ -258,6 +258,7 @@ cx cserver.projects pages
 # Search every artifact of every plugged repository (the /browse page does the same in a browser)
 cx cserver.browse query "tag:report after:2026-09-01"
 cx cserver.browse query "" --repos=myorg@my-repo --cats=task --sort=updated
+cx cserver.browse query "_desc:mlperf has:_desc.connections"   # words and _desc: qualifiers read every _desc
 
 # Serve it to your own devices, behind one shared password
 cx config set cserver --meta.password="a passphrase of your own"

@@ -266,6 +266,9 @@
     if (r.total) s += ' · ' + (r.offset + 1) + '–' + (r.offset + r.rows.length) + ' shown';
     s += ' · sorted by ' + r.sort + (r.sort === 'relevance' ? '' : (r.dir === 'desc' ? ' ↓' : ' ↑'));
     s += ' · ' + r.ms + ' ms';
+    var dsc = r.descs || {};
+    if (dsc.asked) s += dsc.searched ? ' · meta and ' + num(dsc.count) + ' descriptions searched'
+                                     : ' · the descriptions are not read yet: the meta alone was searched';
     if (r.catalog && r.catalog.built) s += ' · index loaded ' + r.catalog.built;
     $('cbr-status').textContent = s;
   }
@@ -425,6 +428,7 @@
         if (x[1]) facts.appendChild(h('tr', {}, h('td', {}, x[0]), h('td', {}, x[1])));
       });
       box.appendChild(facts);
+      if (CFG.open && OPEN.some(function (w) { return CFG.open[w[0]]; })) box.appendChild(openBar(d.row.uid));
       if (d.row.migrated_to) {
         var m = h('p', {}, 'Migrated to ');
         if (d.migrated_to_uid) {
@@ -475,6 +479,28 @@
     $('cbr-detail').hidden = true;
     st.uid = '';
     syncUrl();
+  }
+  // Open the folder on this machine (a browser on the server's own machine only): file manager, shell, Far
+  var OPEN = [['folder', 'Open folder', 'Open this folder in the file manager'],
+              ['shell', 'Shell', 'A terminal in this folder'],
+              ['far', 'Far', 'Far Manager in this folder']];
+  function openBar(uid) {
+    var bar = h('div', {class: 'cbr-d-open'});
+    var msg = h('span', {class: 'msg', 'aria-live': 'polite'});
+    OPEN.forEach(function (w) {
+      if (!CFG.open[w[0]]) return;
+      var b = h('button', {type: 'button', class: 'cbr-btn', title: w[2]}, w[1]);
+      b.addEventListener('click', function () {
+        msg.className = 'msg';
+        msg.textContent = 'opening...';
+        call('open', {uid: uid, what: w[0]}, null)
+          .then(function () { msg.textContent = (w[0] === 'folder' ? 'the folder' : w[1]) + ' opened on this machine'; })
+          .catch(function (e) { msg.className = 'msg bad'; msg.textContent = e.message; });
+      });
+      bar.appendChild(b);
+    });
+    bar.appendChild(msg);
+    return bar;
   }
   // "Focus the graph here": everything within N connections of this artifact, in the Graph tab
   function depthSelect(cur) {
@@ -655,9 +681,13 @@
     bits.push('layout ' + (gTimes.layout == null ? '...' : msText(gTimes.layout)));
     bits.push(num(gdata.nodes.length) + ' nodes / ' + num(gdata.links.length) + ' edges');
     if (I.ready) {
+      var C = I.cache || {};
       bits.push('connection index: ' + num(I.total) + ' artifacts, ' + num(I.links) + ' connections, ' +
-                num(I.uses) + ' uses' + (I.ai_uses ? ', ' + num(I.ai_uses) + ' AI uses' : '') + ', read in ' +
-                msText(I.ms) + ' at ' + esc((I.built || '').slice(11, 16)));
+                num(I.uses) + ' uses' + (I.ai_uses ? ', ' + num(I.ai_uses) + ' AI uses' : '') + ', ' +
+                num(I.descs) + ' descriptions, built in ' + msText(I.ms) + ' at ' + esc((I.built || '').slice(11, 16)) +
+                (!C.artifact ? '' : I.reread >= I.descs ? ' (every _desc read, then kept in ' + esc(C.artifact) + ')'
+                                  : ' (' + num(I.reread) + ' re-read, the rest from ' + esc(C.artifact) + ')') +
+                (C.error ? ' · ' + esc(C.error) : ''));
     }
     $('cbr-g-time').innerHTML = bits.join(' &middot; ');
   }

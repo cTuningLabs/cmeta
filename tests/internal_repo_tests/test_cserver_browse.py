@@ -8,6 +8,7 @@ Each test runs against a fresh <CMETA_HOME> in tmp_path with a few artifacts of 
 
 import json
 import os
+import sys
 
 import pytest
 
@@ -16,6 +17,7 @@ from cmeta import CMeta
 URLS = {'url': 'http://127.0.0.1:8004/browse?', 'url_files': 'http://127.0.0.1:8004/browse/',
         'url_server': 'http://127.0.0.1:8004/'}
 LOCAL = {'client_local': True}       # what the engine cserver passes for a browser on its own machine
+BOTH = {'client_local': True, 'same_origin': True}      # ... and for a request a page of this server sent
 
 
 @pytest.fixture()
@@ -64,6 +66,17 @@ def connect(path, *crefs, uses=None):
         desc['uses'] = uses
     with open(os.path.join(path, '_desc.json'), 'w', encoding='utf-8') as f:
         json.dump(desc, f)
+
+
+def describe(path, desc):
+    """Write any _desc of an artifact folder."""
+    with open(os.path.join(path, '_desc.json'), 'w', encoding='utf-8') as f:
+        json.dump(desc, f)
+
+
+def page_config(r):
+    """The CONFIG the page carries."""
+    return json.loads(r['html_meta']['html'].split('var CONFIG = ', 1)[1].split(';</script>', 1)[0])
 
 
 def arts(g):
@@ -317,3 +330,91 @@ def test_the_terminal_query(cm, capsys):
     assert r['return'] == 0, r
     assert r['total'] == 1 and r['rows'][0]['alias'] == 'sla-report'
     assert '1 of' in capsys.readouterr().out
+
+
+def test_words_find_the_text_of_the_desc_but_not_its_links(cm):
+    a, pa = make(cm, 'zoo-plan')
+    b, pb = make(cm, 'zoo-links')
+    describe(pa, {'notes': 'The Unicorn enclosure needs a Fence', 'owner': {'team': 'keepers'}})
+    describe(pb, {'connections': ['log::zoo-plan,%s' % a], 'summary': 'links only'})
+
+    out = search(cm, q='unicorn', cats='log')
+    assert aliases(out) == ['zoo-plan'] and out['descs']['searched'] and out['descs']['asked']
+    assert out['rows'][0]['snippet'] == '_desc.notes: The Unicorn enclosure needs a Fence'
+    assert aliases(search(cm, q='"unicorn enclosure" fence', cats='log')) == ['zoo-plan']
+    assert aliases(search(cm, q='zoo -unicorn', cats='log')) == ['zoo-links']
+    assert aliases(search(cm, q='zoo-plan', cats='log')) == ['zoo-plan']       # words skip the link lists
+    assert aliases(search(cm, q='_desc:zoo-plan', cats='log')) == ['zoo-links']  # _desc: reads them
+    assert aliases(search(cm, q='_desc.owner.team:keep', cats='log')) == ['zoo-plan']
+    assert aliases(search(cm, q='_desc.owner:keep*', cats='log')) == ['zoo-plan']  # a pattern: a whole value
+    assert search(cm, q='_desc.notes:keepers', cats='log')['total'] == 0
+    assert aliases(search(cm, q='zoo -_desc:unicorn', cats='log')) == ['zoo-links']
+    assert sorted(aliases(search(cm, q='has:_desc', cats='log'))) == ['zoo-links', 'zoo-plan']
+    assert aliases(search(cm, q='has:_desc.connections', cats='log')) == ['zoo-links']
+    assert sorted(aliases(search(cm, q='-has:_desc', cats='log'))) == ['gpu-costs', 'plain', 'sla-notes',
+                                                                       'sla-report']
+    assert search(cm, cats='log')['descs'] == {'asked': False, 'searched': False, 'count': 0}   # no words: no wait
+
+
+def test_the_desc_files_are_kept_in_the_cache_artifact(cm, tmp_path):
+    uid, path = make(cm, 'cached-one')
+    describe(path, {'notes': 'a zebra crossing'})
+    assert aliases(search(cm, q='zebra', cats='log')) == ['cached-one']
+    r = cm.access({'category': 'cache', 'command': 'find', 'arg1': 'cserver--browse', 'con': False})
+    assert r['return'] == 0 and len(r['artifacts']) == 1, r
+    assert r['artifacts'][0]['cmeta']['generator']['method'] == 'script'     # made by the page, not by a person
+    cache_dir = r['artifacts'][0]['path']
+    assert os.path.isfile(os.path.join(cache_dir, 'desc_index.pickle'))
+
+    cm2 = CMeta(home=str(tmp_path))                  # another server process: the _desc files come from the cache
+    assert aliases(search(cm2, q='zebra', cats='log')) == ['cached-one']
+    idx = web(cm2, native_action='index')['json']
+    assert idx['ready'] and idx['reread'] == 0 and idx['cache']['artifact'] == 'cache::cserver--browse'
+
+    describe(path, {'notes': 'a giraffe crossing now'})    # an edit is read again, nothing else is
+    web(cm2, native_action='reload')
+    assert aliases(search(cm2, q='giraffe', cats='log')) == ['cached-one']
+    assert web(cm2, native_action='index')['json']['reread'] == 1
+
+    r = cm.access({'category': 'cache', 'command': 'rm', 'arg1': 'cserver--browse', 'force': True, 'con': False})
+    assert r['return'] == 0 and not os.path.isdir(cache_dir), r
+    cm3 = CMeta(home=str(tmp_path))                  # removed: the next process reads everything and makes it again
+    assert aliases(search(cm3, q='giraffe', cats='log')) == ['cached-one']
+    assert os.path.isfile(os.path.join(cache_dir, 'desc_index.pickle'))
+
+
+def test_open_a_folder_only_from_this_machine_and_from_a_page_of_this_server(cm):
+    uid, path = make(cm, 'to-open')
+    assert 'error' in web(cm, native_action='open', uid=uid, dry='1')['json']      # a browser elsewhere
+    assert 'did not come from a page of this server' in \
+        web(cm, LOCAL, native_action='open', uid=uid, dry='1')['json']['error']   # another site's page
+    for what in ('folder', 'shell'):
+        out = web(cm, BOTH, native_action='open', uid=uid, what=what, dry='1')['json']
+        if 'error' in out:                           # a Linux server with no desktop, or no terminal
+            assert sys.platform.startswith('linux') and ('desktop' in out['error'] or 'found' in out['error'])
+        else:
+            assert out['path'] == os.path.realpath(path) and out['dry'] and out['opened'] == what and out['cmd']
+    assert 'error' in web(cm, BOTH, native_action='open', uid=uid, what='rm -rf', dry='1')['json']
+    assert 'error' in web(cm, BOTH, native_action='open', uid='0123456789abcdef', dry='1')['json']
+
+    assert sorted(page_config(web(cm, BOTH))['open']) == ['far', 'folder', 'shell']
+    assert page_config(web(cm))['open'] == {}
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'meta': {'browse_open': 'no'},
+                   'con': False})
+    assert r['return'] == 0, r
+    assert page_config(web(cm, BOTH))['open'] == {}
+    assert 'error' in web(cm, BOTH, native_action='open', uid=uid, dry='1')['json']
+
+
+def test_a_bare_page_opens_with_the_presets_of_the_server(cm):
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'con': False, 'meta': {
+        'browse_title': 'Acme <knowledge>', 'browse_default_query': 'tag:sla', 'browse_default_repos': 'local',
+        'browse_default_cats': ['log', 'note'], 'browse_default_view': 'graph'}})
+    assert r['return'] == 0, r
+    r = web(cm)
+    assert r['html_meta']['page_title'] == 'Acme <knowledge>'
+    assert '<h1>Acme &lt;knowledge&gt;</h1>' in r['html_meta']['html']
+    s = page_config(r)['state']
+    assert (s['q'], s['repos'], s['cats'], s['view']) == ('tag:sla', 'local', 'log,note', 'graph')
+    s = page_config(web(cm, q='gpu'))['state']                 # a URL with a query keeps its own state
+    assert (s['q'], s['repos'], s['cats'], s['view']) == ('gpu', '', '', '')

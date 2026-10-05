@@ -263,6 +263,10 @@
 .cbr-links .missing { color: var(--cbr-muted); }
 .cbr-d-graph { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0 4px; font-size: 13px;
   color: var(--cbr-muted); }
+/* Open the folder on this machine: file manager, shell, Far */
+.cbr-d-open { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 8px; font-size: 13px; }
+.cbr-d-open .msg { color: var(--cbr-muted); }
+.cbr-d-open .msg.bad { color: var(--cbr-warn); }
 #cbr .cbr-primary { background: var(--cbr-accent); border-color: var(--cbr-accent); color: #fff; font-weight: 600; }
 #cbr .cbr-primary:hover { filter: brightness(1.08); background: var(--cbr-accent); }
 
