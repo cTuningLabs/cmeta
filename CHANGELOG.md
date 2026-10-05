@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## 0.32.5.1 (in development)
+## 0.33.0
 - **`cx --reindex` builds the new index completely before it replaces the old one.** The index files
   are written to a temporary sibling folder of the index (`index.tmp-<pid>`) and swapped in place of the
   previous index only when every category has been indexed; a reindex that fails or is interrupted midway
