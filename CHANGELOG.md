@@ -3,6 +3,18 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.32.5.1 (in development)
+- **`cx --reindex` builds the new index completely before it replaces the old one.** The index files
+  are written to a temporary sibling folder of the index (`index.tmp-<pid>`) and swapped in place of the
+  previous index only when every category has been indexed; a reindex that fails or is interrupted midway
+  removes that folder and leaves the previous index intact and usable. Before, the index files were
+  deleted first, so an aborted reindex left an index with `repo.pkl` alone and every command failed.
+- **A category UID found in two repositories is a warning, not an error that aborts the reindex.** The
+  warning names the path kept (the first repository in `repos.json`) and the path skipped; the artifacts
+  of both repositories resolve through the kept copy. The same holds when the second repository is
+  plugged or pulled (the incremental index).
+
+
 ## 0.32.5
 - **`utils.net.download`:** a download with a progress bar failed when the server sent no
   `Content-Length` (GitHub's tag archives, for example): tqdm's bar has no truth value without a total.
