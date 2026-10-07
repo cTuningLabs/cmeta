@@ -7,9 +7,77 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 import os
+import locale
 from .common import _error
 from .cli import print_params_help
 from . import files
+
+###################################################################################################
+def system_code_pages():
+    """
+        The encodings of this machine that a command may print in besides UTF-8, in the order to try
+        them: on Windows the console's OEM code page (what cmd-line tools print: CP850 on a French PC,
+        CP437 on an English one) and then the ANSI page (CP1252, ...), both as Python's "oem" and
+        "mbcs" codecs resolve them at call time; elsewhere the locale's encoding when it is not UTF-8
+        or ASCII (a Latin-1 locale, for instance). Separate so that a test can stand in for another
+        machine.
+
+        Returns:
+            list: Codec names.
+    """
+    if os.name == 'nt':
+        return ['oem', 'mbcs']
+    preferred = locale.getpreferredencoding(False) or ''
+    if preferred.lower().replace('-', '').replace('_', '') in ('', 'utf8', 'ascii', 'usascii', 'ansix3.41968', '646'):
+        return []
+    return [preferred]       # as the locale names it ("ISO8859-1"): Python knows that spelling, not a flattened one
+
+###################################################################################################
+def decode_output(
+    data,  # What a command printed: bytes (a str or None comes back as it is).
+    encoding: str = None,  # An encoding the caller knows the command uses (tried first).
+):
+    """
+        Turn the bytes a command printed into text without ever failing, whatever the language of
+        the machine: UTF-8 first (a byte-order mark dropped), then the system's own code pages on
+        Windows (the console's OEM page, e.g. CP850 on a French PC, then the ANSI page), then the
+        locale's encoding elsewhere, each strictly - the first that fits is taken - and UTF-8 with
+        replacement characters as the last resort. Line endings are normalised to "\\n", as the
+        text mode of subprocess did.
+
+        Args:
+            data (bytes | str | None): The captured output.
+            encoding (str): An encoding to try before the others.
+
+        Returns:
+            str | None: The text (None stays None).
+    """
+    if data is None or isinstance(data, str):
+        return data
+
+    candidates = []
+    for enc in ([encoding] if encoding else []) + ['utf-8-sig'] + system_code_pages():
+        if enc and enc.lower() not in [c.lower() for c in candidates]:
+            candidates.append(enc)
+
+    def piece(line):
+        for enc in candidates:
+            try:
+                return line.decode(enc)
+            except (UnicodeDecodeError, LookupError):
+                continue
+        return line.decode('utf-8', errors = 'replace')
+
+    try:
+        # the usual case: the whole output is UTF-8 (or the encoding the caller named)
+        text = data.decode(candidates[0])
+    except (UnicodeDecodeError, LookupError):
+        # otherwise line by line, so that one tool printing in the console's code page does not turn
+        # the UTF-8 lines of another into mojibake (a legacy code page accepts every byte, so it would
+        # win for the whole output); a newline never falls inside a multi-byte UTF-8 sequence
+        text = '\n'.join(piece(line) for line in data.split(b'\n'))
+
+    return text.replace('\r\n', '\n').replace('\r', '\n')
 
 ###################################################################################################
 def load_module(
@@ -784,7 +852,6 @@ def run(
                         _cmd,
                         stdout=subprocess.PIPE if capture_output else None,
                         stderr=subprocess.PIPE if capture_output else None,
-                        text=True,
                         shell=True,
                         env=cur_env,
                         preexec_fn=os.setsid
@@ -799,6 +866,9 @@ def run(
                         stdout, stderr = process.communicate()
                         returncode = -1
 
+                    # bytes in, text out: never a decode error, whatever the machine's language
+                    stdout, stderr = decode_output(stdout), decode_output(stderr)
+
                 else:
                     # ----- Windows with timeout: delegate to your wrapper -----
                     if timeout is not None and is_windows:
@@ -808,22 +878,22 @@ def run(
                             cur_env=cur_env,
                             timeout=timeout,
                             shell=True,
-                            text=True,
+                            text=False,
                         )
+                        stdout, stderr = decode_output(stdout), decode_output(stderr)
 
                     # ----- Normal subprocess.run (any OS) -----
                     else:
                         result = subprocess.run(
                             _cmd,
                             capture_output=capture_output,
-                            text=True,
                             shell=True,
                             env=cur_env,
                             timeout=timeout,
                         )
                         returncode = result.returncode
-                        stdout = result.stdout if capture_output else ''
-                        stderr = result.stderr if capture_output else ''
+                        stdout = decode_output(result.stdout) if capture_output else ''
+                        stderr = decode_output(result.stderr) if capture_output else ''
 
             except Exception as e:
                 stdout = ''
@@ -912,7 +982,7 @@ def run_command_with_timeout_tree_kill_on_windows(
     cur_env: dict,  # Environment variables dictionary.
     timeout: float,  # Timeout in seconds.
     shell: bool = True,  # If True, run command through shell.
-    text: bool = True,  # If True, decode output as text.
+    text: bool = True,  # If True, decode output as text (the locale's encoding, strictly); run() passes False and decodes with decode_output().
 ):
     """
         Run command on Windows with timeout and process tree termination.

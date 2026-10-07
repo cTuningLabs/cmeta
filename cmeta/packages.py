@@ -311,16 +311,18 @@ class Packages:
                 cmd,
                 stdout=(subprocess.PIPE if not silent else subprocess.DEVNULL),
                 stderr=(subprocess.PIPE if not silent else subprocess.DEVNULL),
-                text=True,
                 start_new_session=True,  # so killpg works on *nix
             )
 
+            from .utils.sys import decode_output     # pip's output in any language, never a decode error
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
+                stdout, stderr = decode_output(stdout), decode_output(stderr)
             except subprocess.TimeoutExpired:
                 self.log("error", f"Timeout installing '{pkg}' after {timeout} seconds.")
                 self.kill_process_tree(proc.pid)
                 stdout, stderr = proc.communicate()
+                stdout, stderr = decode_output(stdout), decode_output(stderr)
 
                 raise RuntimeError(
                     f"Timeout installing '{pkg}' after {timeout} seconds:\n\n" +
