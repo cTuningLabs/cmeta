@@ -59,7 +59,9 @@ def test_windows_console_code_page():
     if oem_code_page() in (437, 850):
         assert text == 'Été ok'
     else:
-        assert text.endswith(' ok') and '�' in text
+        # elsewhere the two bytes become whatever this machine's own page makes of them (letters under a
+        # Latin-1 or KOI8-R locale, replacement characters under UTF-8): text in every case, never an error
+        assert isinstance(text, str) and text.endswith(' ok') and len(text) == 6
 
 
 def test_as_on_a_french_windows(monkeypatch):
