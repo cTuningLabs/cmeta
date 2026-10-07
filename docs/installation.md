@@ -14,7 +14,9 @@ dependencies. It runs on Linux, macOS and Windows and supports Python 3.9+.
 ## Requirements
 
 - **Git** — `cx repo get --url=...` clones content repositories over git, and so
-  does the install-from-source route.
+  does the install-from-source route. Where git is missing or blocked, a
+  repository can also be fetched as an archive and registered with
+  `cx repo unzip` (see [Troubleshooting](#troubleshooting)).
 - **Python 3.9 or newer** — only for the pip route. The two
   [`uv`](https://github.com/astral-sh/uv) routes below let uv fetch its own
   interpreter, so they work on a host with no usable Python and no root.
@@ -155,8 +157,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force "cmeta[server]==0.33.0"
-pip install "cmeta==0.33.0"
+uv tool install --force "cmeta[server]==0.33.1"
+pip install "cmeta==0.33.1"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other
@@ -364,6 +366,37 @@ Common flags for category `program` include
   number between commits, so a plain upgrade decides there is nothing to do: use
   `uv tool install --force ...` or `pip install --force-reinstall ...`, as
   [Updating cMeta](#updating-cmeta) shows.
+- **Windows: `An Application Control policy has blocked this file`** — as
+  `ImportError: DLL load failed while importing unicodedata` from `cx`, git
+  failing to load `libcurl-4.dll` / `libzstd.dll`, or `cxt.exe` "blocked by
+  your organization's Device Guard policy". Smart App Control, on by default on
+  new Windows 11 PCs, refuses every binary that is neither signed nor known to
+  Microsoft: the interpreter uv downloads, uv's command shims, the DLLs of Git
+  for Windows (Microsoft's own git release ships the same unsigned DLLs), and
+  every program you compile. **The fix is to turn it off**: Settings &gt;
+  Privacy &amp; security &gt; Windows Security &gt; App &amp; browser control &gt;
+  Smart App Control settings &gt; Off. The switch is one-way, and it is the
+  normal state of a development machine; afterwards `cx`, `cxt` and git work as
+  installed, nothing to reinstall. To keep it on instead, stay with signed
+  components only: install Python from the Microsoft Store and put cMeta on
+  that interpreter — `uv tool install "cmeta[server]" --python python.exe` (the
+  `--python` matters once uv has already downloaded its own interpreter, which
+  it prefers over a system one) — and fetch repositories without git, with the
+  `curl.exe` that ships with Windows:
+
+  ```bat
+  curl.exe -fLo cmeta-aops.zip https://github.com/ctuninglabs/cmeta-aops/archive/refs/heads/main.zip
+  cx repo unzip cmeta-aops.zip
+  ```
+
+  The same two commands update the repository later. uv's command shims
+  (`cx.exe`, `cxt.exe` in `%USERPROFILE%\.local\bin`) are unsigned launchers
+  and can be blocked as well (`blocked by your organization's Device Guard
+  policy`). The signed way in is the interpreter of the tool environment
+  itself, a copy of the Store Python's launcher:
+  `"%APPDATA%\uv\tools\cmeta\Scripts\python.exe" -m cmeta --version`. A
+  `cx.cmd` on `PATH` holding `@"%APPDATA%\uv\tools\cmeta\Scripts\python.exe" -m cmeta %*`
+  gives `cx` back; `cxt <task> ...` is `cx task run <task> ...`.
 
 ---
 

@@ -3,6 +3,23 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.33.1
+- **A command's output is decoded on any machine in any language, and never fails.** `utils.sys.run`
+  captured output in the text mode of `subprocess`, which decodes with the locale's encoding and
+  strictly: a byte that encoding does not define (UTF-8 from git or Python on a French Windows,
+  Cyrillic, a CP850 "É" from a cmd-line tool) raised inside `run()` and the command came back with exit
+  code -1 and no output (seen on 2026-10-07 while probing a French Windows 11 PC). The output is now
+  captured as bytes and decoded by the new `utils.sys.decode_output`: UTF-8 first (a byte-order mark
+  dropped), then the machine's own code pages (on Windows the console's OEM page and the ANSI page, as
+  Python's `oem` and `mbcs` codecs resolve them; elsewhere the locale's encoding when it is not UTF-8),
+  each strictly so that the first that fits is taken, and UTF-8 with replacement characters as the last
+  resort. Line endings are normalised to `\n` as before; `None` stays `None`. The same decoding applies
+  to the timeout paths (the Job Object on Windows, the process group elsewhere) and to pip's output in
+  `packages.py`. `decode_output(data, encoding=...)` lets a caller name an encoding it knows. Tests:
+  `tests/core_tests/test_utils_sys_decode.py` (including stand-ins for a French Windows and a Latin-1
+  Linux).
+
+
 ## 0.33.0
 - **`cx --reindex` builds the new index completely before it replaces the old one.** The index files
   are written to a temporary sibling folder of the index (`index.tmp-<pid>`) and swapped in place of the

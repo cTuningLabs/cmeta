@@ -3,6 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://github.com/ctuninglabs/cmeta)
 [![Test cMeta core](https://github.com/cTuningLabs/cmeta/actions/workflows/test-core.yml/badge.svg)](https://github.com/cTuningLabs/cmeta/actions/workflows/test-core.yml)
 [![Author: Grigori Fursin](https://img.shields.io/badge/author-Grigori%20Fursin-1f6feb)](https://cTuning.ai/@gfursin)
+[![Designed by a human, extended with AI](https://img.shields.io/badge/designed%20by%20a%20human-extended%20with%20AI-8a2be2)](https://cTuning.ai/@gfursin)
 
 # cMeta (Common Meta Framework)
 
@@ -25,6 +26,11 @@ portable, and sustainable**: work that colleagues and their AI agents can pick u
 run, understand, and build upon years later, in the simplest way that works — no
 database, no daemon, no service to stand up, just files, one CLI, one Python API, and
 minimal dependencies. It is free and open source under Apache-2.0.
+
+cMeta was architected and written from scratch by [Grigori Fursin](https://cTuning.ai/@gfursin).
+Since 2025 it is extended, tested and automated together with AI agents that run through cMeta
+itself, and every artifact records who made it (the `generator` field of its metadata):
+**designed by a human, extended with AI**.
 
 If you know **Obsidian** or other "second brain" tools, the idea will feel familiar:
 local plain files, links between everything, an open format you are never locked
