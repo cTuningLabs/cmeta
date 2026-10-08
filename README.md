@@ -560,16 +560,22 @@ filesystem. The framework rebuilds the index automatically when repos are
 added/removed via `cx repo`, and updates it in-place on
 `create`/`update`/`delete`.
 
-If you edited artifacts outside cMeta (moved folders, edited `_cmeta.yaml` by
-hand, `git pull`-ed a repo, cleared `CMETA_HOME`, or things simply look
-inconsistent), force a full rebuild:
+If you edited artifacts outside cMeta (moved or renamed folders, edited
+`_cmeta.yaml` by hand, copied artifacts in from another machine, `git pull`-ed a
+repo), refresh the narrowest thing — one artifact, one repository — or, after a
+cleared `CMETA_HOME` or when things simply look inconsistent, rebuild everything:
 
 ```bash
-cx --reindex
+cx <category> reindex <artifact>   # one artifact's record, from its folder; nothing is written on disk
+cx repo reindex <repo>             # one repository: its _cmr.yaml and its artifacts; the others untouched
+cx --reindex                       # everything
 ```
 
-This is safe, idempotent, and typically fast. Categories that opt out with
-`no_index: true` in `_cmeta.yaml` are found by scanning the filesystem instead.
+All three are safe and idempotent; `reindex` never touches a folder, and the only
+record it removes is that of an artifact whose folder now holds another artifact
+(a folder it cannot find or one UID in two folders is an error that changes
+nothing). Categories that opt out with `no_index: true` in `_cmeta.yaml` are
+found by scanning the filesystem instead.
 Task caches produced by workflows live under the `cache` category and can be
 inspected/pruned with `cx cache show` / `cx cache clean` / `cx cache delete`.
 

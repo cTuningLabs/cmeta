@@ -68,7 +68,7 @@ any command unless noted.
 |------|------|--------|
 | `--help`, `-h` | bool | Show help. On a category or command, prints its usage. |
 | `--version`, `-V` | bool | Print cMeta version and check for a newer release. |
-| `--reindex` | bool | Clean and rebuild the fast index (`<CMETA_HOME>/index/*.pkl`). Use after manual edits, `git pull`, cleared `CMETA_HOME`, or when lookups look stale. |
+| `--reindex` | bool | Clean and rebuild the fast index (`<CMETA_HOME>/index/*.pkl`): every repository, every category. Use after a cleared `CMETA_HOME` or a bulk change; for one artifact or one repository, `cx <category> reindex <artifact>` and `cx repo reindex <repo>` are the narrower forms (§11). |
 | `--verbose`, `-v` | bool | Verbose output — extra progress info from repo ops and package detection. |
 | `--quiet`, `-q` | bool | Auto-accept the default answer for any interactive prompt (safe for scripts). |
 | `--repro`, `-r` | bool | Write `cmeta-repro-input.json` (+ `-input2.json`, `-output.json`) for reproducibility of the call. |
@@ -171,6 +171,7 @@ cx <category> <command> ... -v --con             # noisy output for troubleshoot
 cx <category> <command> ... --repro              # capture inputs/outputs for later replay
 cx <category> <command> ... -j --jf=out.json     # machine-readable result to stdout + file
 cx --reindex                                     # rebuild the fast index
+cx <category> reindex <artifact>                 # refresh one artifact's index record from its folder
 cx --home=D:\work\cmeta-home <category> <cmd>    # one-shot alternative CMETA_HOME
 ```
 
@@ -460,7 +461,8 @@ cx utils uid --clipboard- --jf=uid.json     # {"return": 0, "uid": "29576481b258
 From Python the underlying helper is `cm.utils.names.generate_cmeta_uid()`.
 
 Remember to register a hand-made artifact afterwards so it enters the index:
-`cx <category> index <repo>:<artifact>` (see §11).
+`cx <category> index <repo>:<artifact>`, or `cx <category> reindex <artifact>`,
+which also refreshes an artifact the index knows already (see §11).
 
 Two neighbours of these generators exist for credentials. `cx utils api_key`
 prints random keys from `secrets.token_urlsafe` together with the
@@ -1533,17 +1535,44 @@ the filesystem. The framework refreshes it automatically:
 - when repos are added/removed via `cx repo` operations,
 - on first launch if the index is missing.
 
-Force a full clean rebuild when things look inconsistent — after a manual move,
-a hand-edit of `_cmeta.yaml`, a `git pull` inside a repo, a `CMETA_HOME` wipe,
-or if `cx <category> find <alias>` returns something surprising:
+When artifacts were touched outside cMeta, refresh the narrowest thing:
 
 ```bash
-cx --reindex
+cx <category> reindex <artifact>   # one artifact: its record is rewritten from the meta file in its folder
+cx <category> reindex              # every artifact of the category, folders made by hand included
+cx repo reindex <repo>             # one repository: its _cmr.yaml re-read, its artifacts rescanned
+cx --reindex                       # everything: a clean rebuild of every index file
 ```
 
-It's safe, idempotent and typically fast. Categories that set `no_index: true`
-in their `_cmeta.yaml` are always found by filesystem scan and are never
-written to the index.
+`cx <category> reindex <artifact>` reads the artifact's `_cmeta.*` from its folder
+and rewrites its index record, and writes nothing on disk — after a meta edited by
+hand, a folder renamed, moved or copied in from another machine, or when
+`cx <category> find <alias>` returns something surprising. The artifact is named
+by its alias, UID, `alias,UID` or `repo:alias`, with wildcards (`--tags` prunes);
+a folder the index does not know yet is found on disk in the repositories, and an
+artifact whose indexed folder is gone is looked for by its UID in its repository,
+so after a rename by hand the new name, the UID and the old name all work, and
+the old alias is dropped from the index. No folder is touched, and the only record
+ever removed is that of an artifact whose folder, still there, holds another
+artifact now (replaced by hand) — said in the output. A folder that cannot be
+found, a meta that cannot be read or has no valid `artifact` UID, a meta of
+another category, or one UID found in two existing folders is an error that
+leaves the index as it was (`--ignore_errors` reindexes the other artifacts and
+reports these). An empty `cx <category> update <artifact>`
+refreshes the record too, but it also rewrites the meta file (a new
+`last_update_timestamp` and a generator record): use `reindex` when the file must
+stay as it is, for instance in a folder that another machine syncs.
+
+`cx repo reindex <repo>` — by alias, UID, the path of its folder, or `.` from
+inside it — does what `cx repo pull` and `cx repo plug` do once a repository is
+in place: its `_cmr.yaml` is re-read and its artifacts are indexed again, and the
+records of the other repositories stay as they are. A repository whose folder is
+not there (a detached drive) is refused and nothing changes.
+
+`cx --reindex` rebuilds every index file from scratch — after a `CMETA_HOME`
+wipe, a bulk change across repositories, or when in doubt. It's safe, idempotent
+and typically fast. Categories that set `no_index: true` in their `_cmeta.yaml`
+are always found by filesystem scan and are never written to the index.
 
 Task-level content caches produced by workflows live under the `cache`
 category and are managed separately:

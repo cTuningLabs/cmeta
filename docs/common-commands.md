@@ -99,6 +99,7 @@ cx <category> update <alias> --meta.description="..."
 cx <category> tags <alias> --add=t1,t2 --remove=t3
 cx <category> mv <alias> <new-alias>
 cx <category> migrate <alias> <new-alias>   # the same, plus a stub: the old alias keeps working
+cx <category> reindex <alias>          # refresh its index record from its folder (nothing is written)
 cx <category> rm <alias>
 ```
 
@@ -141,6 +142,7 @@ than with `cx <category> add`. Afterwards, register it so it enters the index:
 
 ```bash
 cx <category> index <repo>:<artifact>
+cx <category> reindex <artifact>        # the same, and it also refreshes an artifact the index knows already
 ```
 
 ---
@@ -157,6 +159,7 @@ cx repo get <alias> --path=<local-path> --local  # register an existing folder
 cx repo pull <alias>
 cx repo status <alias>
 cx repo unplug <alias>                           # detach without deleting
+cx repo reindex <alias>                          # re-read its _cmr.yaml and rescan its artifacts; other repos untouched
 cx repo space                                    # disk usage
 ```
 
@@ -181,7 +184,11 @@ Common ones: `default` (framework defaults), `task` (caches, version checks),
 
 ```bash
 cx <category> index <repo>:<artifact>   # register ONE hand-made artifact
-cx <category> update <repo>:<artifact>  # refresh index after editing its meta
+cx <category> reindex <artifact>        # refresh ONE record from its folder: a meta edited by hand, a folder
+                                        #   renamed or copied in; nothing is written, stale aliases are dropped
+cx <category> reindex                   # every artifact of the category (hand-made folders included)
+cx repo reindex <repo>                  # ONE repository: its _cmr.yaml and its artifacts; the others untouched
+cx <category> update <repo>:<artifact>  # refresh after editing its meta (rewrites the file: a new timestamp)
 cx --reindex                            # rebuild everything (slow — last resort)
 
 cx cache show
@@ -189,8 +196,11 @@ cx cache clean
 cx cache delete <alias-or-uid>
 ```
 
-Payload-only edits (`api/`, `files/`, `src/`, `_desc.yaml`) need **no** reindex
-— the index tracks meta, not content.
+`reindex` never touches a folder, and the only record it removes is that of an
+artifact whose folder now holds another artifact (it says so): a folder it cannot
+find, a meta it cannot read, or one UID in two folders is an error that leaves
+the index as it was. Payload-only edits (`api/`, `files/`, `src/`, `_desc.yaml`)
+need **no** reindex — the index tracks meta, not content.
 
 Categories holding very many artifacts can spread them into sub-directories
 (`sharding_slices`) and/or skip the index entirely (`no_index: true`) — see

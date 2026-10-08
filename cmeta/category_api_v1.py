@@ -1684,6 +1684,322 @@ class Category(InitCategory):
         return self.cm.access(p)
 
     ############################################################
+    def reindex_(
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # Artifact alias, UID, alias,UID or repo:alias (wildcards allowed); nothing names every artifact of the category.
+        tags: str = None,  # Prune the artifacts by tags, as in find (a tag with a leading "-" excludes).
+        sort: bool = True,  # Sort the artifacts by alias and UID.
+        skip_uids: bool = False,  # Skip UIDs when using wildcards.
+        ignore_errors: bool = False,  # Go on past an artifact that cannot be reindexed and report it at the end.
+    ):
+        """
+            Refresh the index record(s) of artifact(s) from their folders, changing no file.
+
+            The meta file of each artifact is read from its folder on disk and the artifact's record in the
+            index of the category is rewritten from it: the alias is the folder's name, every other alias
+            that still pointed at the artifact's UID is dropped, and the path, the meta and the sharding
+            depth are what a full `cx --reindex` records. The meta file is read, never written (an empty
+            `update` rewrites it). Use it after a meta file was edited by hand, after a folder was renamed,
+            moved or copied in from another machine, or when a lookup looks stale - instead of the whole
+            `cx --reindex`.
+
+            The artifact may be named by its alias, UID, alias,UID or repo:alias, with wildcards; nothing
+            names every artifact of the category. A folder the index does not know yet (made or renamed by
+            hand) is found on disk in the repositories; an artifact whose indexed folder is gone is looked
+            for by its UID in its repository. No folder is touched, and the only record ever removed is
+            that of an artifact whose folder, still there, holds another artifact now (replaced by hand) -
+            said in the output. A folder that cannot be found, a meta without a valid `artifact` UID, or a
+            UID found in two existing folders is an error, and the index is left as it was
+            (`--ignore_errors` reindexes the other artifacts and reports these).
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str | None): Artifact alias, UID, alias,UID or repo:alias (wildcards allowed); nothing
+                    names every artifact of the category.
+                tags (str | list | None): Prune the artifacts by tags, as in find (a leading "-" excludes).
+                sort (bool): Sort the artifacts by alias and UID.
+                skip_uids (bool): Skip UIDs when using wildcards.
+                ignore_errors (bool): Go on past an artifact that cannot be reindexed and report it at the end.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error (16: nothing found).
+                    - **error** (str): Error message if `return > 0`.
+                    - **artifacts** (list): The reindexed artifacts, as their new index records.
+                    - **dropped_aliases** (dict): Per UID, the (lowercase) aliases dropped because they were not the folder's name.
+                    - **dropped_records** (list): The records removed because their folder holds another artifact now (`ref`, `path`, `now`).
+                    - **errors** (list): With `ignore_errors`, one dict per artifact that could not be reindexed (`ref`, `path`, `error`).
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        con = ctx.get('control',{}).get('con', False)
+
+        ctx['control']['con'] = False
+
+        category_cmeta = ctx['category_artifact']['cmeta']
+        category_cmeta_ref_parts = ctx['category_artifact']['cmeta_ref_parts']
+
+        category_alias = category_cmeta_ref_parts['artifact_alias']
+        category_uid = category_cmeta_ref_parts['artifact_uid']
+
+        if category_cmeta.get('no_index', False):
+            return {'return':1, 'error':f'category "{category_alias}" is not indexed (no_index) - there is nothing to reindex'}
+
+        # The reference: an alias (with wildcards), a UID, both, a repository
+        artifact_obj_parts = {}
+
+        if arg1 is not None and str(arg1).strip() != '':
+            r = utils.names.parse_cmeta_obj(arg1, key = "artifact", fail_on_error = self.fail_on_error)
+            if r['return'] >0: return r
+
+            artifact_obj_parts = r['obj_parts']
+
+        artifact_alias = artifact_obj_parts.get('artifact_alias')
+        artifact_uid = artifact_obj_parts.get('artifact_uid')
+        artifact_repo_alias = artifact_obj_parts.get('artifact_repo_alias')
+        artifact_repo_uid = artifact_obj_parts.get('artifact_repo_uid')
+
+        if tags is not None:
+            r = utils.common.normalize_tags(tags, fail_on_error = self.fail_on_error)
+            if r['return']>0: return r
+
+            tags = r['tags']
+
+        # The repositories to look in: the one named, else all of them
+        repo_uids = None
+
+        if (artifact_repo_alias is not None and artifact_repo_alias != '') or (artifact_repo_uid is not None and artifact_repo_uid != ''):
+            r = self.cm.repos.find_in_index('repo', self.cm.cfg['category_repo_uid'], artifact_repo_alias, artifact_repo_uid, only_uids=True, skip_uids=skip_uids)
+            if r['return']>0: return r
+
+            repo_uids = r['artifact_uids']
+
+        def _norm(path):
+            return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+
+        def _same_folder(path1, path2):
+            # The same folder: the same path, or two spellings of one folder on a case-insensitive file system
+            if _norm(path1) == _norm(path2):
+                return True
+            try:
+                return os.path.isdir(path1) and os.path.isdir(path2) and os.path.samefile(path1, path2)
+            except OSError:
+                return False
+
+        def _ref(parts):
+            alias = parts.get('artifact_alias')
+            uid = parts.get('artifact_uid', '')
+            return f'"{alias}" ({uid})' if alias else uid
+
+        def _uid_in_folder(path):
+            # The UID the meta file of a folder names, or None (no folder, no meta, no valid UID)
+            if not os.path.isdir(path):
+                return None
+            r = utils.files.safe_read_yaml_or_json(os.path.join(path, self.cm.cfg['meta_filename_base']), fail_on_error=False, logger=self.logger)
+            if r['return']>0 or not isinstance(r.get('data'), dict):
+                return None
+            r = utils.names.parse_cmeta_name(r['data'].get('artifact'))
+            if r['return']>0:
+                return None
+            uid = r['name'].get('uid')
+            return uid if uid is not None and utils.names.is_valid_cmeta_uid(uid) else None
+
+        # 1. The folders on disk that the reference names: the real folder name and the meta as it is now,
+        #    built as the full reindex builds its records
+        r = self.cm.repos.find_in_file_system(category_cmeta, category_alias, category_uid, artifact_alias, artifact_uid, repo_uids = repo_uids)
+        if r['return']>0: return r
+
+        entries = [e for e in r['artifacts'] if self._match_tags(e['cmeta'].get('tags', []), tags)]
+
+        # 2. The records the index holds for the reference (a migration stub is reindexed as itself)
+        r = self.find_(ctx, arg1, tags, sort=False, add_index_file=True, skip_uids=skip_uids, follow_migrated=False)
+        if r['return']>0 and r['return']!=16: return r
+
+        indexed = r.get('artifacts', []) if r['return'] == 0 else []
+
+        if len(entries) == 0 and len(indexed) == 0:
+            x = f'"{arg1}"' if arg1 is not None and str(arg1).strip() != '' else 'artifacts'
+            return {'return':16, 'error':f'{category_alias} {x} not found in the index or on disk'}
+
+        seen_paths = {}
+        seen_uids = {}
+
+        for e in entries:
+            seen_paths[_norm(e['path'])] = e
+            seen_uids.setdefault(e['cmeta_ref_parts']['artifact_uid'], []).append(e)
+
+        errors = []
+        stale = []
+
+        # An indexed artifact that was not found on disk by the reference: its folder was renamed or moved
+        # by hand, replaced by another artifact, or it is gone - look for its UID in its repository
+        for a in indexed:
+            parts = a['cmeta_ref_parts']
+            uid = parts['artifact_uid']
+
+            if uid in seen_uids:
+                continue
+
+            xrepo_uids = [parts['repo_uid']] if parts.get('repo_uid') else None
+
+            r = self.cm.repos.find_in_file_system(category_cmeta, category_alias, category_uid, None, uid, repo_uids = xrepo_uids)
+            if r['return']>0: return r
+
+            found = r['artifacts']
+
+            if len(found) == 0:
+                other = seen_paths.get(_norm(a['path']))
+
+                if other is not None:
+                    # The folder is still there but holds another artifact now (replaced by hand): the record
+                    # is provably stale, and a "delete" of it would remove the other artifact's folder - it is
+                    # dropped, as a full reindex would drop it, and said so
+                    stale.append({'ref': _ref(parts), 'path': a['path'], 'uid': uid,
+                                  'index_file': a.get('index_file'),
+                                  'alias_lowercase': parts.get('artifact_alias_lowercase', parts.get('artifact_alias')),
+                                  'other': _ref(other['cmeta_ref_parts'])})
+                elif os.path.isdir(a['path']):
+                    # The folder is there, but its meta file cannot be read or has no valid artifact UID
+                    errors.append({'ref': _ref(parts), 'path': a['path'],
+                                   'error': f'{category_alias} artifact {_ref(parts)} is indexed at "{a["path"]}", and the folder is there, but its meta file '
+                                            f'cannot be read or has no valid "artifact" UID - fix the file, then reindex'})
+                else:
+                    errors.append({'ref': _ref(parts), 'path': a['path'],
+                                   'error': f'{category_alias} artifact {_ref(parts)} is indexed at "{a["path"]}" but no folder with its UID was found in its repository - '
+                                            f'if it was moved elsewhere, reindex it by its new name; if it was deleted, remove it from the index with "delete"'})
+                continue
+
+            if len(found) > 1:
+                paths = ', '.join('"' + f['path'] + '"' for f in found)
+                errors.append({'ref': _ref(parts), 'path': a['path'],
+                               'error': f'{category_alias} artifact {_ref(parts)} is in {len(found)} folders with the same UID: {paths} - give all but one a new UID first'})
+                continue
+
+            e = found[0]
+
+            seen_paths[_norm(e['path'])] = e
+            seen_uids.setdefault(uid, []).append(e)
+            entries.append(e)
+
+        # 3. Check everything before writing anything: one folder per UID, and a UID that the index holds at
+        #    another folder that still exists is left alone (two folders with one UID)
+        r = self.cm.repos.find_in_index(category_alias, category_uid, only_uids=True, skip_uids=True)
+        if r['return']>0: return r
+
+        index_uids = r.get('index', {}).get(self.cm.repos.KEY_INDEX_UIDS, {})
+
+        to_write = []
+
+        for uid in seen_uids:
+            uid_entries = seen_uids[uid]
+            parts = uid_entries[0]['cmeta_ref_parts']
+
+            if len(uid_entries) > 1:
+                paths = ', '.join('"' + x['path'] + '"' for x in uid_entries)
+                errors.append({'ref': _ref(parts), 'path': uid_entries[0]['path'],
+                               'error': f'{category_alias} artifact {_ref(parts)} is in {len(uid_entries)} folders with the same UID: {paths} - give all but one a new UID first'})
+                continue
+
+            e = uid_entries[0]
+
+            record = index_uids.get(uid)
+            if record is not None:
+                old_path = record.get('path', '')
+                # A conflict only when the folder the index knows still holds this very UID
+                if old_path and not _same_folder(old_path, e['path']) and _uid_in_folder(old_path) == uid:
+                    errors.append({'ref': _ref(parts), 'path': e['path'],
+                                   'error': f'{category_alias} artifact {_ref(parts)} is indexed at "{old_path}", which still exists, while the same UID is in "{e["path"]}" - '
+                                            f'two folders with one UID: give one of them a new UID (or remove it), then reindex'})
+                    continue
+
+            to_write.append(e)
+
+        if len(errors) > 0 and not ignore_errors:
+            if len(errors) == 1:
+                return {'return':1, 'error': errors[0]['error']}
+            return {'return':1, 'error': 'nothing was reindexed:\n' + '\n'.join('* ' + x['error'] for x in errors)}
+
+        if sort:
+            to_write.sort(key=lambda e: (str(e['cmeta_ref_parts'].get('artifact_alias', '')).lower(), e['cmeta_ref_parts']['artifact_uid']))
+
+        # 4. Rewrite the records, each in one locked write that also drops the stale aliases of its UID
+        reindexed = []
+        dropped_aliases = {}
+
+        for e in to_write:
+            parts = e['cmeta_ref_parts']
+            uid = parts['artifact_uid']
+
+            r = self.cm.repos.add_to_index(e['cmeta'], parts, e['path'], original_uid = uid,
+                                           sharding_slices_num = e.get('sharding_slices_num', 0), clean_aliases = True)
+            if r['return']>0: return r
+
+            record = {'path': e['path'], 'cmeta': e['cmeta'], 'cmeta_ref_parts': parts}
+            if e.get('sharding_slices_num'):
+                record['sharding_slices_num'] = e['sharding_slices_num']
+
+            reindexed.append(record)
+
+            if len(r.get('dropped_aliases', [])) > 0:
+                dropped_aliases[uid] = r['dropped_aliases']
+
+            if con:
+                print (f'Reindexed {category_alias} {_ref(parts)}: {e["path"]}')
+                for x in r.get('dropped_aliases', []):
+                    print (f'  dropped the alias "{x}"')
+
+        # 5. The records of artifacts whose folder now holds another artifact
+        dropped_records = []
+
+        for x in stale:
+            if x['index_file']:
+                r = self.cm.repos.remove_from_index(x['index_file'], x['uid'], x['alias_lowercase'])
+                if r['return']>0: return r
+
+            dropped_records.append({'ref': x['ref'], 'path': x['path'], 'now': x['other']})
+
+            if con:
+                print (f'Dropped the record of {category_alias} {x["ref"]}: its folder {x["path"]} now holds {x["other"]}')
+
+        if con:
+            for x in errors:
+                print (f'Skipped: {x["error"]}')
+
+        return {'return':0, 'artifacts': reindexed, 'dropped_aliases': dropped_aliases, 'dropped_records': dropped_records, 'errors': errors}
+
+    ############################################################
+    def _match_tags(
+        self,
+        ctags,  # The tags of an artifact's meta.
+        tags,  # Normalized tags to match (a leading "-" excludes); None or empty matches everything.
+    ):
+        """
+            Match the tags of an artifact as `find` does: every tag given must be present, none of the
+            excluded ones (a leading "-"), case-insensitively.
+        """
+
+        if tags is None or len(tags) == 0:
+            return True
+
+        if type(ctags) != list:
+            return False
+
+        ctags_lower = [str(t).lower() for t in ctags]
+
+        for tag in tags:
+            tag = str(tag)
+            if tag.startswith('-'):
+                if tag[1:].lower() in ctags_lower:
+                    return False
+            elif tag.lower() not in ctags_lower:
+                return False
+
+        return True
+
+    ############################################################
     def get_(
         self,
         ctx: dict,  # cMeta context.

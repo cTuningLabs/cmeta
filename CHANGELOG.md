@@ -3,6 +3,60 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.33.1.1 (in development)
+- **`cx <category> reindex [<artifact>]`: the index record of one artifact (or of several) is refreshed
+  from its folder, and no file is changed.** The meta file is read from the artifact's folder on disk
+  and the record in the category's index is rewritten from it: the alias is the folder's name, every
+  other alias that still pointed at the artifact's UID is dropped, and the path, the meta and the
+  sharding depth are what a full `cx --reindex` records. Use it after a meta was edited by hand, after
+  a folder was renamed, moved or copied in from another machine (bisync, a USB disk), or when a lookup
+  looks stale - instead of the whole `cx --reindex`, and instead of an empty `cx <category> update`,
+  which refreshes the record but also rewrites the meta file (a new timestamp and a generator record,
+  which a bisynced folder then carries back). The artifact is named by its alias, UID, alias,UID or
+  repo:alias, with wildcards; `--tags` prunes; nothing names every artifact of the category. A folder
+  the index does not know yet (made or renamed by hand) is found on disk in the repositories; an
+  artifact whose indexed folder is gone is looked for by its UID in its repository, so the new name,
+  the UID or the old name all work after a rename by hand. No folder is touched, and the only record
+  `reindex` ever removes is that of an artifact whose folder, still there, holds another artifact now
+  (replaced by hand) - a record a `delete` would act on by removing the other artifact's folder - and
+  it says so. A folder that cannot be found, a meta that cannot be read or has no valid `artifact`
+  UID, a meta of another category, or one UID found in two existing folders is an error that leaves
+  the index as it was (`--ignore_errors` reindexes the other artifacts and reports these). `index`,
+  `update`, `move` and `migrate` keep their behaviour. Tests: `tests/internal_repo_tests/test_integration_reindex_artifact.py`
+  (a hand-edited meta, YAML and JSON, the record of a full reindex, renames by hand found by the new
+  name, the UID or the old name, a rename twice, a case-only rename, two spellings on a case-sensitive
+  file system, a folder replaced by another artifact, a folder moved and its old name taken, one UID
+  in two folders, a missing folder, an unreadable meta, an invalid UID, an upper-case UID, another
+  category's folder, a non-ASCII alias, wildcards, tags, a repository, a repository with `subdir`,
+  everything, a UID-named folder, a sharded category and a rename inside it, a `no_index` category, a
+  category without an index file yet, the record of a category itself, the shipped internal repository,
+  a migration stub, the CLI, several processes at once).
+- **`cx repo reindex <repository>`: one registered repository is indexed again.** Its `_cmr.yaml` is
+  re-read and its artifacts are rescanned with the incremental index that `pull`, `plug` and `unzip`
+  use, and the records of the other repositories stay as they are. The repository is named by its
+  alias, UID or alias,UID (wildcards allowed), by the path of its folder (or of a folder inside it),
+  or by `.` for the repository of the current directory. A repository whose folder or `_cmr.yaml` is
+  not there (a detached drive) is refused and nothing is changed. `cx --reindex` stays the full
+  rebuild of every repository. Tests: `tests/internal_repo_tests/test_integration_repo_reindex.py`.
+- **The incremental index drops the records of a category of which a repository holds no artifact
+  any more.** When a repository was indexed again (`pull`, `plug`, `unzip`, now `repo reindex`), the
+  records of its deleted artifacts were removed only from the index files of the categories in which
+  the repository still had an artifact: when its last artifact of a category was gone, that record
+  stayed and the lookup kept answering with a folder that did not exist. Every existing category
+  index now takes part in the removal. The full `cx --reindex` is unchanged.
+- **A wildcard search in a `no_index` category returns only the folders the pattern names.** The scan
+  that finds the artifacts of such a category (and that `reindex` uses to find folders on disk)
+  applied the pattern only in sharded categories; in a plain one, `cx <category> find "name-*"`
+  returned every artifact. The pattern is now matched against the folder names, case-insensitively,
+  as the sharded scan does; and an exact alias now finds every folder that spells it (two spellings
+  can coexist on a case-sensitive file system), not only the first. The same scan no longer stops
+  with a `KeyError` on a meta file that has no `category` key: the folder is skipped with a warning,
+  as a folder without an `artifact` key is.
+- `Repos.add_to_index` takes `clean_aliases=True` to drop, in the same locked write, every other
+  alias of the alias index that still lists the UID being written; its result carries them as
+  `dropped_aliases`. The default is unchanged.
+
+
 ## 0.33.1
 - **A command's output is decoded on any machine in any language, and never fails.** `utils.sys.run`
   captured output in the text mode of `subprocess`, which decodes with the locale's encoding and

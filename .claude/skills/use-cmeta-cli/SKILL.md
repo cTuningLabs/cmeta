@@ -349,20 +349,30 @@ cx <cat> <cmd> ... --dump                        # capture full ctx
 ### 10.7 Reindex when things look stale — narrowest command first
 
 `cx --reindex` rebuilds *every* category pickle and gets slow as a home grows.
-Reach for the per-artifact commands first; they touch one index entry:
+Reach for the narrow commands first; they touch one index entry or one repository:
 
 ```bash
 cx <category> index  <repo>:<artifact>   # register ONE hand-made (mkdir-ed) artifact
-cx <category> update <repo>:<artifact>   # refresh entry after editing its _cmeta.* meta
+cx <category> reindex <artifact>         # refresh ONE record from its folder: a meta edited by hand, a folder
+                                         #   renamed/moved/copied in; nothing is written on disk
+cx <category> reindex                    # every artifact of the category, hand-made folders included
+cx repo reindex <repo>                   # ONE repository: its _cmr.yaml and its artifacts; other repos untouched
+cx <category> update <repo>:<artifact>   # refresh entry after editing its _cmeta.* meta (rewrites the file too)
 cx --reindex                             # whole-home rebuild — last resort
 ```
 
 - `cx <category> add <repo>:<artifact>` already indexes as it creates — nothing
-  extra needed. `index` is for folders you made by hand (`mkdir` + `_cmeta.*`).
+  extra needed. `index` is for folders you made by hand (`mkdir` + `_cmeta.*`);
+  `reindex` takes those too, and an artifact the index knows already.
+- `reindex` never touches a folder; the only record it removes is that of an
+  artifact whose folder now holds another artifact, and it says so. A folder it
+  cannot find, a meta it cannot read, or one UID in two folders is an error that
+  changes nothing. After a rename by hand the new name, the UID and the old name
+  all find the folder, and the old alias is dropped.
 - Editing only an artifact's **payload** (`api/`, `files/`, `src/`, `_desc.yaml`)
   needs no reindex at all — the index tracks meta, not content.
-- Keep `--reindex` for the broad cases: bulk `git pull`, moved/renamed folders,
-  `CMETA_HOME` wipe, or an index that looks generally wrong. Safe, idempotent.
+- Keep `--reindex` for the broad cases: a wiped `CMETA_HOME`, a bulk change
+  across repositories, or an index that looks generally wrong. Safe, idempotent.
 
 ## 11. Scripting the CLI
 

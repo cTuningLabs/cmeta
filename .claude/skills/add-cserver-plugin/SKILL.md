@@ -47,12 +47,14 @@ that one artifact instead of rebuilding the whole home:
 
 ```bash
 cx category index  <repo>:cserver.<name>   # index a hand-made folder
-cx category update <repo>:cserver.<name>   # after editing its _cmeta.* meta
+cx category reindex cserver.<name>         # after editing its _cmeta.* meta (nothing written)
+cx category update <repo>:cserver.<name>   # the same, but it rewrites the file too
+cx repo reindex <repo>                     # the whole repository, when several things changed in it
 ```
 
-`cx --reindex` walks every category and is slow — keep it for moves, bulk
-`git pull`, or a wiped `CMETA_HOME`. **Editing `api/`, `files/` or `src/` needs
-no reindex at all**; a server restart (or `--reload`) picks those up.
+`cx --reindex` walks every category and is slow — keep it for a wiped
+`CMETA_HOME` or a bulk change across repositories. **Editing `api/`, `files/` or
+`src/` needs no reindex at all**; a server restart (or `--reload`) picks those up.
 
 Layout:
 
