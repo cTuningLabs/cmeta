@@ -1076,110 +1076,136 @@ class Category(InitCategory):
         # The meta file of an artifact that is indexed as it is (made or copied by hand)
         existing_meta_file = None
 
-        if not virtual:
-            if os.path.isdir(artifact_path):
-                if os.path.isfile(cmeta_filename_json) or os.path.isfile(cmeta_filename_yaml):
-                    if index:
-                        if os.path.isfile(cmeta_filename_json):
-                            f = cmeta_filename_json
-                        else:
-                            f = cmeta_filename_yaml
-                            yaml = True
-
-                        # Do not use lock since it's not in the system and not in the index
-                        r = utils.files.safe_read_file(f, fail_on_error=self.fail_on_error, logger=self.logger)
-                        if r['return']>0: return r
-
-                        meta = r['data']
-                        existing_meta_file = f
-
-                        # Index the artifact under the UID of its meta (an "alias,UID" too),
-                        # not a new one, or alias,UID references to it would not resolve
-                        meta_uid = str(meta.get('artifact') or '').split(',')[-1].strip()
-                        if meta_uid and utils.names.is_valid_cmeta_uid(meta_uid):
-                            artifact_uid = meta_uid
-
-                    else:
-                        return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
-
-            os.makedirs(artifact_path, exist_ok=True)
-
-        # Prepare meta
-        cmeta = copy.deepcopy(meta)
-
-        if 'artifact' not in cmeta:
-            cmeta['artifact'] = artifact_uid
-
-        if 'category' not in cmeta:
-            r = utils.names.restore_cmeta_name(category, key='artifact', fail_on_error = self.fail_on_error)
-            if r['return'] >0: return r
-
-            cmeta['category'] = r['name']
-
-        if tags is not None:
-            meta_tags = cmeta.get('tags', [])
-
-            r = utils.common.normalize_tags(tags)
+        # The folder, the meta and the record of a new artifact are made under the index lock: a full
+        # reindex running meanwhile never sees a half-made artifact, two creates of one artifact at once
+        # end with one artifact (the second finds the folder of the first), and a create whose record
+        # cannot be written removes what it made, so that nothing is left unindexed
+        index_lock = None
+        if not no_index:
+            r = self.cm.repos.lock_index('the creation of an artifact')
             if r['return']>0: return r
-              
-            for t in r['tags']:
-                if t not in meta_tags:
-                    meta_tags.append(t)
+            index_lock = r['lock']
 
-            cmeta['tags'] = meta_tags
+        disk_path = artifact_path       # where the folder and the meta go (`path` may replace artifact_path for the index)
+        made_folder = False             # the create made the folder itself
+        written_meta_file = None        # the meta file the create wrote
+        done = False
 
-        if existing_meta_file is None:
-            from datetime import datetime, timezone
+        try:
+            if not virtual:
+                if os.path.isdir(artifact_path):
+                    if os.path.isfile(cmeta_filename_json) or os.path.isfile(cmeta_filename_yaml):
+                        if index:
+                            if os.path.isfile(cmeta_filename_json):
+                                f = cmeta_filename_json
+                            else:
+                                f = cmeta_filename_yaml
+                                yaml = True
 
-            if 'creation_timestamp' not in cmeta:
-                cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
-            else:
-                cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
+                            # Do not use lock since it's not in the system and not in the index
+                            r = utils.files.safe_read_file(f, fail_on_error=self.fail_on_error, logger=self.logger)
+                            if r['return']>0: return r
 
-            # Authors, copyright and generator: the meta, the environment and the repository defaults
-            apply_artifact_defaults(cmeta, repo_meta=repo_cmeta, cfg=self.cm.cfg, creating=True)
+                            meta = r['data']
+                            existing_meta_file = f
 
-        # Save meta
-        if not virtual:
-            if existing_meta_file is not None:
-                # Indexing leaves the meta file as it was written; only what the request adds (the tags,
-                # an identity key the file lacks) is added in place, without rewriting the rest
-                if cmeta != meta:
-                    r = utils.files.safe_write_file(existing_meta_file, data=cmeta, fail_on_error = self.fail_on_error, logger=self.logger, preserve=True)
-                    if r['return']>0: return r
+                            # Index the artifact under the UID of its meta (an "alias,UID" too),
+                            # not a new one, or alias,UID references to it would not resolve
+                            meta_uid = str(meta.get('artifact') or '').split(',')[-1].strip()
+                            if meta_uid and utils.names.is_valid_cmeta_uid(meta_uid):
+                                artifact_uid = meta_uid
 
-            else:
-                tmp_cmeta_filename = cmeta_filename_yaml if yaml else cmeta_filename_json
+                        else:
+                            return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
+                else:
+                    made_folder = True
 
-                # A new YAML meta is written in the keep style (the key order of YAML_META_KEY_ORDER,
-                # nothing folded, lists indented), the style `update` keeps; a JSON meta is sorted as before
-                r = utils.files.safe_write_file(tmp_cmeta_filename, data=cmeta, fail_on_error = self.fail_on_error, keep=True)
+                os.makedirs(artifact_path, exist_ok=True)
+
+            # Prepare meta
+            cmeta = copy.deepcopy(meta)
+
+            if 'artifact' not in cmeta:
+                cmeta['artifact'] = artifact_uid
+
+            if 'category' not in cmeta:
+                r = utils.names.restore_cmeta_name(category, key='artifact', fail_on_error = self.fail_on_error)
+                if r['return'] >0: return r
+
+                cmeta['category'] = r['name']
+
+            if tags is not None:
+                meta_tags = cmeta.get('tags', [])
+
+                r = utils.common.normalize_tags(tags)
                 if r['return']>0: return r
 
-        if path is not None:
-            artifact_path = path 
+                for t in r['tags']:
+                    if t not in meta_tags:
+                        meta_tags.append(t)
 
-        # Update index
-        if not no_index:
-            cmeta_ref_parts = {}
+                cmeta['tags'] = meta_tags
 
-            if artifact_alias is not None: 
-                cmeta_ref_parts['artifact_alias'] = artifact_alias
-                artifact_alias_lowercase = artifact_alias.lower()
-                if artifact_alias_lowercase != artifact_alias:
-                    cmeta_ref_parts['artifact_alias_lowercase'] = artifact_alias_lowercase
+            if existing_meta_file is None:
+                from datetime import datetime, timezone
 
-            cmeta_ref_parts['artifact_uid'] = artifact_uid
+                if 'creation_timestamp' not in cmeta:
+                    cmeta['creation_timestamp'] = datetime.now(timezone.utc).isoformat()
+                else:
+                    cmeta['last_update_timestamp'] = datetime.now(timezone.utc).isoformat()
 
-            cmeta_ref_parts['category_alias'] = category_alias
-            cmeta_ref_parts['category_uid'] = category_uid
+                # Authors, copyright and generator: the meta, the environment and the repository defaults
+                apply_artifact_defaults(cmeta, repo_meta=repo_cmeta, cfg=self.cm.cfg, creating=True)
 
-            cmeta_ref_parts['repo_alias'] = artifact_repo_alias
-            cmeta_ref_parts['repo_uid'] = artifact_repo_uid
+            # Save meta
+            if not virtual:
+                if existing_meta_file is not None:
+                    # Indexing leaves the meta file as it was written; only what the request adds (the tags,
+                    # an identity key the file lacks) is added in place, without rewriting the rest
+                    if cmeta != meta:
+                        r = utils.files.safe_write_file(existing_meta_file, data=cmeta, fail_on_error = self.fail_on_error, logger=self.logger, preserve=True)
+                        if r['return']>0: return r
 
+                else:
+                    tmp_cmeta_filename = cmeta_filename_yaml if yaml else cmeta_filename_json
+                    written_meta_file = tmp_cmeta_filename
 
-            r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, artifact_path, sharding_slices_num = sharding_slices_num)
-            if r['return']>0: return r
+                    # A new YAML meta is written in the keep style (the key order of YAML_META_KEY_ORDER,
+                    # nothing folded, lists indented), the style `update` keeps; a JSON meta is sorted as before
+                    r = utils.files.safe_write_file(tmp_cmeta_filename, data=cmeta, fail_on_error = self.fail_on_error, keep=True)
+                    if r['return']>0: return r
+
+            if path is not None:
+                artifact_path = path
+
+            # Update index
+            if not no_index:
+                cmeta_ref_parts = {}
+
+                if artifact_alias is not None:
+                    cmeta_ref_parts['artifact_alias'] = artifact_alias
+                    artifact_alias_lowercase = artifact_alias.lower()
+                    if artifact_alias_lowercase != artifact_alias:
+                        cmeta_ref_parts['artifact_alias_lowercase'] = artifact_alias_lowercase
+
+                cmeta_ref_parts['artifact_uid'] = artifact_uid
+
+                cmeta_ref_parts['category_alias'] = category_alias
+                cmeta_ref_parts['category_uid'] = category_uid
+
+                cmeta_ref_parts['repo_alias'] = artifact_repo_alias
+                cmeta_ref_parts['repo_uid'] = artifact_repo_uid
+
+                r = self.cm.repos.add_to_index(cmeta, cmeta_ref_parts, artifact_path, sharding_slices_num = sharding_slices_num, index_lock = index_lock)
+                if r['return']>0: return r
+
+            done = True
+
+        finally:
+            if not done and not virtual:
+                self._undo_create(disk_path, made_folder, written_meta_file, sharding_slices)
+            if index_lock is not None:
+                index_lock.release()
 
         # Print artifact path
         if con:
@@ -1187,6 +1213,36 @@ class Category(InitCategory):
             print (f'{x}rtifact was created in "{artifact_path}"')
 
         return {'return':0, 'path':artifact_path, 'meta':cmeta}
+
+    ############################################################
+    def _undo_create(
+        self,
+        artifact_path: str,  # The folder of the artifact that was being created.
+        made_folder: bool,  # True when the create made the folder itself: it goes with everything in it.
+        meta_file: str,  # The meta file the create wrote, or None.
+        sharding_slices,  # The sharding of the category, to remove the empty parent folders too.
+    ):
+        """
+            Remove what a create that failed made on disk - the folder when the create made it, else only
+            the meta it wrote - so that a create whose record could not be written leaves nothing unindexed.
+
+            Args:
+                artifact_path (str): The folder of the artifact that was being created.
+                made_folder (bool): True when the create made the folder itself.
+                meta_file (str | None): The meta file the create wrote.
+                sharding_slices (list | None): The sharding of the category.
+        """
+        import shutil
+
+        if made_folder:
+            shutil.rmtree(artifact_path, ignore_errors=True)
+            utils.files.safe_delete_directory_if_empty_with_sharding(artifact_path, sharding_slices)
+
+        elif meta_file is not None:
+            try:
+                os.remove(meta_file)
+            except OSError:
+                pass
 
     ############################################################
     def move_(

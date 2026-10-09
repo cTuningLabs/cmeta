@@ -7,6 +7,14 @@ cMeta author and developer: (C) 2025-2026 Grigori Fursin
 
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 
+Classes
+-------
+
+.. autoclass:: cmeta.utils.files.PathLock
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Functions
 ---------
 
@@ -90,6 +98,22 @@ Constants
 ---------
 
 .. autodata:: cmeta.utils.files.ERROR_CODE_FILE_NOT_FOUND
+
+.. autodata:: cmeta.utils.files.LOCK_IDENTITY_RETRIES
+
+.. autodata:: cmeta.utils.files.LOCK_POLL_MAX
+
+.. autodata:: cmeta.utils.files.LOCK_POLL_START
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_CHECK_SECONDS
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_DEAD_MIN_AGE_SECONDS
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_EMPTY_STALE_SECONDS
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_REMOVE_SECONDS
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_STALE_SECONDS
 
 .. autodata:: cmeta.utils.files.LOCK_SUFFIX
 

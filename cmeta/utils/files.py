@@ -7,6 +7,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 import os
+import sys
 import time
 import json
 import pickle
@@ -49,13 +50,21 @@ LOCK_SOFT_DEAD_MIN_AGE_SECONDS = 1.0  # a soft lock file of a dead pid younger t
 LOCK_SOFT_CHECK_SECONDS = 0.25   # how often a waiter on a soft lock reads the file to check for a stale holder
 LOCK_SOFT_REMOVE_SECONDS = 2.0   # how long a releasing soft lock retries the removal of its file (Windows: a reader may hold it)
 LOCK_IDENTITY_RETRIES = 50       # consecutive identity mismatches after which a path is locked with the soft lock
+LOCK_NOTE_MAX = 512              # bytes of the note a holder may leave in its lock file for the message of a waiter
+LOCK_TIMEOUT_ENV = 'CMETA_LOCK_TIMEOUT'
+LOCK_TIMEOUT = 30                # seconds a writer waits for the lock of a file (the environment variable changes it)
+LOCK_NOTICE_SECONDS = 3          # a waiter says so on stderr after this long
+READ_RETRY_SECONDS = 3           # how long a read without a lock is retried when the file cannot be read (a write in progress)
+PICKLE_PROTOCOL = 4              # readable by every Python the engine supports, whatever the default of the Python that writes
 ERROR_CODE_FILE_NOT_FOUND = 16
-RETRY_DELAY = 0.1
+RETRY_DELAY = 0.1                # between the retries of a read; the longest delay between the retries of a replace
 RETRY_NOT_FOUND_FILE = 10
-RETRY_NOT_FOUND_INDEX_FILE = 2
-RETRY_REPLACE_FILE = 10
+RETRY_NOT_FOUND_INDEX_FILE = 3   # short retries of a cached file that is missing for a moment (a replace, the swap of a reindex)
+RETRY_NOT_FOUND_DELAY = 0.025
 RETRY_TIMESTAMP_FILE = 10
 RETRY_DELETE_ATTEMPTS = 5
+
+_REPLACE_BUSY_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name in ('EACCES', 'EPERM', 'EBUSY', 'ETXTBSY')) if e is not None)
 
 ##########################################################################################
 def _get_lockfile_path(
@@ -152,7 +161,9 @@ def is_path_within(
 #             when left by another host) is renamed away and removed by the waiter that finds it.
 # In every mode the threads of one process are serialized on the path first (a threading.Lock per path),
 # which POSIX record locks and soft locks need (they are per process), and the busy wait polls with a
-# delay that doubles from LOCK_POLL_START to LOCK_POLL_MAX until the timeout.
+# delay that doubles from LOCK_POLL_START to LOCK_POLL_MAX until the timeout. The engine's own writers
+# (_acquire_lock) wait LOCK_TIMEOUT seconds (CMETA_LOCK_TIMEOUT) and say so on stderr after
+# LOCK_NOTICE_SECONDS, naming the holder when it left a note in the lock file (_acquire_with_notice).
 
 _LOCK_BUSY_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name in ('EWOULDBLOCK', 'EAGAIN', 'EACCES', 'EDEADLK', 'EDEADLOCK')) if e is not None)
 _LOCK_UNSUPPORTED_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name in ('ENOLCK', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP', 'EINVAL', 'ENOTTY', 'EPERM', 'EBADF')) if e is not None)
@@ -239,6 +250,7 @@ class PathLock:
     def acquire(
         self,
         timeout: float = 3,  # Seconds to wait for the lock (0: one try).
+        note: str = None,  # A short note left in the lock file for the message of a waiter (see read_note).
     ):
         """Take the lock or raise TimeoutError; returns self."""
         timeout = max(float(timeout), 0.0)
@@ -254,6 +266,8 @@ class PathLock:
                     self._thread_lock = thread_lock
                     self.is_locked = True
                     self.logger.debug(f"utils.files.PathLock - acquired {self.lock_file} ({self.mode})")
+                    if note is not None:
+                        self.write_note(note)
                     return self
 
                 remaining = deadline - time.monotonic()
@@ -302,6 +316,48 @@ class PathLock:
             self._thread_lock = None
             if thread_lock is not None:
                 thread_lock.release()
+
+    def write_note(self, note):
+        """Leave a short note in the held lock file - who holds it and why - for the message of a waiter
+        (`read_note`). Best effort: nothing happens when it cannot be written. The note starts after a first
+        byte that stays free: on Windows that byte is the locked one, which another process cannot read. Not
+        in soft mode, where the file already holds `pid host time`."""
+        if not self.is_locked or self._fd is None or self.mode == 'soft':
+            return
+        data = b'\n' + str(note).encode('utf-8', 'replace')[:LOCK_NOTE_MAX] + b'\n'
+        try:
+            os.ftruncate(self._fd, 0)
+            os.lseek(self._fd, 0, os.SEEK_SET)
+            os.write(self._fd, data)
+        except OSError:
+            pass
+        finally:
+            try:
+                os.lseek(self._fd, 0, os.SEEK_SET)   # the Windows byte lock is addressed by the file position
+            except OSError:
+                pass
+
+    @staticmethod
+    def read_note(lock_file):
+        """The note the holder of `lock_file` left (`write_note`), or the `pid host time` of a soft lock,
+        or '' when there is none or the file cannot be read."""
+        try:
+            fd = os.open(lock_file, os.O_RDONLY | getattr(os, 'O_BINARY', 0))
+        except OSError:
+            return ''
+        try:
+            try:
+                data = os.read(fd, LOCK_NOTE_MAX + 8)
+            except OSError:
+                # Windows: the first byte is locked by the holder - read from the second one
+                os.lseek(fd, 1, os.SEEK_SET)
+                data = os.read(fd, LOCK_NOTE_MAX + 8)
+        except OSError:
+            return ''
+        finally:
+            os.close(fd)
+        text = data.decode('utf-8', 'replace').strip()
+        return text.splitlines()[0].strip() if text else ''
 
     # ---- one attempt ----------------------------------------------------------------------
 
@@ -608,40 +664,122 @@ class PathLock:
 
 
 ##########################################################################################
+def lock_timeout(
+    default: float = LOCK_TIMEOUT,  # The seconds used when the environment variable is not set.
+    env_name: str = LOCK_TIMEOUT_ENV,  # The environment variable that changes it.
+    logger = None,  # Optional logger for the warning about a value that is not a number.
+):
+    """
+        The seconds a writer waits for a lock: `default` (LOCK_TIMEOUT, 30 s, for the lock of a file)
+        unless the environment variable `env_name` (CMETA_LOCK_TIMEOUT) holds a number of seconds; a value
+        that is not a number is ignored with a warning.
+
+        Returns:
+            float: The seconds (0 or more).
+    """
+    x = os.environ.get(env_name, '').strip()
+    if x != '':
+        try:
+            return max(float(x), 0.0)
+        except ValueError:
+            (logger if logger is not None else logging.getLogger('cmeta.utils.files')).warning(
+                f'{env_name}="{x}" is not a number of seconds - {default:g} is used')
+    return max(float(default), 0.0)
+
+##########################################################################################
+def _acquire_with_notice(
+    lock,  # The PathLock to take.
+    timeout: float,  # Seconds to wait in all.
+    subject: str,  # What is locked, for the messages ("the index in <path>", "'<file>'").
+    what: str,  # What waits ("the write of a record"), for the notice.
+    env_name: str,  # The environment variable that changes the timeout, named in the messages.
+    note: str = None,  # A note left in the lock file for the waiters (see PathLock.acquire).
+    logger = None,  # Optional logger: the notice is a warning there too.
+):
+    """
+        Take `lock` within `timeout` seconds. A waiter that has not got it after LOCK_NOTICE_SECONDS says
+        so on stderr, naming the holder when it left a note in the lock file, and keeps waiting for the rest
+        of the time; when the lock stays held, the TimeoutError names the holder and the environment
+        variable that lengthens the wait.
+
+        Returns:
+            PathLock: the lock, acquired.
+
+        Raises:
+            TimeoutError: the lock stayed held for `timeout` seconds.
+    """
+    timeout = max(float(timeout), 0.0)
+    first = min(float(LOCK_NOTICE_SECONDS), timeout)
+
+    try:
+        return lock.acquire(timeout=first, note=note)
+    except TimeoutError as e:
+        holder = PathLock.read_note(lock.lock_file)
+        held_by = f' ({holder})' if holder else ''
+        if timeout <= first:
+            raise TimeoutError(f'{subject} stayed locked by another process{held_by} for {timeout:g} s ({e}) - set {env_name} to wait longer')
+
+    message = (f'cMeta: {subject} is locked by another process{held_by} - '
+               f'{what} continues when it is released (waiting up to {timeout:g} s; {env_name} changes it)')
+    print(message, file=sys.stderr, flush=True)
+    if logger is not None:
+        logger.warning(message)
+
+    try:
+        return lock.acquire(timeout=max(timeout - first, 0.0), note=note)
+    except TimeoutError as e:
+        raise TimeoutError(f'{subject} stayed locked by another process{held_by} for {timeout:g} s ({e}) - set {env_name} to wait longer')
+
+##########################################################################################
 def _acquire_lock(
     filepath: str,  # Path to the file to lock.
-    timeout: int = 3,  # Maximum seconds to wait for lock acquisition. Default is 3.
+    timeout: float = None,  # Seconds to wait for the lock; None: the engine's lock timeout (lock_timeout(): 30 s, CMETA_LOCK_TIMEOUT changes it).
     logger = None,  # Optional logger for debug messages.
+    what: str = None,  # What waits, named in the notice of a waiter ("the write of '<file>'").
+    note: str = None,  # A note left in the lock file for the waiters (who holds it and why).
 ):
     """
         Acquire the lock of a path (`<filepath>.lock`, see PathLock) for process- and thread-safe
-        file operations. Blocks until the lock is acquired or the timeout expires.
+        file operations. Blocks until the lock is acquired or the timeout expires; a waiter says so on
+        stderr after LOCK_NOTICE_SECONDS (see _acquire_with_notice).
 
         Args:
             filepath (str): Path to the file to lock.
-            timeout (int): Maximum seconds to wait for lock acquisition. Default is 3.
+            timeout (float | None): Seconds to wait for the lock; None: the engine's lock timeout
+                                    (LOCK_TIMEOUT, 30 s; the environment variable CMETA_LOCK_TIMEOUT changes it).
             logger: Optional logger for debug messages.
+            what (str | None): What waits, named in the notice of a waiter.
+            note (str | None): A note left in the lock file for the waiters.
 
         Returns:
             PathLock: Acquired lock object that must be released later (`_release_lock`).
 
         Raises:
-            TimeoutError: If lock cannot be acquired within timeout period.
+            TimeoutError: If lock cannot be acquired within timeout period (the message names the holder
+                          when it left a note), or for any other failure of the lock.
     """
     lockfile = _get_lockfile_path(filepath)
+    if timeout is None:
+        timeout = lock_timeout(logger=logger)
     if logger is not None:
         logger.debug(f"utils.files._acquire_lock - attempting to create {lockfile} ...")
 
     file_lock = PathLock(lockfile, logger=logger)
     try:
-        file_lock.acquire(timeout=timeout)
+        _acquire_with_notice(file_lock, timeout, f"'{filepath}'", what if what is not None else f"the operation on '{filepath}'",
+                             LOCK_TIMEOUT_ENV, note=note, logger=logger)
+    except TimeoutError:
         if logger is not None:
-            logger.debug(f"utils.files._acquire_lock - lock {lockfile} acquired!")
-        return file_lock
+            logger.debug(f"utils.files._acquire_lock - failed to lock {lockfile} in time ...")
+        raise
     except Exception as e:
         if logger is not None:
             logger.debug(f"utils.files._acquire_lock - failed to create {lockfile} ...")
-        raise TimeoutError(f"Could not acquire lock on '{filepath}' within {timeout} seconds: {str(e)}")
+        raise TimeoutError(f"Could not acquire lock on '{filepath}': {str(e)}")
+
+    if logger is not None:
+        logger.debug(f"utils.files._acquire_lock - lock {lockfile} acquired!")
+    return file_lock
 
 ##########################################################################################
 def _check_lock(
@@ -810,7 +948,7 @@ def safe_read_file(
     encoding: str = None,  # Character encoding for text files. If None, auto-detected.
     lock: bool = False,  # If True, acquires file lock before reading.
     keep_locked: bool = False,  # If True with lock=True, keeps lock after read (returns in result).
-    timeout: int = 3,  # Seconds to wait for lock acquisition. Default is 3.
+    timeout: float = None,  # With lock=True, seconds to wait for the lock (None: the engine's lock timeout, 30 s, CMETA_LOCK_TIMEOUT changes it); without a lock, how long a read that fails is retried (None: READ_RETRY_SECONDS, 3 s; 0: one try).
     retry_if_not_found: int = 0,  # Number of retry attempts if file not found.
     fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
     logger = None,  # Optional logger for debug messages.
@@ -831,7 +969,8 @@ def safe_read_file(
             encoding: Character encoding for text files. If None, auto-detected.
             lock: If True, acquires file lock before reading.
             keep_locked: If True with lock=True, keeps lock after read (returns in result).
-            timeout: Seconds to wait for lock acquisition. Default is 3.
+            timeout: With a lock, seconds to wait for it (None: the engine's lock timeout, see lock_timeout);
+                     without a lock, how long a read that fails is retried (None: READ_RETRY_SECONDS; 0: one try).
             retry_if_not_found: Number of retry attempts if file not found.
             fail_on_error: If True, raises exception on error instead of returning error dict.
             logger: Optional logger for debug messages.
@@ -856,7 +995,7 @@ def safe_read_file(
     # to avoid cases, when file was deleted before writing
     if lock:
         try:
-            file_lock = _acquire_lock(filepath, timeout, logger)
+            file_lock = _acquire_lock(filepath, timeout, logger, what=f"the read of '{filepath}'")
         except Exception as e:
             return _error(None, 1, e, fail_on_error)
 
@@ -891,7 +1030,10 @@ def safe_read_file(
     data = None
 
     if not lock:
-        if timeout == 0:
+        # Without a lock a read that fails (a write in progress) is retried for a while
+        retry = READ_RETRY_SECONDS if timeout is None else timeout
+
+        if retry == 0:
             try:
                 data = _read_file_data(filepath, encoding=encoding)
             except Exception as e:
@@ -901,15 +1043,15 @@ def safe_read_file(
             # Retry reading with timeout when no lock
             start_time = time.time()
             last_error = None
-            
-            while time.time() - start_time < timeout:
+
+            while time.time() - start_time < retry:
                 try:
                     data = _read_file_data(filepath, encoding=encoding)
                     break  # Success, exit retry loop
-                    
+
                 except Exception as e:
                     last_error = e
-                    if time.time() - start_time < timeout:
+                    if time.time() - start_time < retry:
                         if logger is not None:
                             logger.debug(f"utils.files.safe_read_file - retrying read file '{filepath}' due to error: {str(e)} ...")
                         time.sleep(RETRY_DELAY)  # Small delay before retry
@@ -1011,7 +1153,7 @@ def write_file(
                 else:
                     yaml.safe_dump(data, f, sort_keys=sort_keys)
             elif file_format == "pickle":
-                pickle.dump(data, f)
+                pickle.dump(data, f, protocol=PICKLE_PROTOCOL)
             else:
                 f.write(str(data))
 
@@ -1220,22 +1362,79 @@ def edit_yaml_text(
 
 ##########################################################################################
 def _replace_file(
-    temp_path: str,  # The file just written.
-    filepath: str,  # The file it replaces.
+    temp_path: str,  # The file just written (or the folder to rename).
+    filepath: str,  # The file (or folder) it replaces.
     logger = None,  # Optional logger for debug messages.
+    timeout: float = None,  # Seconds the replace is retried while the target is busy (None: the engine's lock timeout).
 ):
-    """Replace a file atomically, with the retries that Windows needs after a lock."""
-    for attempt in range(RETRY_REPLACE_FILE + 1):
+    """Replace a file atomically (`os.replace`; a folder is renamed the same way). The replace fails while
+    another process holds the target open (on Windows: a reader of an index file, a scanner, an antivirus)
+    or busy: it is retried with a delay that doubles from LOCK_POLL_START to RETRY_DELAY until `timeout`
+    seconds (the lock timeout, CMETA_LOCK_TIMEOUT) have passed. A target that cannot be written at all (a
+    read-only file, a folder without write permission) fails at once."""
+    if timeout is None:
+        timeout = lock_timeout(logger=logger)
+    deadline = time.monotonic() + max(float(timeout), 0.0)
+    delay = LOCK_POLL_START
+    attempt = 0
+
+    while True:
         try:
             os.replace(temp_path, filepath)
             return
-        except Exception as e:
-            if attempt < RETRY_REPLACE_FILE:
-                if logger is not None:
-                    logger.debug(f"utils.files._replace_file - retrying replace for '{temp_path}' -> '{filepath}' (attempt {attempt + 1}) due to error: {str(e)}")
-                time.sleep(RETRY_DELAY)
-            else:
+        except OSError as e:
+            if e.errno not in _REPLACE_BUSY_ERRNOS:
                 raise
+            attempt += 1
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not _replace_may_succeed_later(filepath):
+                raise
+            if logger is not None:
+                logger.debug(f"utils.files._replace_file - retrying replace for '{temp_path}' -> '{filepath}' (attempt {attempt}) due to error: {str(e)}")
+            time.sleep(min(delay, remaining))
+            delay = min(delay * 2, RETRY_DELAY)
+
+def _replace_may_succeed_later(filepath):
+    """False when a replace of `filepath` cannot succeed by waiting: the target is a read-only file, or its
+    folder cannot be written (on Windows os.access tells the read-only attribute of a file only)."""
+    try:
+        if os.path.isfile(filepath) and not os.access(filepath, os.W_OK):
+            return False
+        return os.access(os.path.dirname(filepath) or '.', os.W_OK)
+    except OSError:
+        return True
+
+##########################################################################################
+def _install_file(
+    temp_path: str,  # The file just written next to its target.
+    filepath: str,  # The target.
+    logger = None,  # Optional logger for debug messages.
+):
+    """Put a file written next to its target in place with one atomic replace, so that a reader never sees
+    a half-written file: the mode of an existing target is kept (best effort); a target that is a symbolic
+    link is written through in place, so that the link stays (a replace would turn it into a plain file); a
+    target that cannot be written (read-only) is refused, as a write in place would be."""
+    if os.path.islink(filepath):
+        with open(temp_path, 'rb') as src, open(filepath, 'wb') as dst:
+            shutil.copyfileobj(src, dst)
+        _remove_quietly(temp_path)
+        return
+
+    if os.path.isfile(filepath):
+        if not os.access(filepath, os.W_OK):
+            raise PermissionError(errno.EACCES, 'Permission denied', filepath)
+        try:
+            shutil.copymode(filepath, temp_path)
+        except OSError:
+            pass
+
+    _replace_file(temp_path, filepath, logger)
+
+def _remove_quietly(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 ##########################################################################################
 def _write_yaml_keeping_text(
@@ -1290,7 +1489,7 @@ def _write_yaml_keeping_text(
                 logger.debug(f"utils.files._write_yaml_keeping_text - the {method} of '{filepath}' does not load as expected: {loaded if not parsed else 'different data'}")
 
             if (parsed and loaded == data) or (method == 'dump' and parsed):
-                _replace_file(temp_path, filepath, logger)
+                _install_file(temp_path, filepath, logger)
                 return {'return': 0, 'method': method, 'validated': parsed and loaded == data}
 
     finally:
@@ -1306,9 +1505,9 @@ def _write_yaml_keeping_text(
 def safe_write_file(
     filepath: str,  # Path where file should be written.
     data,  # Data to write (dict/list for JSON/YAML, any object for pickle/text).
-    timeout: int = 3,  # Seconds to wait for lock acquisition. Default is 3.
+    timeout: float = None,  # Seconds to wait for the lock (None: the engine's lock timeout, 30 s, CMETA_LOCK_TIMEOUT changes it).
     file_lock = None,  # Existing lock to use. If None, acquires new lock.
-    atomic: bool = False,  # If True, writes to temp file then renames for atomicity.
+    atomic: bool = None,  # If True, the file is written next to its target and put in place with one atomic replace, so that a reader never sees a half-written file and a crash leaves the previous one. None (the default): atomic for JSON, YAML and pickle, in place for text.
     encoding: str = None,  # Character encoding for text files. If None, auto-detected.
     fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
     logger = None,  # Optional logger for debug messages.
@@ -1335,9 +1534,12 @@ def safe_write_file(
         Args:
             filepath (str): Path where file should be written.
             data: Data to write (dict/list for JSON/YAML, any object for pickle/text).
-            timeout (int): Seconds to wait for lock acquisition. Default is 3.
+            timeout (float | None): Seconds to wait for the lock (None: the engine's lock timeout, see lock_timeout).
             file_lock: Existing lock to use. If None, acquires new lock.
-            atomic (bool): If True, writes to temp file then renames for atomicity.
+            atomic (bool | None): True: written next to the target and put in place with one atomic replace
+                                  (a reader never sees a half-written file; the mode of the target is kept;
+                                  a symbolic link is written through). None: atomic for JSON, YAML and
+                                  pickle, in place for text. False: in place.
             encoding (str | None): Character encoding for text files. If None, auto-detected.
             fail_on_error (bool): If True, raises exception on error instead of returning error dict.
             logger: Optional logger for debug messages.
@@ -1361,11 +1563,16 @@ def safe_write_file(
 
     if file_lock is None:
         try:
-            file_lock = _acquire_lock(filepath, timeout, logger)
+            file_lock = _acquire_lock(filepath, timeout, logger, what=f"the write of '{filepath}'")
         except Exception as e:
             return _error(None, 1, e, fail_on_error)
 
     file_format = _detect_file_format(filepath)
+
+    # A structured file is written atomically unless told otherwise: a reader never sees a half-written
+    # file and a crash leaves the previous one (text is written in place, as write_file does)
+    if atomic is None:
+        atomic = file_format in ('json', 'yaml', 'pickle')
 
     result = {'return': 0}
     release_error = None
@@ -1393,18 +1600,23 @@ def safe_write_file(
             # A new YAML meta gets the keep style whether asked for it or for `preserve`
             keep_style = keep or (preserve and file_format == 'yaml')
 
-            r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format, keep=keep_style)
-            if r['return']>0: return r
+            try:
+                r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format, keep=keep_style)
+            except Exception:
+                if atomic:
+                    _remove_quietly(temp_path)
+                raise
+            if r['return']>0:
+                if atomic:
+                    _remove_quietly(temp_path)
+                return r
 
             if atomic:
                 try:
                     _check_lock(filepath, file_lock, logger)
+                    _install_file(temp_path, filepath, logger)
                 except Exception as e:
-                    return _error(None, 1, e, fail_on_error)
-
-                try:
-                    _replace_file(temp_path, filepath, logger)
-                except Exception as e:
+                    _remove_quietly(temp_path)
                     return _error(None, 1, e, fail_on_error)
 
     finally:
@@ -1423,7 +1635,7 @@ def safe_write_file(
 ##########################################################################################
 def safe_delete_directory(
     dirpath: str,  # Full path to directory to delete.
-    timeout: int = 3,  # Lock timeout in seconds.
+    timeout: float = None,  # Seconds to wait for the lock (None: the engine's lock timeout, 30 s, CMETA_LOCK_TIMEOUT changes it).
     fail_on_error: bool = False,  # Whether to raise exceptions or return error dict.
     logger = None,  # Logger instance for debug messages.
 ):
@@ -1460,7 +1672,7 @@ def safe_delete_directory(
     
     # Try to acquire lock
     try:
-        file_lock = _acquire_lock(dirpath, timeout, logger)
+        file_lock = _acquire_lock(dirpath, timeout, logger, what=f"the removal of '{dirpath}'")
         lock_acquired = True
         if logger is not None:
             logger.debug(f"utils.files.self_delete_directory - lock acquired for {dirpath}")
@@ -1601,7 +1813,7 @@ def safe_delete_directory_if_empty(
 ##########################################################################################
 def lock_path(
     path: str,  # Path to lock (file or directory).
-    timeout: int = 3,  # Seconds to wait for lock acquisition. Default is 3.
+    timeout: float = None,  # Seconds to wait for the lock (None: the engine's lock timeout, 30 s, CMETA_LOCK_TIMEOUT changes it).
     fail_on_error: bool = False,  # If True, raises exception on error instead of returning error dict.
     logger = None,  # Optional logger for debug messages.
 ):
@@ -1625,7 +1837,7 @@ def lock_path(
         logger.debug(f"utils.files.lock_path - preparing to lock path {path} ...")
 
     try:
-        file_lock = _acquire_lock(path, timeout, logger)
+        file_lock = _acquire_lock(path, timeout, logger, what=f"the lock of '{path}'")
         return {'return': 0, 'file_lock': file_lock}
     except Exception as e:
         return _error(None, 1, e, fail_on_error)
@@ -1664,24 +1876,30 @@ def unlock_path(
     return {'return':0}
 
 ##########################################################################################
+_file_cache_guard = threading.Lock()   # the cache dicts of safe_read_file_via_cache, for the threads of one process
+
 def safe_read_file_via_cache(
     filepath: str,  # Path to the file to read.
     cache: dict,  # Dictionary to store cached data (modified in-place).
-    timeout: int = 10,  # Lock timeout for file operations.
+    timeout: int = 10,  # How long a read that fails (a write in progress) is retried, in seconds.
     fail_on_error: bool = False,  # Whether to raise exceptions or return error dict.
     logger = None,  # Optional logger for debug messages
 ):
     """
-        Reads a file with caching based on file modification timestamp.
-        Automatically reloads if file has been modified since last cache.
+        Reads a file with caching keyed by the file's modification time in nanoseconds, size and inode
+        (an atomic replace changes the inode): the file is read again when any of them changed, which
+        catches two writes within one tick of a coarse file system too. A file read before that is
+        missing for a moment (being replaced on a mount whose rename is not atomic, or inside the swap
+        of a full reindex) is retried a few times before "not found". The cache dict is read and
+        updated under one lock for the threads of one process. The data handed out is the cached object
+        itself - do not change it (`Repos.find` copies what a caller may edit).
 
-        WARNING: This function is NOT thread-safe for async usage. The cache dictionary
-        can be corrupted by concurrent access, and it uses blocking I/O operations.
+        WARNING: This function uses blocking I/O operations.
 
         Args:
             filepath (str): Path to the file to read.
             cache (dict): Dictionary to store cached data (modified in-place).
-            timeout (int): Lock timeout for file operations.
+            timeout (int): How long a read that fails is retried, in seconds.
             fail_on_error (bool): Whether to raise exceptions or return error dict.
             logger: Optional logger for debug messages
 
@@ -1692,55 +1910,64 @@ def safe_read_file_via_cache(
             Exception: Propagated runtime errors, if any.
     """
     path = Path(filepath)
-    
-    if path.is_dir():
+
+    # Retry the stat RETRY_TIMESTAMP_FILE+1 times with small delay. A file this process has read before
+    # that is missing is given RETRY_NOT_FOUND_INDEX_FILE short retries: it is being replaced (on a mount
+    # whose rename is not atomic, 9p) or its folder is inside the swap of a full reindex; a file never
+    # seen is not retried (the index file of a category without artifacts)
+    not_found = 0
+    for attempt in range(RETRY_TIMESTAMP_FILE + 1):
+        try:
+            st = path.stat()
+            break  # Success, exit retry loop
+        except FileNotFoundError:
+            with _file_cache_guard:
+                seen = filepath in cache
+            if seen and not_found < RETRY_NOT_FOUND_INDEX_FILE:
+                not_found += 1
+                time.sleep(RETRY_NOT_FOUND_DELAY)
+                continue
+            return _error(f"'{filepath}' does not exist", ERROR_CODE_FILE_NOT_FOUND, None, fail_on_error)
+        except Exception as e:
+            if attempt < RETRY_TIMESTAMP_FILE:  # Don't delay after last attempt
+                if logger is not None:
+                    logger.debug(f"utils.files.safe_read_file_via_cache - retrying stat for '{filepath}' (attempt {attempt + 1}) due to error: {str(e)}")
+                time.sleep(RETRY_DELAY)
+            else:
+                return _error(f"Could not get file timestamp: {str(e)}", 1, e, fail_on_error)
+
+    if stat.S_ISDIR(st.st_mode):
         return _error(f"'{filepath}' is a directory; safe_read_file_via_cache only supports files.", 1, None, fail_on_error)
-    
-    for attempt in range(RETRY_NOT_FOUND_INDEX_FILE + 1):
-        if path.exists():
-            break
 
-        return _error(f"'{filepath}' does not exist", ERROR_CODE_FILE_NOT_FOUND, None, fail_on_error)
-    
-    try:
-        # Retry getting file timestamp RETRY_TIMESTAMP_FILE+1 times with small delay
-        for attempt in range(RETRY_TIMESTAMP_FILE + 1):
-            try:
-                current_timestamp = path.stat().st_mtime
-                break  # Success, exit retry loop
-            except Exception as e:
-                if attempt < RETRY_TIMESTAMP_FILE:  # Don't delay after last attempt
-                    if logger is not None:
-                        logger.debug(f"utils.files.safe_read_file_via_cache - retrying getmtime for '{filepath}' (attempt {attempt + 1}) due to error: {str(e)}")
-                    time.sleep(RETRY_DELAY)
-                else:
-                    return _error(None, 1, e, fail_on_error)
+    stamp = (st.st_mtime_ns, st.st_size, st.st_ino)
 
-    except Exception as e:
-        return _error(f"Could not get file timestamp: {str(e)}", 1, e, fail_on_error)
-    
-    # Check if file is in cache and timestamp matches
-    if filepath in cache:
-        cached_entry = cache[filepath]
-        if cached_entry.get('timestamp') == current_timestamp:
+    # Check if file is in cache and its stamp matches
+    with _file_cache_guard:
+        cached_entry = cache.get(filepath)
+
+    if cached_entry is not None:
+        if cached_entry.get('stamp') == stamp:
             return {'return': 0, 'data': cached_entry['data']}
 
         if logger is not None:
             logger.debug(f"utils.files.safe_read_file_via_cache - recaching changed index file {filepath} ...")
-    
+
     # Cache miss or file changed - read the file
     if logger is not None:
         logger.debug(f"utils.files.safe_read_file_via_cache - reading index file {filepath} ...")
 
     result = safe_read_file(filepath, timeout=timeout, fail_on_error=fail_on_error, logger=logger)
-    
+
     if result['return'] == 0:
-        # Update cache with new data and timestamp
-        cache[filepath] = {
-            'data': result['data'],
-            'timestamp': current_timestamp
-        }
-    
+        # Update cache with new data and stamp (a change of the file between the stat and the read is
+        # caught at the next call: the stamp stored is the older one)
+        with _file_cache_guard:
+            cache[filepath] = {
+                'data': result['data'],
+                'timestamp': st.st_mtime,
+                'stamp': stamp
+            }
+
     return result
 
 ##########################################################################################
@@ -1748,7 +1975,7 @@ def safe_read_yaml_or_json(
     filepath: str,  # Path to file (extension will be ignored/removed).
     lock: bool = False,  # Whether to use file locking.
     keep_locked: bool = False,  # Whether to keep lock after successful read.
-    timeout: int = 3,  # Lock timeout.
+    timeout: float = None,  # Lock timeout (None: the engine's lock timeout), or the read retry without a lock (see safe_read_file).
     fail_on_error: bool = False,  # Whether to raise exceptions or return error dict.
     retry_if_not_found: int = 0,  # Number of retries if file not found.
     logger = None,  # Logger instance for debug messages.

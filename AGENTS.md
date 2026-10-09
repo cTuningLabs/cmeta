@@ -63,7 +63,9 @@ tabulate, tqdm, packaging, psutil. (File locks are the engine's own
 ### Useful environment variables
 `CMETA_HOME`, `CMETA_DEBUG=1`, `CMETA_LOG=DEBUG|INFO`, `CMETA_LOG_FILE=<path>`,
 `CMETA_FAIL_ON_ERROR=yes`, `CMETA_VERBOSE=yes`, `CMETA_INTERNAL_REPO_PATH`,
-`CMETA_PIP_INSTALL_ARGS`, and the provenance stamped on new artifacts: `CMETA_AUTHORS`, `CMETA_COPYRIGHT`,
+`CMETA_PIP_INSTALL_ARGS`, `CMETA_INDEX_LOCK_TIMEOUT` (seconds a write to the index waits for a running
+reindex, 600), `CMETA_LOCK_TIMEOUT` (seconds a writer waits for the lock of a file, 30), and the
+provenance stamped on new artifacts: `CMETA_AUTHORS`, `CMETA_COPYRIGHT`,
 `CMETA_GENERATOR` (JSON: how the artifact was made; with the `artifact_defaults` of a repository's
 `_cmr.yaml` - docs/using-cmeta.md §7.6).
 
