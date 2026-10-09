@@ -3,6 +3,28 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.34.0.1 (in development)
+- **The index lock: a full reindex no longer loses the writes made while it runs, and two rebuilds no
+  longer race for the swap.** A full `cx --reindex` builds the new index in a temporary folder and swaps
+  it in when it is complete; a record written to the live index meanwhile by another process (a
+  create, update, delete or reindex of an artifact) was lost in the swap, and a deletion came back as a
+  record whose folder was gone. The lock file `<home>/index.lock` - the sidecar of the index folder,
+  which the swap leaves in place - is now held by the full reindex for its whole rebuild and swap, by
+  the index of pulled or plugged repositories for its duration, and by every write of a record for a
+  moment: a writer that arrives during a reindex waits for it (a notice on stderr after 3 s naming the
+  reindexing process, which leaves a note in the lock file; `CMETA_INDEX_LOCK_TIMEOUT`, 600 s by
+  default, bounds the wait, then the write fails with an error) and then writes into the new index; two
+  reindexes run one after the other; several processes starting on a fresh home at once build one
+  index, the others wait and find it; a process that starts during the swap waits instead of
+  rebuilding. Under the same lock a reindex removes the `index.tmp-*` / `index.old-*` leftovers of
+  killed rebuilds (before, only its own). Readers never take the lock, so lookups cost what they did; a
+  write costs one more lock acquisition. `PathLock.acquire` takes a `note` and `PathLock.read_note`
+  reads it. Tests: `tests/internal_repo_tests/test_integration_index_guard.py` (writers of every kind
+  during a paused reindex, two reindexes at once, four first runs on a fresh home, the leftovers, the
+  notice and the timeout, the note). With it, the first run creates the home and its local repository
+  folder with `exist_ok`: two first runs on one home at once no longer fail each other with "cannot
+  create a file when that file already exists".
+
 ## 0.34.0
 - **The engine's own path lock replaces the `filelock` library: two processes can no longer hold one
   lock at once, and lock files are still removed after use.** The previous lock removed its file after

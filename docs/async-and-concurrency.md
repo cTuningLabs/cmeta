@@ -249,6 +249,25 @@ with a delay that doubles from 1 ms to 25 ms until the timeout. A folder used
 by two operating systems at once (a Windows tree plugged from WSL) is best
 effort: each side locks with its own mechanism.
 
+### The index lock
+
+A full reindex (`cx --reindex`, or the first run on a home without an index)
+builds the new index in `index.tmp-<pid>` and swaps it in when it is complete.
+So that a record written meanwhile is not lost in the swap, the lock file
+`<CMETA_HOME>/index.lock` (the sidecar of the index folder, kept through the
+swap) is held by the full reindex for its whole rebuild and swap, by the
+incremental index of `pull` / `plug` / `repo reindex` for its duration, and by
+every write of a record (`create`, `update`, `delete`, `reindex` of an artifact)
+for a moment. A writer that arrives during a reindex waits for it, prints a
+notice on stderr after 3 seconds naming the reindexing process (which leaves a
+note in the lock file), and gives up with an error after `CMETA_INDEX_LOCK_TIMEOUT`
+seconds (600 by default); otherwise it then writes into the new index. Two
+reindexes run one after the other; several processes starting on a fresh home
+at once build one index. Readers never take the lock, so lookups cost what they
+did; a write costs one more lock acquisition (microseconds on Linux, a fraction
+of a millisecond on Windows). Under the same lock a reindex removes the
+`index.tmp-*` / `index.old-*` leftovers of killed rebuilds.
+
 ### Measured behaviour
 
 Ten `cx note add` processes run simultaneously against one `<CMETA_HOME>` all
@@ -282,8 +301,10 @@ files; `tests/benchmarks/benchmark_engine.py` measures the cost.
 - **Separate `<CMETA_HOME>`s remove sharing entirely.** For fully independent
   parallel jobs, give each one its own home (`--home=<path>` or `CMETA_HOME`) —
   see [using-cmeta.md §7.4](using-cmeta.md#74-picking-cmeta_home-env-vars--per-project-collections).
-- **Reindex is a whole-home operation.** Avoid running `cx --reindex` while
-  other processes are writing to the same home.
+- **Reindex is a whole-home operation.** Writes made while `cx --reindex` runs
+  wait for it (see *The index lock* above) and land in the new index; a very
+  long reindex (a huge home on a slow disk) makes them wait as long, up to
+  `CMETA_INDEX_LOCK_TIMEOUT` seconds.
 
 ---
 

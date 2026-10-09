@@ -49,6 +49,7 @@ LOCK_SOFT_DEAD_MIN_AGE_SECONDS = 1.0  # a soft lock file of a dead pid younger t
 LOCK_SOFT_CHECK_SECONDS = 0.25   # how often a waiter on a soft lock reads the file to check for a stale holder
 LOCK_SOFT_REMOVE_SECONDS = 2.0   # how long a releasing soft lock retries the removal of its file (Windows: a reader may hold it)
 LOCK_IDENTITY_RETRIES = 50       # consecutive identity mismatches after which a path is locked with the soft lock
+LOCK_NOTE_MAX = 512              # bytes of the note a holder may leave in its lock file for the message of a waiter
 ERROR_CODE_FILE_NOT_FOUND = 16
 RETRY_DELAY = 0.1
 RETRY_NOT_FOUND_FILE = 10
@@ -239,6 +240,7 @@ class PathLock:
     def acquire(
         self,
         timeout: float = 3,  # Seconds to wait for the lock (0: one try).
+        note: str = None,  # A short note left in the lock file for the message of a waiter (see read_note).
     ):
         """Take the lock or raise TimeoutError; returns self."""
         timeout = max(float(timeout), 0.0)
@@ -254,6 +256,8 @@ class PathLock:
                     self._thread_lock = thread_lock
                     self.is_locked = True
                     self.logger.debug(f"utils.files.PathLock - acquired {self.lock_file} ({self.mode})")
+                    if note is not None:
+                        self.write_note(note)
                     return self
 
                 remaining = deadline - time.monotonic()
@@ -302,6 +306,48 @@ class PathLock:
             self._thread_lock = None
             if thread_lock is not None:
                 thread_lock.release()
+
+    def write_note(self, note):
+        """Leave a short note in the held lock file - who holds it and why - for the message of a waiter
+        (`read_note`). Best effort: nothing happens when it cannot be written. The note starts after a first
+        byte that stays free: on Windows that byte is the locked one, which another process cannot read. Not
+        in soft mode, where the file already holds `pid host time`."""
+        if not self.is_locked or self._fd is None or self.mode == 'soft':
+            return
+        data = b'\n' + str(note).encode('utf-8', 'replace')[:LOCK_NOTE_MAX] + b'\n'
+        try:
+            os.ftruncate(self._fd, 0)
+            os.lseek(self._fd, 0, os.SEEK_SET)
+            os.write(self._fd, data)
+        except OSError:
+            pass
+        finally:
+            try:
+                os.lseek(self._fd, 0, os.SEEK_SET)   # the Windows byte lock is addressed by the file position
+            except OSError:
+                pass
+
+    @staticmethod
+    def read_note(lock_file):
+        """The note the holder of `lock_file` left (`write_note`), or the `pid host time` of a soft lock,
+        or '' when there is none or the file cannot be read."""
+        try:
+            fd = os.open(lock_file, os.O_RDONLY | getattr(os, 'O_BINARY', 0))
+        except OSError:
+            return ''
+        try:
+            try:
+                data = os.read(fd, LOCK_NOTE_MAX + 8)
+            except OSError:
+                # Windows: the first byte is locked by the holder - read from the second one
+                os.lseek(fd, 1, os.SEEK_SET)
+                data = os.read(fd, LOCK_NOTE_MAX + 8)
+        except OSError:
+            return ''
+        finally:
+            os.close(fd)
+        text = data.decode('utf-8', 'replace').strip()
+        return text.splitlines()[0].strip() if text else ''
 
     # ---- one attempt ----------------------------------------------------------------------
 
