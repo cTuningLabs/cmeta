@@ -1458,6 +1458,126 @@ class Category(InitCategory):
         return self.delete(p)
 
     ###############################################################################################
+    def reindex_(
+        self,
+        ctx: dict,  # cMeta context.
+        arg1: str = None,  # The repository: alias, UID or alias,UID (wildcards allowed), the path of its folder, or "." for the repository of the current directory.
+    ):
+        """
+            Reindex registered repositories: re-read their `_cmr.yaml` and index their artifacts again,
+            as `pull`, `plug` and `unzip` do when they bring a repository in, leaving the records of the
+            other repositories as they are. Use it after files were copied or pulled into a repository by
+            other means, after its `_cmr.yaml` was edited, or when its artifacts look stale - instead of
+            `cx --reindex`, which rebuilds the index of every repository.
+
+            A repository whose folder is not there (a detached drive) is refused and nothing is changed.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str): The repository: alias, UID or alias,UID (wildcards allowed), the path of its
+                    folder, or "." for the repository of the current directory. Required.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error (16: no such repository).
+                    - **error** (str): Error message if `return > 0`.
+                    - **artifacts** (list): The repositories reindexed (their records as they were before).
+                    - **paths** (list): Their registered paths.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        con = ctx.get('control',{}).get('con', False)
+        verbose = ctx.get('control',{}).get('verbose', False)
+
+        if arg1 is None or str(arg1).strip() == '':
+            return {'return':1, 'error':'name the repository to reindex: its alias, UID or path, or "." for the repository of the current directory '
+                                        '(to rebuild the index of every repository, run "cx --reindex")'}
+
+        arg1 = str(arg1).strip()
+
+        repo_artifacts = []
+
+        if arg1 == '.' or os.path.isdir(arg1):
+            # A folder: the registered repository that holds it (the deepest one, for nested repositories)
+            path = os.path.abspath(os.path.normpath(os.getcwd() if arg1 == '.' else arg1))
+
+            r = self.cm.repos.find_in_index('repo', self.cm.cfg['category_repo_uid'])
+            if r['return']>0: return r
+
+            best = None
+            best_path = None
+
+            for repo in r['artifacts']:
+                repo_path = os.path.abspath(os.path.normpath(repo['path']))
+
+                if utils.files.is_path_within(repo_path, path):
+                    if best is None or len(repo_path) > len(best_path):
+                        best = repo
+                        best_path = repo_path
+
+            if best is None:
+                return {'return':16, 'error':f'no registered repository holds "{path}" - register it first with "cx repo plug <path>"'}
+
+            repo_artifacts = [best]
+
+        else:
+            p = {'category': ctx['category'],
+                 'command': 'find',
+                 'arg1': arg1,
+                 'sort': False,
+                 'base': True,
+                 'con': False}
+
+            r = self.cm.access(p)
+            if r['return']>0: return r
+
+            repo_artifacts = r['artifacts']
+
+        # Only a registered path can be reindexed, and only one whose folder is there: the incremental
+        # index drops a repository whose descriptor it cannot read (unless the repository is kept)
+        repos_config_path = self.cm.repos_config_path
+
+        r = utils.files.safe_read_file(repos_config_path, lock=False, fail_on_error=self.fail_on_error, logger=self.logger)
+        if r['return']>0: return r
+
+        repos_paths = r['data']
+
+        paths = []
+
+        for repo in repo_artifacts:
+            repo_cmeta_ref_parts = repo['cmeta_ref_parts']
+            repo_alias = repo_cmeta_ref_parts.get('artifact_alias', repo_cmeta_ref_parts['artifact_uid'])
+
+            path = repo['path']
+
+            if path not in repos_paths:
+                caller = ctx.get('origin',{}).get('cli',{}).get('caller','')
+                return {'return':1, 'error':f'repository "{repo_alias}" is indexed with the path "{path}" that is not in {repos_config_path} - try "{caller} --reindex"'}
+
+            if not os.path.isdir(path) or not os.path.isfile(os.path.join(path, self.cm.cfg['repo_meta_desc'])):
+                return {'return':1, 'error':f'the folder of repository "{repo_alias}" or its {self.cm.cfg["repo_meta_desc"]} is not there: {path} (a detached drive?) - nothing was reindexed'}
+
+            paths.append(path)
+
+        if con:
+            print ('')
+
+        r = self.cm.repos.index(clean=False, con=con, verbose=verbose, add_repo_paths=paths)
+        if r['return']>0: return r
+
+        if con:
+            for repo, path in zip(repo_artifacts, paths):
+                repo_cmeta_ref_parts = repo['cmeta_ref_parts']
+                repo_alias = repo_cmeta_ref_parts.get('artifact_alias', '')
+                repo_uid = repo_cmeta_ref_parts['artifact_uid']
+
+                print (f'Reindexed repository "{repo_alias}" ({repo_uid}): {path}')
+
+        return {'return':0, 'artifacts': repo_artifacts, 'paths': paths}
+
+    ###############################################################################################
     def space(
         self,
         params,  # Input parameters dictionary.

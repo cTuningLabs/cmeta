@@ -18,6 +18,10 @@ import uuid
 import hashlib
 import fnmatch
 import re
+import errno
+import logging
+import random
+import threading
 
 from .common import _error
 
@@ -27,11 +31,24 @@ except ImportError:
     yaml = None  # YAML is optional
 
 try:
-    from filelock import FileLock
+    import fcntl  # POSIX: flock and POSIX record locks
 except ImportError:
-    raise ImportError("filelock library is required. Install with: pip install filelock")
+    fcntl = None
+
+try:
+    import msvcrt  # Windows: byte-range locks
+except ImportError:
+    msvcrt = None
 
 LOCK_SUFFIX = ".lock"
+LOCK_POLL_START = 0.001          # the first wait when a lock is busy; it doubles up to LOCK_POLL_MAX
+LOCK_POLL_MAX = 0.025
+LOCK_SOFT_STALE_SECONDS = 600    # a soft lock file older than this, whose holder is on another host, is stale
+LOCK_SOFT_EMPTY_STALE_SECONDS = 2.0  # an EMPTY soft lock file older than this is a leftover (a holder writes its content at once)
+LOCK_SOFT_DEAD_MIN_AGE_SECONDS = 1.0  # a soft lock file of a dead pid younger than this is a release in flight, not a crash
+LOCK_SOFT_CHECK_SECONDS = 0.25   # how often a waiter on a soft lock reads the file to check for a stale holder
+LOCK_SOFT_REMOVE_SECONDS = 2.0   # how long a releasing soft lock retries the removal of its file (Windows: a reader may hold it)
+LOCK_IDENTITY_RETRIES = 50       # consecutive identity mismatches after which a path is locked with the soft lock
 ERROR_CODE_FILE_NOT_FOUND = 16
 RETRY_DELAY = 0.1
 RETRY_NOT_FOUND_FILE = 10
@@ -109,16 +126,496 @@ def is_path_within(
     return common == base
 
 ##########################################################################################
+# The path lock
+#
+# One exclusive lock per path for processes and threads alike, through the sidecar file `<path>.lock`:
+# the lock file is created for the operation and removed by the process that releases it, so a repository
+# never keeps lock files (a crash leaves at most the one of the operation in flight, which the next holder
+# reuses and removes - every lock dies with its process).
+#
+# Why not a library: a lock file that is removed after release is only correct when the holder removes
+# it BEFORE releasing and every newcomer checks, after acquiring, that the file it holds is still the
+# file at the path (otherwise a waiter blocked on the removed file and a newcomer that created a new
+# one both hold "the lock" - the lost updates seen on Linux with the previous library + removal). That
+# needs the lock's own descriptor, which libraries do not expose.
+#
+# The ladder, per platform:
+#   Windows:  msvcrt.locking (a byte-range lock, per handle, mandatory) on the lock file; an open file
+#             cannot be removed there, so the identity check is not needed - a newcomer that finds the
+#             file "being deleted" (PermissionError) simply tries again.
+#   POSIX:    fcntl.flock (per open file description, so threads of one process exclude each other too),
+#             then fcntl.lockf (POSIX record locks: NFS and some network mounts refuse flock), each with
+#             the identity check (fstat of the descriptor vs stat of the path, inode and device);
+#   anywhere: the soft lock (the file created with O_EXCL, holding "pid host time") where the file
+#             system refuses both OS locks (some FUSE, 9p and SMB mounts) or the identity check keeps
+#             failing - a stale soft lock (its pid dead on this host, or older than LOCK_SOFT_STALE_SECONDS
+#             when left by another host) is renamed away and removed by the waiter that finds it.
+# In every mode the threads of one process are serialized on the path first (a threading.Lock per path),
+# which POSIX record locks and soft locks need (they are per process), and the busy wait polls with a
+# delay that doubles from LOCK_POLL_START to LOCK_POLL_MAX until the timeout.
+
+_LOCK_BUSY_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name in ('EWOULDBLOCK', 'EAGAIN', 'EACCES', 'EDEADLK', 'EDEADLOCK')) if e is not None)
+_LOCK_UNSUPPORTED_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name in ('ENOLCK', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP', 'EINVAL', 'ENOTTY', 'EPERM', 'EBADF')) if e is not None)
+
+_lock_registry = {}               # normalized lock file path -> threading.Lock (the threads of this process)
+_lock_registry_guard = threading.Lock()
+_lock_soft_paths = set()          # lock files locked with the soft lock from now on (the OS lock was refused)
+_lock_no_flock_dirs = set()       # folders where flock was refused (POSIX record locks are tried first there)
+_lock_host = None
+
+
+def _lock_thread_lock(lock_file):
+    key = os.path.normcase(os.path.abspath(lock_file))
+    with _lock_registry_guard:
+        lock = _lock_registry.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _lock_registry[key] = lock
+        return lock
+
+
+def _lock_host_name():
+    global _lock_host
+    if _lock_host is None:
+        try:
+            import platform
+            _lock_host = platform.node() or 'unknown-host'
+        except Exception:
+            _lock_host = 'unknown-host'
+    return _lock_host
+
+
+def _lock_pid_alive(pid):
+    try:
+        import psutil
+        return psutil.pid_exists(pid)
+    except Exception:
+        return True   # unknown: never treat it as dead
+
+
+class _LockUnsupported(Exception):
+    pass
+
+
+class PathLock:
+    """
+        An exclusive lock on a path for processes and threads, through the sidecar file `<path>.lock`
+        (see the notes above). Use `acquire(timeout)` / `release()` or the context manager; `is_locked`
+        says whether this object holds the lock; `mode` is how it was taken ('windows', 'flock', 'lockf'
+        or 'soft'); `identity_retries` counts the times a replaced lock file was detected and retried.
+    """
+
+    def __init__(
+        self,
+        lock_file: str,  # The lock file (normally `<path>.lock`, see _get_lockfile_path).
+        logger = None,  # Optional logger for debug and warning messages.
+    ):
+        self.lock_file = lock_file
+        self.logger = logger if logger is not None else logging.getLogger('cmeta.utils.files')
+        self.is_locked = False
+        self.mode = None
+        self.identity_retries = 0
+        self._fd = None
+        self._ident = None
+        self._thread_lock = None
+        self._mismatches = 0
+        self._last_error = None
+        self._next_stale_check = 0.0
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.release()
+
+    def __del__(self):
+        try:
+            if self.is_locked:
+                self.release()
+        except Exception:
+            pass
+
+    def acquire(
+        self,
+        timeout: float = 3,  # Seconds to wait for the lock (0: one try).
+    ):
+        """Take the lock or raise TimeoutError; returns self."""
+        timeout = max(float(timeout), 0.0)
+        thread_lock = _lock_thread_lock(self.lock_file)
+        if not thread_lock.acquire(timeout=timeout):
+            raise TimeoutError(f"the lock {self.lock_file} is held by another thread of this process (waited {timeout} s)")
+
+        try:
+            deadline = time.monotonic() + timeout
+            delay = LOCK_POLL_START
+            while True:
+                if self._try():
+                    self._thread_lock = thread_lock
+                    self.is_locked = True
+                    self.logger.debug(f"utils.files.PathLock - acquired {self.lock_file} ({self.mode})")
+                    return self
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    why = f" ({self._last_error})" if self._last_error is not None else ""
+                    raise TimeoutError(f"the lock {self.lock_file} is held by another process (waited {timeout} s){why}")
+
+                time.sleep(min(delay, remaining))
+                delay = min(delay * 2, LOCK_POLL_MAX)
+
+        except BaseException:
+            thread_lock.release()
+            raise
+
+    def release(self):
+        """Release the lock and remove its file (when the file at the path is still the one this lock holds)."""
+        if not self.is_locked:
+            return
+
+        try:
+            if self.mode == 'windows':
+                try:
+                    msvcrt.locking(self._fd, msvcrt.LK_UNLCK, 1)
+                except OSError:
+                    pass
+                os.close(self._fd)
+                self._unlink_own_file()
+
+            elif self.mode in ('flock', 'lockf'):
+                self._unlink_own_file()
+                try:
+                    self._posix_unlock(self._fd, self.mode)
+                except OSError:
+                    pass
+                os.close(self._fd)
+
+            elif self.mode == 'soft':
+                self._remove_soft_file()
+
+        finally:
+            self._fd = None
+            self._ident = None
+            self.is_locked = False
+            self.mode = None
+            thread_lock = self._thread_lock
+            self._thread_lock = None
+            if thread_lock is not None:
+                thread_lock.release()
+
+    # ---- one attempt ----------------------------------------------------------------------
+
+    def _try(self):
+        if self.lock_file in _lock_soft_paths:
+            return self._try_soft()
+        if msvcrt is not None:
+            return self._try_windows()
+        if fcntl is not None:
+            return self._try_posix()
+        return self._try_soft()
+
+    def _folder_is_there(self):
+        return os.path.isdir(os.path.dirname(self.lock_file) or '.')
+
+    def _open_failed_for_the_moment(self, e):
+        """An open of the lock file that failed for a moment: the file being removed by the process that
+        just released it (Windows: PermissionError; 9p and other network mounts: ENOENT with the folder
+        there) or held by a scanner. A missing folder is a real error."""
+        if isinstance(e, PermissionError):
+            self._last_error = e
+            return True
+        if isinstance(e, FileNotFoundError) and self._folder_is_there():
+            self._last_error = e
+            return True
+        return False
+
+    def _try_windows(self):
+        try:
+            fd = os.open(self.lock_file, os.O_RDWR | os.O_CREAT, 0o644)
+        except OSError as e:
+            if self._open_failed_for_the_moment(e):
+                return False
+            raise
+
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError as e:
+            os.close(fd)
+            if e.errno in _LOCK_BUSY_ERRNOS:
+                self._last_error = e
+                return False
+            self._fall_back_to_soft(e)
+            return self._try_soft()
+
+        try:
+            self._ident = self._identity(os.fstat(fd))
+        except OSError:
+            self._ident = None
+        self._fd = fd
+        self.mode = 'windows'
+        return True
+
+    def _try_posix(self):
+        try:
+            fd = os.open(self.lock_file, os.O_RDWR | os.O_CREAT | getattr(os, 'O_CLOEXEC', 0), 0o644)
+        except OSError as e:
+            if self._open_failed_for_the_moment(e):
+                return False
+            raise
+
+        try:
+            kind = self._posix_lock(fd)
+        except _LockUnsupported as e:
+            os.close(fd)
+            self._fall_back_to_soft(e)
+            return self._try_soft()
+        except BaseException:
+            os.close(fd)
+            raise
+
+        if kind is None:
+            os.close(fd)
+            return False
+
+        # The file this descriptor holds must still be the file at the path: a holder that removed
+        # the file and released it leaves a waiter with a lock on a file that is not there any more
+        try:
+            path_ident = self._identity(os.stat(self.lock_file))
+        except OSError:
+            path_ident = None
+        fd_ident = self._identity(os.fstat(fd))
+
+        if fd_ident is not None and (path_ident is None or path_ident != fd_ident):
+            try:
+                self._posix_unlock(fd, kind)
+            except OSError:
+                pass
+            os.close(fd)
+            self.identity_retries += 1
+            self._mismatches += 1
+            if self._mismatches >= LOCK_IDENTITY_RETRIES:
+                self._fall_back_to_soft(f"the identity of the lock file could not be confirmed {self._mismatches} times")
+                return self._try_soft()
+            return False
+
+        self._mismatches = 0
+        self._fd = fd
+        self._ident = fd_ident
+        self.mode = kind
+        return True
+
+    def _posix_lock(self, fd):
+        """flock, else POSIX record lock; 'flock' | 'lockf' when taken, None when busy, _LockUnsupported when refused."""
+        folder = os.path.dirname(self.lock_file)
+
+        if folder not in _lock_no_flock_dirs:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return 'flock'
+            except OSError as e:
+                if e.errno in _LOCK_BUSY_ERRNOS or e.errno == errno.EINTR:
+                    self._last_error = e
+                    return None
+                if e.errno not in _LOCK_UNSUPPORTED_ERRNOS:
+                    raise
+                _lock_no_flock_dirs.add(folder)
+                self.logger.info(f"utils.files.PathLock - flock is not supported for {self.lock_file} ({e}): POSIX record locks are used in that folder")
+
+        try:
+            fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return 'lockf'
+        except OSError as e:
+            if e.errno in _LOCK_BUSY_ERRNOS or e.errno == errno.EINTR:
+                self._last_error = e
+                return None
+            if e.errno in _LOCK_UNSUPPORTED_ERRNOS:
+                raise _LockUnsupported(str(e))
+            raise
+
+    @staticmethod
+    def _posix_unlock(fd, kind):
+        if kind == 'flock':
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        else:
+            fcntl.lockf(fd, fcntl.LOCK_UN)
+
+    def _try_soft(self):
+        try:
+            fd = os.open(self.lock_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o644)
+        except FileExistsError as e:
+            self._last_error = e
+            now = time.monotonic()
+            if now >= self._next_stale_check:
+                self._next_stale_check = now + LOCK_SOFT_CHECK_SECONDS
+                self._clear_stale_soft_lock()
+            return False
+        except OSError as e:
+            if self._open_failed_for_the_moment(e):
+                return False
+            raise
+
+        try:
+            os.write(fd, (f"{os.getpid()} {_lock_host_name()} {time.time():.3f}\n").encode('utf-8', 'replace'))
+        finally:
+            os.close(fd)
+
+        try:
+            self._ident = self._identity(os.stat(self.lock_file))
+        except OSError:
+            self._ident = None
+        self.mode = 'soft'
+        return True
+
+    def _clear_stale_soft_lock(self):
+        """A soft lock file whose holder is dead (this host; the file at least LOCK_SOFT_DEAD_MIN_AGE_SECONDS
+        old, so that a holder that just released and exited is not mistaken for a crash), that was marked
+        released by a holder that could not remove it, that is empty and old (a leftover) or too old (another
+        host) is renamed away and removed - by one waiter only (the rename is atomic), and only when the file
+        at the path is still the file that was judged (a fresh lock file of a live holder moved by mistake in
+        the instant between the check and the rename is put back)."""
+        try:
+            fd = os.open(self.lock_file, os.O_RDONLY | getattr(os, 'O_BINARY', 0))
+        except OSError:
+            return
+        try:
+            st = os.fstat(fd)
+            words = os.read(fd, 256).decode('utf-8', 'replace').split() if st.st_size > 0 else []
+        except OSError:
+            return
+        finally:
+            os.close(fd)
+
+        ident = self._identity(st)
+        age = time.time() - st.st_mtime
+        pid = int(words[0]) if len(words) > 0 and words[0].isdigit() else None
+        host = words[1] if len(words) > 1 else None
+
+        if not words:
+            stale = age > LOCK_SOFT_EMPTY_STALE_SECONDS
+        elif words[0] == 'released':
+            stale = True
+        elif pid is not None and host == _lock_host_name():
+            stale = age > LOCK_SOFT_DEAD_MIN_AGE_SECONDS and not _lock_pid_alive(pid)
+        else:
+            stale = age > LOCK_SOFT_STALE_SECONDS
+
+        if not stale:
+            return
+
+        try:
+            if ident is not None and self._identity(os.stat(self.lock_file)) != ident:
+                return                      # the file changed under us: judge it again next time
+        except OSError:
+            return
+
+        moved = f"{self.lock_file}.stale-{os.getpid()}-{random.getrandbits(32):08x}"
+        try:
+            os.rename(self.lock_file, moved)   # atomic: only one waiter gets to remove it
+        except OSError:
+            return
+
+        if ident is not None:
+            try:
+                moved_ident = self._identity(os.stat(moved))
+            except OSError:
+                return
+            if moved_ident != ident:
+                # Not the file judged stale but a fresh one made in between: back where it was, without
+                # clobbering (a hard link fails where a file exists already), then the extra name goes
+                try:
+                    os.link(moved, self.lock_file)
+                except OSError:
+                    try:
+                        if not os.path.exists(self.lock_file):
+                            os.rename(moved, self.lock_file)
+                    except OSError:
+                        pass
+                    return
+                try:
+                    os.unlink(moved)
+                except OSError:
+                    pass
+                return
+
+        try:
+            os.unlink(moved)
+        except OSError:
+            pass
+        self.logger.warning(f"utils.files.PathLock - removed the stale lock file {self.lock_file} (left by pid {pid} on {host})")
+
+    def _fall_back_to_soft(self, why):
+        if self.lock_file not in _lock_soft_paths:
+            _lock_soft_paths.add(self.lock_file)
+            self.logger.warning(f"utils.files.PathLock - the file system refuses OS locks for {self.lock_file} ({why}): a soft lock file is used instead (best effort between hosts)")
+        # The empty file the OS-lock attempt created or found is not a soft lock (a soft holder writes its
+        # content at once): out of the way, or the soft lock could never be taken
+        try:
+            if os.path.getsize(self.lock_file) == 0:
+                os.unlink(self.lock_file)
+        except OSError:
+            pass
+
+    def _remove_soft_file(self):
+        """Remove the soft lock file; on Windows a waiter reading it holds it open for a moment, so the removal
+        is retried, and a file that cannot be removed in time is marked released for the waiters to clear."""
+        deadline = time.monotonic() + LOCK_SOFT_REMOVE_SECONDS
+        while True:
+            if self._ident is not None:
+                try:
+                    if self._identity(os.stat(self.lock_file)) != self._ident:
+                        return     # not ours any more
+                except OSError:
+                    return
+            try:
+                os.unlink(self.lock_file)
+                return
+            except FileNotFoundError:
+                return
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.002)
+            except OSError:
+                break
+
+        try:
+            with open(self.lock_file, 'w') as f:
+                f.write(f"released {os.getpid()}\n")
+        except OSError:
+            pass
+        self.logger.warning(f"utils.files.PathLock - the soft lock file {self.lock_file} could not be removed and was marked released")
+
+    @staticmethod
+    def _identity(st):
+        """The (inode, device) of a stat result; None where the file system reports no inode (some FAT drivers)."""
+        if not st.st_ino:
+            return None
+        return (st.st_ino, st.st_dev)
+
+    def _unlink_own_file(self):
+        """Remove the lock file, unless the file at the path is no longer the one this lock took (someone
+        removed it under us and another process created a new one: that one is theirs)."""
+        if self._ident is not None:
+            try:
+                if self._identity(os.stat(self.lock_file)) != self._ident:
+                    return
+            except OSError:
+                return
+        try:
+            os.unlink(self.lock_file)
+        except OSError:
+            pass
+
+
+##########################################################################################
 def _acquire_lock(
     filepath: str,  # Path to the file to lock.
     timeout: int = 3,  # Maximum seconds to wait for lock acquisition. Default is 3.
     logger = None,  # Optional logger for debug messages.
 ):
     """
-        Acquire a file lock for cross-platform thread/process-safe file operations.
-
-        Uses FileLock library to create and acquire a lock file. Blocks until lock
-        is acquired or timeout expires.
+        Acquire the lock of a path (`<filepath>.lock`, see PathLock) for process- and thread-safe
+        file operations. Blocks until the lock is acquired or the timeout expires.
 
         Args:
             filepath (str): Path to the file to lock.
@@ -126,7 +623,7 @@ def _acquire_lock(
             logger: Optional logger for debug messages.
 
         Returns:
-            FileLock: Acquired lock object that must be released later.
+            PathLock: Acquired lock object that must be released later (`_release_lock`).
 
         Raises:
             TimeoutError: If lock cannot be acquired within timeout period.
@@ -134,8 +631,8 @@ def _acquire_lock(
     lockfile = _get_lockfile_path(filepath)
     if logger is not None:
         logger.debug(f"utils.files._acquire_lock - attempting to create {lockfile} ...")
-    
-    file_lock = FileLock(lockfile, timeout=timeout)
+
+    file_lock = PathLock(lockfile, logger=logger)
     try:
         file_lock.acquire(timeout=timeout)
         if logger is not None:
@@ -149,7 +646,7 @@ def _acquire_lock(
 ##########################################################################################
 def _check_lock(
     filepath: str,  # Path to the locked file.
-    file_lock,  # FileLock object to check.
+    file_lock,  # PathLock object to check.
     logger = None,  # Optional logger for debug messages.
 ):
     """
@@ -157,7 +654,7 @@ def _check_lock(
 
         Args:
             filepath (str): Path to the locked file.
-            file_lock: FileLock object to check.
+            file_lock: PathLock object to check.
             logger: Optional logger for debug messages.
 
         Raises:
@@ -176,15 +673,15 @@ def _check_lock(
 ##########################################################################################
 def _release_lock(
     filepath: str,  # Path to the locked file.
-    file_lock,  # FileLock object to release.
+    file_lock,  # PathLock object to release.
     logger = None,  # Optional logger for debug messages.
 ):
     """
-        Release a previously acquired file lock.
+        Release a previously acquired file lock; the lock file is removed by the lock itself.
 
         Args:
             filepath (str): Path to the locked file.
-            file_lock: FileLock object to release.
+            file_lock: PathLock object to release.
             logger: Optional logger for debug messages.
 
         Returns:
@@ -193,7 +690,7 @@ def _release_lock(
             Exception: Propagated runtime errors, if any.
     """
     lockfile = _get_lockfile_path(filepath)
-    
+
     try:
         if file_lock.is_locked:
             file_lock.release()
@@ -202,47 +699,11 @@ def _release_lock(
         else:
             if logger is not None:
                 logger.debug(f"utils.files._release_lock - lock {lockfile} doesn't exist - weird but keep running ...")
-                
-        # Explicitly clean up lock file - filelock doesn't always do this on Linux
-        _cleanup_lock_file(lockfile, logger)
-        
+
     except Exception as e:
         if logger is not None:
             logger.debug(f"utils.files._release_lock - error releasing lock {lockfile} ({str(e)})")
-        
-        # Still try to cleanup lock file even if release failed
-        _cleanup_lock_file(lockfile, logger)
         raise e
-
-##########################################################################################
-def _cleanup_lock_file(
-    lockfile_path: str,  # Path to the lock file to remove.
-    logger = None,  # Optional logger for debug messages.
-):
-    """
-        Manually remove lock file if it exists.
-
-        Ensures cleanup on systems where filelock doesn't auto-cleanup.
-        Errors are logged but not raised since this is a cleanup operation.
-
-        Args:
-            lockfile_path (str): Path to the lock file to remove.
-            logger: Optional logger for debug messages.
-
-        Returns:
-            dict: Operation result.
-        Raises:
-            Exception: Propagated runtime errors, if any.
-    """
-    try:
-        if os.path.exists(lockfile_path):
-            os.remove(lockfile_path)
-            if logger is not None:
-                logger.debug(f"utils.files._cleanup_lock_file - manually removed {lockfile_path}")
-    except Exception as e:
-        if logger is not None:
-            logger.debug(f"utils.files._cleanup_lock_file - failed to remove {lockfile_path}: {str(e)}")
-        # Don't raise - this is a cleanup operation
 
 ##########################################################################################
 def _detect_file_format(

@@ -42,7 +42,6 @@ dependencies = [
      "wheel",
      "tabulate",
      "tqdm",
-     "filelock",
      "packaging",
      "psutil",
 ]

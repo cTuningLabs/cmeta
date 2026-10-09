@@ -158,6 +158,7 @@ class Repos:
         original_alias = None,  # Previous artifact alias before update.
         original_uid = None,  # Previous artifact UID before update.
         sharding_slices_num = 0, # Number of sharding slices
+        clean_aliases = False,  # If True, drop every other alias of this UID from the alias index (a folder renamed by hand), in the same locked write.
     ):
         """
             Insert or update an artifact record in the category index.
@@ -169,8 +170,11 @@ class Repos:
                 original_alias: Previous artifact alias before update.
                 original_uid: Previous artifact UID before update.
                 sharding_slices_num (int): Number of UID slices used to shard artifact paths.
+                clean_aliases (bool): If True, every alias of the alias index that still lists this UID
+                    and is not the alias of the record is dropped (the stale aliases a folder renamed by
+                    hand leaves behind), in the same locked write. Aliases of other UIDs are not touched.
             Returns:
-                dict: Operation result.
+                dict: Operation result, with 'dropped_aliases': the (lowercase) aliases dropped by `clean_aliases`.
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
@@ -215,7 +219,9 @@ class Repos:
 
         uids[artifact_uid] = record
 
-        if artifact_alias is not None: 
+        artifact_alias_lowercase = None
+
+        if artifact_alias is not None:
             artifact_alias_lowercase = artifact_alias.lower()
 
             lowercase_alias_uids = lowercase_aliases.get(artifact_alias_lowercase, [])
@@ -224,6 +230,24 @@ class Repos:
                 lowercase_alias_uids.append(artifact_uid)
                 lowercase_aliases[artifact_alias_lowercase] = lowercase_alias_uids
 
+        # The other aliases that still point at this UID (a folder renamed by hand keeps its old
+        # alias in the index): only this UID is removed from them, other UIDs under the same alias stay
+        dropped_aliases = []
+
+        if clean_aliases:
+            for lowercase_alias in list(lowercase_aliases.keys()):
+                if lowercase_alias == artifact_alias_lowercase:
+                    continue
+
+                lowercase_alias_uids = lowercase_aliases[lowercase_alias]
+
+                if artifact_uid in lowercase_alias_uids:
+                    lowercase_alias_uids.remove(artifact_uid)
+                    dropped_aliases.append(lowercase_alias)
+
+                    if len(lowercase_alias_uids) == 0:
+                        del(lowercase_aliases[lowercase_alias])
+
         # Use atomic write to avoid corrupting large index files
         r = utils.files.safe_write_file(index_file, index_data, file_lock=index_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
         if r['return']>0: return r
@@ -231,7 +255,7 @@ class Repos:
 #        r = utils.files.safe_write_file(os.path.splitext(index_file)[0] + ".json", index_data, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
 #        if r['return']>0: return r
 
-        return {'return':0}
+        return {'return':0, 'dropped_aliases': dropped_aliases}
 
 
 
@@ -1311,12 +1335,25 @@ class Repos:
 
                     path_to_category = os.path.join(repo_full_path, category)
 
-                    r = self._find_artifacts(repo_meta, repo_alias, repo_uid, category_meta, category_alias, category_uid, path_to_category, 
+                    r = self._find_artifacts(repo_meta, repo_alias, repo_uid, category_meta, category_alias, category_uid, path_to_category,
                                              con, conx, index_artifacts, artifact_num)
                     if r['return'] >0: return r
 
                     an = r['artifact_num']
                     artifact_num = an
+
+            if not clean:
+                # The records of the repositories being indexed again are removed from every existing
+                # category index below, also from the index of a category of which such a repository
+                # holds no artifact any more (otherwise the records of its deleted artifacts would stay)
+                for category_mix in categories:
+                    category = category_mix['category']
+
+                    if category in ['category', 'repo'] or category_mix['meta'].get('no_index', False):
+                        continue
+
+                    if category not in index_artifacts and os.path.isfile(os.path.join(index_path, category + self.index_extension)):
+                        index_artifacts[category] = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
 
         else:
             for category_mix in categories:
@@ -1491,7 +1528,8 @@ class Repos:
                     if sharding_slices is not None:
                         tmp_artifact_dirs = _get_artifacts_from_sharded_path(path_to_category, sharding_slices, artifact_alias=artifact_alias)
                     else:
-                        tmp_artifact_dirs = os.listdir(path_to_category)
+                        # Only the folders the pattern names (case-insensitively, as the sharded search does)
+                        tmp_artifact_dirs = [d for d in os.listdir(path_to_category) if fnmatch.fnmatch(d.lower(), artifact_alias_lowercase)]
 
                 else:
                     last_artifact_dirs_parent = None
@@ -1507,11 +1545,11 @@ class Repos:
                             path_to_category_with_shard = os.path.join(path_to_category, last_artifact_dirs_parent)
 
                     if os.path.isdir(path_to_category_with_shard):
+                        # Every folder that spells the alias (two spellings can coexist on a case-sensitive file system)
                         for artifact_dir in os.listdir(path_to_category_with_shard):
                             if artifact_dir.lower() == artifact_alias_lowercase:
                                 tmp_dir = artifact_dir if last_artifact_dirs_parent is None else os.path.join(last_artifact_dirs_parent, artifact_dir)
                                 tmp_artifact_dirs.append(tmp_dir)
-                                break
 
 
             for long_artifact in tmp_artifact_dirs:
@@ -1550,6 +1588,13 @@ class Repos:
 
                 if artifact_meta:
                     if index_artifacts is None:
+                        # A meta without a category (or with one that does not parse) is not an artifact of this category
+                        if 'category' not in artifact_meta:
+                            print ('', flush=True)
+                            print (f"           Warning: {artifact} doesn't have 'category' key in {path_to_artifact}")
+                            self.logger.error (f"           Warning: {artifact} doesn't have proper 'category' key in {path_to_artifact}")
+                            continue
+
                         r = utils.names.parse_cmeta_name(artifact_meta['category'])
                         if r['return']>0: return r
 

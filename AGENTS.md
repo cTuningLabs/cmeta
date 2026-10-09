@@ -57,7 +57,8 @@ The commands above are cross-platform truth. Any Windows `.bat` wrappers around
 them are the author's local workflow and are not tracked in this repository.
 
 Runtime deps are intentionally minimal: pyyaml, requests, setuptools, wheel,
-tabulate, tqdm, filelock, packaging, psutil.
+tabulate, tqdm, packaging, psutil. (File locks are the engine's own
+`cmeta.utils.files.PathLock` since 0.34.0; `filelock` is no longer used.)
 
 ### Useful environment variables
 `CMETA_HOME`, `CMETA_DEBUG=1`, `CMETA_LOG=DEBUG|INFO`, `CMETA_LOG_FILE=<path>`,
@@ -75,7 +76,7 @@ tabulate, tqdm, filelock, packaging, psutil.
 | `core.py` | `CMeta` class + `access()` — the one dispatch every request funnels through. Resolves the category artifact, loads its API module, calls the matching command function. |
 | `core_async.py` | Async variant of `access()`. |
 | `category.py` | `InitCategory` base class every category API subclasses. Provides `_prepare_input_from_params/ctx` helpers used to re-enter `cm.access()`. |
-| `category_api_v1.py` | Standard **base** category — implements the shared CRUD commands every category inherits: `find`/`list`/`read`/`update`/`create`/`delete`/`move`/`copy`/`info`/`tags`/`get`/`set`/`index`/`test`. |
+| `category_api_v1.py` | Standard **base** category — implements the shared CRUD commands every category inherits: `find`/`list`/`read`/`update`/`create`/`delete`/`move`/`copy`/`migrate`/`info`/`tags`/`get`/`set`/`index`/`reindex`/`test`. |
 | `repos.py` | `Repos` — index and resolve content repositories + artifacts (by alias / UID / tags / wildcards). Owns the per-category `.pkl` index files. |
 | `packages.py` | `Packages` — detect installed tools/versions and auto-install Python packages. |
 | `config.py` | Global `cfg` dict, param descriptors, env-var handling, command aliases (`add→create`, `rm→delete`, `ls→list`, `search→find`, `mv→move`, ...). |
@@ -141,10 +142,17 @@ tabulate, tqdm, filelock, packaging, psutil.
   refreshes automatically on `create`/`update`/`delete` and on `cx repo`
   changes. If artifacts were touched outside cMeta, reindex with the narrowest
   command: `cx <category> index <repo>:<artifact>` registers a single folder you
-  created by hand (`mkdir` + `_cmeta.*`); `cx <category> update <repo>:<artifact>`
-  refreshes the entry after you edit an existing artifact's `_cmeta.*` meta;
-  `cx --reindex` rebuilds every pickle and is slow — keep it for manual moves,
-  bulk `git pull`, or a cleared `CMETA_HOME`. Payload-only edits (`api/`,
+  created by hand (`mkdir` + `_cmeta.*`); `cx <category> reindex <artifact>`
+  rewrites the record of one artifact (or of several, with wildcards) from the
+  meta file in its folder without writing anything — a meta edited by hand, a
+  folder renamed, moved or copied in (its stale aliases are dropped, and the
+  record of a folder that now holds another artifact; a folder it cannot find or
+  one UID in two folders is an error that changes nothing);
+  `cx <category> update <repo>:<artifact>` refreshes the entry too but rewrites
+  the meta file (a new timestamp); `cx repo reindex <repo>` rescans one
+  repository (its `_cmr.yaml` and its artifacts) and leaves the others alone;
+  `cx --reindex` rebuilds every pickle and is slow — keep it for a cleared
+  `CMETA_HOME` or a bulk change across repositories. Payload-only edits (`api/`,
   `files/`, `src/`, `_desc.yaml`) need no reindex. Categories with
   `no_index: true` in `_cmeta.yaml` are always found by filesystem scan.
 - **Content-addressed task caching / reproducibility.** Workflow caches keyed

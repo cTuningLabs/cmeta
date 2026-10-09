@@ -147,6 +147,7 @@ cx repo find <alias-or-uid>        # find a repo
 cx repo status <alias>             # git status + remote URL for git-backed repos
 cx repo pull <alias>               # git pull; also refreshes the index
 cx repo update <alias>             # equivalent to pull
+cx repo reindex <alias>            # re-read its _cmr.yaml and rescan its artifacts (files copied in by other means)
 cx repo checkout <alias> <ref>     # git checkout branch/tag/commit
 cx repo space <alias>              # disk usage
 cx repo zip <alias>                # dump to cmr-<alias>-YYYYMMDD-HHMMSS.zip
@@ -172,10 +173,11 @@ After adding a repo, sanity-check:
 - [ ] `<CMETA_HOME>/repos.json` contains the repo's path.
 
 If a repo is registered but its artifacts don't show up in `find`/`ls`, the
-fast index is stale — force a rebuild:
+fast index is stale — rescan that repository (or, as a last resort, everything):
 
 ```bash
-cx --reindex
+cx repo reindex <alias>            # its _cmr.yaml and its artifacts; other repos untouched
+cx --reindex                       # everything
 ```
 
 ---
@@ -198,8 +200,9 @@ cx --reindex
   does.
 - **Renaming a repo alias.** Not supported. Reference repos by `alias,UID` in
   cross-repo references so alias renames wouldn't matter anyway.
-- **`_cmr.yaml` edited by hand and things look off.** `cx --reindex` to
-  rebuild `<CMETA_HOME>/index/*.pkl`.
+- **`_cmr.yaml` edited by hand and things look off.** `cx repo reindex <alias>`
+  re-reads it and rescans the repo's artifacts (or `cx --reindex` to rebuild
+  `<CMETA_HOME>/index/*.pkl`).
 - **`permanent: true` in `_cmr.yaml`.** `cx repo delete` refuses. Remove the
   flag first if you truly want to delete.
 - **`subdir:` in `_cmr.yaml`.** Only that sub-tree is scanned for artifacts —

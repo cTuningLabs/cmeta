@@ -289,7 +289,11 @@ loaded = r['artifact']['loaded_files']
 ### 6.5 Reindex on-demand
 
 ```python
-cm.repos.reindex(con=False)             # or: cm.access({'reindex': True})
+cm.repos.reindex(con=False)             # or: cm.access({'reindex': True})   - everything, slow
+
+# One artifact's record from its folder (nothing written), one repository
+r = cm.access({'category': 'note', 'command': 'reindex', 'arg1': 'my-note'})   # r['artifacts'], r['dropped_aliases']
+r = cm.access({'category': 'repo', 'command': 'reindex', 'arg1': 'myrepo'})    # its _cmr.yaml and its artifacts
 ```
 
 ## 6.6 Use `cm.utils.*` from category code — **recommended**

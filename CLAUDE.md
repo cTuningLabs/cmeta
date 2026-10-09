@@ -48,7 +48,8 @@ separate content repos (e.g. `cmeta-aops`).
 ## Conventions worth repeating
 
 - Runtime deps are intentionally minimal (pyyaml, requests, setuptools, wheel,
-  tabulate, tqdm, filelock, packaging, psutil). Justify any new one.
+  tabulate, tqdm, packaging, psutil). Justify any new one. File locks are the
+  engine's own `cmeta.utils.files.PathLock` (no `filelock`).
 - Preserve module docstring/copyright headers — never strip or rewrite them.
   New files get the standard header; new artifacts/categories record `authors`
   and `copyright` in their `_cmeta.yaml`. Full rule, including reuse and

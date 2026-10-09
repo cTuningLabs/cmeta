@@ -340,13 +340,15 @@ narrowest command that covers it:
 
 ```bash
 cx <category> index  <repo>:<artifact>   # you created the folder by hand (mkdir + _cmeta.*)
-cx <category> update <repo>:<artifact>   # you edited an existing artifact's _cmeta.* meta
+cx <category> reindex <artifact>         # you edited, renamed or copied in an existing artifact's folder (nothing is written)
+cx repo reindex <repo>                   # one repository: its _cmr.yaml and its artifacts
+cx <category> update <repo>:<artifact>   # you edited an existing artifact's _cmeta.* meta (rewrites the file too)
 cx --reindex                             # rebuilds ALL of <CMETA_HOME>/index/*.pkl — slow
 ```
 
-Prefer the per-artifact forms: `--reindex` walks every category and is markedly
-slower on a large home. Save it for renames/moves, a bulk `git pull`, or a wiped
-`CMETA_HOME`. Editing only `api/`, `files/`, `src/` or `_desc.yaml` needs no
+Prefer the narrow forms: `--reindex` walks every category and is markedly
+slower on a large home. Save it for a wiped `CMETA_HOME` or a bulk change across
+repositories. Editing only `api/`, `files/`, `src/` or `_desc.yaml` needs no
 reindex — the index tracks meta, not content. Category-level content
 caches (task results, downloaded blobs) live under the `cache` category:
 
@@ -382,7 +384,8 @@ Before reporting the plugin as done:
   `TypeError: foo() takes 2 positional arguments but ...`. Rename to `foo_`.
 - **Command name clashes with a Python builtin** (`list`, `type`, ...). Name
   the method `list__` — the CLI name is still `list`.
-- **New category isn't found.** The artifact index is cached; run `cx --reindex`.
+- **New category isn't found.** The artifact index is cached; run
+  `cx repo reindex <repo>` (or `cx --reindex`).
 - **Base command not exposed.** The category's `_cmeta.yaml` sets
   `skip_base_category_commands: true` (e.g. `utils`). Remove that flag or
   reimplement the command.
