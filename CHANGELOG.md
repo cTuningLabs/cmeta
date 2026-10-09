@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## 0.34.0.1 (in development)
+## 0.34.1
 - **The index lock: a full reindex no longer loses the writes made while it runs, and two rebuilds no
   longer race for the swap.** A full `cx --reindex` builds the new index in a temporary folder and swaps
   it in when it is complete; a record written to the live index meanwhile by another process (a

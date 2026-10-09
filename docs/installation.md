@@ -157,8 +157,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force "cmeta[server]==0.34.0"
-pip install "cmeta==0.34.0"
+uv tool install --force "cmeta[server]==0.34.1"
+pip install "cmeta==0.34.1"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other
