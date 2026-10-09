@@ -177,9 +177,10 @@ class Repos:
         original_uid = None,  # Previous artifact UID before update.
         sharding_slices_num = 0, # Number of sharding slices
         clean_aliases = False,  # If True, drop every other alias of this UID from the alias index (a folder renamed by hand), in the same locked write.
+        index_lock = None,  # The index lock when the caller holds it already (lock_index): the record is written under it, without taking it again.
     ):
         """
-            Insert or update an artifact record in the category index.
+            Insert or update an artifact record in the category index (under the index lock, see `_lock_index`).
 
             Args:
                 cmeta: Artifact metadata dictionary.
@@ -191,6 +192,8 @@ class Repos:
                 clean_aliases (bool): If True, every alias of the alias index that still lists this UID
                     and is not the alias of the record is dropped (the stale aliases a folder renamed by
                     hand leaves behind), in the same locked write. Aliases of other UIDs are not touched.
+                index_lock: The index lock when the caller holds it already (`lock_index`): the record is
+                    written under it, without taking it again (the lock is not re-entrant).
             Returns:
                 dict: Operation result, with 'dropped_aliases': the (lowercase) aliases dropped by `clean_aliases`.
             Raises:
@@ -198,6 +201,9 @@ class Repos:
         """
 
         # Under the index lock: never into an index that a running full reindex is about to replace
+        if index_lock is not None:
+            return self._add_to_index(cmeta, cmeta_ref_parts, path, original_alias, original_uid, sharding_slices_num, clean_aliases)
+
         r = self._lock_index('the write of a record')
         if r['return']>0: return r
         index_lock = r['lock']
@@ -467,6 +473,8 @@ class Repos:
                 if artifact_uid not in index[self.KEY_INDEX_UIDS]:
                     return _error(f'corrupted index for {category_alias} UID "{artifact_uid}"', 1, None, self.fail_on_error)
 
+                # A shallow copy of the record: its 'cmeta' is the cached object itself - do not change
+                # it (`find` copies it for the records it returns)
                 artifact = index[self.KEY_INDEX_UIDS][artifact_uid].copy()
 
                 if add_index_file:
@@ -668,15 +676,19 @@ class Repos:
 
                 category_cmeta = category['cmeta']
 
+                from_index = False
+
                 if category_cmeta.get('no_index', False) and not skip_non_indexed:
                     r = self.find_in_file_system(category_cmeta, category_alias, category_uid, artifact_alias, artifact_uid, repo_uids = artifact_repo_artifacts)
-                    if r['return'] >0: 
+                    if r['return'] >0:
                         if r['return'] == 16:
                             # If index not found
                             continue
                         return r
 
                 else:
+                    from_index = True
+
                     r = self.find_in_index(category_alias, category_uid, artifact_alias, artifact_uid, repos = artifact_repo_artifacts, add_index_file = add_index_file, skip_uids=skip_uids)
                     if r['return'] >0:
                         if r['return'] == 16:
@@ -759,8 +771,22 @@ class Repos:
 
                     add_artifacts = add_artifacts2
 
-                # Adding artifacts
-                artifacts.extend(add_artifacts)
+                # Adding artifacts: those from the index get their own copy of the meta and of its tags
+                # (one level: a caller that edits them - the aops selection adds a tag - edits its copy,
+                # not the cached index of this process; deeper values are shared and must be left as
+                # they are). Only the records returned pay for it, after the filters above.
+                if from_index:
+                    for a in add_artifacts:
+                        cmeta = a['cmeta']
+                        if type(cmeta) is dict:
+                            cmeta = dict(cmeta)
+                            ctags = cmeta.get('tags')
+                            if type(ctags) is list:
+                                cmeta['tags'] = ctags[:]
+                            a['cmeta'] = cmeta
+                        artifacts.append(a)
+                else:
+                    artifacts.extend(add_artifacts)
 
         if len(artifacts) == 0:
             x_artifact_alias = "artifacts" if artifact_alias == '' or artifact_alias == None else f'"{artifact_alias}"'
@@ -942,36 +968,34 @@ class Repos:
                       or 'return' > 0 and 'error'.
         """
         lock_file = self._index_lock_file()
-
-        limit = float(INDEX_LOCK_TIMEOUT)
-        x = os.environ.get(INDEX_LOCK_TIMEOUT_ENV, '').strip()
-        if x != '':
-            try:
-                limit = max(float(x), 0.0)
-            except ValueError:
-                self.logger.warning(f'{INDEX_LOCK_TIMEOUT_ENV}="{x}" is not a number of seconds - {INDEX_LOCK_TIMEOUT} is used')
-
+        limit = utils.files.lock_timeout(INDEX_LOCK_TIMEOUT, INDEX_LOCK_TIMEOUT_ENV, logger=self.logger)
         lock = utils.files.PathLock(lock_file, logger=self.logger)
-        first = min(float(INDEX_LOCK_NOTICE_SECONDS), limit)
 
         try:
-            lock.acquire(timeout=first, note=note)
-        except TimeoutError:
-            holder = utils.files.PathLock.read_note(lock_file)
-            held_by = f' ({holder})' if holder else ''
-            message = (f'cMeta: the index in {self.index_path} is locked by another process{held_by} - '
-                       f'{why} continues when it is released (waiting up to {limit:g} s; {INDEX_LOCK_TIMEOUT_ENV} changes it)')
-            print(message, file=sys.stderr, flush=True)
-            self.logger.warning(message)
-            try:
-                lock.acquire(timeout=max(limit - first, 0.0), note=note)
-            except TimeoutError as e:
-                return {'return':1, 'error': f'the index in {self.index_path} stayed locked by another process{held_by} for {limit:g} s ({e}) - '
-                                             f'set {INDEX_LOCK_TIMEOUT_ENV} to wait longer'}
+            utils.files._acquire_with_notice(lock, limit, f'the index in {self.index_path}', why, INDEX_LOCK_TIMEOUT_ENV, note=note, logger=self.logger)
+        except TimeoutError as e:
+            return {'return':1, 'error': str(e)}
         except Exception as e:
             return {'return':1, 'error': f'cannot lock the index in {self.index_path}: {e}'}
 
         return {'return':0, 'lock':lock}
+
+
+    def lock_index(
+        self,
+        why,  # What waits, for the notice of a waiter ("the creation of an artifact" ...).
+        note = None,  # A note left in the lock file for the waiters (who holds it and why).
+    ):
+        """
+            Take the index lock for an operation of several steps that must not interleave with a full
+            reindex or with the same operation of another process (see `_lock_index`): the folder, the meta
+            and the record of a new artifact are made under it. Pass the lock to `add_to_index(index_lock=...)`
+            and release it in a `finally`.
+
+            Returns:
+                dict: {'return': 0, 'lock': <PathLock>} or 'return' > 0 and 'error'.
+        """
+        return self._lock_index(why, note)
 
 
     def _remove_index_leftovers(
@@ -1098,8 +1122,12 @@ class Repos:
             print (f'Repo file path: {repos_config_path}')
 
 
-        r = utils.files.safe_read_file(repos_config_path, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
-        if r['return']>0: return r 
+        # Under the lock of repos.json, held until it is rewritten or left as it is: a plug or unplug of
+        # another process at the same moment is neither lost nor read half-written
+        r = utils.files.safe_read_file(repos_config_path, lock=True, keep_locked=True, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
+        if r['return']>0: return r
+
+        repos_config_lock = r['file_lock']
 
         paths_to_repos = {}
         original_paths_to_repos = r['data']
@@ -1145,7 +1173,10 @@ class Repos:
 
         if to_update:
             # Do not sort keys - preserve order!
-            r = utils.files.safe_write_file(repos_config_path, paths_to_repos, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+            r = utils.files.safe_write_file(repos_config_path, paths_to_repos, file_lock=repos_config_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+            if r['return']>0: return r
+        else:
+            r = utils.files.unlock_path(repos_config_path, repos_config_lock, fail_on_error=self.fail_on_error, logger=self.logger)
             if r['return']>0: return r
 
         if len(paths_to_repos) == 0:
@@ -1516,15 +1547,12 @@ class Repos:
 
                 existing_category_index = {}
                 index_file_lock = None
-                atomic_flag = False
 
                 if clean:
                     existing_category_index = category_index
 
                 else:
                     if os.path.isfile(index_artifact_file):
-                        atomic_flag = True
-
                         r = utils.files.safe_read_file(index_artifact_file, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
                         if r['return']>0: return r
 
@@ -1570,8 +1598,9 @@ class Repos:
 
                     artifact_num += len(existing_category_index.get(self.KEY_INDEX_UIDS, {}))
 
-                r = utils.files.safe_write_file(index_artifact_file, existing_category_index, file_lock=index_file_lock, 
-                                                atomic=atomic_flag, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+                # Atomic for a new index file too: a reader never sees it half-written
+                r = utils.files.safe_write_file(index_artifact_file, existing_category_index, file_lock=index_file_lock,
+                                                atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
                 if r['return']>0: return r
 
         

@@ -31,7 +31,7 @@ from cmeta.utils import files
 @pytest.fixture()
 def cm(tmp_path, monkeypatch):
     for var in ('CMETA_HOME', 'CMETA_HOME2', 'VIRTUAL_ENV', 'CONDA_PREFIX',
-                'CMETA_DEBUG', 'CMETA_VERBOSE', 'CMETA_FAIL_ON_ERROR', 'CMETA_INDEX_LOCK_TIMEOUT'):
+                'CMETA_DEBUG', 'CMETA_VERBOSE', 'CMETA_FAIL_ON_ERROR', 'CMETA_INDEX_LOCK_TIMEOUT', 'CMETA_LOCK_TIMEOUT'):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv('CMETA_HOME', str(tmp_path))
     monkeypatch.setattr(cmeta_repos, '_migrated_notices', set())
@@ -131,9 +131,11 @@ def test_writes_during_a_full_reindex_wait_for_it_and_land_in_the_new_index(cm, 
     }
     every = [p for group in writers.values() for p in group]
 
-    # While the reindex holds the lock none of the writers gets through
+    # While the reindex holds the lock none of the writers gets through, and a create waits BEFORE it
+    # writes its folder: nothing unindexed appears on disk meanwhile
     time.sleep(2.0)
     assert all(p.poll() is None for p in every), 'a writer finished while the reindex held the index lock'
+    assert not any(name.startswith('born-') for name in folders(tmp_path)), folders(tmp_path)
 
     go.touch()
     rc, out = finish(reindex)

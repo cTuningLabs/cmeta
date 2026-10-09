@@ -24,6 +24,49 @@ All notable changes to cMeta are documented here, newest first.
   notice and the timeout, the note). With it, the first run creates the home and its local repository
   folder with `exist_ok`: two first runs on one home at once no longer fail each other with "cannot
   create a file when that file already exists".
+- **The write side made whole: a writer waits 30 s for a busy lock and says who holds it, every
+  structured file is written atomically, a create is one step under the index lock, the index of
+  repositories holds the lock of `repos.json`, the reader cache keys on time, size and inode, a replace
+  is retried until the lock timeout, `find` hands out copies, index files use pickle protocol 4.**
+  - A writer that found the lock of a file held (an index file, a meta, `repos.json`) waited 3 s and
+    failed; under load (server workers, a test matrix) a `create` had written its meta and then failed to
+    index it, leaving a folder the index did not know. A writer now waits up to `CMETA_LOCK_TIMEOUT`
+    seconds (30), prints a notice on stderr after 3 s naming the holder when it left a note in the lock
+    file, and then fails with an error that names the holder and the variable. `timeout=None` (the new
+    default of `safe_read_file`, `safe_write_file`, `safe_delete_directory`, `lock_path`) means the
+    engine's timeouts; an explicit value is used as before; without a lock, a read that fails is still
+    retried for 3 s. `cmeta.utils.files.lock_timeout()` reads the setting.
+  - `safe_write_file` writes a JSON, YAML or pickle file atomically by default (`<file>.tmp` + one
+    replace; text stays in place): a new artifact's meta, the first run's `repos.json` and local
+    repository meta, a new category index file and the files of the internal categories can no longer be
+    seen half-written or left broken by a crash (a broken meta made the next reindex skip the artifact).
+    A failed write removes its temporary; the mode of the target is kept; a symbolic link is written
+    through; a read-only target is refused as before.
+  - `create` makes the folder, the meta and the record under the index lock (`Repos.lock_index`,
+    `add_to_index(index_lock=...)`): a full reindex never sees a half-made artifact, several creates of
+    one artifact at once end with one artifact and "already exists" errors (return code 8), and a create
+    whose record cannot be written removes what it made.
+  - The incremental index (`pull`, `plug`, `unplug`, `repo reindex`) reads and rewrites `repos.json`
+    under its lock: a plug or unplug of another process at the same moment is neither lost nor read
+    half-written.
+  - The reader cache of the index (`safe_read_file_via_cache`) is keyed by the modification time in
+    nanoseconds, the size and the inode instead of the modification time in seconds: two writes within
+    one tick of a coarse file system (FAT, exFAT, some network mounts) no longer leave a long-running
+    process with a stale index; an index file read before that is missing for a moment (a replace on a
+    mount whose rename is not atomic, such as 9p, or the swap of a full reindex) is retried a few times
+    (75 ms at most) before "not found" - a file never seen is still not retried; its dict is updated
+    under a lock for the threads of one process; two `stat`s fewer per lookup.
+  - A replace whose target is held open (Windows: a reader of an index file, a scanner) is retried with
+    a delay that doubles from 1 ms to 100 ms until the lock timeout, instead of 10 times 0.1 s; a target
+    that cannot be written at all fails at once.
+  - `find` hands out one-level copies of the records it returns (the record, its `cmeta`, its `tags`;
+    made after its tag and match filters, so only what is returned pays for it): a caller that edits
+    what it gets (the aops selection adds a tag) no longer edits the cached index of its process. Deeper
+    values, and the records of the lower-level `find_in_index`, are shared and must be left as they are.
+  - Index files are written with pickle protocol 4, readable by every supported Python whatever the
+    default of the Python that writes. Tests: `tests/core_tests/test_utils_files_writes.py`,
+    `tests/internal_repo_tests/test_integration_create_guard.py`; the index guard test now checks that a
+    create waits before it writes its folder.
 
 ## 0.34.0
 - **The engine's own path lock replaces the `filelock` library: two processes can no longer hold one

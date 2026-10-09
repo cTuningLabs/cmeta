@@ -35,7 +35,9 @@ Environment variables worth knowing:
 `CMETA_HOME` (state directory, default under user home), `CMETA_DEBUG=1`,
 `CMETA_LOG=DEBUG|INFO`, `CMETA_LOG_FILE=<path>`, `CMETA_VERBOSE=yes`,
 `CMETA_FAIL_ON_ERROR=yes`, `CMETA_INDEX_LOCK_TIMEOUT=<seconds>` (how long a
-write to the index waits for a running `cx --reindex`; 600).
+write to the index waits for a running `cx --reindex`; 600),
+`CMETA_LOCK_TIMEOUT=<seconds>` (how long a writer waits for the lock of a file
+held by another process; 30, with a notice after 3).
 
 ---
 

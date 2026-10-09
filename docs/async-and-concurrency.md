@@ -211,22 +211,30 @@ r = utils.files.safe_write_file(index_file, index_data,
 
 - **File locks** are the engine's own `cmeta.utils.files.PathLock` (no library),
   using the sidecar file `<file>.lock`, so they work cross-platform, *across
-  processes* and across the threads of one process. Default acquisition timeout
-  is **3 seconds**; exceeding it produces an error dict rather than a corrupt
-  file.
+  processes* and across the threads of one process. A writer waits up to
+  **30 seconds** for a busy lock (`CMETA_LOCK_TIMEOUT` changes it), prints a
+  notice on stderr after 3 seconds naming the holder when it left a note in the
+  lock file, and then gives up with an error dict that names the holder rather
+  than a corrupt file.
 - **`keep_locked=True`** hands the lock back with the data so the caller can
   modify and write without ever dropping it — this is what prevents lost
   updates.
-- **`atomic=True`** writes to `<file>.tmp` and then `os.replace()`s it into
-  position (retried up to 10 times), so a reader never observes a partially
-  written file, and a crash mid-write cannot truncate the original.
+- **Atomic writes**: a JSON, YAML or pickle file is written to `<file>.tmp` and
+  then `os.replace()`d into position (the default of `safe_write_file` since
+  0.34.1; text is written in place), so a reader never observes a partially
+  written file, and a crash mid-write leaves the previous file and no
+  temporary. The mode of the target is kept, a symbolic link is written
+  through, a read-only target is refused, and the replace is retried while a
+  reader holds the target open (Windows) until the lock timeout.
 - Locks are released in a `finally:` block, and the lock file is removed by the
   process that releases it, so repositories never keep lock files. A crash
   leaves at most the lock file of the operation in flight; it blocks nobody
   (the OS lock dies with the process) and the next holder reuses and removes it.
 
-The same mechanism protects `<CMETA_HOME>/index/*.pkl`, `repos.json`, and each
-artifact's `_cmeta.yaml` / `_cmeta.json`.
+The same mechanism protects `<CMETA_HOME>/index/*.pkl`, `repos.json` (also
+while the incremental index of `plug` / `unplug` / `repo reindex` reads and
+rewrites it), and each artifact's `_cmeta.yaml` / `_cmeta.json`, including the
+one a `create` writes.
 
 ### How the lock works on each platform
 
@@ -268,6 +276,16 @@ did; a write costs one more lock acquisition (microseconds on Linux, a fraction
 of a millisecond on Windows). Under the same lock a reindex removes the
 `index.tmp-*` / `index.old-*` leftovers of killed rebuilds.
 
+### A create under the index lock
+
+`create` takes the index lock before it makes the folder, writes the meta and
+adds the record, and releases it after (`Repos.lock_index`,
+`add_to_index(index_lock=...)`): a full reindex never sees a half-made
+artifact, several creates of one artifact at once end with one artifact and
+"already exists" errors (the second finds the folder of the first), and a
+create whose record cannot be written (the lock of its index file stayed held)
+removes the folder it made, so nothing is left unindexed.
+
 ### Measured behaviour
 
 Ten `cx note add` processes run simultaneously against one `<CMETA_HOME>` all
@@ -282,10 +300,17 @@ files; `tests/benchmarks/benchmark_engine.py` measures the cost.
 
 ### What is *not* concurrency-safe
 
-- **`safe_read_file_via_cache()`** — the in-memory cache dict it maintains is
-  explicitly documented as *not* thread-safe. It is the fast read path for the
-  index. This is precisely why `CMetaAsync` uses **processes, not threads**:
-  each worker gets its own `CMeta` and its own cache.
+- **`safe_read_file_via_cache()`** keeps the in-memory cache of the index per
+  `CMeta` instance, keyed by the file's modification time in nanoseconds, size
+  and inode; an index file read before that is missing for a moment (a replace
+  on a mount whose rename is not atomic, the swap of a full reindex) is retried
+  a few times before "not found"; its dict is updated under a lock, and `find` hands out one-level
+  copies of the records it returns (the record, its `cmeta` and its `tags`),
+  so a caller may edit those. Anything deeper, and what the lower-level
+  `find_in_index` returns, is shared with the cache and must be treated as
+  read-only. `CMetaAsync` still uses
+  **processes, not threads**: each worker gets its own `CMeta` and its own
+  cache.
 - **Do not share one `CMeta` instance across threads.** Give each thread its
   own instance, or use `CMetaAsync` and let the process pool isolate them.
 - Long-running external work started by a task (builds, downloads) is *not*
@@ -295,9 +320,10 @@ files; `tests/benchmarks/benchmark_engine.py` measures the cost.
 
 ### Practical notes
 
-- **Lock contention shows up as an error, not corruption.** If you drive very
-  heavy parallel updates of the *same* artifact, expect occasional lock
-  timeouts; retry the call.
+- **Lock contention shows up as a wait, then an error, not corruption.** A
+  writer waits up to `CMETA_LOCK_TIMEOUT` seconds (30) for the lock of a file
+  and says so on stderr after 3. If you drive very heavy parallel updates of
+  the *same* artifact, expect occasional lock timeouts; retry the call.
 - **Separate `<CMETA_HOME>`s remove sharing entirely.** For fully independent
   parallel jobs, give each one its own home (`--home=<path>` or `CMETA_HOME`) —
   see [using-cmeta.md §7.4](using-cmeta.md#74-picking-cmeta_home-env-vars--per-project-collections).
