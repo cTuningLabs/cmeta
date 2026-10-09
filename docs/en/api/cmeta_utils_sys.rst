@@ -12,6 +12,8 @@ Functions
 
 .. autofunction:: cmeta.utils.sys.cmeta_install_info
 
+.. autofunction:: cmeta.utils.sys.decode_output
+
 .. autofunction:: cmeta.utils.sys.describe_cmeta_install
 
 .. autofunction:: cmeta.utils.sys.find_command_func
@@ -45,3 +47,5 @@ Functions
 .. autofunction:: cmeta.utils.sys.run
 
 .. autofunction:: cmeta.utils.sys.run_command_with_timeout_tree_kill_on_windows
+
+.. autofunction:: cmeta.utils.sys.system_code_pages
