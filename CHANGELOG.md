@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## 0.33.1.1 (in development)
+## 0.34.0
 - **The engine's own path lock replaces the `filelock` library: two processes can no longer hold one
   lock at once, and lock files are still removed after use.** The previous lock removed its file after
   releasing it; with `flock` on Linux and macOS a process waiting on the removed file and a newcomer
