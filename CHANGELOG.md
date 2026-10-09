@@ -4,6 +4,32 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## 0.33.1.1 (in development)
+- **The engine's own path lock replaces the `filelock` library: two processes can no longer hold one
+  lock at once, and lock files are still removed after use.** The previous lock removed its file after
+  releasing it; with `flock` on Linux and macOS a process waiting on the removed file and a newcomer
+  that created a new one then both acquired, and one of two concurrent index writes was lost (seen with
+  six `cx log reindex` at once on WSL2 and in a container). `cmeta.utils.files.PathLock` removes the
+  file BEFORE releasing (after closing it on Windows, where an open file cannot be removed) and checks
+  after acquiring that the file it holds is still the file at the path, trying again otherwise. It takes
+  a byte-range lock (`msvcrt.locking`) on Windows, `fcntl.flock` on POSIX, POSIX record locks
+  (`fcntl.lockf`) where the file system refuses `flock` (NFS and some network mounts), and a soft lock
+  file (`pid host time`, created exclusively; a stale one - its process dead on this host, or older than
+  ten minutes when left by another host - is removed by the waiter that finds it) where the file system
+  refuses both (some FUSE, 9p and SMB mounts). The threads of one process are serialized on the path
+  first, so the lock is safe for threads as well as processes in every mode. A busy lock is polled every
+  1 to 25 ms instead of every 50 ms. The timeouts, the lock file names and the functions that use them
+  (`safe_read_file(lock=True)`, `safe_write_file`, `safe_delete_directory`, `lock_path` / `unlock_path`)
+  are unchanged; `filelock` is no longer a dependency. Tests: `tests/core_tests/test_utils_files_path_lock.py`
+  (one holder at a time, the file removed on release, eight processes and sixteen threads through one
+  counter, the engine's read-modify-write cycle under contention, a killed holder, the removed-file race
+  replayed deterministically, a lock file that is not its own left alone, the soft lock and its stale
+  files, the POSIX record-lock fallback, timeouts, `safe_delete_directory` and `safe_write_file`);
+  `test_several_processes_reindex_at_once` passes on every platform (it was expected to fail on Linux).
+- **`tests/benchmarks/benchmark_engine.py`: a benchmark of the engine's hot paths** - the index reads
+  behind `find`, the locked writes behind `create`, `update`, `delete` and `reindex`, the full reindex, the
+  reload after a change, the primitives (stat, lock, record copy, pickle, atomic write), concurrent creates
+  and the `cx` command line - on a home of its own with N hand-made artifacts; `--json` writes the numbers
+  and `--compare <json>` prints the ratio against an earlier run. A smoke test runs it in the suite.
 - **`cx <category> reindex [<artifact>]`: the index record of one artifact (or of several) is refreshed
   from its folder, and no file is changed.** The meta file is read from the artifact's folder on disk
   and the record in the category's index is rewritten from it: the alias is the folder's name, every

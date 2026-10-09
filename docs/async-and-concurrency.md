@@ -209,21 +209,45 @@ r = utils.files.safe_write_file(index_file, index_data,
                                 file_lock=index_file_lock, atomic=True, ...)
 ```
 
-- **File locks** come from the `filelock` package (a runtime dependency), using
-  a sidecar lock file, so they work cross-platform and *across processes* —
-  not just across threads. Default acquisition timeout is **3 seconds**;
-  exceeding it produces an error dict rather than a corrupt file.
+- **File locks** are the engine's own `cmeta.utils.files.PathLock` (no library),
+  using the sidecar file `<file>.lock`, so they work cross-platform, *across
+  processes* and across the threads of one process. Default acquisition timeout
+  is **3 seconds**; exceeding it produces an error dict rather than a corrupt
+  file.
 - **`keep_locked=True`** hands the lock back with the data so the caller can
   modify and write without ever dropping it — this is what prevents lost
   updates.
 - **`atomic=True`** writes to `<file>.tmp` and then `os.replace()`s it into
   position (retried up to 10 times), so a reader never observes a partially
   written file, and a crash mid-write cannot truncate the original.
-- Locks are released in a `finally:` block, and stale lock files are cleaned up
-  explicitly (`filelock` does not always do so on Linux).
+- Locks are released in a `finally:` block, and the lock file is removed by the
+  process that releases it, so repositories never keep lock files. A crash
+  leaves at most the lock file of the operation in flight; it blocks nobody
+  (the OS lock dies with the process) and the next holder reuses and removes it.
 
 The same mechanism protects `<CMETA_HOME>/index/*.pkl`, `repos.json`, and each
 artifact's `_cmeta.yaml` / `_cmeta.json`.
+
+### How the lock works on each platform
+
+A lock file that is removed after use is correct only if the holder removes it
+*before* releasing the OS lock and every newcomer checks, after acquiring, that
+the file it holds is still the file at the path (otherwise a waiter blocked on
+the removed file and a newcomer that created a new one both "hold" the lock).
+`PathLock` does both. On **Windows** it takes a byte-range lock
+(`msvcrt.locking`) on the lock file; an open file cannot be removed there, so a
+newcomer that meets a file being deleted simply tries again. On **POSIX** it
+takes `fcntl.flock` (per open file description, so threads exclude each other
+too), or POSIX record locks (`fcntl.lockf`) where the file system refuses
+`flock` (NFS and some network mounts), each with the identity check. Where the
+file system refuses both (some FUSE, 9p and SMB mounts) it falls back to a
+**soft lock**: the file is created exclusively and holds `pid host time`; a
+stale one (its process dead on this host, or older than 10 minutes when left
+by another host) is removed by the waiter that finds it. In every mode the
+threads of one process are serialized on the path first. A busy lock is polled
+with a delay that doubles from 1 ms to 25 ms until the timeout. A folder used
+by two operating systems at once (a Windows tree plugged from WSL) is best
+effort: each side locks with its own mechanism.
 
 ### Measured behaviour
 
@@ -231,7 +255,11 @@ Ten `cx note add` processes run simultaneously against one `<CMETA_HOME>` all
 exit `0`, and both the index and the directory listing show all ten artifacts.
 Eight processes updating **the same artifact's** metadata at the same time also
 all exit `0`, and **all eight fields are present afterwards** — no lost
-updates, and no stale `.lock` files left behind.
+updates, and no stale `.lock` files left behind. The lock's own tests
+(`tests/core_tests/test_utils_files_path_lock.py`) run eight processes and
+sixteen threads through one counter, replay the removed-file race
+deterministically, kill a holder, and exercise the soft lock and its stale
+files; `tests/benchmarks/benchmark_engine.py` measures the cost.
 
 ### What is *not* concurrency-safe
 

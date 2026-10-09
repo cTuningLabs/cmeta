@@ -467,13 +467,11 @@ def test_the_shipped_internal_repository_is_only_read(cm):
     assert file_state(f) == state
 
 
-@pytest.mark.xfail(sys.platform != 'win32', strict=False,
-                   reason='the index lock file is deleted after every release (utils.files._release_lock -> '
-                          '_cleanup_lock_file): with flock a process waiting on the old inode and a newcomer that '
-                          'creates a new lock file both acquire, two writers enter add_to_index and one update is '
-                          'lost (seen on WSL2 and in a container, 2026-10-08; Windows cannot delete an open file). '
-                          'The fix belongs to the concurrency step of the engine hardening')
 def test_several_processes_reindex_at_once(cm, tmp_path):
+    # Six processes write the same index file at once: with the previous lock (its file removed after the
+    # release) a waiter and a newcomer could both acquire on Linux and one record was lost; the engine's own
+    # PathLock (the file removed before the release, the identity of the file checked after acquiring) keeps
+    # every record on every platform
     base = tmp_path / 'repos' / 'local' / 'log'
     names = [f'par-{i}' for i in range(6)]
     made = {name: make(cm, name, yaml=True) for name in names}
@@ -485,7 +483,7 @@ def test_several_processes_reindex_at_once(cm, tmp_path):
     env['PYTHONIOENCODING'] = 'utf-8'
 
     procs = [subprocess.Popen([sys.executable, '-m', 'cmeta', 'log', 'reindex', name], env=env,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) for name in names]
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) for name in names]
     outputs = [p.communicate(timeout=180)[0] for p in procs]
     assert all(p.returncode == 0 for p in procs), outputs
 
@@ -830,13 +828,13 @@ def test_the_cli_route(cm, tmp_path):
     env['CMETA_HOME'] = str(tmp_path)
     env['PYTHONIOENCODING'] = 'utf-8'
 
-    r = subprocess.run([sys.executable, '-m', 'cmeta', 'log', 'reindex', 'via-cli'], capture_output=True, text=True, env=env)
+    r = subprocess.run([sys.executable, '-m', 'cmeta', 'log', 'reindex', 'via-cli'], stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert f'Reindexed log "via-cli" ({uid})' in r.stdout
     assert record(cm, uid)['cmeta']['owner'] == 'me'
 
-    r = subprocess.run([sys.executable, '-m', 'cmeta', 'log', 'reindex', 'nothing-here'], capture_output=True, text=True, env=env)
+    r = subprocess.run([sys.executable, '-m', 'cmeta', 'log', 'reindex', 'nothing-here'], stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
     assert r.returncode == 16, r.stdout + r.stderr
 
-    r = subprocess.run([sys.executable, '-m', 'cmeta', 'log', 'reindex', '--help'], capture_output=True, text=True, env=env)
+    r = subprocess.run([sys.executable, '-m', 'cmeta', 'log', 'reindex', '--help'], stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
     assert r.returncode == 0 and 'ignore_errors' in r.stdout, r.stdout + r.stderr
