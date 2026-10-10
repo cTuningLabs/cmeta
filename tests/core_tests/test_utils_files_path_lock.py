@@ -7,8 +7,7 @@ waiter is detected (the identity check) and never leads to two holders; a killed
 soft lock used where the file system refuses OS locks, with its stale files; timeouts; the engine's own
 read-modify-write cycle under contention.
 
-cMeta author and developer: (C) 2025-2026 Grigori Fursin
-
+Licensed under the Apache License, Version 2.0.
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 

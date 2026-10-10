@@ -7,8 +7,7 @@ The benchmark proper is run by hand before and after an engine change:
     python tests/benchmarks/benchmark_engine.py --home <empty folder> --n 10000 --json before.json
     python tests/benchmarks/benchmark_engine.py --home <empty folder> --n 10000 --json after.json --compare before.json
 
-cMeta author and developer: (C) 2025-2026 Grigori Fursin
-
+Licensed under the Apache License, Version 2.0.
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
