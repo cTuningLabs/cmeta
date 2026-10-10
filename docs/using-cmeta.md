@@ -1415,7 +1415,8 @@ Common substitutions to reach for first:
 | `d.setdefault('a', {})['b'] = v` | `self.cm.utils.common.smart_set(d, 'a.b', v)` |
 | `s.split(',')` for tags | `self.cm.utils.common.normalize_tags(s)` |
 | `str(uuid.uuid4())[:16]` | `self.cm.utils.names.generate_cmeta_uid()` |
-| `urllib.request.urlopen` | `self.cm.utils.net.download(url, path=..., api_key=..., skip_ssl_certificate=...)` |
+| `urllib.request.urlopen` | `self.cm.utils.net.download(url, path=..., api_key=..., skip_ssl_certificate=..., resume=True)` (checks the announced size; `resume` continues a partial file) |
+| `input(...)` | `self.cm.utils.common.ask(question, how='-q (--quiet) ...')` (no terminal: an error that names the flag, not a traceback) |
 | `requests.post` (for cMeta APIs) | `self.cm.utils.net.access_api(url, params)` |
 
 Also on `self.cm` itself: `self.cm.j`, `self.cm.jj`, `self.cm.js` (safe JSON
@@ -1581,10 +1582,16 @@ Task-level content caches produced by workflows live under the `cache`
 category and are managed separately:
 
 ```bash
-cx cache show                # list cache entries (with --tags= filters, etc.)
-cx cache clean               # prune according to policy
-cx cache delete <alias-or-uid>
+cx cache show                # list cache entries with their state (with --tags= filters; --state=failed,broken)
+cx cache classify            # the states as an API result: ok, running (built by another process), crashed
+                             #   (a dead attempt), failed (the last attempt's error), broken (no usable result)
+cx cache clean               # remove the crashed entries; --failed, --broken, --unfinished, --all --force
+cx cache delete <alias-or-uid>   # waits for a running attempt and fails while it goes on
 ```
+
+The task engine of cmeta-aops resumes a crashed, failed or broken entry in place when the
+same request comes again, never serves a failed one, and waits for a running one (see the
+cmeta-aops documentation, "The cache entry of a run").
 
 Reproducibility helpers:
 
