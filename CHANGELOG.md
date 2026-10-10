@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## 0.34.1.1 (in development)
+## 0.34.2
 - **The cache category knows the state of an entry, and a delete holds the folder's lock across its two
   steps.** `cx cache classify` (the API `classify`) tells for every entry whether it is `ok`, `running` (the
   folder's lock is held by another process: an attempt of the task engine), `crashed` (the `tmp` tag of an
