@@ -6,8 +6,7 @@ target kept, a symbolic link written through, a read-only target refused, the re
 reader holds the target, the reader cache keyed by time, size and inode, the cache under threads, the
 pickle protocol of the index.
 
-cMeta author and developer: (C) 2025-2026 Grigori Fursin
-
+Licensed under the Apache License, Version 2.0.
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 

@@ -15,8 +15,7 @@ removed first when it holds the marker of an earlier run and refused otherwise. 
 this file runs it with a small N as a smoke test; the numbers themselves are not asserted (the speed of a
 CI runner varies).
 
-cMeta author and developer: (C) 2025-2026 Grigori Fursin
-
+Licensed under the Apache License, Version 2.0.
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 

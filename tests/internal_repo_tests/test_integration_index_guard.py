@@ -10,8 +10,7 @@ Each test runs against a fresh <CMETA_HOME> in tmp_path so it does not touch the
 state. The reindex of another process is paused by a hook on `Repos._index`: a marker file says that
 it holds the lock, a go file lets it continue.
 
-cMeta author and developer: (C) 2025-2026 Grigori Fursin
-
+Licensed under the Apache License, Version 2.0.
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 

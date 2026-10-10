@@ -50,6 +50,8 @@ Functions
 
 .. autofunction:: cmeta.utils.files.lock_path
 
+.. autofunction:: cmeta.utils.files.lock_timeout
+
 .. autofunction:: cmeta.utils.files.md5sum
 
 .. autofunction:: cmeta.utils.files.order_meta_keys
@@ -101,6 +103,10 @@ Constants
 
 .. autodata:: cmeta.utils.files.LOCK_IDENTITY_RETRIES
 
+.. autodata:: cmeta.utils.files.LOCK_NOTE_MAX
+
+.. autodata:: cmeta.utils.files.LOCK_NOTICE_SECONDS
+
 .. autodata:: cmeta.utils.files.LOCK_POLL_MAX
 
 .. autodata:: cmeta.utils.files.LOCK_POLL_START
@@ -117,15 +123,23 @@ Constants
 
 .. autodata:: cmeta.utils.files.LOCK_SUFFIX
 
+.. autodata:: cmeta.utils.files.LOCK_TIMEOUT
+
+.. autodata:: cmeta.utils.files.LOCK_TIMEOUT_ENV
+
+.. autodata:: cmeta.utils.files.PICKLE_PROTOCOL
+
+.. autodata:: cmeta.utils.files.READ_RETRY_SECONDS
+
 .. autodata:: cmeta.utils.files.RETRY_DELAY
 
 .. autodata:: cmeta.utils.files.RETRY_DELETE_ATTEMPTS
 
+.. autodata:: cmeta.utils.files.RETRY_NOT_FOUND_DELAY
+
 .. autodata:: cmeta.utils.files.RETRY_NOT_FOUND_FILE
 
 .. autodata:: cmeta.utils.files.RETRY_NOT_FOUND_INDEX_FILE
-
-.. autodata:: cmeta.utils.files.RETRY_REPLACE_FILE
 
 .. autodata:: cmeta.utils.files.RETRY_TIMESTAMP_FILE
 

@@ -354,7 +354,9 @@ class Category(InitCategory):
         con = ctx['control'].get('con', False)
 
         if ask:
-            arg1 = input('Enter CID: ')
+            r = self.cm.utils.common.ask('Enter CID: ', how='the CID as an argument instead of --ask')
+            if r['return'] > 0: return r
+            arg1 = r['answer']
 
         if web and arg1.startswith('cmeta:///?'):
             arg1 = arg1[10:]
@@ -588,7 +590,9 @@ class Category(InitCategory):
         con = ctx['control'].get('con', False)
 
         if ask:
-            arg1 = input('Enter complex CID: ')
+            r = self.cm.utils.common.ask('Enter complex CID: ', how='the CID as an argument instead of --ask')
+            if r['return'] > 0: return r
+            arg1 = r['answer']
 
         if web and arg1.startswith('cmeta:///?'):
             cid = arg1[10:]
@@ -1558,7 +1562,8 @@ class Category(InitCategory):
         
         if alias is None:
             if con:
-                alias = input(f'Enter {category_alias} name: ')
+                # Nobody to answer: no name, as when Enter is pressed (the date alone names the artifact)
+                alias = self.cm.utils.common.ask(f'Enter {category_alias} name: ', optional=True)['answer']
                 alias = alias.strip()
 
         if alias is None or alias == '':

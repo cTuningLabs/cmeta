@@ -723,7 +723,11 @@ def select_artifact_(
                 print ('')
 
                 x = ', use -1 to skip selection' if allow_skip else ''
-                new_index = input(f'{space}Make your selection{x} or press Enter for 0: ').strip()
+                # Nobody to answer (a script, a detached job): an error that names -q, never a traceback
+                r = self.cm.utils.common.ask(f'{space}Make your selection{x} or press Enter for 0: ',
+                                             how='-q (--quiet) to take the first of the list')
+                if r['return'] > 0: return r
+                new_index = r['answer'].strip()
             else:
                 new_index = ''
 
