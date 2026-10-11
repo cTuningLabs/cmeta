@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## 0.34.2.1 (in development)
+## 0.35.0
 - **A registered repository that cannot be reached stays registered.** When the index was built - a full
   `cx --reindex`, or the incremental index of `pull`, `plug`, `unplug` and `cx repo reindex` - and the folder
   of a registered repository was not there (a detached USB drive, a network share that was down) or its
