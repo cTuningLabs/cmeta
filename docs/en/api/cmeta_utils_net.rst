@@ -15,3 +15,8 @@ Functions
 .. autofunction:: cmeta.utils.net.download
 
 .. autofunction:: cmeta.utils.net.unify_request
+
+Constants
+---------
+
+.. autodata:: cmeta.utils.net.RESUME_RECORD_SUFFIX
