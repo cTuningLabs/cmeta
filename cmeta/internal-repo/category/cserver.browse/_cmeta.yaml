@@ -34,6 +34,7 @@ uses_categories:
 last_update_timestamp: '2026-10-05T15:12:08.494273+00:00'
 last_generator:
   method: agent
+  via: cmeta 0.33.0
   agent: Claude Code 2.1.289
   by: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
   date: '2026-10-05'
