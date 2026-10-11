@@ -820,11 +820,24 @@ cx repo plug <alias> --path=<path>
 
 # Detach without deleting the files:
 cx repo unplug <alias>           # unregister a repo
+cx repo unplug <path>            # ... by the path of its folder (also when the folder cannot be reached)
 cx repo unplug                   # unregister repo detected in current directory
 ```
 
 `plug` is `get_` with `--local --path=...`. `unplug` is `delete` with the
 `--unplug` flag, which unregisters without touching the folder.
+
+**A repository that cannot be reached stays registered.** When the index is built
+and the folder of a registered repository is not there - a detached USB drive, a
+network share that is down - or its `_cmr.yaml` cannot be read, the repository is
+left out of the index, its line in `repos.json` is kept and marked
+`unreachable: true`, and a notice names it. Nothing has to be plugged again: the
+next index run of any kind (`cx --reindex`, a `pull` or `plug` of another
+repository, `cx repo reindex <path>`) finds it back and indexes it. `cx repo unplug
+<path>` forgets it for good. (Before 0.35.0 such a repository was dropped from
+`repos.json` without a word.) `cx repo plug --keep` goes further for a removable
+drive: it stores the descriptor, so the repository stays in the repository index
+while the drive is away.
 
 ### 7.10 Everyday repo commands
 
@@ -1571,7 +1584,8 @@ stay as it is, for instance in a folder that another machine syncs.
 inside it — does what `cx repo pull` and `cx repo plug` do once a repository is
 in place: its `_cmr.yaml` is re-read and its artifacts are indexed again, and the
 records of the other repositories stay as they are. A repository whose folder is
-not there (a detached drive) is refused and nothing changes.
+not there (a detached drive) is refused and nothing changes; once the folder is
+back, `cx repo reindex <path>` - or any other index run - indexes it again (§7.9).
 
 `cx --reindex` rebuilds every index file from scratch — after a `CMETA_HOME`
 wipe, a bulk change across repositories, or when in doubt. It's safe, idempotent

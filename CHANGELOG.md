@@ -3,6 +3,27 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.34.2.1 (in development)
+- **A registered repository that cannot be reached stays registered.** When the index was built - a full
+  `cx --reindex`, or the incremental index of `pull`, `plug`, `unplug` and `cx repo reindex` - and the folder
+  of a registered repository was not there (a detached USB drive, a network share that was down) or its
+  `_cmr.yaml` could not be read, the repository was dropped from `repos.json` without a word and had to be
+  plugged again; one transient miss was enough. Now its line stays in `repos.json`, in its place, marked
+  `unreachable: true`; the repository is left out of the index (in an incremental run its records are
+  removed, so that a find does not hand out artifacts whose folder is away); a notice names it and the two
+  commands (on stderr with the console, always in the log). When the folder is there again, the next index
+  run of any kind indexes it as if it had just been plugged and clears the mark - also `cx repo reindex
+  <path>`, which now accepts the folder of a registered repository that is not in the index. `cx repo unplug
+  <path>` forgets a repository by the path of its folder, reachable or not (before, `unplug` knew aliases
+  only). Fixed on the way: the stored descriptor of a repository plugged with `--keep` was left out of
+  `repos.json` whenever the file was rewritten while the repository was reachable, so the next time its
+  drive was away it was dropped like any other; a `_cmr.yaml` without an `artifact` name ended the index with
+  a `KeyError` (now: unreachable, with the reason); the pause "Fix it or press Enter to continue!" of an
+  ambiguous category alias ended the index with `EOFError` when nobody could answer (now: it goes on).
+  Tests: `tests/internal_repo_tests/test_integration_repo_unreachable.py`.
+- **Python 3.15.** The suite runs on Python 3.15 in CI, next to 3.9 and 3.14 (Linux, Windows, macOS); nothing
+  in the engine needed a change. `pyproject.toml` carries the classifier.
+
 ## 0.34.2
 - **The cache category knows the state of an entry, and a delete holds the folder's lock across its two
   steps.** `cx cache classify` (the API `classify`) tells for every entry whether it is `ok`, `running` (the
