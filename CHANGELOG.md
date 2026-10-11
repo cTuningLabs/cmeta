@@ -3,6 +3,49 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.34.2
+- **The cache category knows the state of an entry, and a delete holds the folder's lock across its two
+  steps.** `cx cache classify` (the API `classify`) tells for every entry whether it is `ok`, `running` (the
+  folder's lock is held by another process: an attempt of the task engine), `crashed` (the `tmp` tag of an
+  attempt whose process is gone), `failed` (the `failed` tag, or a result file with `return > 0`) or `broken`
+  (a result file that cannot be read, a result missing from an entry the task engine made - its request
+  record or the ctx file of a finished attempt is there - or the recorded `tool_path` / `git_path` gone; a
+  cache artifact that never carries a result, such as a program's build workspace, is `ok`); `cx cache show` prints the state of
+  each entry and takes `--state=<states>`; `cx cache clean` removes the crashed entries by default (before:
+  every `tmp` entry, a running one included), `--failed`, `--broken`, `--unfinished` (the three) and `--all
+  --force` the others, and never a running entry. The task engine of cmeta-aops 0.45.0 builds its resume
+  rule on these states. An artifact's `delete` now takes the lock of the artifact's folder (the one
+  `safe_delete_directory` takes) before it removes the index record and keeps it until the folder is gone:
+  a folder in use by another process (a cache entry being built) makes the delete wait and then fail as a
+  whole, instead of removing the record and leaving the folder behind (`safe_delete_directory(file_lock=...)`
+  uses a lock the caller holds). `safe_write_file` takes `safe_dump` (as `write_file` does);
+  `cmeta.utils.files.acquire_with_notice` is the public name of the wait-with-a-notice helper. Tests:
+  `tests/internal_repo_tests/test_cache_states.py`.
+- **A download cut by the network is an error, and an interrupted download can be continued.**
+  `utils.net.download` now compares what arrived with the size the server announced (`Content-Length`). A
+  connection that ended early - a proxy, a dropped link - used to return success with a short file, because
+  Python's HTTP client returns the bytes it got and raises nothing; the caller then unpacked or installed a
+  truncated archive. It is an error now (`'incomplete': True`, with `size` and `total_size`); the bytes
+  received stay in the file. A body with neither a length nor chunks still ends where the connection ends.
+  With the new `resume=True` (off by default: other callers are unchanged) a file left by an interrupted
+  call is continued: the bytes on disk are kept and the rest is asked for with an HTTP range request under
+  `If-Range`, so the server sends the rest only if the file is still the one the first bytes came from - its
+  strong ETag, else its Last-Modified date, recorded with the URL and the size in `<file>.resume` next to the
+  partial file. The download starts over whenever that cannot be guaranteed: no record, another URL, a server
+  that names no validator (or only a weak ETag) or does not serve ranges, a file that changed, a range answer
+  that does not fit; a server that fails on range requests gets one request for the whole file, and the
+  partial file is replaced only when that answer has arrived. A partial file that already holds every byte
+  needs no request. The result has `resumed_from` (0 for a full download), `size` is the size of the file.
+  Tests: `tests/core_tests/test_utils_net_download.py`.
+- **A question that nobody can answer is an error of the command, not a traceback.** Without a terminal - a
+  detached job, `nohup`, a CI step, a pipe that has no more lines - `input()` raises `EOFError`, and a command
+  that asked ended in a traceback. The engine's questions go through the new `utils.common.ask`: no terminal
+  is an error that names the flag which makes the question unnecessary - `-f` for the deletion of an artifact
+  (nothing is deleted), `-q` for a selection among several artifacts, the CID as an argument instead of
+  `--ask` - and never a made-up answer; the optional name of a new dated artifact is the empty answer, as
+  when Enter is pressed. A terminal and a piped answer (`echo y | cx ...`) are as before. Tests:
+  `tests/internal_repo_tests/test_no_terminal_questions.py`.
+
 ## 0.34.1
 - **The index lock: a full reindex no longer loses the writes made while it runs, and two rebuilds no
   longer race for the swap.** A full `cx --reindex` builds the new index in a temporary folder and swaps

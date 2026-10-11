@@ -878,20 +878,38 @@ class Category(InitCategory):
             artifact_uid = artifact_cmeta_ref_parts['artifact_uid']
             artifact_alias_lowercase = artifact_cmeta_ref_parts.get('artifact_alias_lowercase', artifact_cmeta_ref_parts.get('artifact_alias'))
 
-            # Remove from index first
+            # The record and the folder go under the lock of the folder (the one safe_delete_directory
+            # takes): a process working inside it - a cache entry being built holds that lock - makes the
+            # deletion wait and then fail as a whole, instead of removing the record and leaving the folder
             error = False
-            if not no_index:
-                artifact_index_file = artifact['index_file']
+            folder_lock = None
+            try:
+                folder_lock = utils.files._acquire_lock(artifact_path, logger=self.logger, what=f"the deletion of '{artifact_path}'")
+            except Exception as e:
+                r = {'return':1, 'error': f'cannot delete "{artifact_path}": {e}'}
+                error = True
 
-                r = self.cm.repos.remove_from_index(artifact_index_file, artifact_uid, artifact_alias_lowercase)
-                if r['return']>0:
-                    error = True
+            try:
+                # The folder first, then the record: a folder that cannot be removed (a file held open by
+                # another process, the working directory of a process on Windows) leaves everything as it
+                # was, never a record without its folder or a folder without its record
+                if not error:
+                    r = self.cm.utils.files.safe_delete_directory(artifact_path, file_lock=folder_lock)
+                    if r['return']>0:
+                        error = True
 
-            # Delete directory if exists (if was not deleted already by another process)
-            if not error:
-                r = self.cm.utils.files.safe_delete_directory(artifact_path)
-                if r['return']>0:
-                    error = True
+                if not error and not no_index:
+                    artifact_index_file = artifact['index_file']
+
+                    r = self.cm.repos.remove_from_index(artifact_index_file, artifact_uid, artifact_alias_lowercase)
+                    if r['return']>0:
+                        error = True
+            finally:
+                if folder_lock is not None:
+                    try:
+                        folder_lock.release()
+                    except Exception:
+                        pass
 
             # Delete root if empty
             if not error:

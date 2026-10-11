@@ -191,9 +191,14 @@ cx repo reindex <repo>                  # ONE repository: its _cmr.yaml and its 
 cx <category> update <repo>:<artifact>  # refresh after editing its meta (rewrites the file: a new timestamp)
 cx --reindex                            # rebuild everything (slow — last resort)
 
-cx cache show
-cx cache clean
-cx cache delete <alias-or-uid>
+cx cache show [--state=ok,running,crashed,failed,broken]   # every entry with its state (the folder's lock, its
+                                        #   tags, its result file): ok = a usable result; running = another process
+                                        #   builds it; crashed = a dead attempt; failed = the last attempt's error;
+                                        #   broken = the result unreadable or a recorded path gone
+cx cache classify [--tags=...]          # the same as an API result ({'states': {uid: {'state', 'why', ...}}})
+cx cache clean                          # removes the crashed entries; --failed, --broken, --unfinished (the three),
+                                        #   --all --force; a running entry is never removed
+cx cache delete <alias-or-uid>          # waits for a running attempt (CMETA_LOCK_TIMEOUT) and fails while it goes on
 ```
 
 `reindex` never touches a folder, and the only record it removes is that of an

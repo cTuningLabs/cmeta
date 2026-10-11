@@ -18,4 +18,10 @@ Classes
 Constants
 ---------
 
+.. autodata:: cmeta.repos.INDEX_LOCK_NOTICE_SECONDS
+
+.. autodata:: cmeta.repos.INDEX_LOCK_TIMEOUT
+
+.. autodata:: cmeta.repos.INDEX_LOCK_TIMEOUT_ENV
+
 .. autodata:: cmeta.repos.MAX_MIGRATED_HOPS

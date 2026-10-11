@@ -24,7 +24,7 @@ import logging
 import random
 import threading
 
-from .common import _error
+from .common import _error, ask as _ask
 
 try:
     import yaml
@@ -729,6 +729,8 @@ def _acquire_with_notice(
         return lock.acquire(timeout=max(timeout - first, 0.0), note=note)
     except TimeoutError as e:
         raise TimeoutError(f'{subject} stayed locked by another process{held_by} for {timeout:g} s ({e}) - set {env_name} to wait longer')
+
+acquire_with_notice = _acquire_with_notice   # the public name (the task engine of cmeta-aops waits on a cache entry with it)
 
 ##########################################################################################
 def _acquire_lock(
@@ -1514,6 +1516,7 @@ def safe_write_file(
     sort_keys: bool = True,  # If True, sorts dictionary keys in JSON/YAML output.
     preserve: bool = False,  # If True, an existing YAML file is edited in place: only the keys that changed are rewritten (see _write_yaml_keeping_text); a YAML file that does not exist yet is written in the keep style.
     keep: bool = False,  # If True, a YAML file is written in the keep style of a new _cmeta.yaml (write_file keep=True). Other formats are not affected.
+    safe_dump: bool = False,  # If True, values JSON cannot serialize are written as "#NON-SERIALIZABLE#" (write_file safe_dump=True).
 ):
     """
         Safely write data to file with locking and optional atomic write.
@@ -1601,7 +1604,7 @@ def safe_write_file(
             keep_style = keep or (preserve and file_format == 'yaml')
 
             try:
-                r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format, keep=keep_style)
+                r = write_file(temp_path, data, encoding=encoding, fail_on_error=fail_on_error, logger=logger, sort_keys=sort_keys, file_format=file_format, keep=keep_style, safe_dump=safe_dump)
             except Exception:
                 if atomic:
                     _remove_quietly(temp_path)
@@ -1638,6 +1641,7 @@ def safe_delete_directory(
     timeout: float = None,  # Seconds to wait for the lock (None: the engine's lock timeout, 30 s, CMETA_LOCK_TIMEOUT changes it).
     fail_on_error: bool = False,  # Whether to raise exceptions or return error dict.
     logger = None,  # Logger instance for debug messages.
+    file_lock = None,  # The lock of the folder (its sidecar `<dirpath>.lock`) when the caller holds it already: it is used and NOT released here.
 ):
     """
         Safely and recursively deletes a directory with all its contents.
@@ -1651,6 +1655,8 @@ def safe_delete_directory(
             timeout (int): Lock timeout in seconds.
             fail_on_error (bool): Whether to raise exceptions or return error dict.
             logger: Logger instance for debug messages.
+            file_lock: The folder's lock when the caller holds it already (a delete that first removes
+                       the index record under the same lock); the caller releases it.
 
         Returns:
             Dict with 'return' (0=success, non-zero=error) and optional 'error'.
@@ -1660,34 +1666,34 @@ def safe_delete_directory(
     """
     if logger is not None:
         logger.debug(f"utils.files.self_delete_directory - preparing to delete {dirpath} ...")
-    
+
     path = Path(dirpath)
-    
+
     # Check if it's actually a directory
     if path.exists() and not path.is_dir():
         return _error(f"'{dirpath}' is not a directory", 1, None, fail_on_error)
-    
-    file_lock = None
+
     lock_acquired = False
-    
-    # Try to acquire lock
-    try:
-        file_lock = _acquire_lock(dirpath, timeout, logger, what=f"the removal of '{dirpath}'")
-        lock_acquired = True
-        if logger is not None:
-            logger.debug(f"utils.files.self_delete_directory - lock acquired for {dirpath}")
-    except Exception as e:
-        if logger is not None:
-            logger.debug(f"utils.files.self_delete_directory - failed to acquire lock for {dirpath}: {str(e)}")
-        
-        # If lock failed, check if directory still exists
-        if not path.exists():
+
+    # Try to acquire lock (unless the caller holds it)
+    if file_lock is None:
+        try:
+            file_lock = _acquire_lock(dirpath, timeout, logger, what=f"the removal of '{dirpath}'")
+            lock_acquired = True
             if logger is not None:
-                logger.debug(f"utils.files.self_delete_directory - directory {dirpath} doesn't exist, returning success")
-            return {'return': 0}
-        
-        # Directory exists but we couldn't lock it
-        return _error(f"Could not acquire lock and directory still exists: {str(e)}", 1, e, fail_on_error)
+                logger.debug(f"utils.files.self_delete_directory - lock acquired for {dirpath}")
+        except Exception as e:
+            if logger is not None:
+                logger.debug(f"utils.files.self_delete_directory - failed to acquire lock for {dirpath}: {str(e)}")
+
+            # If lock failed, check if directory still exists
+            if not path.exists():
+                if logger is not None:
+                    logger.debug(f"utils.files.self_delete_directory - directory {dirpath} doesn't exist, returning success")
+                return {'return': 0}
+
+            # Directory exists but we couldn't lock it
+            return _error(f"Could not acquire lock and directory still exists: {str(e)}", 1, e, fail_on_error)
     
     try:
         # Double-check directory still exists after acquiring lock
@@ -2794,8 +2800,10 @@ def ask_to_delete(
         print (xtext)
 
         if not force:
-            x = input('  Proceed (y/N)? ')
-            x = x.strip().lower()
+            # Nobody to answer (a script, a detached job): an error that names -f, never a traceback
+            r = _ask('  Proceed (y/N)? ', how='-f (--force) to delete without asking')
+            if r['return'] > 0: return r
+            x = r['answer'].strip().lower()
 
             if x not in ['y', 'yes']:
                 print ('    Skipped!')

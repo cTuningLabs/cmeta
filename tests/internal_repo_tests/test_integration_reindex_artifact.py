@@ -7,8 +7,7 @@ index or touched on disk. The record is the one a full `cx --reindex` records.
 Each test runs against a fresh <CMETA_HOME> in tmp_path so it does not touch the user's real
 cMeta state.
 
-cMeta author and developer: (C) 2025-2026 Grigori Fursin
-
+Licensed under the Apache License, Version 2.0.
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 

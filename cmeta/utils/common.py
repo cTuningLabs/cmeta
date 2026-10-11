@@ -57,6 +57,57 @@ def _error(
     return result
 
 ###################################################################################################
+def ask(
+    question,  # Text of the question, shown as the prompt.
+    how = '-q (--quiet) to take the default answers',  # What makes the question unnecessary.
+    optional = False,  # If True, no answer is the empty answer (the default) instead of an error.
+):
+    """
+        Ask the person who runs the command a question.
+
+        input() raises when nobody can answer: EOFError when the standard input is closed or at
+        its end (a detached job, nohup, a CI step, a pipe that has no more lines), RuntimeError
+        when Python has no standard input at all, OSError or ValueError when its handle is
+        invalid or closed. A run that asked then ended in a traceback in
+        the middle of its work. Here that is an error of the run that says how to answer in
+        advance. An answer is never made up: the default of a question may install something.
+
+        A piped answer (echo y | cx ...) is read as before.
+
+        Args:
+            question (str): Text of the question, shown as the prompt.
+            how (str): What makes the question unnecessary - named in the error.
+            optional (bool): If True, no answer is the empty answer (a pause, a name with a default).
+
+        Returns:
+            dict: {'return': 0, 'answer': <the line typed>}, or {'return': 1, 'error': ...,
+                  'no_terminal': True} when there is nobody to answer.
+    """
+
+    try:
+        return {'return': 0, 'answer': input(question)}
+    except (EOFError, OSError):
+        # The end of the input, or a standard input that cannot be read (an invalid handle,
+        # a terminal that hung up)
+        pass
+    except (RuntimeError, ValueError) as e:
+        # "input(): lost sys.stdin", "I/O operation on closed file" - anything else is not ours
+        if 'stdin' not in str(e) and 'closed file' not in str(e):
+            raise
+
+    # The prompt was printed and its line left open
+    print ('')
+
+    if optional:
+        return {'return': 0, 'answer': '', 'no_terminal': True}
+
+    text = ' '.join(str(question).split())
+    return {'return': 1,
+            'error': f'no answer to "{text}": there is no terminal to answer in (the standard input is closed). '
+                     f'Run the command in a terminal, or add {how}',
+            'no_terminal': True}
+
+###################################################################################################
 def check_params(
     params,  # Input parameters dictionary.
     keys,  # Collection of dictionary keys.
