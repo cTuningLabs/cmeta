@@ -105,7 +105,7 @@ flake8 cmeta                       # lint
 python -m build                    # build wheel + sdist
 ```
 
-cMeta supports **Python 3.9–3.14**; please avoid newer-only syntax. Runtime
+cMeta supports **Python 3.9–3.15**; please avoid newer-only syntax. Runtime
 dependencies are intentionally minimal — justify any new one in your pull
 request. See [`AGENTS.md`](AGENTS.md) for architecture and conventions.
 

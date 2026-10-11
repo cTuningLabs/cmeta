@@ -16,7 +16,7 @@ uniform interface:
 - Python: `cm.access({'category': ..., 'command': ..., ...})`
 - CLI: `cx <category> <command> [args] [--flags]`
 
-**License:** Apache-2.0. **Python:** 3.9–3.14.
+**License:** Apache-2.0. **Python:** 3.9–3.15.
 
 This repo ships the framework and a built-in content repository
 (`cmeta/internal-repo/`) with foundational categories. All other artifacts live
@@ -244,7 +244,7 @@ Notable shipped artifacts:
 - **Cross-category calls.** Inside `api/v1.py`, use `self.cm.access(...)`. Refer
   to other categories via `self.cmeta['uses_categories']['<name>']` declared in
   your `_cmeta.yaml`, not by hard-coded alias.
-- Python 3.9–3.14 supported; avoid newer-only syntax.
+- Python 3.9–3.15 supported; avoid newer-only syntax.
 - Tests: `tests/`, files `test_*.py`, pytest config in `pyproject.toml`.
 - Public Apache-2.0 framework — keep product vision/strategy prose out; public
   docs describe *functionality* (`README.md`, `docs/installation.md`,

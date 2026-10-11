@@ -32,7 +32,7 @@ gh workflow run test-core.yml --repo cTuningLabs/cmeta --ref dev
 gh run list --repo cTuningLabs/cmeta --workflow test-core.yml --limit 1   # then: gh run watch <id> --repo cTuningLabs/cmeta
 ```
 
-The CI workflow runs only on request; it covers Linux, Windows and macOS with Python 3.9 and 3.14.
+The CI workflow runs only on request; it covers Linux, Windows and macOS with Python 3.9, 3.14 and 3.15.
 
 ## 2. Bump the version
 
