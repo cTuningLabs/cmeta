@@ -21,6 +21,68 @@ All notable changes to cMeta are documented here, newest first.
   a `KeyError` (now: unreachable, with the reason); the pause "Fix it or press Enter to continue!" of an
   ambiguous category alias ended the index with `EOFError` when nobody could answer (now: it goes on).
   Tests: `tests/internal_repo_tests/test_integration_repo_unreachable.py`.
+- **The soft lock: no clock of the drive, a heartbeat, the system in its line, a stale one taken over by
+  one waiter in one step, and a way to ask for it on a shared folder.** The soft lock is the fallback of
+  `PathLock` where a file system refuses OS locks (some FUSE, 9p and SMB mounts); nothing changes where OS
+  locks work. (1) How long ago a soft lock was taken is now counted from the time its holder wrote into the
+  file; before, it was the time the file system gave the file, compared with this machine's clock - on a
+  drive that keeps another clock (a Windows drive inside WSL2 is seconds off, a network share can be more)
+  a lock file made a moment ago looked old, so the grace of a holder that has just released and exited did
+  not hold there. An empty lock file, which nothing dates, is a leftover once a waiter has seen it empty for
+  2 seconds (or when the drive dates it more than 10 minutes back). (2) **The holder beats.** It keeps its
+  lock file open and rewrites the time in its line every 2 seconds (a daemon thread; the line is rewritten
+  in place, so the file is never empty or shorter); a waiter that has seen the same line for 20 seconds on
+  its own monotonic clock knows the holder is gone - without comparing two machines' clocks, however long
+  the lock has been held (the old rule took a lock of another host for abandoned after 10 minutes, a build
+  of an hour included), and without a pid it cannot check (so a holder that crashed on ANOTHER system is
+  seen as running - by `cx cache classify` too - for those 20 seconds; one of this system is known at once by
+  its pid). (3) **The line names the system** (`pid host
+  time system`: a short hash of the kernel's boot id and the pid namespace on Linux, of the machine id on
+  Windows and macOS), so a waiter checks the pid only when it is a pid of its own system: Windows and WSL2
+  share the host name and have different pids, a container shares the kernel of its host and has its own
+  pids; a dead pid of the same system is still known at once, a live one keeps its lock. A lock file of
+  cMeta before 0.35.0 (three words, no heartbeat) is judged as before. (4) A stale lock file was renamed
+  away, checked and - when it was not the judged one - put back; between the two a third process could
+  take the free path, which under load could end with two holders, a leftover `<lock file>.stale-*`, or a
+  lock file carrying the line of a live process that did not hold it any more - a lock nobody could take
+  for as long as that process lived. Now the waiter makes the file that replaces the stale one exclusively,
+  under a name of that stale file (`<lock file>.take-<checksum>`: one waiter only), checks that the file at
+  the path is still the one it judged, and puts its own in place with one rename - the path is never free
+  in between, and a waiter that comes a step later finds another file there and leaves it. The file is
+  closed before the rename on every platform (Windows refuses to rename a file the process has open; a
+  Windows drive seen through 9p - WSL2's `/mnt/d`, a container's bind mount - shows nothing at the new path
+  while the descriptor is open) and opened again at its new path to be held. (5) A single try
+  (`timeout 0`: the probe behind `cx cache classify`) takes the lock of a dead process in that try; before,
+  it cleared the file and still reported the lock held once. (6) A holder checks, after it took the lock,
+  that the file at the path is its own (the open descriptor, or its line), and removes the file at release
+  only when it still is; on Windows a held lock file cannot be replaced at all, so a live holder there is
+  never taken over by mistake. (7) The empty file that a refused OS-lock attempt leaves is taken over the
+  same way instead of being removed outright. (8) A forked child of a holder never releases its parent's
+  lock, and starts with thread locks of its own (the ones it inherits may have been held by a thread of the
+  parent that does not exist in the child). (9) **Asking for it.** A home or repository that several systems write at once through a shared
+  drive - a Windows tree plugged from WSL2 or from a container, a network share - has no lock between those
+  systems with the OS locks (each system's lock is invisible to the others; the exclusive create of the
+  soft lock file is honoured by all). `CMETA_SOFT_LOCK_PATHS=<folder>[<os.pathsep><folder>...]` (`*` for
+  everywhere) makes every lock file under those folders use the soft lock in that process, and `lock: soft`
+  in a repository's `_cmr.yaml` does it for that repository on every system that plugs it (registered when
+  it is plugged and at the start of every process, from the index of repositories; the API is
+  `utils.files.use_soft_lock_under`). Everything else keeps the OS locks: a lock cycle costs what it did.
+  (Each system still keeps its own index of such a repository in its own home: what another system created or
+  changed there is seen after `cx repo reindex <alias>`; the files are always current and no update is lost.)
+- **The engine's own category API is imported once.** `category_api_v1.py` - the base commands of every
+  category - was loaded by its path under a name made from its folders (`cmeta.cmeta.category_api_v1`),
+  and its relative imports made a second copy of the engine's modules in the process (`cmeta.cmeta.utils.
+  files` next to `cmeta.utils.files`), each with a state of its own: the registries of the path lock among
+  them, so the soft lock asked for a folder was unknown to the copy that wrote the artifacts, and the
+  threads of one process were serialized on a path by two registries instead of one (the OS locks kept
+  them apart all the same). The loader now imports a module of the engine's own package by its real name
+  (`cmeta.category_api_v1`); category APIs of repositories are loaded as before.
+- **A lock with a note leaves no lock file behind on exFAT under macOS.** There an empty file reports a
+  placeholder inode that becomes a real one at its first write: the lock noted the identity of its (empty)
+  file when it took it, the note of the holder (the index lock of a reindex, a cache entry being built)
+  changed it, and at release "the file at the path is not ours" left `<path>.lock` behind. The identity is
+  now asked from the open file at release.
+  Tests of both: `tests/core_tests/test_utils_files_path_lock.py`.
 - **Python 3.15.** The suite runs on Python 3.15 in CI, next to 3.9 and 3.14 (Linux, Windows, macOS); nothing
   in the engine needed a change. `pyproject.toml` carries the classifier.
 

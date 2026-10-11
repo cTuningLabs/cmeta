@@ -37,7 +37,11 @@ Environment variables worth knowing:
 `CMETA_FAIL_ON_ERROR=yes`, `CMETA_INDEX_LOCK_TIMEOUT=<seconds>` (how long a
 write to the index waits for a running `cx --reindex`; 600),
 `CMETA_LOCK_TIMEOUT=<seconds>` (how long a writer waits for the lock of a file
-held by another process; 30, with a notice after 3).
+held by another process; 30, with a notice after 3),
+`CMETA_SOFT_LOCK_PATHS=<folder>[<os.pathsep><folder>...]` (the folders - a home,
+a repository - that several systems write at once through a shared drive, whose
+lock files use the soft lock; `*` for everywhere; a repository can ask for it in
+its own `_cmr.yaml` with `lock: soft` - see the concurrency guide).
 
 ---
 

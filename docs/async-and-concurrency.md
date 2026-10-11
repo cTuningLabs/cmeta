@@ -249,13 +249,53 @@ takes `fcntl.flock` (per open file description, so threads exclude each other
 too), or POSIX record locks (`fcntl.lockf`) where the file system refuses
 `flock` (NFS and some network mounts), each with the identity check. Where the
 file system refuses both (some FUSE, 9p and SMB mounts) it falls back to a
-**soft lock**: the file is created exclusively and holds `pid host time`; a
-stale one (its process dead on this host, or older than 10 minutes when left
-by another host) is removed by the waiter that finds it. In every mode the
-threads of one process are serialized on the path first. A busy lock is polled
-with a delay that doubles from 1 ms to 25 ms until the timeout. A folder used
-by two operating systems at once (a Windows tree plugged from WSL) is best
-effort: each side locks with its own mechanism.
+**soft lock**: the file is created exclusively and holds `pid host time
+system`. The holder keeps the file open and rewrites the time in its line
+every 2 seconds (the heartbeat: a daemon thread, the line rewritten in place
+so the file is never empty). A stale lock file - its pid dead on this system,
+or its line unchanged for 20 seconds on the waiter's own monotonic clock (the
+holder is on another system or host, or stopped beating) - is taken over by one
+of the waiters that find it. Nothing is read from the clock of the drive or of
+another machine (a network share, a Windows drive inside WSL2 keep other
+clocks): the `system` word (a short hash of the kernel's boot id and the pid
+namespace on Linux, of the machine id on Windows and macOS) tells the waiter
+whether the pid is one it can check - Windows and WSL2 share the host name and
+have different pids, a container shares the kernel of its host and has its own
+pids. An empty lock file, which nothing dates, is a leftover once a waiter has
+seen it empty for 2 seconds. The waiter does not remove the stale file: it
+makes its own file exclusively under a name that belongs to that stale file
+(`<lock file>.take-<checksum>`, so one waiter only gets to make it), checks
+that the file at the path is still the one it judged, and puts its own in its
+place with one rename - the path is never free in between. A holder checks
+that the file at the path is its own after it took the lock, and removes it at
+release only when it still is; a forked child never releases its parent's lock.
+A lock file written by cMeta before 0.35.0 (three words, no heartbeat) is
+judged as it was then: the pid when the host name is this one, else its age
+against 10 minutes. In every mode the threads of one process are serialized on
+the path first. A busy lock is polled with a delay that doubles from 1 ms to
+25 ms until the timeout.
+
+**A folder written by several systems at once** - a Windows tree plugged from
+WSL2 or from a container through a bind mount, a network share mounted on two
+machines - has no lock between those systems with the OS locks: each system's
+lock is invisible to the others (measured on one folder of a Windows drive seen
+by Windows, WSL2 and a container: no exclusion in any direction, while an
+exclusive create is honoured by all). Such a home or repository asks for the
+soft lock: `CMETA_SOFT_LOCK_PATHS=<folder>[<os.pathsep><folder>...]` (`*`:
+everywhere) names folders for a process, `lock: soft` in a repository's
+`_cmr.yaml` names the repository for every system that plugs it (the engine
+registers it when the repository is plugged and at the start of every process,
+from the index of repositories; `utils.files.use_soft_lock_under` is the API).
+With it, the systems exclude each other through the exclusive create, a holder
+that dies on one system is replaced from another after the 20 seconds of
+silence, and a live holder is never taken over (on Windows its open file cannot
+even be replaced). Everything else keeps the OS locks at the same cost. One
+thing the lock does not change: every system keeps its own index of the
+repository in its own home, and a find answers from that index - what another
+system created or changed in the shared repository is seen here after
+`cx repo reindex <alias>` (or `cx <category> reindex <artifact>`); the files
+in the repository are always the current ones, and every update reads and
+rewrites the artifact's file under the lock, so no update is lost.
 
 ### The index lock
 
@@ -296,7 +336,10 @@ updates, and no stale `.lock` files left behind. The lock's own tests
 (`tests/core_tests/test_utils_files_path_lock.py`) run eight processes and
 sixteen threads through one counter, replay the removed-file race
 deterministically, kill a holder, and exercise the soft lock and its stale
-files; `tests/benchmarks/benchmark_engine.py` measures the cost.
+files - with a drive whose clock is off in both directions, and with six
+processes that keep taking over the lock files of "crashed" holders side by
+side without ever being two inside the lock; `tests/benchmarks/benchmark_engine.py`
+measures the cost.
 
 ### What is *not* concurrency-safe
 

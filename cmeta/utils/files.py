@@ -23,6 +23,7 @@ import errno
 import logging
 import random
 import threading
+import binascii
 
 from .common import _error, ask as _ask
 
@@ -44,11 +45,20 @@ except ImportError:
 LOCK_SUFFIX = ".lock"
 LOCK_POLL_START = 0.001          # the first wait when a lock is busy; it doubles up to LOCK_POLL_MAX
 LOCK_POLL_MAX = 0.025
-LOCK_SOFT_STALE_SECONDS = 600    # a soft lock file older than this, whose holder is on another host, is stale
-LOCK_SOFT_EMPTY_STALE_SECONDS = 2.0  # an EMPTY soft lock file older than this is a leftover (a holder writes its content at once)
-LOCK_SOFT_DEAD_MIN_AGE_SECONDS = 1.0  # a soft lock file of a dead pid younger than this is a release in flight, not a crash
+# The age of a soft lock is counted from the time its holder WROTE INTO IT, read on this machine's clock, and an
+# empty file by how long the waiter itself has seen it - never by the time the file system gave the file: a drive
+# can keep another clock (a network share, a Windows drive inside WSL2) or keep times to the whole second.
+LOCK_SOFT_STALE_SECONDS = 600    # a soft lock taken longer ago than this by a holder on another host is stale
+LOCK_SOFT_EMPTY_STALE_SECONDS = 2.0  # an EMPTY soft lock file that a waiter has seen empty for this long is a leftover (a holder writes its content at once)
+LOCK_SOFT_DEAD_MIN_AGE_SECONDS = 1.0  # a soft lock of a dead pid taken less than this ago is a release in flight, not a crash
 LOCK_SOFT_CHECK_SECONDS = 0.25   # how often a waiter on a soft lock reads the file to check for a stale holder
 LOCK_SOFT_REMOVE_SECONDS = 2.0   # how long a releasing soft lock retries the removal of its file (Windows: a reader may hold it)
+LOCK_SOFT_TAKE_TRIES = 25        # tries of the rename that takes a stale soft lock over (Windows: a reader may hold a file for an instant)
+LOCK_SOFT_TAKE_REMOVE_SECONDS = 0.2  # how long a waiter retries the removal of the take file it did not use
+LOCK_SOFT_READ_MAX = 1024        # bytes read from a soft lock file (its one line: pid host time system)
+LOCK_SOFT_HEARTBEAT_SECONDS = 2.0    # a soft holder rewrites the time in its line this often (the heartbeat; soft mode only)
+LOCK_SOFT_SILENT_SECONDS = 20.0  # a soft lock whose line a waiter has seen unchanged for this long is the leftover of a holder that is gone
+LOCK_SOFT_PATHS_ENV = 'CMETA_SOFT_LOCK_PATHS'  # folders whose lock files use the soft lock (a home or repository written by several systems at once)
 LOCK_IDENTITY_RETRIES = 50       # consecutive identity mismatches after which a path is locked with the soft lock
 LOCK_NOTE_MAX = 512              # bytes of the note a holder may leave in its lock file for the message of a waiter
 LOCK_TIMEOUT_ENV = 'CMETA_LOCK_TIMEOUT'
@@ -155,10 +165,19 @@ def is_path_within(
 #   POSIX:    fcntl.flock (per open file description, so threads of one process exclude each other too),
 #             then fcntl.lockf (POSIX record locks: NFS and some network mounts refuse flock), each with
 #             the identity check (fstat of the descriptor vs stat of the path, inode and device);
-#   anywhere: the soft lock (the file created with O_EXCL, holding "pid host time") where the file
-#             system refuses both OS locks (some FUSE, 9p and SMB mounts) or the identity check keeps
-#             failing - a stale soft lock (its pid dead on this host, or older than LOCK_SOFT_STALE_SECONDS
-#             when left by another host) is renamed away and removed by the waiter that finds it.
+#   anywhere: the soft lock (the file created with O_EXCL, holding "pid host time system") where the
+#             file system refuses both OS locks (some FUSE, 9p and SMB mounts), where the identity check
+#             keeps failing, or where it is ASKED FOR - a home or repository that several systems write at
+#             once through a shared drive (a Windows tree plugged from WSL2 or a container, a network
+#             share), whose OS locks do not see each other: CMETA_SOFT_LOCK_PATHS names such folders,
+#             `lock: soft` in a repository's _cmr.yaml names the repository (use_soft_lock_under). The
+#             holder keeps its file open and rewrites the time in its line every LOCK_SOFT_HEARTBEAT_SECONDS;
+#             a stale soft lock (its pid dead on this system, or its line unchanged for
+#             LOCK_SOFT_SILENT_SECONDS on the waiter's own clock - the holder is on another system or host)
+#             is taken over by ONE of the waiters that find it: it replaces the file by its own in one
+#             rename (PathLock._take_stale_soft_lock). A lock file of cMeta before 0.35.0 (no system, no
+#             heartbeat) is judged as before: the pid when the host name is this one, else its age against
+#             LOCK_SOFT_STALE_SECONDS.
 # In every mode the threads of one process are serialized on the path first (a threading.Lock per path),
 # which POSIX record locks and soft locks need (they are per process), and the busy wait polls with a
 # delay that doubles from LOCK_POLL_START to LOCK_POLL_MAX until the timeout. The engine's own writers
@@ -171,8 +190,48 @@ _LOCK_UNSUPPORTED_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name
 _lock_registry = {}               # normalized lock file path -> threading.Lock (the threads of this process)
 _lock_registry_guard = threading.Lock()
 _lock_soft_paths = set()          # lock files locked with the soft lock from now on (the OS lock was refused)
+_lock_soft_dirs = []              # folders whose lock files use the soft lock because it was asked for (use_soft_lock_under)
 _lock_no_flock_dirs = set()       # folders where flock was refused (POSIX record locks are tried first there)
 _lock_host = None
+_lock_system = None
+_beat_lock = threading.Lock()     # guards _beat_held, and every write of a beat
+_beat_held = {}                   # id(lock) -> the soft locks this process holds and beats (PathLock._start_heartbeat)
+_beat_thread = None               # the one heartbeat thread of the process, started with the first soft lock held
+_beat_wake = threading.Event()    # the thread sleeps on it (never set: a plain sleep that reads the interval each time)
+
+
+def _after_fork_in_child():
+    """A forked child starts with locks of its own: the thread locks of the parent (the registry of the paths,
+    the guard of the registry, the lock of the heartbeat) may have been held by a thread that does not exist in
+    the child - the parent's heartbeat thread, another thread of the parent - and would be held for ever; the
+    soft locks the parent beats are not the child's to beat (its copy of a lock never releases it either:
+    PathLock.release)."""
+    global _lock_registry_guard, _beat_lock, _beat_thread
+    _lock_registry_guard = threading.Lock()
+    _lock_registry.clear()
+    _beat_lock = threading.Lock()
+    _beat_held.clear()
+    _beat_thread = None
+
+
+if hasattr(os, 'register_at_fork'):
+    os.register_at_fork(after_in_child=_after_fork_in_child)
+
+
+def _beat_forever():
+    """The heartbeat thread: every LOCK_SOFT_HEARTBEAT_SECONDS, the line of every soft lock this process holds
+    is rewritten (PathLock._write_beat). The locks a forked child inherited are its parent's: dropped."""
+    while True:
+        _beat_wake.wait(LOCK_SOFT_HEARTBEAT_SECONDS)
+        try:
+            with _beat_lock:
+                for key, lock in list(_beat_held.items()):
+                    if lock._owner_pid != os.getpid():
+                        _beat_held.pop(key, None)
+                        continue
+                    lock._write_beat()
+        except Exception:
+            pass
 
 
 def _lock_thread_lock(lock_file):
@@ -204,6 +263,92 @@ def _lock_pid_alive(pid):
         return True   # unknown: never treat it as dead
 
 
+def _lock_system_id():
+    """
+    A short name of the system this process runs on, written into a soft lock file so that a waiter knows
+    whether the pid in the file is one it can check: the same name means the same kernel and the same pid
+    space. Windows and WSL2 share the host name and have different pids; a container shares the kernel of
+    its host (one boot) and has its own pid space; a cloned machine keeps its host name.
+      Linux:   the boot id of the kernel and the pid namespace of this process (/proc);
+      Windows: the machine's installation id (the registry);
+      macOS:   the machine's id (sysctl kern.uuid);
+      else, or where those cannot be read: the host name and the platform.
+    Twelve hex digits of a hash of it, computed once per process.
+    """
+    global _lock_system
+    if _lock_system is None:
+        parts = [sys.platform]
+        try:
+            if sys.platform.startswith('linux'):
+                with open('/proc/sys/kernel/random/boot_id') as f:
+                    parts.append(f.read().strip())
+                parts.append(str(os.stat('/proc/self/ns/pid').st_ino))
+            elif sys.platform == 'win32':
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\Microsoft\Cryptography') as key:
+                    parts.append(str(winreg.QueryValueEx(key, 'MachineGuid')[0]))
+            elif sys.platform == 'darwin':
+                import ctypes
+                libc = ctypes.CDLL(None)
+                size = ctypes.c_size_t(0)
+                if libc.sysctlbyname(b'kern.uuid', None, ctypes.byref(size), None, 0) == 0 and 0 < size.value < 256:
+                    buf = ctypes.create_string_buffer(size.value)
+                    if libc.sysctlbyname(b'kern.uuid', buf, ctypes.byref(size), None, 0) == 0:
+                        parts.append(buf.value.decode('ascii', 'replace'))
+        except Exception:
+            pass
+        if len(parts) < 2:
+            parts.append(_lock_host_name())
+        _lock_system = hashlib.sha1('\n'.join(parts).encode('utf-8', 'replace')).hexdigest()[:12]
+    return _lock_system
+
+
+def _soft_lock_paths_from_env():
+    """The folders named by CMETA_SOFT_LOCK_PATHS (os.pathsep between them; '*' = everywhere), normalized."""
+    value = os.environ.get(LOCK_SOFT_PATHS_ENV, '')
+    folders = []
+    for folder in value.split(os.pathsep):
+        folder = folder.strip()
+        if folder == '':
+            continue
+        folders.append('*' if folder == '*' else os.path.normcase(os.path.abspath(folder)))
+    return folders
+
+
+def use_soft_lock_under(
+    folder: str,  # The folder (a home, a repository) whose lock files use the soft lock from now on in this process.
+):
+    """
+        Ask for the soft lock for every lock file under `folder` (see the notes on the path lock: a home or
+        repository that several systems write at once through a shared drive, whose OS locks do not see
+        each other). The engine calls it for a repository whose descriptor says `lock: soft`; the environment
+        variable CMETA_SOFT_LOCK_PATHS names folders at the start of a process. '*' means everywhere.
+
+        Returns:
+            dict: {'return': 0}
+    """
+    folder = '*' if folder == '*' else os.path.normcase(os.path.abspath(folder))
+    if folder not in _lock_soft_dirs:
+        _lock_soft_dirs.append(folder)
+    return {'return': 0}
+
+
+def _soft_lock_asked_for(lock_file):
+    """Whether `lock_file` lies under a folder for which the soft lock was asked (use_soft_lock_under)."""
+    if not _lock_soft_dirs:
+        return False
+    if '*' in _lock_soft_dirs:
+        return True
+    path = os.path.normcase(os.path.abspath(lock_file))
+    for folder in _lock_soft_dirs:
+        if path == folder or path.startswith(folder.rstrip(os.sep) + os.sep):
+            return True
+    return False
+
+
+_lock_soft_dirs.extend(_soft_lock_paths_from_env())   # CMETA_SOFT_LOCK_PATHS, read once at the start of the process
+
+
 class _LockUnsupported(Exception):
     pass
 
@@ -232,6 +377,13 @@ class PathLock:
         self._mismatches = 0
         self._last_error = None
         self._next_stale_check = 0.0
+        self._empty_seen = {}             # path -> (identity, monotonic time): the empty soft lock files this waiter watches
+        self._own_empty = None            # (identity,) of the empty file this object's refused OS-lock attempt left
+        self._noted = False               # a note was written into the held lock file (see _own_identity)
+        self._line = None                 # the line of the soft lock this object holds (the heartbeat rewrites it)
+        self._wrote = None                # the line of a soft lock file this object wrote and could not confirm
+        self._beat_seen = {}              # path -> (identity, content, monotonic time): the lines this waiter watches for a heartbeat
+        self._owner_pid = None            # the process that took the lock (a forked child never releases its parent's lock)
 
     def __enter__(self):
         self.acquire()
@@ -258,6 +410,7 @@ class PathLock:
         if not thread_lock.acquire(timeout=timeout):
             raise TimeoutError(f"the lock {self.lock_file} is held by another thread of this process (waited {timeout} s)")
 
+        self._owner_pid = os.getpid()           # before the lock is taken: the heartbeat thread reads it
         try:
             deadline = time.monotonic() + timeout
             delay = LOCK_POLL_START
@@ -279,6 +432,8 @@ class PathLock:
                 delay = min(delay * 2, LOCK_POLL_MAX)
 
         except BaseException:
+            self._owner_pid = None
+            self._drop_unconfirmed()
             thread_lock.release()
             raise
 
@@ -287,17 +442,27 @@ class PathLock:
         if not self.is_locked:
             return
 
+        if self._owner_pid is not None and self._owner_pid != os.getpid():
+            # A forked child of the holder: the lock is its parent's. The child's copy forgets it and touches
+            # neither the file nor the descriptor (a POSIX record lock is not even the child's to release)
+            self._fd = self._thread_lock = None
+            self._ident = self._line = None
+            self._noted = self.is_locked = False
+            self.mode = None
+            return
+
         try:
             if self.mode == 'windows':
                 try:
                     msvcrt.locking(self._fd, msvcrt.LK_UNLCK, 1)
                 except OSError:
                     pass
+                ident = self._own_identity()
                 os.close(self._fd)
-                self._unlink_own_file()
+                self._unlink_own_file(ident)
 
             elif self.mode in ('flock', 'lockf'):
-                self._unlink_own_file()
+                self._unlink_own_file(self._own_identity())
                 try:
                     self._posix_unlock(self._fd, self.mode)
                 except OSError:
@@ -305,11 +470,15 @@ class PathLock:
                 os.close(self._fd)
 
             elif self.mode == 'soft':
+                self._stop_heartbeat()
                 self._remove_soft_file()
 
         finally:
             self._fd = None
             self._ident = None
+            self._line = None
+            self._noted = False
+            self._owner_pid = None
             self.is_locked = False
             self.mode = None
             thread_lock = self._thread_lock
@@ -325,6 +494,7 @@ class PathLock:
         if not self.is_locked or self._fd is None or self.mode == 'soft':
             return
         data = b'\n' + str(note).encode('utf-8', 'replace')[:LOCK_NOTE_MAX] + b'\n'
+        self._noted = True
         try:
             os.ftruncate(self._fd, 0)
             os.lseek(self._fd, 0, os.SEEK_SET)
@@ -362,7 +532,7 @@ class PathLock:
     # ---- one attempt ----------------------------------------------------------------------
 
     def _try(self):
-        if self.lock_file in _lock_soft_paths:
+        if self.lock_file in _lock_soft_paths or _soft_lock_asked_for(self.lock_file):
             return self._try_soft()
         if msvcrt is not None:
             return self._try_windows()
@@ -495,151 +665,435 @@ class PathLock:
         else:
             fcntl.lockf(fd, fcntl.LOCK_UN)
 
+    @staticmethod
+    def _soft_line():
+        """The line of a soft lock this process holds: `pid host time system`. The time is the moment of the
+        last write (the heartbeat rewrites the line in place, so its length never changes); the system (see
+        _lock_system_id) tells a waiter whether it can check the pid."""
+        return f"{os.getpid()} {_lock_host_name()} {time.time():.3f} {_lock_system_id()}\n".encode('utf-8', 'replace')
+
     def _try_soft(self):
+        line = self._soft_line()
         try:
             fd = os.open(self.lock_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o644)
         except FileExistsError as e:
             self._last_error = e
             now = time.monotonic()
-            if now >= self._next_stale_check:
-                self._next_stale_check = now + LOCK_SOFT_CHECK_SECONDS
-                self._clear_stale_soft_lock()
-            return False
+            if now < self._next_stale_check:
+                return False
+            self._next_stale_check = now + LOCK_SOFT_CHECK_SECONDS
+            # The file of a holder that is gone is taken over in the same attempt: a single try (timeout 0, the
+            # probe of a cache entry) finds the lock of a dead process free
+            return self._take_stale_soft_lock(line)
         except OSError as e:
             if self._open_failed_for_the_moment(e):
                 return False
             raise
 
         try:
-            os.write(fd, (f"{os.getpid()} {_lock_host_name()} {time.time():.3f}\n").encode('utf-8', 'replace'))
-        finally:
+            os.write(fd, line)
+        except BaseException:
             os.close(fd)
+            raise
+        return self._soft_lock_taken(line, fd)
 
-        try:
-            self._ident = self._identity(os.stat(self.lock_file))
-        except OSError:
-            self._ident = None
-        self.mode = 'soft'
-        return True
+    def _soft_lock_taken(self, line, fd=None):
+        """
+        The last step of taking the soft lock: the file at the path must be the file this object wrote. It is
+        not when that file was taken over in the instant it was still empty (this process was stopped between
+        creating it and writing into it for as long as an empty file is watched) - the lock is then not held,
+        and nothing at the path is touched.
 
-    def _clear_stale_soft_lock(self):
-        """A soft lock file whose holder is dead (this host; the file at least LOCK_SOFT_DEAD_MIN_AGE_SECONDS
-        old, so that a holder that just released and exited is not mistaken for a crash), that was marked
-        released by a holder that could not remove it, that is empty and old (a leftover) or too old (another
-        host) is renamed away and removed - by one waiter only (the rename is atomic), and only when the file
-        at the path is still the file that was judged (a fresh lock file of a live holder moved by mistake in
-        the instant between the check and the rename is put back)."""
-        try:
-            fd = os.open(self.lock_file, os.O_RDONLY | getattr(os, 'O_BINARY', 0))
-        except OSError:
-            return
-        try:
-            st = os.fstat(fd)
-            words = os.read(fd, 256).decode('utf-8', 'replace').split() if st.st_size > 0 else []
-        except OSError:
-            return
-        finally:
-            os.close(fd)
-
-        ident = self._identity(st)
-        age = time.time() - st.st_mtime
-        pid = int(words[0]) if len(words) > 0 and words[0].isdigit() else None
-        host = words[1] if len(words) > 1 else None
-
-        if not words:
-            stale = age > LOCK_SOFT_EMPTY_STALE_SECONDS
-        elif words[0] == 'released':
-            stale = True
-        elif pid is not None and host == _lock_host_name():
-            stale = age > LOCK_SOFT_DEAD_MIN_AGE_SECONDS and not _lock_pid_alive(pid)
-        else:
-            stale = age > LOCK_SOFT_STALE_SECONDS
-
-        if not stale:
-            return
-
-        try:
-            if ident is not None and self._identity(os.stat(self.lock_file)) != ident:
-                return                      # the file changed under us: judge it again next time
-        except OSError:
-            return
-
-        moved = f"{self.lock_file}.stale-{os.getpid()}-{random.getrandbits(32):08x}"
-        try:
-            os.rename(self.lock_file, moved)   # atomic: only one waiter gets to remove it
-        except OSError:
-            return
-
-        if ident is not None:
+        fd: the open descriptor of the written file, when there is one. It stays open while the lock is held:
+        an open file keeps its identity (no new file gets its inode number), so "the file at the path is the
+        one this descriptor holds" is an exact answer, here and at release, for the price of two calls that
+        open nothing. (And on Windows a file that is open cannot be replaced: the lock of a live holder
+        cannot be taken over there at all.) Where the identity does not say so - no descriptor (a file
+        renamed into place by a take-over, a file found later), a file system without inode numbers or one
+        that reports them differently by descriptor and by path - the line in the file decides.
+        """
+        mine = None
+        if fd is not None:
             try:
-                moved_ident = self._identity(os.stat(moved))
+                mine = self._identity(os.fstat(fd))
+                if mine is not None and self._identity(os.stat(self.lock_file)) == mine:
+                    return self._hold_soft(line, fd, mine)
             except OSError:
-                return
-            if moved_ident != ident:
-                # Not the file judged stale but a fresh one made in between: back where it was, without
-                # clobbering (a hard link fails where a file exists already), then the extra name goes
+                pass
+
+        status, held = 'unreadable', None
+        for _ in range(3):
+            status, held = self._open_if_mine(line)
+            if status in ('mine', 'other'):
+                break
+            time.sleep(0.002)               # not readable for an instant (Windows: a scanner holds the new file), or not shown yet
+
+        if status == 'mine':
+            if fd is not None:
                 try:
-                    os.link(moved, self.lock_file)
-                except OSError:
-                    try:
-                        if not os.path.exists(self.lock_file):
-                            os.rename(moved, self.lock_file)
-                    except OSError:
-                        pass
-                    return
-                try:
-                    os.unlink(moved)
+                    os.close(fd)
                 except OSError:
                     pass
-                return
+            try:
+                mine = self._identity(os.fstat(held))
+            except OSError:
+                mine = None
+            return self._hold_soft(line, held, mine)
+        if status == 'unreadable' and fd is not None:
+            return self._hold_soft(line, fd, mine)      # it cannot be asked: the file this object made is its lock, as before
+
+        # Not held. Should the file with this line be at the path later after all (a file system slow to show
+        # a new file), it is this object's lock (_take_stale_soft_lock), and an acquire that gives up removes
+        # it (_drop_unconfirmed)
+        if fd is not None:
+            os.close(fd)
+        self._wrote = line
+        return False
+
+    def _hold_soft(self, line, fd, ident):
+        self._fd = fd
+        self._ident = ident
+        self._line = line
+        self._wrote = None
+        self._own_empty = None
+        self._empty_seen = {}
+        self._beat_seen = {}
+        self.mode = 'soft'
+        self._start_heartbeat()
+        return True
+
+    # ---- the heartbeat of a soft holder ------------------------------------------------------
+    #
+    # A soft holder rewrites the time in its line every LOCK_SOFT_HEARTBEAT_SECONDS (one daemon thread per
+    # process for all the soft locks it holds; the line is rewritten in place through the held descriptor:
+    # same length, never empty). A waiter that sees the same line for LOCK_SOFT_SILENT_SECONDS on its own
+    # monotonic clock knows the holder is gone - whatever the other system's clock says, however long the
+    # holder has held the lock, and without a pid it could not check (a holder on another host, or on
+    # another system of this host: Windows and WSL2 share the host name and have different pids). A lock
+    # file without a system (3 words: written by cMeta before 0.35.0, which did not beat) is judged as
+    # before: the pid when the host name is this one, else the age of its time against LOCK_SOFT_STALE_SECONDS.
+
+    def _start_heartbeat(self):
+        if self._fd is None:
+            return                          # no descriptor to write through (the line decides for the waiters: see the rules)
+        global _beat_thread
+        with _beat_lock:
+            _beat_held[id(self)] = self
+            if _beat_thread is None or not _beat_thread.is_alive():
+                _beat_thread = threading.Thread(target=_beat_forever, name='cmeta-soft-lock-heartbeat', daemon=True)
+                _beat_thread.start()        # its first beat comes after one interval: a lock held for less never beats
+
+    def _stop_heartbeat(self):
+        with _beat_lock:                    # a beat of this lock in flight ends before the lock goes on
+            _beat_held.pop(id(self), None)
+
+    def _write_beat(self):
+        fd = self._fd
+        if fd is None:
+            return
+        line = self._soft_line()
+        try:
+            if hasattr(os, 'pwrite'):
+                os.pwrite(fd, line, 0)
+            else:
+                os.lseek(fd, 0, os.SEEK_SET)
+                os.write(fd, line)
+        except (OSError, ValueError):
+            return                          # the drive refuses for the moment: the line stays as it is
+        self._line = line
+
+    def _open_if_mine(self, line):
+        """Open the file at the lock path and keep it open when it carries `line`: ('mine', descriptor);
+        ('other', None) when it carries something else, ('gone', None) when it is not there, ('unreadable',
+        None) when it cannot be read at the moment. Open for writing too: the heartbeat writes through it."""
+        try:
+            fd = os.open(self.lock_file, os.O_RDWR | getattr(os, 'O_BINARY', 0))
+        except FileNotFoundError:
+            return 'gone', None
+        except OSError:
+            return 'unreadable', None
+        try:
+            data = os.read(fd, LOCK_SOFT_READ_MAX)
+        except OSError:
+            os.close(fd)
+            return 'unreadable', None
+        if data != line:
+            os.close(fd)
+            return 'other', None
+        return 'mine', fd
+
+    def _drop_unconfirmed(self):
+        """An acquire gives up: a file at the path that carries a line this object wrote and could not confirm
+        (see _soft_lock_taken) would keep everybody out for as long as this process lives - it goes."""
+        wrote, self._wrote = self._wrote, None
+        if wrote is None:
+            return
+        seen = self._read_lock_file(self.lock_file)
+        if seen and seen[1] == wrote:
+            self._remove_file(self.lock_file, LOCK_SOFT_TAKE_REMOVE_SECONDS)
+
+    @classmethod
+    def _read_lock_file(cls, path):
+        """(identity, content, time of the file) of a soft lock file; False when it is not there, None when it
+        cannot be read at the moment."""
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, 'O_BINARY', 0))
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return None
+        try:
+            st = os.fstat(fd)
+            data = os.read(fd, LOCK_SOFT_READ_MAX) if st.st_size > 0 else b''
+        except OSError:
+            return None
+        finally:
+            os.close(fd)
+        return cls._identity(st), data, st.st_mtime
+
+    def _lock_file_is(self, path, seen):
+        """Whether the file at `path` is still the one read as `seen`: the same content and, where the file
+        system reports one, the same identity."""
+        now = self._read_lock_file(path)
+        return bool(now) and now[1] == seen[1] and (now[0] is None or seen[0] is None or now[0] == seen[0])
+
+    def _soft_file_is_stale(self, path, seen):
+        """Whether the soft lock file read as `seen` (or the take file of a waiter, which carries the same
+        line) is the leftover of a holder that is gone:
+          - marked released by a holder that could not remove it;
+          - a line of four words (`pid host time system`: a holder that beats, cMeta 0.35.0 and later): its pid
+            is dead on THIS system (the system is this one; taken at least LOCK_SOFT_DEAD_MIN_AGE_SECONDS ago, so
+            that a holder that has just released and exited is not a crash), or this waiter has seen the same
+            line for LOCK_SOFT_SILENT_SECONDS on its own monotonic clock (the holder beats no more: dead on
+            another system or host, or stopped);
+          - a line of three words (a holder of cMeta before 0.35.0, which does not beat): its pid is dead on
+            this host (the host name is this one), or it was taken longer ago than LOCK_SOFT_STALE_SECONDS;
+          - it is empty and this waiter has seen it empty for LOCK_SOFT_EMPTY_STALE_SECONDS (a holder writes
+            its line right after it creates the file), or it is the empty file this object's own OS-lock
+            attempt has just left.
+        How long ago a lock was taken is read from the time its holder wrote into it, on this machine's clock.
+        The time the file system gave the file is not used - on a drive that keeps another clock (a Windows
+        drive inside WSL2 is seconds off, a network share can be more) a fresh lock file looked old - except
+        where nothing else dates the file: a line without a time (not written by this code), and an empty file
+        that nobody watches (older than LOCK_SOFT_STALE_SECONDS it is a leftover whatever the clock of the drive)."""
+        ident, data, mtime = seen
+        words = data.decode('utf-8', 'replace').split()
+
+        if not words:
+            if path == self.lock_file and self._own_empty is not None and self._own_empty[0] == ident:
+                return True
+            now = time.monotonic()
+            watched = self._empty_seen.get(path)
+            if watched is None or watched[0] != ident:
+                watched = self._empty_seen[path] = (ident, now)
+            return now - watched[1] > LOCK_SOFT_EMPTY_STALE_SECONDS or time.time() - mtime > LOCK_SOFT_STALE_SECONDS
+
+        self._empty_seen.pop(path, None)
+        if words[0] == 'released':
+            return True
 
         try:
-            os.unlink(moved)
+            age = time.time() - float(words[2])
+        except (IndexError, ValueError):
+            age = None
+        if age is None or age != age or abs(age) == float('inf'):
+            age = time.time() - mtime
+
+        pid = int(words[0]) if words[0].isascii() and words[0].isdigit() else None
+
+        if len(words) >= 4:
+            # A holder that beats (cMeta 0.35.0 and later: the fourth word names its system). Its pid is checked
+            # when it is a pid of THIS system; whatever the system, a line that has not changed for
+            # LOCK_SOFT_SILENT_SECONDS on this waiter's own clock is the leftover of a holder that is gone.
+            if pid is not None and words[3] == _lock_system_id() and age > LOCK_SOFT_DEAD_MIN_AGE_SECONDS and not _lock_pid_alive(pid):
+                return True
+            now = time.monotonic()
+            watched = self._beat_seen.get(path)
+            if watched is None or watched[0] != ident or watched[1] != data:
+                self._beat_seen[path] = (ident, data, now)
+                return False
+            return now - watched[2] > LOCK_SOFT_SILENT_SECONDS
+
+        # A holder that does not beat (cMeta before 0.35.0): its pid when the host name is this one, else how
+        # long ago it was taken
+        if pid is not None and len(words) > 1 and words[1] == _lock_host_name():
+            return age > LOCK_SOFT_DEAD_MIN_AGE_SECONDS and not _lock_pid_alive(pid)
+        return age > LOCK_SOFT_STALE_SECONDS
+
+    def _take_stale_soft_lock(self, line):
+        """
+        Take the soft lock over from a holder that is gone (see _soft_file_is_stale). Returns True when this
+        object holds the lock.
+
+        The stale file is never removed: the waiter REPLACES it by a file that carries its own line (one
+        atomic rename), so the path is never free in between and nobody else can slip in. The file to put
+        there is made first, exclusively, under a name that says which stale file it is for
+        (`<lock file>.take-<checksum of that file's content and identity>`): of the waiters that judged the
+        same stale file only one gets to make it, and it then checks that the file at the path is still the
+        one it judged before it replaces it. A waiter that comes later finds another file at the path and
+        gives up. (Before, the stale file was renamed away, checked and - when it was not the judged one -
+        put back: between the two a third process could take the free path, which under load could end
+        with two holders and a leftover `.stale-*` file.)
+        """
+        seen = self._read_lock_file(self.lock_file)
+        if not seen:
+            return False
+        if self._wrote is not None and seen[1] == self._wrote:
+            return self._soft_lock_taken(self._wrote)       # the file this object wrote a moment ago
+        if not self._soft_file_is_stale(self.lock_file, seen):
+            return False
+
+        data = seen[1]
+        take = self._take_file(seen)
+        try:
+            fd = os.open(take, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o644)
+        except FileExistsError:
+            # Another waiter is taking this very file over - or died doing so, and its take file is a leftover
+            theirs = self._read_lock_file(take)
+            if theirs and self._soft_file_is_stale(take, theirs) and self._lock_file_is(take, theirs):
+                self._remove_file(take)
+            return False
         except OSError:
-            pass
-        self.logger.warning(f"utils.files.PathLock - removed the stale lock file {self.lock_file} (left by pid {pid} on {host})")
+            return False
+
+        taken = False
+        try:
+            os.write(fd, line)
+            # Closed before the rename, everywhere: Windows refuses to rename a file this process has open,
+            # and a Windows drive seen through 9p (WSL2's /mnt/d, a container's bind mount) renames it but
+            # shows nothing at the new path until the descriptor is closed (the lock looked "gone" to the
+            # taker itself); the file is opened again at its new path to hold it (_soft_lock_taken)
+            os.close(fd)
+            fd = None
+            for _ in range(LOCK_SOFT_TAKE_TRIES):
+                if not self._lock_file_is(self.lock_file, seen):
+                    break                   # not the file that was judged any more: judged again at the next check
+                try:
+                    os.replace(take, self.lock_file)
+                except PermissionError:
+                    # Windows: a waiter that reads one of the two files holds it for an instant - and a holder
+                    # that is alive after all holds its file open for as long as it holds the lock
+                    time.sleep(0.002)
+                    continue
+                except OSError:
+                    break
+                taken = True
+                break
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)            # the write failed before the close above
+                except OSError:
+                    pass
+            if not taken:
+                self._wrote = line          # see _soft_lock_taken: a file with this line that reaches the path is this object's
+                self._remove_file(take, LOCK_SOFT_TAKE_REMOVE_SECONDS)
+
+        if not taken:
+            return False
+
+        words = data.decode('utf-8', 'replace').split()
+        left_by = "an empty file" if not words else ("marked released" if words[0] == 'released' else ' '.join(words[:2]))
+        self.logger.warning(f"utils.files.PathLock - took over the stale lock file {self.lock_file} (left by {left_by})")
+        return self._soft_lock_taken(line)
+
+    def _take_file(self, seen):
+        """The name of the file a waiter makes to replace the stale lock file read as `seen`: one name per
+        stale file (its content and identity), so that one waiter only can make it."""
+        return f"{self.lock_file}.take-{binascii.crc32(seen[1] + repr(seen[0]).encode('ascii', 'replace')) & 0xffffffff:08x}"
+
+    @staticmethod
+    def _remove_file(path, seconds=0.0):
+        """Remove a file, retrying for `seconds` while it is held (Windows: a reader has it open); best effort."""
+        deadline = time.monotonic() + seconds
+        while True:
+            try:
+                os.unlink(path)
+                return
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    return
+                time.sleep(0.002)
+            except OSError:
+                return
 
     def _fall_back_to_soft(self, why):
         if self.lock_file not in _lock_soft_paths:
             _lock_soft_paths.add(self.lock_file)
             self.logger.warning(f"utils.files.PathLock - the file system refuses OS locks for {self.lock_file} ({why}): a soft lock file is used instead (best effort between hosts)")
-        # The empty file the OS-lock attempt created or found is not a soft lock (a soft holder writes its
-        # content at once): out of the way, or the soft lock could never be taken
+        # The empty file the OS-lock attempt created or found is not a soft lock (a soft holder writes its line
+        # at once): this object takes it over at once, without the time an empty file is otherwise watched
         try:
-            if os.path.getsize(self.lock_file) == 0:
-                os.unlink(self.lock_file)
+            st = os.stat(self.lock_file)
+            self._own_empty = (self._identity(st),) if st.st_size == 0 else None
         except OSError:
-            pass
+            self._own_empty = None
 
     def _remove_soft_file(self):
-        """Remove the soft lock file; on Windows a waiter reading it holds it open for a moment, so the removal
-        is retried, and a file that cannot be removed in time is marked released for the waiters to clear."""
-        deadline = time.monotonic() + LOCK_SOFT_REMOVE_SECONDS
-        while True:
-            if self._ident is not None:
-                try:
-                    if self._identity(os.stat(self.lock_file)) != self._ident:
-                        return     # not ours any more
-                except OSError:
-                    return
-            try:
-                os.unlink(self.lock_file)
-                return
-            except FileNotFoundError:
-                return
-            except PermissionError:
-                if time.monotonic() >= deadline:
-                    break
-                time.sleep(0.002)
-            except OSError:
-                break
-
+        """Remove the soft lock file - when it is still the file of this lock (a file taken over by a waiter
+        that judged this holder gone is theirs): the file at the path is the one this lock's descriptor holds
+        or, where the identity does not say so, it carries this lock's line. On Windows a waiter reading the
+        file holds it open for a moment, so the removal is retried, and a file that cannot be removed in time
+        is marked released for the waiters to take over."""
+        fd, self._fd = self._fd, None
+        mine = self._ident
         try:
-            with open(self.lock_file, 'w') as f:
-                f.write(f"released {os.getpid()}\n")
-        except OSError:
-            pass
-        self.logger.warning(f"utils.files.PathLock - the soft lock file {self.lock_file} could not be removed and was marked released")
+            if fd is not None:
+                try:
+                    mine = self._identity(os.fstat(fd))
+                except OSError:
+                    pass
+                # Closed before the removal, everywhere: Windows cannot remove a file this process has open,
+                # and a Windows drive seen through 9p keeps the path of an open file in a removed-but-there
+                # state until the descriptor is closed. Nothing is lost by it: the soft lock is the line in
+                # the file, not the descriptor (a waiter judges the holder by its pid or its heartbeat)
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                fd = None
+
+            deadline = time.monotonic() + LOCK_SOFT_REMOVE_SECONDS
+            while True:
+                ours = False
+                if mine is not None:
+                    try:
+                        ours = self._identity(os.stat(self.lock_file)) == mine
+                    except FileNotFoundError:
+                        return
+                    except OSError:
+                        ours = False
+                if not ours:
+                    seen = self._read_lock_file(self.lock_file)
+                    if seen is False:
+                        return
+                    if seen is not None and self._line is not None and seen[1] != self._line:
+                        return         # not ours any more
+                try:
+                    os.unlink(self.lock_file)
+                    return
+                except FileNotFoundError:
+                    return
+                except PermissionError:
+                    if time.monotonic() >= deadline:
+                        break
+                    time.sleep(0.002)
+                except OSError:
+                    break
+
+            try:
+                with open(self.lock_file, 'w') as f:
+                    f.write(f"released {os.getpid()}\n")
+            except OSError:
+                pass
+            self.logger.warning(f"utils.files.PathLock - the soft lock file {self.lock_file} could not be removed and was marked released")
+
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
 
     @staticmethod
     def _identity(st):
@@ -648,12 +1102,26 @@ class PathLock:
             return None
         return (st.st_ino, st.st_dev)
 
-    def _unlink_own_file(self):
-        """Remove the lock file, unless the file at the path is no longer the one this lock took (someone
-        removed it under us and another process created a new one: that one is theirs)."""
-        if self._ident is not None:
+    def _own_identity(self):
+        """The identity of the file this lock's descriptor holds. It is the one seen when the lock was taken -
+        unless a note was written into the file since: a file system without real inodes can give a file
+        another number at its first write (exFAT on macOS: an empty file has a placeholder until `write_note`
+        fills it), and the old number would say "not ours" for our own file - the lock file stayed behind
+        after every lock with a note. Then the descriptor is asked again, now."""
+        if not self._noted:
+            return self._ident
+        try:
+            return self._identity(os.fstat(self._fd))
+        except (OSError, TypeError, ValueError):
+            return self._ident
+
+    def _unlink_own_file(self, ident):
+        """Remove the lock file, unless the file at the path is no longer the one this lock holds (someone
+        removed it under us and another process created a new one: that one is theirs). ident: the identity
+        of our file (`_own_identity`, taken while the descriptor is open)."""
+        if ident is not None:
             try:
-                if self._identity(os.stat(self.lock_file)) != self._ident:
+                if self._identity(os.stat(self.lock_file)) != ident:
                     return
             except OSError:
                 return
