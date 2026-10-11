@@ -148,7 +148,10 @@ def test_a_symbolic_link_is_written_through(tmp_path):
     real = str(tmp_path / 'real.json')
     link = str(tmp_path / 'link.json')
     assert files.safe_write_file(real, {'a': 1})['return'] == 0
-    os.symlink(real, link)
+    try:
+        os.symlink(real, link)
+    except OSError as e:
+        pytest.skip(f'the file system has no symbolic links ({e.__class__.__name__}: FAT, exFAT)')
     assert files.safe_write_file(link, {'a': 2})['return'] == 0
     assert os.path.islink(link)
     assert json.load(open(real)) == {'a': 2}

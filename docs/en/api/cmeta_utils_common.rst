@@ -10,6 +10,8 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 Functions
 ---------
 
+.. autofunction:: cmeta.utils.common.ask
+
 .. autofunction:: cmeta.utils.common.build_sort_key
 
 .. autofunction:: cmeta.utils.common.check_params

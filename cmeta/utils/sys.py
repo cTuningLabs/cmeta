@@ -160,6 +160,17 @@ def load_module(
     full_package_name = f"{cat_name}.{pkg_name}"
     full_module_name = f"{full_package_name}.{module_name}"
 
+    # A module of the engine's own package (category_api_v1.py: the base commands of every category) is
+    # imported by its real name, once. Loaded by its path under a name made from its folders ("cmeta.cmeta.
+    # category_api_v1"), its relative imports made a SECOND copy of the engine's modules in the process -
+    # with a state of their own: the path lock's registries among them, so a soft lock asked for a folder
+    # was unknown to the copy that wrote the artifacts
+    engine_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    engine_module = os.path.normcase(module_dir) == os.path.normcase(engine_dir)
+    if engine_module:
+        full_package_name = __name__.rsplit('.', 2)[0]
+        full_module_name = f"{full_package_name}.{module_name}"
+
     timestamp = os.path.getmtime(module_path)
 
     if module_path in module_cache:
@@ -168,29 +179,33 @@ def load_module(
             return {"return": 0, "cache": cached}
 
     try:
-        # Ensure category package exists
-        if cat_name not in sys.modules:
-            spec = importlib.machinery.ModuleSpec(cat_name, loader=None, is_package=True)
-            pkg = importlib.util.module_from_spec(spec)
-            pkg.__path__ = [category_dir]
-            sys.modules[cat_name] = pkg
+        if engine_module:
+            module = importlib.import_module(full_module_name)
 
-        # Ensure api subpackage exists
-        if full_package_name not in sys.modules:
-            spec = importlib.machinery.ModuleSpec(full_package_name, loader=None, is_package=True)
-            pkg = importlib.util.module_from_spec(spec)
-            pkg.__path__ = [module_dir]
-            sys.modules[full_package_name] = pkg
+        else:
+            # Ensure category package exists
+            if cat_name not in sys.modules:
+                spec = importlib.machinery.ModuleSpec(cat_name, loader=None, is_package=True)
+                pkg = importlib.util.module_from_spec(spec)
+                pkg.__path__ = [category_dir]
+                sys.modules[cat_name] = pkg
 
-        # Load the plugin module
-        spec = importlib.util.spec_from_file_location(full_module_name, module_path)
-        module = importlib.util.module_from_spec(spec)
+            # Ensure api subpackage exists
+            if full_package_name not in sys.modules:
+                spec = importlib.machinery.ModuleSpec(full_package_name, loader=None, is_package=True)
+                pkg = importlib.util.module_from_spec(spec)
+                pkg.__path__ = [module_dir]
+                sys.modules[full_package_name] = pkg
 
-        module.__package__ = full_package_name
-        module.__file__ = module_path
+            # Load the plugin module
+            spec = importlib.util.spec_from_file_location(full_module_name, module_path)
+            module = importlib.util.module_from_spec(spec)
 
-        sys.modules[full_module_name] = module
-        spec.loader.exec_module(module)
+            module.__package__ = full_package_name
+            module.__file__ = module_path
+
+            sys.modules[full_module_name] = module
+            spec.loader.exec_module(module)
 
         cache_data = {
             "python_module": module,

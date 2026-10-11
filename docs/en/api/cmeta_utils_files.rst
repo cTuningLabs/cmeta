@@ -18,6 +18,8 @@ Classes
 Functions
 ---------
 
+.. autofunction:: cmeta.utils.files.acquire_with_notice
+
 .. autofunction:: cmeta.utils.files.apply_sharding_to_path
 
 .. autofunction:: cmeta.utils.files.ask_to_delete

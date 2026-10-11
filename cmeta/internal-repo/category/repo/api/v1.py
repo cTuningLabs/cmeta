@@ -874,7 +874,15 @@ class Category(InitCategory):
             p['arg1'] = params['arg1']
 
         result = self.cm.access(p)
-        if result['return']>0: return result
+        if result['return']>0:
+            if unplug and result['return'] == 16:
+                # Not in the index by that name: a registered FOLDER - a repository that is out of reach (a
+                # detached drive: registered, not indexed) or simply named by its path - is forgotten by its path
+                path = self._registered_path(params.get('arg1'))
+                if path is not None:
+                    return self._forget_registered_path(path, con, verbose)
+
+            return result
 
         if unplug:
             result['deleted_artifacts'] = result.pop('artifacts', [])
@@ -920,6 +928,80 @@ class Category(InitCategory):
             if r['return']>0: return r
 
         return result
+
+
+    ###############################################################################################
+    def _registered_path(
+        self,
+        name,  # A folder: the path of a registered repository (or, with inside=True, a folder inside one).
+        inside = False,  # If True, a folder inside a registered repository names that repository too (the deepest one).
+    ):
+        """
+            The path, as repos.json has it, of the registered repository that `name` is (or, with
+            inside=True, lies in) - whether that repository is in the index or not. None when `name` is no
+            such folder.
+        """
+
+        if name is None or str(name).strip() == '':
+            return None
+
+        wanted = os.path.abspath(os.path.normpath(str(name).strip()))
+
+        r = utils.files.safe_read_file(self.cm.repos_config_path, lock=False, fail_on_error=False, logger=self.logger)
+        if r['return']>0 or not isinstance(r.get('data'), dict):
+            return None
+
+        best = None
+        best_full = None
+
+        for path in r['data']:
+            full = os.path.abspath(os.path.normpath(path))
+
+            if os.path.normcase(full) == os.path.normcase(wanted) or (inside and utils.files.is_path_within(full, wanted)):
+                if best is None or len(full) > len(best_full):
+                    best = path
+                    best_full = full
+
+        return best
+
+
+    ###############################################################################################
+    def _forget_registered_path(
+        self,
+        path,  # The path of the repository as repos.json has it.
+        con = False,  # If True, print output to console.
+        verbose = False,  # If True, enable verbose output.
+    ):
+        """
+            Unregister a repository by its path: its line leaves repos.json and its records leave the
+            index; its folder, reachable or not, is left as it is.
+        """
+
+        repos_config_path = self.cm.repos_config_path
+
+        r = utils.files.safe_read_file(repos_config_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
+        if r['return']>0: return r
+
+        repos_paths = r['data']
+        repos_paths_file_lock = r['file_lock']
+
+        repos_paths.pop(path, None)
+
+        # Do not sort keys - preserve order
+        r = utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=repos_paths_file_lock, atomic=True,
+                                        fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+        if r['return']>0: return r
+
+        if con:
+            print('')
+
+        r = self.cm.repos.index(clean=False, con=con, verbose=verbose, delete_repo_paths = [path])
+        if r['return']>0: return r
+
+        if con:
+            print (f'Unregistered the repository in "{path}" (its folder is left as it is)')
+
+        return {'return':0, 'deleted_artifacts':[], 'unregistered_paths':[path]}
 
 
     ###############################################################################################
@@ -1498,6 +1580,7 @@ class Category(InitCategory):
         arg1 = str(arg1).strip()
 
         repo_artifacts = []
+        unindexed_path = None
 
         if arg1 == '.' or os.path.isdir(arg1):
             # A folder: the registered repository that holds it (the deepest one, for nested repositories)
@@ -1518,9 +1601,15 @@ class Category(InitCategory):
                         best_path = repo_path
 
             if best is None:
-                return {'return':16, 'error':f'no registered repository holds "{path}" - register it first with "cx repo plug <path>"'}
+                # Registered but not in the index: a repository that was out of reach when the index was last
+                # built (it stays registered) and is there again
+                unindexed_path = self._registered_path(path, inside=True)
 
-            repo_artifacts = [best]
+                if unindexed_path is None:
+                    return {'return':16, 'error':f'no registered repository holds "{path}" - register it first with "cx repo plug <path>"'}
+
+            else:
+                repo_artifacts = [best]
 
         else:
             p = {'category': ctx['category'],
@@ -1561,6 +1650,12 @@ class Category(InitCategory):
 
             paths.append(path)
 
+        if unindexed_path is not None:
+            if not os.path.isdir(unindexed_path) or not os.path.isfile(os.path.join(unindexed_path, self.cm.cfg['repo_meta_desc'])):
+                return {'return':1, 'error':f'the folder of the repository registered as "{unindexed_path}" or its {self.cm.cfg["repo_meta_desc"]} is not there (a detached drive?) - nothing was reindexed'}
+
+            paths.append(unindexed_path)
+
         if con:
             print ('')
 
@@ -1574,6 +1669,9 @@ class Category(InitCategory):
                 repo_uid = repo_cmeta_ref_parts['artifact_uid']
 
                 print (f'Reindexed repository "{repo_alias}" ({repo_uid}): {path}')
+
+            if unindexed_path is not None:
+                print (f'Reindexed the repository in "{unindexed_path}" (it was registered and not in the index)')
 
         return {'return':0, 'artifacts': repo_artifacts, 'paths': paths}
 

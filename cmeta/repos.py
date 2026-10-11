@@ -86,6 +86,12 @@ class Repos:
         self.KEY_INDEX_UIDS = 'uids'
         self.KEY_INDEX_LOWERCASE_ALIASES = 'lowercase_aliases'
 
+        # In repos.json: a registered repository whose folder could not be reached when the index was last built
+        # (a detached drive, a share that is down). It stays registered and is indexed again when it is back.
+        self.KEY_REPO_UNREACHABLE = 'unreachable'
+
+        self._soft_lock_registered = False   # the repositories that ask for the soft lock were read once (init)
+
     ###################################################################################################
     def init(
         self,
@@ -164,6 +170,46 @@ class Repos:
                     if r['return'] >0: return r
             finally:
                 index_lock.release()
+
+        # The repositories that ask for the soft lock (`lock: soft` in their descriptor) are known to the path
+        # lock of this process from the start (once per instance: init runs with every access)
+        if not self._soft_lock_registered:
+            r = self._register_soft_lock_repos()
+            if r['return']>0: return r
+            self._soft_lock_registered = True
+
+        return {'return':0}
+
+    ###################################################################################################
+    def _register_soft_lock(
+        self,
+        path,  # The registered folder of the repository.
+        repo_meta,  # Its descriptor (_cmr.yaml, with the extra meta of the registration).
+    ):
+        """
+            A repository whose descriptor says `lock: soft` - one that several systems write at once through
+            a shared drive (a Windows tree plugged from WSL2 or a container, a network share), where the OS
+            locks of the systems do not see each other - asks the path lock for the soft lock under its folder
+            (`utils.files.use_soft_lock_under`), for this process.
+        """
+        if path and str(repo_meta.get('lock', '')).strip().lower() == 'soft':
+            utils.files.use_soft_lock_under(path)
+            self.logger.debug(f"repository {path} asks for the soft lock (lock: soft)")
+
+    def _register_soft_lock_repos(self):
+        """
+            At the start of a process: the repositories of the index that ask for the soft lock (see
+            `_register_soft_lock`). The index of repositories is small and read through the cache.
+        """
+        index_repo_file = os.path.join(self.index_path, 'repo' + self.index_extension)
+        if not os.path.isfile(index_repo_file):
+            return {'return':0}
+
+        r = utils.files.safe_read_file_via_cache(index_repo_file, self.file_cache, fail_on_error=self.fail_on_error, logger=self.logger)
+        if r['return']>0: return r
+
+        for entry in (r['data'].get(self.KEY_INDEX_UIDS) or {}).values():
+            self._register_soft_lock(entry.get('path'), entry.get('_cmr') or entry.get('cmeta') or {})
 
         return {'return':0}
 
@@ -1129,7 +1175,12 @@ class Repos:
 
         repos_config_lock = r['file_lock']
 
-        paths_to_repos = {}
+        paths_to_repos = {}           # the repositories indexed by this run
+        repos_to_write = {}           # what repos.json lists after it: those, and - in their places - the registered
+                                      # repositories that cannot be reached now
+        unreachable = {}              # path -> why
+        newly_unreachable = []        # those of them that were reachable at the run before
+        back = []                     # paths that could not be reached at an earlier run and can now
         original_paths_to_repos = r['data']
 
         to_update = False
@@ -1145,6 +1196,8 @@ class Repos:
 
             path_to_repo_desc = os.path.join(path, self.cfg['repo_meta_desc'])
 
+            why_not = ''
+
             if not os.path.isfile(path_to_repo_desc):
                 if extra_meta.get('keep') and 'keep_repo_meta' in local_meta:
                     repo_meta = local_meta['keep_repo_meta']
@@ -1153,13 +1206,15 @@ class Repos:
 
                     paths_to_repos[path]={'meta': extra_meta,
                                           'keep_repo_meta': repo_meta}
-                    
-                else:
-                    to_update = True
+                    repos_to_write[path] = paths_to_repos[path]
+
+                    continue
+
+                why_not = 'its folder or its ' + self.cfg['repo_meta_desc'] + ' is not there'
 
             else:
                 r = utils.files.safe_read_file(path_to_repo_desc, retry_if_not_found=3, fail_on_error=self.fail_on_error, logger=self.logger)
-                if r['return']==0: 
+                if r['return']==0 and isinstance(r.get('data'), dict) and r['data'].get('artifact'):
                     repo_meta = r['data']
 
                     if len(extra_meta)>0:
@@ -1170,14 +1225,58 @@ class Repos:
                     paths_to_repos[path] = {}
                     if len(extra_meta)>0:
                         paths_to_repos[path]['meta'] = extra_meta
+                    if 'keep_repo_meta' in local_meta:
+                        # the stored copy of a kept repository stays with its registration (it was left out
+                        # of the file whenever the file was rewritten while the repository was reachable)
+                        paths_to_repos[path]['keep_repo_meta'] = local_meta['keep_repo_meta']
+                    repos_to_write[path] = paths_to_repos[path]
+
+                    if local_meta.get(self.KEY_REPO_UNREACHABLE):
+                        back.append(path)
+                        to_update = True
+
+                    continue
+
+                if r['return']==0:
+                    why_not = 'its ' + self.cfg['repo_meta_desc'] + ' names no artifact'
+                else:
+                    why_not = 'its ' + self.cfg['repo_meta_desc'] + ' cannot be read' + (f" ({r.get('error')})" if r.get('error') else '')
+
+            # A registered repository that cannot be reached - a detached drive, a share that is down, a
+            # descriptor that is being edited - stays registered (it was dropped from repos.json without a
+            # word, and had to be plugged again) and is left out of this index
+            unreachable[path] = why_not
+
+            entry = dict(local_meta)
+            if not entry.get(self.KEY_REPO_UNREACHABLE):
+                entry[self.KEY_REPO_UNREACHABLE] = True
+                to_update = True
+                newly_unreachable.append(path)
+            repos_to_write[path] = entry
 
         if to_update:
             # Do not sort keys - preserve order!
-            r = utils.files.safe_write_file(repos_config_path, paths_to_repos, file_lock=repos_config_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+            r = utils.files.safe_write_file(repos_config_path, repos_to_write, file_lock=repos_config_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
             if r['return']>0: return r
         else:
             r = utils.files.unlock_path(repos_config_path, repos_config_lock, fail_on_error=self.fail_on_error, logger=self.logger)
             if r['return']>0: return r
+
+        for path in unreachable:
+            message = (f'repository "{path}" cannot be reached ({unreachable[path]}): it stays registered and is left out of the index - '
+                       f'"cx repo reindex {path}" or "cx --reindex" brings it back when it is there again, "cx repo unplug {path}" forgets it')
+            self.logger.warning(message)
+            if con:
+                print (f'cMeta notice: {message}', file=sys.stderr)
+
+        if len(back) > 0:
+            # Reachable again: indexed with this run, as if it had just been plugged
+            add_repo_paths = list(add_repo_paths) + [path for path in back if path not in add_repo_paths]
+
+        if len(newly_unreachable) > 0:
+            # Out of reach since the run before: its records leave the index with this run (an incremental run
+            # keeps the records of the repositories it does not scan; a full rebuild has none of them anyway)
+            delete_repo_paths = list(delete_repo_paths) + [path for path in newly_unreachable if path not in delete_repo_paths]
 
         if len(paths_to_repos) == 0:
             return {'return':1, 'error':f'could not find any repository in {repos_config_path}'}
@@ -1259,7 +1358,12 @@ class Repos:
         # Use atomic write to avoid corrupting large index files
         r = utils.files.safe_write_file(index_repo_file, index_repos, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
         if r['return']>0: return r
-    
+
+        # A repository that asks for the soft lock is known to the path lock of this process at once (the
+        # processes that start later read it from this index: see init)
+        for path in paths_to_repos.keys():
+            self._register_soft_lock(path, repos_meta[path])
+
         ######################################################################################################################
         # Indexing categories
         index_categories = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
@@ -1383,7 +1487,9 @@ class Repos:
                                          print ('               * ' + index_categories[self.KEY_INDEX_UIDS][uid]['path'])
                                 print ('               * ' + category_path)
                                 if con:
-                                    input ('               Fix it or press Enter to continue!')
+                                    # A pause for the person at the terminal; with nobody there (a detached
+                                    # job, a pipe at its end) the index goes on instead of ending in EOFError
+                                    utils.common.ask('               Fix it or press Enter to continue!', optional=True)
 
                             cmeta_ref_parts['artifact_alias'] = alias
                             if alias != alias.lower():

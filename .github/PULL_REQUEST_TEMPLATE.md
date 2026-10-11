@@ -29,7 +29,7 @@ a small fix.
 - [ ] No local paths, credentials, API keys or personal scratch files included.
 
 <!--
-Python 3.9–3.14 is supported, so please avoid newer-only syntax.
+Python 3.9–3.15 is supported, so please avoid newer-only syntax.
 Full details: CONTRIBUTING.md. Architecture and conventions: AGENTS.md.
 Security issue or a leaked secret? Do NOT open a PR or issue — email gfursin@gmail.com.
 -->
