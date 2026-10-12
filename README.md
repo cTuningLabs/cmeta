@@ -51,6 +51,7 @@ curl -fLo uv-install.sh https://astral.sh/uv/install.sh   # uv, if you have none
 sh uv-install.sh
 . "$HOME/.local/bin/env"                           # put uv on PATH in this shell
 uv tool install "cmeta[server]"                    # cx / cmeta / cserver on PATH, in their own environment
+                                                   # (no Python on the machine? add --python ">=3.9,<3.15": see docs/installation.md)
 
 cx --version                                       # the engine version and its home folder, ~/CMETA
 cx repo get ctuninglabs@cmeta-aops                 # pull the reusable automations from GitHub

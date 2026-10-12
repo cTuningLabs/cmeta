@@ -64,6 +64,17 @@ without it &mdash; there is no uvicorn to run it with, and a `uv tool`
 environment has no pip to add one afterwards. Drop it (`uv tool install cmeta`)
 if you will never run the web app.
 
+**Which Python.** uv uses a Python that is already on the machine; on a machine
+without one it downloads its newest. That is 3.15 today, and not every
+dependency of cMeta ships wheels for 3.15 yet (PyYAML does not), so the install
+would have to compile it and fails without a C compiler. Until they all do, ask
+for an earlier one on such a machine &mdash; the website installer does so by
+default:
+
+```bash
+uv tool install --python ">=3.9,<3.15" "cmeta[server]"
+```
+
 Quote the extra. In `zsh` &mdash; the default shell on macOS &mdash; square
 brackets are a filename pattern, so an unquoted `cmeta[server]` never reaches
 uv: it fails with `zsh: no matches found`. `"cmeta[server]"` works in every
@@ -93,7 +104,7 @@ For when cMeta is a dependency of one project, and its repositories should live
 and die with that project:
 
 ```bash
-uv venv cmeta-env
+uv venv cmeta-env                        # no Python on the machine: uv venv --python ">=3.9,<3.15" cmeta-env (see Option 1)
 source cmeta-env/bin/activate            # Windows: cmeta-env\Scripts\activate.bat
 uv pip install cmeta
 cx --version
