@@ -612,7 +612,7 @@ repo is always present as tier 1).
 
 ### 7.4 Picking `<CMETA_HOME>` (env vars + per-project collections)
 
-`<CMETA_HOME>` is resolved by `cmeta/config.py::check_init_vars_from_env()` in
+`<CMETA_HOME>` is resolved by `cmeta/config.py::home_from_env()` in
 this order (first match wins):
 
 1. `$CMETA_HOME` env var (or `--home=<path>` on the CLI, or `home=` in Python).
@@ -620,6 +620,13 @@ this order (first match wins):
 3. `$CONDA_PREFIX/CMETA` — auto-lives inside your active conda env.
 4. `$CMETA_HOME2` env var (secondary fallback, useful for team-wide defaults).
 5. `~/CMETA` — your user home.
+
+`cx --version` names the rule that applied (`cMeta home chosen by: …`, the line
+after the home path; `config.home_choice(home)` in Python), and the command that
+sets up a new home says where it is and what chose it, once, in one line on the
+standard output (`cMeta info: a new cMeta home is set up in …`). So a script
+never has to assume `~/CMETA` - and must not: ask `cx --version` for the home and
+`cx repo find <alias>` for the folder of a repository.
 
 > **Installing `cx` globally does not give you a global home.** Rule 2 reads an
 > environment variable, not the location of the `cx` you invoked — so a `cx`

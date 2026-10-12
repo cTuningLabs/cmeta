@@ -241,6 +241,84 @@ def set_logging(
     return {'return':0, 'logger': logger}
 
 
+def _home_candidates():
+    """
+        The folders the environment offers as the cMeta home, in the order of their priority, each with the
+        name of the variable that gives it ('' for the default): CMETA_HOME, <VIRTUAL_ENV>/CMETA,
+        <CONDA_PREFIX>/CMETA, CMETA_HOME2, ~/CMETA. Only the variables that are set are listed.
+
+        Returns:
+            list: [(home, variable, value of the variable), ...] - the default is always the last.
+    """
+    candidates = []
+
+    home = os.environ.get(cfg['env_var_home'], '').strip()
+    if home != '':
+        candidates.append((home, cfg['env_var_home'], home))
+
+    # A virtual environment keeps a home of its own: the first of the two that is set
+    for variable in (cfg['env_var_virtual_env'], cfg['env_var_virtual_env2']):
+        value = os.environ.get(variable, '')
+        if value != '':
+            candidates.append((os.path.join(value, cfg['capitalized_name']), variable, value))
+
+    home = os.environ.get(cfg['env_var_home2'], '').strip()
+    if home != '':
+        candidates.append((home, cfg['env_var_home2'], home))
+
+    candidates.append((str(Path.home() / cfg['capitalized_name']), '', ''))
+
+    return candidates
+
+
+def home_from_env():
+    """
+        The cMeta home as the environment gives it: `CMETA_HOME`; else `<VIRTUAL_ENV>/CMETA`; else
+        `<CONDA_PREFIX>/CMETA`; else `CMETA_HOME2` as it is; else `~/CMETA`.
+
+        Returns:
+            tuple: (home, variable) - the folder and the name of the variable that chose it ('' for the default).
+    """
+    home, variable, _ = _home_candidates()[0]
+
+    return home, variable
+
+
+def home_choice(
+    home,  # The home of a cMeta instance.
+):
+    """
+        What chose `home` as the cMeta home, for a message: the variable of the environment that gives
+        exactly this folder, or 'given' when none does (the `home` argument of CMeta, `--home`).
+
+        Returns:
+            dict: {'source': 'CMETA_HOME' | 'VIRTUAL_ENV' | 'CONDA_PREFIX' | 'CMETA_HOME2' | 'default' | 'given',
+                   'value': the value of that variable ('' for the last two),
+                   'text': the same in words, to follow "chosen by"}.
+    """
+    def same(a, b):
+        return os.path.normcase(os.path.abspath(str(a))) == os.path.normcase(os.path.abspath(str(b)))
+
+    for candidate, variable, value in _home_candidates():
+        if not same(candidate, home):
+            continue
+
+        if variable == '':
+            return {'source': 'default', 'value': '', 'text': 'the default'}
+
+        if variable == cfg['env_var_virtual_env']:
+            return {'source': variable, 'value': value,
+                    'text': f'{variable}={value} - a virtual environment keeps a home of its own'}
+
+        if variable == cfg['env_var_virtual_env2']:
+            return {'source': variable, 'value': value,
+                    'text': f'{variable}={value} - a conda environment keeps a home of its own'}
+
+        return {'source': variable, 'value': value, 'text': variable}
+
+    return {'source': 'given', 'value': '', 'text': 'this run: --home or the home argument of CMeta'}
+
+
 def check_init_vars_from_env():
     """
         Load CMeta initialization parameters from environment variables.
@@ -262,27 +340,10 @@ def check_init_vars_from_env():
 
     init = {}
 
-    ENV_CMETA_HOME = cfg['env_var_home']
-    ENV_CMETA_HOME2 = cfg['env_var_home2']
     ENV_CMETA_LOG = cfg['env_cmeta_log']
     ENV_CMETA_LOG_FILE = cfg['env_cmeta_log_file']
 
-    # First check main home variable
-    home = os.environ.get(ENV_CMETA_HOME, '').strip()
-    if home == '':
-        # Smart home - first virtual env and if not, then use this var
-        home = os.environ.get(cfg['env_var_virtual_env'], '')       # VIRTUAL_ENV
-        if home == '':
-            home = os.environ.get(cfg['env_var_virtual_env2'], '')  # CONDA_PREFIX
-        if home == '':
-            home = os.environ.get(ENV_CMETA_HOME2, '').strip()
-        else:
-            home = os.path.join(home, cfg['capitalized_name'])
-
-    if home == '':
-        home = Path.home() / cfg['capitalized_name']
-
-    init['home'] = str(home)
+    init['home'] = home_from_env()[0]
 
     if is_on(os.environ.get(cfg['env_var_cmeta_fail_on_error'])):
         init['fail_on_error'] = True

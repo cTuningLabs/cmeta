@@ -908,8 +908,8 @@ class Repos:
                     _migrated_notices.add(key)
                     when = str(stub_meta.get('migrated_when', ''))[:10]
                     x = f' on {when}' if when else ''
-                    print(f'{self.cfg["con_error_prefix"]}{category_alias} "{stub_alias}" was migrated to "{migrated_to}"{x}; '
-                          f'using it - please update the reference', file=sys.stderr)
+                    utils.common.console_line(f'{category_alias} "{stub_alias}" was migrated to "{migrated_to}"{x}; '
+                                              f'using it - please update the reference', 'warning', logger=self.logger)
 
                 current = r['artifacts'][0]
 
@@ -1265,9 +1265,7 @@ class Repos:
         for path in unreachable:
             message = (f'repository "{path}" cannot be reached ({unreachable[path]}): it stays registered and is left out of the index - '
                        f'"cx repo reindex {path}" or "cx --reindex" brings it back when it is there again, "cx repo unplug {path}" forgets it')
-            self.logger.warning(message)
-            if con:
-                print (f'cMeta notice: {message}', file=sys.stderr)
+            utils.common.console_line(message, 'warning', logger=self.logger, con=con)
 
         if len(back) > 0:
             # Reachable again: indexed with this run, as if it had just been plugged

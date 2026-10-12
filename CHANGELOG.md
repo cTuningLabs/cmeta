@@ -3,6 +3,28 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.35.0.1)
+- **A new home says where it is and what chose it.** The home is chosen as before - `CMETA_HOME`, else
+  `<VIRTUAL_ENV>/CMETA`, else `<CONDA_PREFIX>/CMETA`, else `CMETA_HOME2`, else `~/CMETA` - and nothing of that
+  changes. What is new is that cMeta says so: the command that sets up a new home (no `repos.json` yet)
+  prints one line, `cMeta info: a new cMeta home is set up in <home> (chosen by ...)`, with the folder and the
+  variable that chose it, and `cx --version` has the line `cMeta home chosen by: ...` after the home path. Inside a container image that exports
+  `VIRTUAL_ENV` the home is `<environment>/CMETA`, and a script that expected `~/CMETA` copied files to the
+  wrong place without a hint. Through the API without the console nothing is printed (the line goes to the
+  log). New in `cmeta.config`:
+  `home_from_env()` (the home and the variable) and `home_choice(home)` (the same in words). The docs say
+  that a script asks `cx --version` for the home and `cx repo find <alias>` for a repository's folder.
+  Tests: `tests/core_tests/test_config_home.py`.
+- **The standard error is for errors only: information and warnings go to the standard output.** Errors are
+  printed as before, on the standard error as `cMeta notice: <error>!`. Three warnings went there too and now
+  go to the standard output as `cMeta warning: ...` lines, logged as before: a wait for a lock (after 3 s,
+  naming the holder), a registered repository that cannot be reached, and a reference to an artifact that was
+  migrated. Tools that take any output on the standard error for a failure - Windows PowerShell 5.1 with
+  `2>&1`, CI steps - no longer see one where there is none. `--json` is unchanged: the JSON follows the
+  command's console output and the line of dashes. New: `utils.common.console_line(message, kind)`. Tests: the
+  notices in `test_utils_files_writes.py`, `test_integration_repo_unreachable.py`, `test_integration_migrate.py`.
+
+
 ## 0.35.0
 - **A registered repository that cannot be reached stays registered.** When the index was built - a full
   `cx --reindex`, or the incremental index of `pull`, `plug`, `unplug` and `cx repo reindex` - and the folder

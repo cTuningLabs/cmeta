@@ -57,6 +57,44 @@ def _error(
     return result
 
 ###################################################################################################
+def console_line(
+    message,  # The text of the line, after its prefix.
+    kind = 'info',  # 'info' or 'warning': the prefix "cMeta info: " or "cMeta warning: ".
+    logger = None,  # Optional logger: the line goes there too (as info or as a warning).
+    con = True,  # If False, the line is logged only.
+):
+    """
+        One line of information or warning for the person who runs the command.
+
+        The standard error is for errors only: they are printed there by the CLI, as "cMeta notice: <error>!".
+        Everything else that cMeta has to say goes to the standard output with a prefix that says what it is,
+        so that tools that treat any output on the standard error as a failure (Windows PowerShell with 2>&1,
+        CI steps) do not take a notice for an error.
+
+        Args:
+            message (str): The text of the line, after its prefix.
+            kind (str): 'info' or 'warning'.
+            logger: Optional logger; the line is logged there as well.
+            con (bool): If False, the line is logged only.
+
+        Returns:
+            str: The line as it is printed (or would be).
+    """
+
+    text = f'cMeta {kind}: {message}'
+
+    if logger is not None:
+        if kind == 'warning':
+            logger.warning(message)
+        else:
+            logger.info(message)
+
+    if con:
+        print (text, flush=True)
+
+    return text
+
+###################################################################################################
 def ask(
     question,  # Text of the question, shown as the prompt.
     how = '-q (--quiet) to take the default answers',  # What makes the question unnecessary.

@@ -25,7 +25,7 @@ import random
 import threading
 import binascii
 
-from .common import _error, ask as _ask
+from .common import _error, ask as _ask, console_line
 
 try:
     import yaml
@@ -1192,11 +1192,10 @@ def _acquire_with_notice(
         if timeout <= first:
             raise TimeoutError(f'{subject} stayed locked by another process{held_by} for {timeout:g} s ({e}) - set {env_name} to wait longer')
 
-    message = (f'cMeta: {subject} is locked by another process{held_by} - '
+    # A warning, not an error: on the standard output ("cMeta warning: ..."), and in the log
+    message = (f'{subject} is locked by another process{held_by} - '
                f'{what} continues when it is released (waiting up to {timeout:g} s; {env_name} changes it)')
-    print(message, file=sys.stderr, flush=True)
-    if logger is not None:
-        logger.warning(message)
+    console_line(message, 'warning', logger=logger)
 
     try:
         return lock.acquire(timeout=max(timeout - first, 0.0), note=note)

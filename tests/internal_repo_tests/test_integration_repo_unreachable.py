@@ -111,8 +111,10 @@ def test_an_unreachable_repository_stays_registered_and_comes_back(cm, tmp_path,
 
     # A full reindex while the drive is away: the line stays where it was, marked; a notice says what to do
     reindex_all(cm, con=True)
-    err = capsys.readouterr().err
-    assert 'cMeta notice' in err and 'cannot be reached' in err and 'cx repo unplug' in err and str(repo) in err
+    captured = capsys.readouterr()
+    out = captured.out
+    assert 'cMeta warning: repository' in out and 'cannot be reached' in out and 'cx repo unplug' in out and str(repo) in out
+    assert 'cannot be reached' not in captured.err      # a warning, not an error: nothing on stderr
     assert [same(p) for p in repos_json(tmp_path)] == order
     assert marked(tmp_path, repo) is True
     assert marked(tmp_path, other) is False
@@ -124,7 +126,7 @@ def test_an_unreachable_repository_stays_registered_and_comes_back(cm, tmp_path,
     before = (tmp_path / 'repos.json').read_bytes()
     reindex_all(cm)
     assert (tmp_path / 'repos.json').read_bytes() == before
-    assert capsys.readouterr().err == ''        # without the console, the notice goes to the log only
+    assert 'cannot be reached' not in capsys.readouterr().out        # without the console, the warning goes to the log only
 
     # The drive is back: the next index run - of any kind - indexes it again and clears the mark
     away.rename(repo)
@@ -250,7 +252,7 @@ def test_a_descriptor_that_cannot_be_read_does_not_unregister_the_repository(cm,
     for broken, why in (('artifact: [unclosed\n', 'cannot be read'), ('category: repo,f4f792ab40c7498f\n', 'names no artifact')):
         descriptor.write_text(broken, encoding='utf-8')                # a slip while editing it by hand
         reindex_all(cm, con=True)
-        assert why in capsys.readouterr().err
+        assert why in capsys.readouterr().out
         assert marked(tmp_path, repo) is True
         assert find(cm, 'art')['return'] == 16
 
