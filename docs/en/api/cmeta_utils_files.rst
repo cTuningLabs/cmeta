@@ -92,6 +92,8 @@ Functions
 
 .. autofunction:: cmeta.utils.files.unzip
 
+.. autofunction:: cmeta.utils.files.use_soft_lock_under
+
 .. autofunction:: cmeta.utils.files.write_file
 
 .. autofunction:: cmeta.utils.files.yaml_dump_keep
@@ -119,9 +121,21 @@ Constants
 
 .. autodata:: cmeta.utils.files.LOCK_SOFT_EMPTY_STALE_SECONDS
 
+.. autodata:: cmeta.utils.files.LOCK_SOFT_HEARTBEAT_SECONDS
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_PATHS_ENV
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_READ_MAX
+
 .. autodata:: cmeta.utils.files.LOCK_SOFT_REMOVE_SECONDS
 
+.. autodata:: cmeta.utils.files.LOCK_SOFT_SILENT_SECONDS
+
 .. autodata:: cmeta.utils.files.LOCK_SOFT_STALE_SECONDS
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_TAKE_REMOVE_SECONDS
+
+.. autodata:: cmeta.utils.files.LOCK_SOFT_TAKE_TRIES
 
 .. autodata:: cmeta.utils.files.LOCK_SUFFIX
 

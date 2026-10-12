@@ -83,6 +83,7 @@ def test_home_falls_back_to_cmeta_home2(monkeypatch, tmp_path):
 def test_home_defaults_to_user_home_when_nothing_set(monkeypatch):
     _clear(monkeypatch, 'CMETA_HOME', 'CMETA_HOME2', 'VIRTUAL_ENV', 'CONDA_PREFIX')
     r = config.check_init_vars_from_env()
+
     # It ends with the capitalized project name under user's home.
     assert r['init']['home'].endswith(config.cfg['capitalized_name'])
 

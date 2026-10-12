@@ -142,6 +142,7 @@ def test_parse_cmeta_ref_missing_separator_errors_by_default():
 def test_parse_cmeta_ref_do_not_fail_if_no_sep():
     r = parse_cmeta_ref('artname', do_not_fail_if_no_sep=True)
     assert r['return'] == 0
+
     # No category info, just artifact
     assert r['ref_parts'] == {'artifact_alias': 'artname'}
 

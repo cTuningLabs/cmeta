@@ -249,6 +249,11 @@ cx note nosuchcommand ; echo $?    # 32 — command does not exist in the catego
 
 Error text goes to **stderr**, prefixed with `cMeta notice: ` and suffixed with
 `!`; normal output goes to stdout, so the two can be redirected separately.
+The standard error is for errors only: what cMeta has to say that is not an
+error goes to stdout with a prefix that says what it is - `cMeta info: ` (a new
+home was set up) or `cMeta warning: ` (waiting for a lock, a registered
+repository that cannot be reached, a reference to a migrated artifact). A
+script that reads the output of `cx` skips the lines with these prefixes.
 
 ### Machine-readable output
 

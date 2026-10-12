@@ -1122,6 +1122,7 @@ def run_command_with_timeout_tree_kill_on_windows(
         except subprocess.TimeoutExpired:
             # Kill whole tree
             kernel32.TerminateJobObject(hjob, 1)
+
             # Drain pipes after kill
             stdout, stderr = process.communicate()
             returncode = -1  # or choose a sentinel you like
@@ -1172,6 +1173,7 @@ def format_size(
     if unit is not None:
         if unit not in units:
             raise ValueError(f"Invalid unit '{unit}'. Must be one of: {units}")
+
         # Convert based on unit index
         power = units.index(unit)
         value = size / (base ** power)

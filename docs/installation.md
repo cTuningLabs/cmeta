@@ -157,8 +157,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force "cmeta[server]==0.35.0"
-pip install "cmeta==0.35.0"
+uv tool install --force "cmeta[server]==0.35.1"
+pip install "cmeta==0.35.1"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other
@@ -199,8 +199,21 @@ starts, in this order:
 | 4 | `CMETA_HOME2` | used as-is | A global default that a venv overrides. |
 | 5 | `~/CMETA` | — | The fallback when nothing above is set. |
 
-`cx --version` prints the home it resolved, and `cx --home=<path> …` overrides
-it for a single command.
+`cx --version` prints the home it resolved and, on the next line, what chose it
+(`cMeta home chosen by: …`), and `cx --home=<path> …` overrides it for a single
+command.
+
+The command that sets up a new home says so once, in one line of information on
+the standard output (the standard error is for errors only):
+
+```text
+cMeta info: a new cMeta home is set up in /opt/venv/CMETA (chosen by VIRTUAL_ENV=/opt/venv - a virtual environment keeps a home of its own); set CMETA_HOME to keep the home elsewhere, "cx --version" shows the home in use
+```
+
+**A script never assumes `~/CMETA`.** Inside a virtual or conda environment - a
+container image that exports `VIRTUAL_ENV` is enough - the home is
+`<environment>/CMETA`. Ask cMeta instead: `cx --version` for the home, `cx repo
+find <alias>` for the folder of a repository.
 
 **Set `CMETA_HOME` only to choose another folder**, or to keep one home even
 while a project's virtual environment is active. Rule 2 reads an environment

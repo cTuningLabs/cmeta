@@ -213,7 +213,7 @@ r = utils.files.safe_write_file(index_file, index_data,
   using the sidecar file `<file>.lock`, so they work cross-platform, *across
   processes* and across the threads of one process. A writer waits up to
   **30 seconds** for a busy lock (`CMETA_LOCK_TIMEOUT` changes it), prints a
-  notice on stderr after 3 seconds naming the holder when it left a note in the
+  `cMeta warning:` line on stdout after 3 seconds naming the holder when it left a note in the
   lock file, and then gives up with an error dict that names the holder rather
   than a corrupt file.
 - **`keep_locked=True`** hands the lock back with the data so the caller can
@@ -307,7 +307,7 @@ swap) is held by the full reindex for its whole rebuild and swap, by the
 incremental index of `pull` / `plug` / `repo reindex` for its duration, and by
 every write of a record (`create`, `update`, `delete`, `reindex` of an artifact)
 for a moment. A writer that arrives during a reindex waits for it, prints a
-notice on stderr after 3 seconds naming the reindexing process (which leaves a
+`cMeta warning:` line on stdout after 3 seconds naming the reindexing process (which leaves a
 note in the lock file), and gives up with an error after `CMETA_INDEX_LOCK_TIMEOUT`
 seconds (600 by default); otherwise it then writes into the new index. Two
 reindexes run one after the other; several processes starting on a fresh home
@@ -365,7 +365,7 @@ measures the cost.
 
 - **Lock contention shows up as a wait, then an error, not corruption.** A
   writer waits up to `CMETA_LOCK_TIMEOUT` seconds (30) for the lock of a file
-  and says so on stderr after 3. If you drive very heavy parallel updates of
+  and says so (a `cMeta warning:` line on stdout) after 3. If you drive very heavy parallel updates of
   the *same* artifact, expect occasional lock timeouts; retry the call.
 - **Separate `<CMETA_HOME>`s remove sharing entirely.** For fully independent
   parallel jobs, give each one its own home (`--home=<path>` or `CMETA_HOME`) —

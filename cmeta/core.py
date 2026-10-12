@@ -168,6 +168,32 @@ class CMeta:
         )
 
     ###################################################################################################
+    def _new_home_notice(
+        self,
+        con: bool = False,  # If True, the line goes to the console (stdout); it is logged in any case.
+    ):
+        """
+            One line when cMeta sets up a new home: the folder and what chose it (`config.home_choice`).
+
+            Nothing changes in how the home is chosen. The line is for whoever expects the home somewhere
+            else: inside a virtual or conda environment it is `<environment>/CMETA`, not `~/CMETA`.
+
+            Args:
+                con (bool): If True, print the line ("cMeta info: ...", on the standard output).
+        """
+        choice = config.home_choice(self.home_path)
+
+        chosen = 'the default' if choice['source'] == 'default' else f'chosen by {choice["text"]}'
+        message = f'a new cMeta home is set up in {self.home_path} ({chosen}); '
+
+        if choice['source'] != self.cfg['env_var_home']:
+            message += f'set {self.cfg["env_var_home"]} to keep the home elsewhere, '
+
+        message += '"cx --version" shows the home in use'
+
+        utils.common.console_line(message, 'info', logger=self.logger, con=con)
+
+    ###################################################################################################
     def error(
         self,
         error_msg,  # Error message text.
@@ -478,6 +504,11 @@ class CMeta:
 
         if 'control' not in ctx['origin']:
             ctx['origin']['control'] = control_params
+
+        # A home that this call sets up (no repos.json yet): one line says where it is and what chose it.
+        # A virtual environment keeps a home of its own, and whoever expected ~/CMETA looks in the wrong place.
+        if not os.path.isfile(self.repos_config_path):
+            self._new_home_notice(con)
 
         r = self.repos.init(con=con, verbose=verbose)
         if self.catch_error(r): return r
@@ -809,6 +840,7 @@ class CMeta:
                     x = command
                     if command_alias != command:
                         x += f' ({command_alias})'
+
                     # Shouldn't fail in debug since it's used to check multiple functions ...
                     return self.error(f'command "{x}" doesn\'t exist in category API "{category_api_path}"', 32, fail_on_error=False)
 
@@ -945,6 +977,7 @@ def _list_paths(
     paths_list = []
 
     paths_list.append(f"cMeta home path:           {cmeta.home_path}")
+    paths_list.append(f"cMeta home chosen by:      {config.home_choice(cmeta.home_path)['text']}")
     paths_list.append(f"cMeta repositories path:   {cmeta.repos_path}")
     paths_list.append(f"cMeta repositories config: {cmeta.repos_config_path}")
     paths_list.append(f"cMeta index path:          {cmeta.index_path}")

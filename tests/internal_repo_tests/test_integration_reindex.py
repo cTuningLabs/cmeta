@@ -145,6 +145,7 @@ def test_a_failed_reindex_keeps_the_previous_index(cm, tmp_path, monkeypatch):
     # The new index was being built in a temporary folder next to the index ...
     assert [p.name for p in state['tmp']] == [f'index.tmp-{os.getpid()}']
     assert state['tmp_files'] == ['category.pkl', 'repo.pkl']
+
     # ... the previous index is untouched and usable, and the temporary folder is gone
     assert index_files(tmp_path) == before
     assert index_folders(tmp_path) == ['index']

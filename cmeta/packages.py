@@ -137,6 +137,7 @@ class Packages:
         if ' ' in spec and any(op in spec for op in ['==', '!=', '>=', '<=', '>', '<']):
             # Split on spaces and filter out empty strings
             parts = [p.strip() for p in spec.split() if p.strip()]
+
             # Join with commas
             spec = ','.join(parts)
         
@@ -146,6 +147,7 @@ class Packages:
             return f">={base},<{upper}"
         if spec.startswith("~"):
             base = pkg_version.parse(spec[1:])
+
             # If only major version specified (e.g., "~2"), match entire major version
             # by incrementing major version for upper bound (e.g., ">=2,<3")
             # If major.minor specified (e.g., "~2.3"), match by incrementing minor (e.g., ">=2.3,<2.4")
@@ -1091,10 +1093,12 @@ class Packages:
                     """
                     operator = match.group(1)
                     version_part = match.group(2)
+
                     # Normalize and strip local version
                     normalized = self.normalize_detected_version(version_part)
                     try:
                         parsed = pkg_version.parse(normalized)
+
                         # Use public (base) version without local part
                         return f"{operator}{parsed.public}"
                     except:

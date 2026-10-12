@@ -114,6 +114,7 @@ def test_open_a_folder_through_the_app(server):
     app_module, _ = server
     if 'client' not in inspect.signature(TestClient.__init__).parameters:
         pytest.skip('this Starlette TestClient cannot pose as a loopback client')
+
     # The category cserver.browse itself: an artifact of every home. (Not one made here: on Linux, Python 3.14
     # starts the app's worker processes from a forkserver made by an earlier test, with that test's CMETA_HOME.)
     body = {'uid': '14b2334988864507', 'what': 'folder', 'dry': '1'}

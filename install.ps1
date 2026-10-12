@@ -149,6 +149,7 @@ function Resolve-Options {
     $script:NoPathMode   = $NoModifyPath.IsPresent
     $script:DryRunMode   = $DryRun.IsPresent
     $script:Q            = $Quiet.IsPresent
+
     # "server" by default: cserver is a first-class part of cMeta, and without
     # this extra `cx app run cserver` cannot start - there is no uvicorn to run
     # it with, and a uv tool environment has no pip to add one afterwards, so
@@ -161,6 +162,7 @@ function Resolve-Options {
     if ($h -and $h2) {
         Fail '-CmetaHome and -CmetaHome2 are mutually exclusive'
     }
+
     # No home by default: cMeta finds one on its own (%USERPROFILE%\CMETA, or
     # <venv>\CMETA while a virtual environment is active).
     if ($h2) {
@@ -275,6 +277,7 @@ function Install-Deps {
               "cx repo get $script:AopsRef")
         return
     }
+
     # --source winget: without it winget also queries the Microsoft Store
     # source, and on a machine where that fails - "0x8a15005e: The server
     # certificate did not match any of the expected values", certificate
@@ -302,6 +305,7 @@ function Install-Uv {
         return
     }
     Step 'Installing uv'
+
     # astral's installer is downloaded to a file and run from there - the same
     # two steps as this script's own - rather than piped into
     # Invoke-Expression: a script downloaded and run in memory is the pattern
@@ -313,6 +317,7 @@ function Install-Uv {
     Say "     > powershell -ExecutionPolicy ByPass -File $tmp"
     if ($script:DryRunMode) { return }
     if ($script:NoPathMode) { $env:UV_NO_MODIFY_PATH = '1' }
+
     # Windows PowerShell 5.1 on an older Windows may not offer TLS 1.2 unasked.
     [Net.ServicePointManager]::SecurityProtocol =
         [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12

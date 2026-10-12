@@ -612,7 +612,7 @@ repo is always present as tier 1).
 
 ### 7.4 Picking `<CMETA_HOME>` (env vars + per-project collections)
 
-`<CMETA_HOME>` is resolved by `cmeta/config.py::check_init_vars_from_env()` in
+`<CMETA_HOME>` is resolved by `cmeta/config.py::home_from_env()` in
 this order (first match wins):
 
 1. `$CMETA_HOME` env var (or `--home=<path>` on the CLI, or `home=` in Python).
@@ -620,6 +620,13 @@ this order (first match wins):
 3. `$CONDA_PREFIX/CMETA` — auto-lives inside your active conda env.
 4. `$CMETA_HOME2` env var (secondary fallback, useful for team-wide defaults).
 5. `~/CMETA` — your user home.
+
+`cx --version` names the rule that applied (`cMeta home chosen by: …`, the line
+after the home path; `config.home_choice(home)` in Python), and the command that
+sets up a new home says where it is and what chose it, once, in one line on the
+standard output (`cMeta info: a new cMeta home is set up in …`). So a script
+never has to assume `~/CMETA` - and must not: ask `cx --version` for the home and
+`cx repo find <alias>` for the folder of a repository.
 
 > **Installing `cx` globally does not give you a global home.** Rule 2 reads an
 > environment variable, not the location of the `cx` you invoked — so a `cx`
@@ -1604,12 +1611,26 @@ cx cache show                # list cache entries with their state (with --tags=
 cx cache classify            # the states as an API result: ok, running (built by another process), crashed
                              #   (a dead attempt), failed (the last attempt's error), broken (no usable result)
 cx cache clean               # remove the crashed entries; --failed, --broken, --unfinished, --all --force
+cx cache show --duplicates   # only the usable entries that answer the same requests, group by group, newest first
+cx cache clean --duplicates  # keep the newest entry of each such group, remove the others
 cx cache delete <alias-or-uid>   # waits for a running attempt and fails while it goes on
 ```
 
 The task engine of cmeta-aops resumes a crashed, failed or broken entry in place when the
 same request comes again, never serves a failed one, and waits for a running one (see the
 cmeta-aops documentation, "The cache entry of a run").
+
+Two usable entries are **duplicates** when no request can tell them apart: the same name
+(the alias without the UID at its end), the same task, the same tags (the state tags
+aside), the same parameters and the same path - a path inside the entry's own folder, such
+as the `tool_path` of a tool installed into its entry, counts as the same in both. An entry
+with a name of its own, such as the build workspace of a program
+(`task--program--<program>`), is found by that name and is nobody's duplicate. Duplicates
+come from a run with `--new`, or from identical requests that ran at once before
+cmeta-aops 0.45. The task engine takes the newest of them (the time
+of creation in the entry's meta); `show --duplicates` prints each group in that order and
+says which entry stays, `clean --duplicates` removes the older ones and nothing else.
+What was installed into a removed entry is set up again when a request needs it.
 
 Reproducibility helpers:
 

@@ -61,6 +61,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv('CMETA_HOME', str(home))
 
     cm = CMeta(home=str(home))
+
     # The alias "cx repo get shorty" would give the clone
     alias = cm.cfg['default_git_repo'] + '@shorty'
     r = cm.access({'category': 'repo', 'command': 'get', 'arg1': alias, 'url': bare.as_uri(), 'con': False})

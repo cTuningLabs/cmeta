@@ -106,6 +106,7 @@ def test_deep_merge_append_lists_dedup_by_default():
 def test_deep_merge_prepend_lists():
     target = {'tags': ['a', 'b']}
     out = deep_merge(target, {'tags': ['x', 'y']}, append_lists=True, prepend_lists=True)
+
     # x, y prepended in order
     assert out['tags'] == ['x', 'y', 'a', 'b']
 

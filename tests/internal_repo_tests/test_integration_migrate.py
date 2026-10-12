@@ -23,6 +23,7 @@ def cm(tmp_path, monkeypatch):
                 'CMETA_DEBUG', 'CMETA_VERBOSE'):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv('CMETA_HOME', str(tmp_path))
+
     # Each test sees its own notices (they are printed once per process)
     monkeypatch.setattr(cmeta_repos, '_migrated_notices', set())
     return CMeta(home=str(tmp_path))
@@ -82,8 +83,10 @@ def test_the_old_alias_alone_follows_the_stub_with_one_notice(cm, capsys):
         assert r['return'] == 0, r.get('error')
         assert uids(r) == [uid]
 
-    err = capsys.readouterr().err
-    assert err.count(f'log "old-name" was migrated to "new-name,{uid}"') == 1
+    # A warning, not an error: on the standard output, once
+    captured = capsys.readouterr()
+    assert captured.out.count(f'cMeta warning: log "old-name" was migrated to "new-name,{uid}"') == 1, captured.out
+    assert 'was migrated' not in captured.err
 
 
 def test_a_uid_finds_exactly_what_it_names(cm):

@@ -3,6 +3,45 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.35.1
+- **A new home says where it is and what chose it.** The home is chosen as before - `CMETA_HOME`, else
+  `<VIRTUAL_ENV>/CMETA`, else `<CONDA_PREFIX>/CMETA`, else `CMETA_HOME2`, else `~/CMETA` - and nothing of that
+  changes. What is new is that cMeta says so: the command that sets up a new home (no `repos.json` yet)
+  prints one line, `cMeta info: a new cMeta home is set up in <home> (chosen by ...)`, with the folder and the
+  variable that chose it, and `cx --version` has the line `cMeta home chosen by: ...` after the home path. Inside a container image that exports
+  `VIRTUAL_ENV` the home is `<environment>/CMETA`, and a script that expected `~/CMETA` copied files to the
+  wrong place without a hint. Through the API without the console nothing is printed (the line goes to the
+  log). New in `cmeta.config`:
+  `home_from_env()` (the home and the variable) and `home_choice(home)` (the same in words). The docs say
+  that a script asks `cx --version` for the home and `cx repo find <alias>` for a repository's folder.
+  Tests: `tests/core_tests/test_config_home.py`.
+- **The standard error is for errors only: information and warnings go to the standard output.** Errors are
+  printed as before, on the standard error as `cMeta notice: <error>!`. Three warnings went there too and now
+  go to the standard output as `cMeta warning: ...` lines, logged as before: a wait for a lock (after 3 s,
+  naming the holder), a registered repository that cannot be reached, and a reference to an artifact that was
+  migrated. Tools that take any output on the standard error for a failure - Windows PowerShell 5.1 with
+  `2>&1`, CI steps - no longer see one where there is none. `--json` is unchanged: the JSON follows the
+  command's console output and the line of dashes. New: `utils.common.console_line(message, kind)`. Tests: the
+  notices in `test_utils_files_writes.py`, `test_integration_repo_unreachable.py`, `test_integration_migrate.py`.
+- **`cx cache show --duplicates` and `cx cache clean --duplicates`.** Two usable cache entries are
+  duplicates when no request can tell them apart: the same name (the alias without the UID at its end), task,
+  tags (the state tags aside), parameters and path - a path inside the entry's own folder, such as the
+  `tool_path` of a tool installed into its entry, counts as the same in both. An entry with a name of its
+  own (the build workspace of a program, `task--program--<program>`) is found by that name and is nobody's
+  duplicate. Duplicates come from a run with `--new` or from identical requests that ran at once before
+  cmeta-aops 0.45. `show --duplicates` lists them group by group, the newest first (the entry the
+  task engine of cmeta-aops takes), and says which one stays; `clean --duplicates` keeps the newest of each
+  group and removes the others, and nothing else (with a state flag such as `--failed` both are removed). An
+  entry that is being built, or whose last attempt failed, is never a duplicate. New in the cache category:
+  `selection_identity(artifact)` and `duplicate_groups(artifacts, states)`. Tests:
+  `tests/internal_repo_tests/test_cache_states.py`.
+- **A test of the soft lock passes in a virtual environment on Windows.** There `python.exe` is a launcher that
+  starts the interpreter as its child, so the pid of the process a test starts is not the pid the holder writes
+  into its lock file: `test_a_live_soft_holder_judged_gone_by_mistake` compared the two and failed (the CI and
+  the earlier runs used a Python without a venv). The holder now prints its own pid and the test compares with
+  that.
+
+
 ## 0.35.0
 - **A registered repository that cannot be reached stays registered.** When the index was built - a full
   `cx --reindex`, or the incremental index of `pull`, `plug`, `unplug` and `cx repo reindex` - and the folder

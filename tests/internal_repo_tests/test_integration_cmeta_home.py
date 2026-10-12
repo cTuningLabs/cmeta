@@ -21,6 +21,7 @@ from cmeta import CMeta
 @pytest.fixture()
 def cm(tmp_path, monkeypatch):
     """A fresh CMeta bound to a temp CMETA_HOME."""
+
     # Isolate from ambient env vars so home resolution is deterministic.
     for var in ('CMETA_HOME', 'CMETA_HOME2', 'VIRTUAL_ENV', 'CONDA_PREFIX',
                 'CMETA_DEBUG', 'CMETA_VERBOSE'):
@@ -51,6 +52,7 @@ def test_repos_json_lists_local_and_internal(cm, tmp_path):
         registry = json.load(f)
 
     paths = list(registry.keys())
+
     # Insertion order: local first, then internal.
     assert any(p.endswith('local') or p.endswith('local' + os.sep) for p in paths)
     assert any('internal-repo' in p for p in paths)
@@ -216,6 +218,7 @@ def test_ctx_is_created_and_carries_framework_keys(cm):
     r = cm.access({'category': 'repo', 'command': 'list',
                    'con': False, 'ctx': ctx})
     assert r['return'] == 0
+
     # After the call, the ctx we handed in has been populated by the framework
     # with `origin` and `nested_call`.
     assert 'origin' in ctx

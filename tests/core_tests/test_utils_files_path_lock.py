@@ -129,11 +129,11 @@ b.release()
 '''
 
 SOFT_HOLDER = r'''
-import sys, time
+import os, sys, time
 from cmeta.utils import files
 files._lock_soft_paths.add(sys.argv[1])
 lock = files.PathLock(sys.argv[1]).acquire(timeout=60)
-print('LOCKED', lock.mode, flush=True)
+print('LOCKED', lock.mode, os.getpid(), flush=True)     # its own pid: in a venv on Windows Popen.pid is the launcher's
 sys.stdin.readline()                    # holds the lock until told to release it (or killed)
 lock.release()
 print('RELEASED', flush=True)
@@ -180,6 +180,7 @@ def run_workers(script, args_list, timeout=600):
 def start(script, *args):
     env = dict(os.environ)
     env['PYTHONIOENCODING'] = 'utf-8'
+
     # The workers never read their input: an explicit null input keeps them independent of the
     # parent's standard-input handle (which some agent and service environments leave unusable)
     return subprocess.Popen([sys.executable, '-c', script] + [str(a) for a in args],
@@ -515,12 +516,14 @@ def test_a_soft_lock_marked_released_or_an_old_empty_one_is_cleared(soft, monkey
     assert lock.mode == 'soft' and 0.4 <= time.monotonic() - started < 3
     lock.release()
     assert not os.path.exists(soft)
+
     # a single try has not watched the file: it leaves it ...
     open(soft, 'w').close()
     monkeypatch.setattr(files, 'LOCK_SOFT_EMPTY_STALE_SECONDS', 0.0)
     with pytest.raises(TimeoutError):
         files.PathLock(soft).acquire(timeout=0)
     assert os.path.isfile(soft)
+
     # ... unless the drive dates it beyond any difference of clocks (the limit of a lock left by another host)
     os.utime(soft, (old, old))
     lock = files.PathLock(soft).acquire(timeout=0)
@@ -618,6 +621,7 @@ def test_a_waiter_a_step_behind_leaves_the_file_of_the_one_that_took_the_stale_l
     the file at the path is not the one it judged, and leaves it where it is."""
     with open(soft, 'w') as f:
         f.write(stale_line())
+
     # the line of the other waiter: a live process (this one), taken half a second ago - never the very line the
     # waiter under test writes in the same millisecond (a line tells its writer by pid, host and time)
     fresh = f'{os.getpid()} {files._lock_host_name()} {time.time() - 0.5:.3f}\n'
@@ -699,6 +703,10 @@ def test_a_live_soft_holder_judged_gone_by_mistake(tmp_path, monkeypatch):
                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     line = holder.stdout.readline().decode('utf-8', 'replace')
     assert line.startswith('LOCKED soft'), line
+
+    # The pid the holder writes into its line: its own, which is not Popen.pid where python.exe is a launcher
+    # (a virtual environment on Windows starts the interpreter as a child of the launcher)
+    holder_pid = int(line.split()[2])
     try:
         monkeypatch.setattr(files, '_lock_soft_paths', {lock_file})
         monkeypatch.setattr(files, '_lock_pid_alive', lambda pid: False)
@@ -717,7 +725,7 @@ def test_a_live_soft_holder_judged_gone_by_mistake(tmp_path, monkeypatch):
             with pytest.raises(TimeoutError):
                 files.PathLock(lock_file).acquire(timeout=1)
             with open(lock_file) as f:
-                assert int(f.read().split()[0]) == holder.pid
+                assert int(f.read().split()[0]) == holder_pid
             assert os.listdir(str(tmp_path)) == [os.path.basename(lock_file)]
             holder.stdin.write(b'release\n')
             holder.stdin.flush()
@@ -837,6 +845,7 @@ def test_soft_lock_is_used_where_the_os_lock_is_refused(tmp_path, monkeypatch, c
     started = time.monotonic()
     lock = files.PathLock(lock_file).acquire(timeout=5)
     assert lock.mode == 'soft'
+
     # the empty file the refused attempt left is taken over at once, not watched like an empty file of unknown origin
     assert time.monotonic() - started < files.LOCK_SOFT_EMPTY_STALE_SECONDS / 2
     assert lock_file in files._lock_soft_paths
@@ -977,6 +986,7 @@ def test_a_forked_child_never_releases_the_lock_of_its_parent(tmp_path, monkeypa
             try:
                 lock.release()
                 code = 0 if os.path.exists(lock_file) and not lock.is_locked else 1
+
                 # ... and a process of its own: the parent's lock is held by another process for it, and it
                 # takes and beats soft locks of its own (the module's thread locks were made anew for it)
                 try:

@@ -117,6 +117,7 @@ def test_repo_reindex_rereads_the_descriptor_and_rescans_the_artifacts(cm, tmp_p
     assert uids(find(cm, 'kept')) == [kept]
     assert find(cm, 'removed')['return'] == 16
     assert 'removed' not in index_data(tmp_path, 'log')['lowercase_aliases']
+
     # The other repository's records are as they were
     assert index_data(tmp_path, 'log')['uids'][local_uid] == local_before
     assert repos_json(tmp_path) == repos_json(tmp_path)   # still readable

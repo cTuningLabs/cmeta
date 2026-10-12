@@ -85,8 +85,12 @@ def test_a_writer_waiting_for_a_file_lock_says_so_and_gives_up_after_the_limit(t
     assert 'stayed locked by another process (a test holding the file)' in r['error'], r['error']
     assert files.LOCK_TIMEOUT_ENV in r['error'], r['error']
     assert 4.5 <= elapsed < 60, elapsed
-    err = capfd.readouterr().err
-    assert 'is locked by another process (a test holding the file)' in err and 'the write of' in err, err
+
+    # The wait is a warning, not an error: on the standard output
+    captured = capfd.readouterr()
+    out = captured.out
+    assert 'cMeta warning: ' in out and 'is locked by another process (a test holding the file)' in out and 'the write of' in out, out
+    assert 'is locked by another process' not in captured.err, captured.err
     assert json.load(open(target)) == {'n': 0}
     assert not os.path.exists(target + '.tmp')
 

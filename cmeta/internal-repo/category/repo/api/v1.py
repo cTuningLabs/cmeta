@@ -494,6 +494,7 @@ class Category(InitCategory):
             # Check if repository was created
             if os.path.isdir(path):
                 path = os.path.abspath(os.path.normpath(path))
+
                 # Try to read _cmr.yaml or create it (if already exists, to get correct artifact name and UID)
                 repo_meta_desc_path = os.path.join(path, self.cm.cfg['repo_meta_desc'])
 
@@ -1257,6 +1258,7 @@ class Category(InitCategory):
         try:
             with zipfile.ZipFile(zip_file) as zf:
                 files_in_zip = [m.filename.replace('\\', '/') for m in zf.infolist() if not m.is_dir()]
+
                 # the descriptor closest to the root (fewest path separators) wins
                 for member in sorted(files_in_zip, key=lambda x: (x.count('/'), len(x))):
                     if member.rsplit('/', 1)[-1] in desc_basenames:
