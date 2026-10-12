@@ -129,11 +129,11 @@ b.release()
 '''
 
 SOFT_HOLDER = r'''
-import sys, time
+import os, sys, time
 from cmeta.utils import files
 files._lock_soft_paths.add(sys.argv[1])
 lock = files.PathLock(sys.argv[1]).acquire(timeout=60)
-print('LOCKED', lock.mode, flush=True)
+print('LOCKED', lock.mode, os.getpid(), flush=True)     # its own pid: in a venv on Windows Popen.pid is the launcher's
 sys.stdin.readline()                    # holds the lock until told to release it (or killed)
 lock.release()
 print('RELEASED', flush=True)
@@ -703,6 +703,10 @@ def test_a_live_soft_holder_judged_gone_by_mistake(tmp_path, monkeypatch):
                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     line = holder.stdout.readline().decode('utf-8', 'replace')
     assert line.startswith('LOCKED soft'), line
+
+    # The pid the holder writes into its line: its own, which is not Popen.pid where python.exe is a launcher
+    # (a virtual environment on Windows starts the interpreter as a child of the launcher)
+    holder_pid = int(line.split()[2])
     try:
         monkeypatch.setattr(files, '_lock_soft_paths', {lock_file})
         monkeypatch.setattr(files, '_lock_pid_alive', lambda pid: False)
@@ -721,7 +725,7 @@ def test_a_live_soft_holder_judged_gone_by_mistake(tmp_path, monkeypatch):
             with pytest.raises(TimeoutError):
                 files.PathLock(lock_file).acquire(timeout=1)
             with open(lock_file) as f:
-                assert int(f.read().split()[0]) == holder.pid
+                assert int(f.read().split()[0]) == holder_pid
             assert os.listdir(str(tmp_path)) == [os.path.basename(lock_file)]
             holder.stdin.write(b'release\n')
             holder.stdin.flush()

@@ -35,6 +35,11 @@ All notable changes to cMeta are documented here, newest first.
   entry that is being built, or whose last attempt failed, is never a duplicate. New in the cache category:
   `selection_identity(artifact)` and `duplicate_groups(artifacts, states)`. Tests:
   `tests/internal_repo_tests/test_cache_states.py`.
+- **A test of the soft lock passes in a virtual environment on Windows.** There `python.exe` is a launcher that
+  starts the interpreter as its child, so the pid of the process a test starts is not the pid the holder writes
+  into its lock file: `test_a_live_soft_holder_judged_gone_by_mistake` compared the two and failed (the CI and
+  the earlier runs used a Python without a venv). The holder now prints its own pid and the test compares with
+  that.
 
 
 ## 0.35.0
