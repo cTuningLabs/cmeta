@@ -198,6 +198,10 @@ cx cache show [--state=ok,running,crashed,failed,broken]   # every entry with it
 cx cache classify [--tags=...]          # the same as an API result ({'states': {uid: {'state', 'why', ...}}})
 cx cache clean                          # removes the crashed entries; --failed, --broken, --unfinished (the three),
                                         #   --all --force; a running entry is never removed
+cx cache show --duplicates              # the usable entries that answer the same requests (the same name without
+                                        #   its UID, task, tags, parameters and path), group by group; the first of a
+                                        #   group is the newest, the one a request takes
+cx cache clean --duplicates             # keeps the newest entry of each group and removes the others (nothing else)
 cx cache delete <alias-or-uid>          # waits for a running attempt (CMETA_LOCK_TIMEOUT) and fails while it goes on
 ```
 

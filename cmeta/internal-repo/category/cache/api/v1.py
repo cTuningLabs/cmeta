@@ -6,6 +6,9 @@ its result (RESULT_FILE) and, while an attempt runs, who runs it (RUNNING_FILE).
 derived from its tags, its files and the lock of its folder (see `classify`): the task engine reuses, resumes
 or waits for an entry by that state, `show` prints it, `clean` removes entries by it.
 
+Usable entries that answer the same requests are duplicates (see `selection_identity`): the task engine takes
+the newest, `show --duplicates` lists them group by group, `clean --duplicates` removes the older ones.
+
 cMeta author and developer: (C) 2025-2026 Grigori Fursin
 
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
@@ -132,6 +135,122 @@ def entry_state(
             return info
 
     return info
+
+
+# The tags that tell the state of an entry, not what it holds
+STATE_TAGS = ('tmp', 'failed')
+
+
+def _without_own_folder(
+    value,  # A value of the entry's meta (a dict, a list or a leaf).
+    folder: str,  # The folder of the entry (normalized), or '' to leave the values as they are.
+):
+    """
+        The value with every path inside the entry's own folder written from `<entry>`: a tool installed into
+        its entry records `tool_path` there, and that path differs in two entries that hold the same thing.
+    """
+    if isinstance(value, dict):
+        return {str(k): _without_own_folder(v, folder) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [_without_own_folder(v, folder) for v in value]
+
+    if isinstance(value, str) and folder and (os.sep in value or '/' in value):
+        v = os.path.normcase(os.path.normpath(value))
+
+        if v == folder:
+            return '<entry>'
+
+        if v.startswith(folder + os.sep):
+            return '<entry>/' + v[len(folder) + 1:].replace(os.sep, '/')
+
+    return value
+
+
+def selection_identity(
+    artifact: dict,  # A cache entry, as `find` returns it ('path', 'cmeta', 'cmeta_ref_parts').
+):
+    """
+        What tells one cache entry from another when the task engine looks for the entry of a request: its
+        name, the task it belongs to (`cref`), its tags without the state tags, its parameters, the path it
+        was made for and its `sort` value. Two entries with the same identity answer the same requests and
+        are equal in the order of selection: only the time they were made tells them apart.
+
+        The name is the alias without the UID at its end. An entry the task engine names itself is
+        `<task>--<what>--<uid>`: the UID says nothing, and two such entries can hold the same thing. An entry
+        with a name of its own (the build workspace of a program, `task--program--<program>`) is found by
+        that name and by nothing else, so its whole alias is its identity: it is nobody's duplicate.
+
+        Returns:
+            str: A text that is the same for such entries.
+    """
+    path = artifact.get('path') or ''
+    cmeta = artifact.get('cmeta', {}) or {}
+    parts = artifact.get('cmeta_ref_parts', {}) or {}
+
+    folder = os.path.normcase(os.path.normpath(path)) if path else ''
+
+    uid = str(parts.get('artifact_uid') or '').lower()
+    name = str(parts.get('artifact_alias') or '').lower()
+
+    if uid and name.endswith(uid):
+        name = name[:-len(uid)]
+
+    cref = cmeta.get('cref') or {}
+
+    identity = {
+        'name': name,
+        'task': [cref.get('category_uid'), cref.get('artifact_uid')],
+        'tags': sorted(str(t) for t in (cmeta.get('tags', []) or []) if t not in STATE_TAGS),
+        'params': _without_own_folder(cmeta.get('params', {}) or {}, folder),
+        'path': _without_own_folder(cmeta.get('path'), folder),
+        'sort': cmeta.get('sort'),
+    }
+
+    return json.dumps(identity, sort_keys=True, default=str)
+
+
+def duplicate_groups(
+    artifacts: list,  # Cache entries, as `find` returns them.
+    states: dict = None,  # Their states by uid, as `classify` returns them: only the usable (`ok`) ones count.
+):
+    """
+        The usable entries that no request can tell apart (`selection_identity`), group by group. Each group
+        comes in the order of the task engine's selection - the newest first (`creation_timestamp`), then by
+        alias and uid - so its first entry is the one a request takes and the others are its duplicates.
+
+        Returns:
+            list: [[entry, entry, ...], ...] - the groups of two entries or more, by the alias of their first.
+    """
+    by_identity = {}
+
+    for a in artifacts:
+        uid = a['cmeta_ref_parts']['artifact_uid']
+
+        if states is not None and states.get(uid, {}).get('state') != 'ok':
+            continue
+
+        by_identity.setdefault(selection_identity(a), []).append(a)
+
+    def by_name(a):
+        alias = a['cmeta_ref_parts'].get('artifact_alias')
+        return (alias is None, str(alias or ''), a['cmeta_ref_parts']['artifact_uid'])
+
+    groups = []
+
+    for members in by_identity.values():
+        if len(members) < 2:
+            continue
+
+        # By name first; the stable sort by time then keeps that order among entries made at the same time
+        members.sort(key=by_name)
+        members.sort(key=lambda a: str(a.get('cmeta', {}).get('creation_timestamp') or ''), reverse=True)
+
+        groups.append(members)
+
+    groups.sort(key=lambda g: by_name(g[0]))
+
+    return groups
 
 
 class Category(InitCategory):
@@ -274,9 +393,14 @@ class Category(InitCategory):
         show_tags: bool = False,  # If True, print artifact tags in output.
         skip_uids: bool = False,  # If True, omit UIDs from printed entries.
         state: str = None,  # Show only the entries in these states (comma-separated: ok, running, crashed, failed, broken).
+        duplicates: bool = False,  # If True, show only the usable entries that no request can tell apart, group by group.
     ):
         """
             Show cache entries with their state (ok, running, crashed, failed, broken) and parameters.
+
+            `--duplicates` shows only the usable entries that answer the same requests (the same name without
+            its UID, task, tags, parameters and path - see `selection_identity`), group by group and newest
+            first: the first of a group is the one the task engine takes, `clean --duplicates` removes the others.
 
             Args:
                 ctx (dict): cMeta context.
@@ -288,9 +412,11 @@ class Category(InitCategory):
                 show_tags (bool): If True, print artifact tags in output.
                 skip_uids (bool): If True, omit UIDs from printed entries.
                 state (str): Show only the entries in these states (comma-separated).
+                duplicates (bool): Show only the duplicates, group by group.
 
             Returns:
-                dict: Dictionary with 'return': 0, 'artifacts' (the entries shown) and 'states'.
+                dict: Dictionary with 'return': 0, 'artifacts' (the entries shown) and 'states'; with
+                      `duplicates` also 'duplicates' (the uids of each group, the newest first).
 
             Raises:
                 Exception: Propagated runtime errors, if any.
@@ -317,7 +443,8 @@ class Category(InitCategory):
 
         r = self.cm.access(p)
         if r['return']>0:
-            if r['return'] != 16 or wanted is None: return r
+            # No entry at all is an answer to a question about states or duplicates, not an error
+            if r['return'] != 16 or (wanted is None and not duplicates): return r
             r['artifacts'] = []
 
         artifacts = r.get('artifacts', [])
@@ -329,12 +456,25 @@ class Category(InitCategory):
         if wanted is not None:
             artifacts = [a for a in artifacts if states[a['cmeta_ref_parts']['artifact_uid']]['state'] in wanted]
 
-        xsort_keys = sort_keys if sort_keys else ["@cmeta.params.name", "@cmeta.params.version-", "@cmeta.params.tag-"]
+        # --duplicates: only the entries of the groups, group by group, in the order of the selection
+        groups = None
+        place = {}
 
-        artifacts = sorted(
-            artifacts,
-            key=lambda a: self.cm.utils.common.build_sort_key(a, xsort_keys)
-        )
+        if duplicates:
+            groups = duplicate_groups(artifacts, states)
+            artifacts = [a for group in groups for a in group]
+
+            for g, group in enumerate(groups):
+                for n, a in enumerate(group):
+                    place[a['cmeta_ref_parts']['artifact_uid']] = (g + 1, n + 1, len(group))
+
+        else:
+            xsort_keys = sort_keys if sort_keys else ["@cmeta.params.name", "@cmeta.params.version-", "@cmeta.params.tag-"]
+
+            artifacts = sorted(
+                artifacts,
+                key=lambda a: self.cm.utils.common.build_sort_key(a, xsort_keys)
+            )
 
         num_artifacts = len(artifacts)
         index = 1
@@ -361,6 +501,12 @@ class Category(InitCategory):
                 why = f" - {info['why']}" if info.get('why') and info['state'] != 'ok' else ''
                 text += f"\n      * state = {info['state']}{why}"
 
+                if uid in place:
+                    group, number, size = place[uid]
+                    made = cmeta.get('creation_timestamp') or 'at an unknown time'
+                    what = 'the newest: the one a request takes' if number == 1 else 'older: "clean --duplicates" removes it'
+                    text += f"\n      * duplicate = group {group}, {number} of {size}, made {made} - {what}"
+
                 xparams = {}
                 for cmeta_params_key in ['params', 'tags', 'path']:
                     if cmeta_params_key in cmeta:
@@ -385,7 +531,21 @@ class Category(InitCategory):
 
             index += 1
 
-        return {'return':0, 'artifacts': artifacts, 'states': states}
+        result = {'return':0, 'artifacts': artifacts, 'states': states}
+
+        if duplicates:
+            result['duplicates'] = [[a['cmeta_ref_parts']['artifact_uid'] for a in group] for group in groups]
+
+            if con:
+                if groups:
+                    older = sum(len(group) - 1 for group in groups)
+                    print ('')
+                    print (f'{len(groups)} group(s) of entries that answer the same requests: '
+                           f'"clean --duplicates" keeps the newest of each group and removes the other {older}')
+                else:
+                    print ('no duplicates among the usable entries')
+
+        return result
 
     ############################################################
     def clean(
@@ -399,6 +559,11 @@ class Category(InitCategory):
             three. A running entry is never removed (its process holds the folder's lock); `--all` with
             `--force` removes every entry that is not running. `arg1`, `tags` and `match` narrow the
             selection as for `find`.
+
+            `--duplicates` removes the usable entries that another, newer entry makes redundant: of the
+            entries that answer the same requests (`show --duplicates` lists the groups) the newest stays -
+            the one the task engine takes - and the others go. Alone it removes nothing else; with a state
+            flag both are removed. What was installed into a removed entry is set up again on demand.
 
             Args:
                 params (dict): cMeta parameters.
@@ -416,13 +581,15 @@ class Category(InitCategory):
         ctx = params['ctx']
         con = ctx['control'].get('con', False)
 
+        duplicates = p.pop('duplicates', False)
+
         wanted = set()
         if p.pop('crashed', False): wanted.add('crashed')
         if p.pop('failed', False): wanted.add('failed')
         if p.pop('broken', False): wanted.add('broken')
         if p.pop('unfinished', False): wanted.update(('crashed', 'failed', 'broken'))
         if p.pop('all', False): wanted.update(('crashed', 'failed', 'broken', 'ok'))
-        if not wanted:
+        if not wanted and not duplicates:
             wanted = {'crashed'}
 
         if 'ok' in wanted and not (p.get('force') or p.get('f')):
@@ -430,6 +597,17 @@ class Category(InitCategory):
 
         r = self.classify_(ctx, arg1 = p.get('arg1'), tags = p.get('tags'), match = p.get('match'))
         if r['return']>0: return r
+
+        # The older entries of every group of duplicates: uid -> the alias of the entry that stays
+        redundant = {}
+
+        if duplicates:
+            for group in duplicate_groups(r['artifacts'], r['states']):
+                parts = group[0]['cmeta_ref_parts']
+                newest = parts.get('artifact_alias') or parts['artifact_uid']
+
+                for a in group[1:]:
+                    redundant[a['cmeta_ref_parts']['artifact_uid']] = newest
 
         removed = []
         skipped = {}
@@ -445,7 +623,7 @@ class Category(InitCategory):
                     print (f'skipping {alias}: an attempt is running ({info["why"]})')
                 continue
 
-            if info['state'] not in wanted:
+            if info['state'] not in wanted and uid not in redundant:
                 continue
 
             rr = self.cm.access({'category': ctx['category'],
@@ -461,10 +639,12 @@ class Category(InitCategory):
 
             removed.append(uid)
             if con:
-                print (f'removed {alias} ({info["state"]})')
+                what = info['state'] if info['state'] in wanted else f'a duplicate of {redundant[uid]}'
+                print (f'removed {alias} ({what})')
 
         if con and not removed:
-            print (f'nothing to remove (states: {", ".join(sorted(wanted))})')
+            looked_for = sorted(wanted) + (['duplicates'] if duplicates else [])
+            print (f'nothing to remove (states: {", ".join(looked_for)})')
 
         return {'return':0, 'removed': removed, 'skipped': skipped}
 

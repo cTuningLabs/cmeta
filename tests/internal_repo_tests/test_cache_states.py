@@ -185,6 +185,142 @@ def test_a_locked_entry_is_running_and_is_neither_cleaned_nor_deleted(cm, tmp_pa
     assert not os.path.isdir(folder) and aliases_in_index(tmp_path) == set()
 
 
+def twin(cm, stem, uid, params, tags=('task', 'd'), **more):
+    """
+    A usable entry named as the task engine names its entries - `<stem><uid>` - with a UID of the test's
+    choice, so that the order of the aliases is known. The pause makes the next entry newer on every clock
+    (Windows before Python 3.13 ticks every 15 ms).
+    """
+    folder, made_uid = make_entry(cm, f'{stem}{uid},{uid}', tags=list(tags), result={'return': 0}, params=params, **more)
+    assert made_uid == uid, made_uid
+
+    time.sleep(0.05)
+
+    return folder, uid
+
+
+def installed_tool(cm, stem, uid, name):
+    """A usable entry of a tool installed into the entry itself: its `tool_path` is inside its own folder."""
+    folder, uid = twin(cm, stem, uid, {'name': name, 'version': '2'}, tags=('task', 't'))
+
+    tool = os.path.join(folder, 'content', 'bin', name)
+    os.makedirs(os.path.dirname(tool))
+    with open(tool, 'w') as f:
+        f.write('tool')
+
+    r = cm.access({'category': CATEGORY, 'command': 'update', 'arg1': uid, 'meta': {'params': {'tool_path': tool}}, 'con': False})
+    assert r['return'] == 0, r.get('error')
+
+    return folder, uid
+
+
+def test_duplicates_are_the_usable_entries_that_answer_the_same_requests(cm, tmp_path):
+    params = {'name': 'd', 'version': '1', 'with': {'compute': ['cpu']}}
+
+    # Three entries of one configuration, named as the task engine names them (the UID at the end). The order
+    # of their aliases - 1111, 5555, ffff - says nothing: the time of creation orders them
+    oldest, oldest_uid = twin(cm, 'task--d--', '5555555555555555', params)
+    middle, middle_uid = twin(cm, 'task--d--', '1111111111111111', params)
+    newest, newest_uid = twin(cm, 'task--d--', 'ffffffffffffffff', params)
+
+    # Not duplicates of them: another version, other tags, another path, a failed attempt of the same configuration
+    other_version, other_version_uid = twin(cm, 'task--d--', '2222222222222222', dict(params, version='2'))
+    other_tags, other_tags_uid = twin(cm, 'task--d--', '3333333333333333', params, tags=('task', 'e'))
+    elsewhere, elsewhere_uid = twin(cm, 'task--d--', '4444444444444444', params, path=str(tmp_path / 'elsewhere'))
+    failed, failed_uid = make_entry(cm, 'task--d--6666666666666666,6666666666666666', tags=['task', 'd', 'failed'],
+                                    result={'return': 1, 'error': 'boom'}, params=params)
+
+    # Nor is an entry with a name of its own, whatever its tags and parameters: it is found by that name. The
+    # build workspaces of two programs have the same tags and no parameters, and they are two things (a first
+    # version of the rule called the 20 workspaces of a real home duplicates of each other)
+    named, named_uid = make_entry(cm, 'task--d--workspace', tags=['task', 'd'], result={'return': 0}, params=params)
+    program_one, program_one_uid = make_entry(cm, 'task--program--one', tags=['task', 'program'])
+    program_two, program_two_uid = make_entry(cm, 'task--program--two', tags=['task', 'program'])
+
+    # A tool installed twice, each into its own entry: the same thing although the recorded paths differ
+    tool_old, tool_old_uid = installed_tool(cm, 'task--t--', 'aaaaaaaaaaaaaaaa', 'tool')
+    tool_new, tool_new_uid = installed_tool(cm, 'task--t--', '0a0a0a0a0a0a0a0a', 'tool')
+
+    r = cm.access({'category': CATEGORY, 'command': 'show', 'duplicates': True, 'con': False})
+    assert r['return'] == 0, r.get('error')
+
+    # Group by group (by the alias of the entry that stays), the newest first in each
+    assert r['duplicates'] == [[newest_uid, middle_uid, oldest_uid], [tool_new_uid, tool_old_uid]], r['duplicates']
+    assert [a['cmeta_ref_parts']['artifact_uid'] for a in r['artifacts']] == [newest_uid, middle_uid, oldest_uid, tool_new_uid, tool_old_uid]
+
+    # Narrowed like every find
+    r = cm.access({'category': CATEGORY, 'command': 'show', 'duplicates': True, 'tags': 'd', 'con': False})
+    assert r['return'] == 0 and r['duplicates'] == [[newest_uid, middle_uid, oldest_uid]], r
+
+    # clean --duplicates: the newest of each group stays, nothing else goes (not even the failed entry)
+    r = cm.access({'category': CATEGORY, 'command': 'clean', 'duplicates': True, 'con': False})
+    assert r['return'] == 0 and set(r['removed']) == {middle_uid, oldest_uid, tool_old_uid}, r
+
+    assert aliases_in_index(tmp_path) == {'task--d--ffffffffffffffff', 'task--d--2222222222222222', 'task--d--3333333333333333',
+                                          'task--d--4444444444444444', 'task--d--6666666666666666', 'task--d--workspace',
+                                          'task--program--one', 'task--program--two', 'task--t--0a0a0a0a0a0a0a0a'}
+    assert not os.path.isdir(oldest) and not os.path.isdir(middle) and not os.path.isdir(tool_old)
+    assert os.path.isdir(newest) and os.path.isdir(tool_new) and os.path.isdir(failed)
+    assert os.path.isdir(named) and os.path.isdir(program_one) and os.path.isdir(program_two)
+
+    # Nothing left to remove
+    r = cm.access({'category': CATEGORY, 'command': 'show', 'duplicates': True, 'con': False})
+    assert r['return'] == 0 and r['duplicates'] == [] and r['artifacts'] == []
+    r = cm.access({'category': CATEGORY, 'command': 'clean', 'duplicates': True, 'con': False})
+    assert r['return'] == 0 and r['removed'] == []
+
+    # A plain clean still removes the crashed entries only, and a state flag goes with --duplicates
+    more, more_uid = twin(cm, 'task--d--', '7777777777777777', params)
+    r = cm.access({'category': CATEGORY, 'command': 'clean', 'con': False})
+    assert r['return'] == 0 and r['removed'] == []
+    r = cm.access({'category': CATEGORY, 'command': 'clean', 'duplicates': True, 'failed': True, 'con': False})
+    assert r['return'] == 0 and set(r['removed']) == {newest_uid, failed_uid}, r
+    assert os.path.isdir(more) and not os.path.isdir(newest)
+
+
+def test_a_running_entry_is_no_duplicate_and_what_show_prints(cm, tmp_path, capsys):
+    params = {'name': 'r', 'version': '1'}
+
+    # A cache without any entry has no duplicates: an answer, not the "not found" of a plain show
+    r = cm.access({'category': CATEGORY, 'command': 'show', 'duplicates': True, 'con': False})
+    assert r['return'] == 0 and r['duplicates'] == [] and r['artifacts'] == [], r
+    r = cm.access({'category': CATEGORY, 'command': 'clean', 'duplicates': True, 'con': False})
+    assert r['return'] == 0 and r['removed'] == [], r
+
+    older, older_uid = twin(cm, 'task--r--', '1111111111111111', params, tags=('task', 'r'))
+    newer, newer_uid = twin(cm, 'task--r--', 'eeeeeeeeeeeeeeee', params, tags=('task', 'r'))
+
+    # The newer one is being rebuilt by another process: it is not usable now, so the older one has no duplicate
+    holder = hold(files._get_lockfile_path(os.path.normpath(newer)), 'task run r by pid 4242 on h since t')
+    try:
+        r = cm.access({'category': CATEGORY, 'command': 'show', 'duplicates': True, 'con': False})
+        assert r['return'] == 0 and r['duplicates'] == [], r
+
+        r = cm.access({'category': CATEGORY, 'command': 'clean', 'duplicates': True, 'con': False})
+        assert r['return'] == 0 and r['removed'] == [] and newer_uid in r['skipped'], r
+        assert os.path.isdir(older) and os.path.isdir(newer)
+    finally:
+        stop(holder)
+
+    # With the console: each entry says its place in its group, the last line what a clean would do
+    capsys.readouterr()
+    r = cm.access({'category': CATEGORY, 'command': 'show', 'duplicates': True, 'con': True})
+    assert r['return'] == 0 and r['duplicates'] == [[newer_uid, older_uid]]
+
+    out = capsys.readouterr().out
+    assert 'duplicate = group 1, 1 of 2, made 20' in out and 'the newest: the one a request takes' in out, out
+    assert 'duplicate = group 1, 2 of 2, made 20' in out and 'older: "clean --duplicates" removes it' in out, out
+    assert '1 group(s) of entries that answer the same requests' in out and 'removes the other 1' in out, out
+    assert out.index('task--r--eeeeeeeeeeeeeeee') < out.index('task--r--1111111111111111'), out
+
+    r = cm.access({'category': CATEGORY, 'command': 'clean', 'duplicates': True, 'con': True})
+    assert r['return'] == 0 and r['removed'] == [older_uid]
+    assert 'removed task--r--1111111111111111 (a duplicate of task--r--eeeeeeeeeeeeeeee)' in capsys.readouterr().out
+
+    r = cm.access({'category': CATEGORY, 'command': 'show', 'duplicates': True, 'con': True})
+    assert r['return'] == 0 and 'no duplicates among the usable entries' in capsys.readouterr().out
+
+
 def test_delete_holds_the_folder_lock_across_record_and_folder(cm, tmp_path):
     """safe_delete_directory with the caller's lock: the lock is used, not released, and the folder goes."""
     folder, uid = make_entry(cm, 'task--z--plain', result={'return': 0})

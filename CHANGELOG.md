@@ -23,6 +23,18 @@ All notable changes to cMeta are documented here, newest first.
   `2>&1`, CI steps - no longer see one where there is none. `--json` is unchanged: the JSON follows the
   command's console output and the line of dashes. New: `utils.common.console_line(message, kind)`. Tests: the
   notices in `test_utils_files_writes.py`, `test_integration_repo_unreachable.py`, `test_integration_migrate.py`.
+- **`cx cache show --duplicates` and `cx cache clean --duplicates`.** Two usable cache entries are
+  duplicates when no request can tell them apart: the same name (the alias without the UID at its end), task,
+  tags (the state tags aside), parameters and path - a path inside the entry's own folder, such as the
+  `tool_path` of a tool installed into its entry, counts as the same in both. An entry with a name of its
+  own (the build workspace of a program, `task--program--<program>`) is found by that name and is nobody's
+  duplicate. Duplicates come from a run with `--new` or from identical requests that ran at once before
+  cmeta-aops 0.45. `show --duplicates` lists them group by group, the newest first (the entry the
+  task engine of cmeta-aops takes), and says which one stays; `clean --duplicates` keeps the newest of each
+  group and removes the others, and nothing else (with a state flag such as `--failed` both are removed). An
+  entry that is being built, or whose last attempt failed, is never a duplicate. New in the cache category:
+  `selection_identity(artifact)` and `duplicate_groups(artifacts, states)`. Tests:
+  `tests/internal_repo_tests/test_cache_states.py`.
 
 
 ## 0.35.0
