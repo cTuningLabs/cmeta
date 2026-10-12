@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.35.0.1)
+## 0.35.1
 - **A new home says where it is and what chose it.** The home is chosen as before - `CMETA_HOME`, else
   `<VIRTUAL_ENV>/CMETA`, else `<CONDA_PREFIX>/CMETA`, else `CMETA_HOME2`, else `~/CMETA` - and nothing of that
   changes. What is new is that cMeta says so: the command that sets up a new home (no `repos.json` yet)
