@@ -12,6 +12,10 @@ Functions
 
 .. autofunction:: cmeta.config.check_init_vars_from_env
 
+.. autofunction:: cmeta.config.home_choice
+
+.. autofunction:: cmeta.config.home_from_env
+
 .. autofunction:: cmeta.config.is_on
 
 .. autofunction:: cmeta.config.set_logging

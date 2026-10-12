@@ -18,6 +18,8 @@ Functions
 
 .. autofunction:: cmeta.utils.common.compare_versions
 
+.. autofunction:: cmeta.utils.common.console_line
+
 .. autofunction:: cmeta.utils.common.copy_text_to_clipboard
 
 .. autofunction:: cmeta.utils.common.deep_merge
