@@ -190,6 +190,7 @@ def test_the_record_is_the_one_of_a_full_reindex(cm, tmp_path):
     data_full = index_data(tmp_path)
     assert data_full['uids'] == data_reindex['uids']
     assert data_full['lowercase_aliases'] == data_reindex['lowercase_aliases']
+
     # The alias keeps the case of the folder, the lowercase form is recorded when it differs
     parts = after_reindex['By-Hand']['cmeta_ref_parts']
     assert parts['artifact_alias'] == 'By-Hand' and parts['artifact_alias_lowercase'] == 'by-hand'
@@ -227,8 +228,10 @@ def test_a_folder_renamed_by_hand_is_found_by_its_new_name(cm, tmp_path):
     assert record(cm, uid)['cmeta_ref_parts']['artifact_alias'] == 'new-name'
     assert record(cm, uid)['cmeta']['payload'] == 'x'
     assert 'old-name' not in index_data(tmp_path)['lowercase_aliases']
+
     # alias,UID with the old alias still resolves: the UID is authoritative
     assert uids(find(cm, f'old-name,{uid}')) == [uid]
+
     # The other artifact is untouched
     assert uids(find(cm, 'other')) == [other]
 
@@ -265,6 +268,7 @@ def test_a_folder_renamed_twice_loses_both_old_aliases(cm, tmp_path):
     uid = make(cm, 'first', yaml=True)
     base = tmp_path / 'repos' / 'local' / 'log'
     (base / 'first').rename(base / 'second')
+
     # The plain "index" of the renamed folder keeps the old alias (today's behaviour, unchanged)
     r = access(cm, category='log', command='index', arg1='local:second')
     assert r['return'] == 0, r.get('error')
@@ -295,6 +299,7 @@ def test_a_case_only_rename_follows_the_folder(cm, tmp_path):
     assert parts['artifact_alias'] == 'mixedcase'
     assert 'artifact_alias_lowercase' not in parts
     assert os.path.basename(record(cm, uid)['path']) == 'mixedcase'
+
     # Lookups are case-insensitive either way
     assert uids(find(cm, 'MixedCase')) == [uid] and uids(find(cm, 'MIXEDCASE')) == [uid]
 
@@ -304,6 +309,7 @@ def test_two_spellings_on_a_case_sensitive_file_system(cm, tmp_path):
         pytest.skip('the file system folds case: two spellings cannot coexist')
     base = tmp_path / 'repos' / 'local' / 'log'
     uid1 = make(cm, 'Spell', yaml=True)
+
     # cMeta itself refuses the second spelling (the index is case-insensitive): it can only be made by hand
     r = access(cm, category='log', command='create', arg1='local:spell', yaml=True)
     assert r['return'] == 8
@@ -319,6 +325,7 @@ def test_two_spellings_on_a_case_sensitive_file_system(cm, tmp_path):
     assert record(cm, uid1)['cmeta_ref_parts']['artifact_alias'] == 'Spell'
     assert record(cm, 'dddddddddddddddd')['cmeta_ref_parts']['artifact_alias'] == 'spell'
     assert sorted(index_data(tmp_path)['lowercase_aliases']['spell']) == sorted([uid1, 'dddddddddddddddd'])
+
     # A lookup by the alias is ambiguous, as after a full reindex
     assert uids(find(cm, 'Spell')) == sorted([uid1, 'dddddddddddddddd'])
     both = {uid: record(cm, uid) for uid in (uid1, 'dddddddddddddddd')}
@@ -404,6 +411,7 @@ def test_a_rename_by_hand_inside_a_sharded_category(cm, tmp_path):
     plug(cm, repo)
     uid = make(cm, 'abcdef', category='shard', repo='shard', yaml=True)
     folder = pytest.importorskip('pathlib').Path(find(cm, 'abcdef', category='shard')['artifacts'][0]['path'])
+
     # Renamed in place: the folder stays in the "ab" shard although the new name would belong to "xy"
     folder.rename(folder.parent / 'xyzdef')
 
@@ -414,6 +422,7 @@ def test_a_rename_by_hand_inside_a_sharded_category(cm, tmp_path):
     assert rec['cmeta_ref_parts']['artifact_alias'] == 'xyzdef' and rec['sharding_slices_num'] == 1
     assert same(rec['path']) == same(folder.parent / 'xyzdef')
     assert uids(find(cm, 'xyzdef', category='shard')) == [uid]
+
     # The same record as the full reindex, which also finds the folder where it is
     assert access(cm, reindex=True)['return'] == 0
     assert record(cm, uid, category='shard') == rec
@@ -553,6 +562,7 @@ def test_a_folder_replaced_by_another_artifact(cm, tmp_path):
     r = reindex(cm, 'slot')
     assert r['return'] == 0, r.get('error')
     assert uids(r) == ['aaaaaaaaaaaaaaaa']
+
     # The record of the artifact that is not there any more is dropped, and said
     assert len(r['dropped_records']) == 1 and uid in r['dropped_records'][0]['ref'] and 'aaaaaaaaaaaaaaaa' in r['dropped_records'][0]['now']
     assert uids(find(cm, 'slot')) == ['aaaaaaaaaaaaaaaa']
@@ -560,6 +570,7 @@ def test_a_folder_replaced_by_another_artifact(cm, tmp_path):
     assert uid not in index_data(tmp_path)['uids']
     assert index_data(tmp_path)['lowercase_aliases']['slot'] == ['aaaaaaaaaaaaaaaa']
     assert uids(find(cm, 'other')) == [other]
+
     # The new artifact's folder is untouched
     assert (base / 'slot' / '_cmeta.yaml').is_file()
 
@@ -670,6 +681,7 @@ def test_wildcards_tags_and_a_repository(cm, tmp_path):
     assert r['return'] == 0, r.get('error')
     assert uids(r) == [s1]
     assert 'owner2' in record(cm, s1)['cmeta'] and 'owner2' not in record(cm, a1)['cmeta']
+
     # The same alias in two repositories: both UIDs stay under the alias
     assert sorted(index_data(tmp_path)['lowercase_aliases']['wild-1']) == sorted([a1, s1])
 
@@ -807,9 +819,11 @@ def test_a_migration_stub_is_reindexed_as_itself(cm, tmp_path):
 
 def test_index_and_update_are_unchanged(cm, tmp_path):
     uid = make(cm, 'kept', yaml=True)
+
     # "index" still refuses an artifact that is indexed
     r = access(cm, category='log', command='index', arg1='local:kept')
     assert r['return'] == 8
+
     # an empty "update" still refreshes the record and rewrites the file (its timestamp)
     f = meta_file(tmp_path / 'repos' / 'local' / 'log' / 'kept')
     before = file_state(f)

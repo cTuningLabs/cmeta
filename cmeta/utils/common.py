@@ -240,12 +240,14 @@ def deep_remove(
         if isinstance(value, Mapping) and isinstance(target[key], Mapping):
             # Recursively remove from nested dictionaries
             deep_remove(target[key], value)
+
             # Remove the key if the nested dict is now empty
             if not target[key]:
                 del target[key]
         elif isinstance(value, list) and isinstance(target[key], list):
             # Remove list elements that exist in source from target
             target[key] = [item for item in target[key] if item not in value]
+
             # Remove the key if the list is now empty
             if not target[key]:
                 del target[key]
@@ -532,6 +534,7 @@ def detect_cid_in_the_current_directory(
                      'category_alias':category_alias}
 
         r = cmeta.repos.find(cmeta_ref)
+
         # If fails, means that we don't find category but we can still continue ...
         if r['return'] == 0:
             artifacts = r['artifacts']
@@ -667,6 +670,7 @@ def compare_versions(
                 Raises:
                     Exception: Propagated runtime errors, if any.
             """
+
             # Match numeric parts and optional suffix
             match = re.match(r'^([\d.]+)(-.*)?$', version.strip())
             if not match:
@@ -923,6 +927,7 @@ def value_matches(
         Raises:
             Exception: Propagated runtime errors, if any.
     """
+
     # Dict → recursive match
     if isinstance(query_value, dict):
         if not isinstance(data_value, dict):

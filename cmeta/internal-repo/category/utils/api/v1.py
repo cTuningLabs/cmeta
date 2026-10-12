@@ -10,6 +10,7 @@ import os
 from cmeta.category import InitCategory
 
 from cmeta.utils import names
+
 # Aliased - this category has its own "common" module next to it
 from cmeta.utils import common as utils_common
 

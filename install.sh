@@ -133,6 +133,7 @@ parse_args() {
     # the only cure is a reinstall. Drop it with --no-extras, or replace the
     # whole list with --extras.
     WITH_DEPS=0; EXTRAS="server"; EDITABLE=0
+
     # No home by default: cMeta finds one on its own (~/CMETA, or <venv>/CMETA
     # while a virtual environment is active). --home / --home2 set one.
     HOME_DIR=""; SET_HOME=0; HOME_VAR=CMETA_HOME; WANT_AOPS=0
@@ -279,6 +280,7 @@ install_deps() {
     local pkgs=""
     git_works || pkgs="git"
     have curl || pkgs="$pkgs curl"
+
     # astral's uv installer unpacks a .tar.gz, and minimal images (openSUSE's)
     # ship neither tar nor gzip.
     have tar  || pkgs="$pkgs tar"
@@ -337,6 +339,7 @@ install_uv() {
         return 0
     fi
     step "Installing uv"
+
     # curl, or wget where there is no curl: Ubuntu and Debian desktops ship
     # wget but not curl, and astral's installer itself works with either.
     #

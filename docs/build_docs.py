@@ -241,6 +241,7 @@ class CMataDocBuilder:
         Args:
             module_files: List of generated RST filenames
         """
+
         # Get version information
         try:
             version_file = self.cmeta_path / "version.py"
@@ -275,6 +276,7 @@ class CMataDocBuilder:
         Args:
             guide_entries: Toctree entries for the copied Markdown guides.
         """
+
         # Check if index.rst already exists and has manual edits (e.g., PDF download links)
         index_file = self.docs_dir / "index.rst"
         
@@ -282,6 +284,7 @@ class CMataDocBuilder:
             try:
                 with open(index_file, 'r', encoding='utf-8') as f:
                     existing_content = f.read()
+
                 # If the file contains "Download Documentation", preserve it
                 if "Download Documentation" in existing_content:
                     print("Preserving existing index.rst with manual edits")

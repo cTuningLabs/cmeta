@@ -420,6 +420,7 @@ def download(
                             break
                         out_file.write(chunk)
                         downloaded += len(chunk)
+
                         # tqdm without a total (no Content-Length) refuses bool(): compare with None
                         if progress is not None:
                             progress.update(len(chunk))

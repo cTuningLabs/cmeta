@@ -244,6 +244,7 @@ def test_graph_draws_uses_as_directed_edges(cm):
 def test_graph_draws_ai_uses_as_directed_edges_and_the_detail_lists_them(cm):
     a, pa = make(cm, 'ai-engine')
     b, pb = make(cm, 'ai-plugin')
+
     # the plugin's AI sessions read the engine's memory: a one-way `ai_uses` next to the two-way connection
     with open(os.path.join(pb, '_desc.json'), 'w', encoding='utf-8') as f:
         json.dump({'connections': ['log::ai-engine,%s' % a], 'ai_uses': ['log,::ai-engine,%s' % a]}, f)

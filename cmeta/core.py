@@ -809,6 +809,7 @@ class CMeta:
                     x = command
                     if command_alias != command:
                         x += f' ({command_alias})'
+
                     # Shouldn't fail in debug since it's used to check multiple functions ...
                     return self.error(f'command "{x}" doesn\'t exist in category API "{category_api_path}"', 32, fail_on_error=False)
 

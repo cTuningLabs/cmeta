@@ -73,6 +73,7 @@ def test_as_on_a_french_windows(monkeypatch):
     assert cm_sys.decode_output(b'456 GB free') == '456 GB free'
     assert cm_sys.decode_output(b'\xe9') == 'Ú'                               # one CP1252 byte reads as CP850 first (Ú): a known limit, never an error
     assert isinstance(cm_sys.decode_output(b'\xff\xfe\x00\x81'), str)
+
     # one run, two tools: git prints UTF-8, a cmd-line tool prints the console's page - each line is read right
     assert cm_sys.decode_output(b'utf8: caf\xc3\xa9\r\nraw: \x90t\x82\r\n') == 'utf8: café\nraw: Été\n'
 

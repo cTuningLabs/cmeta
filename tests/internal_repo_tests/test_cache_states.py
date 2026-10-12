@@ -106,6 +106,7 @@ def test_the_states_of_cache_entries(cm, tmp_path):
     failed_tag, failed_tag_uid = make_entry(cm, 'task--x--failed', tags=['failed'], result={'return': 1, 'error': 'boom'})
     failed_result, failed_result_uid = make_entry(cm, 'task--x--failed-legacy', result={'return': 2, 'error': 'old'})
     crashed, crashed_uid = make_entry(cm, 'task--x--crashed', tags=['tmp'], running={'pid': 1, 'host': 'h', 'started': 't'})
+
     # a result missing from an entry the task engine made (its request record, or the ctx file of an earlier
     # attempt) is broken; a cache artifact that never carries a result (a program's build workspace) is not
     no_result, no_result_uid = make_entry(cm, 'task--x--broken-no-result', request_params={'name': 'x'})

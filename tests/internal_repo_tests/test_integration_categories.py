@@ -71,6 +71,7 @@ def test_utils_uuid_returns_rfc4122_uuid(cm):
     assert r['return'] == 0
     u = r.get('uuid')
     assert u is not None
+
     # UUID4: 8-4-4-4-12 hex chars separated by dashes.
     parts = u.split('-')
     assert [len(p) for p in parts] == [8, 4, 4, 4, 12]
@@ -238,6 +239,7 @@ def test_config_get_returns_empty_dict_when_no_data(cm):
 
     r = cm.access({'category': 'config', 'command': 'get',
                    'arg1': 'empty-cfg', 'con': False})
+
     # Base `read` for a missing `data.json` results in a soft error we tolerate.
     if r['return'] == 0:
         assert r['config_cmeta'] == {}
@@ -303,6 +305,7 @@ def test_detect_category_inside_an_artifact(cm, detected_artifact_path,
     assert r['return'] == 0
     assert r['category_alias'] == 'asset'
     assert r['artifact_name'] is not None
+
     # Inside an artifact both alias and UID are known, so "alias,UID"
     assert r['category'].startswith('asset,')
     assert r['category_uid']
@@ -374,6 +377,7 @@ def test_detect_repo_inside_an_artifact(cm, detected_artifact_path,
     assert r['return'] == 0
     assert r['repo']
     assert r['repo_alias'] or r['repo_uid']
+
     # The path relative to the repository root leads back to the artifact
     assert r['artifact_path']
 
@@ -443,6 +447,7 @@ def test_detect_repo_rejects_a_missing_directory(cm, tmp_path):
 @pytest.fixture()
 def tagged_assets(cm, monkeypatch):
     """Two assets sharing one tag and differing in another."""
+
     # New artifacts take their authors from CMETA_AUTHORS or the repository's artifact_defaults;
     # a fresh CMETA_HOME has no defaults, so without this the authors depend on the machine
     monkeypatch.setenv('CMETA_AUTHORS', 'Test Author')
@@ -678,8 +683,10 @@ def test_matches_any_value_walks_nested_structures():
     assert module._matches_any_value(data, ['42'])
     assert module._matches_any_value(data, ['nope', 'top'])
     assert not module._matches_any_value(data, ['nope'])
+
     # Keys are never matched
     assert not module._matches_any_value(data, ['b'])
+
     # No values to look for means "keep everything"
     assert module._matches_any_value(data, [])
     assert module._matches_any_value(data, None)
@@ -846,6 +853,7 @@ def test_files_reaches_into_sub_directories(cm, assets_with_files):
     files = r['files']
     assert len(files) == 1
     assert os.path.basename(files[0]) == 'my_info.md'
+
     # The nested file, not the artifact directory
     assert os.path.isfile(files[0])
     assert 'notes' in files[0]
@@ -1048,6 +1056,7 @@ def _utils_common_module():
     ('2026/05/03',                      (2026, 5, 3, 0, 0)),
     ('20260503-1430',                   (2026, 5, 3, 14, 30)),
     ('2026-05-03T14:30:00Z',            (2026, 5, 3, 14, 30)),
+
     # +02:00 is normalized back to UTC
     ('2026-05-03T14:30:00+02:00',       (2026, 5, 3, 12, 30)),
     ('2026-01-19T15:40:51.387488+00:00', (2026, 1, 19, 15, 40)),

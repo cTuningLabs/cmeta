@@ -288,6 +288,7 @@ def test_write_file_keep_writes_a_new_meta_in_the_keep_style(tmp_path):
                     'text: |-\n  line 1\n  line 2\n'
                     'zeta:\n  k: v\n  list:\n    - 1\n    - 2\n')
     assert loaded(text) == data
+
     # without keep: the old sorted, folded dump
     r = write_file(path, data)
     assert r['return'] == 0 and read_text(path) == yaml.safe_dump(data, sort_keys=True)
@@ -373,6 +374,7 @@ def test_update_edits_a_hand_made_yaml_in_place(cm, tmp_path):
     assert r['return'] == 0, r.get('error')
 
     new = read_text(path)
+
     # the header, the comments, the folded and literal scalars, the quoting and the long line are untouched
     for kept in ('# the header of a hand-written meta\n', '# what it is for\n', 'folded: >\n  folded text\n',
                  'literal: |\n  line 1\n  # not a comment', 'quoted: "has: colon # and hash"\n',

@@ -179,6 +179,7 @@ def set_logging(
         Raises:
             ValueError: If invalid log level is provided.
     """
+
     # Get or create logger
     logger = logging.getLogger(name)
 
@@ -232,6 +233,7 @@ def set_logging(
         else:
             # Disable logging if log_level is None or empty
             logger.setLevel(logging.CRITICAL + 1)
+
             # Remove all handlers
             for handler in logger.handlers[:]:
                 logger.removeHandler(handler)

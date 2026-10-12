@@ -45,6 +45,7 @@ except ImportError:
 LOCK_SUFFIX = ".lock"
 LOCK_POLL_START = 0.001          # the first wait when a lock is busy; it doubles up to LOCK_POLL_MAX
 LOCK_POLL_MAX = 0.025
+
 # The age of a soft lock is counted from the time its holder WROTE INTO IT, read on this machine's clock, and an
 # empty file by how long the waiter itself has seen it - never by the time the file system gave the file: a drive
 # can keep another clock (a network share, a Windows drive inside WSL2) or keep times to the whole second.
@@ -682,6 +683,7 @@ class PathLock:
             if now < self._next_stale_check:
                 return False
             self._next_stale_check = now + LOCK_SOFT_CHECK_SECONDS
+
             # The file of a holder that is gone is taken over in the same attempt: a single try (timeout 0, the
             # probe of a cache entry) finds the lock of a dead process free
             return self._take_stale_soft_lock(line)
@@ -959,6 +961,7 @@ class PathLock:
         taken = False
         try:
             os.write(fd, line)
+
             # Closed before the rename, everywhere: Windows refuses to rename a file this process has open,
             # and a Windows drive seen through 9p (WSL2's /mnt/d, a container's bind mount) renames it but
             # shows nothing at the new path until the descriptor is closed (the lock looked "gone" to the
@@ -1021,6 +1024,7 @@ class PathLock:
         if self.lock_file not in _lock_soft_paths:
             _lock_soft_paths.add(self.lock_file)
             self.logger.warning(f"utils.files.PathLock - the file system refuses OS locks for {self.lock_file} ({why}): a soft lock file is used instead (best effort between hosts)")
+
         # The empty file the OS-lock attempt created or found is not a soft lock (a soft holder writes its line
         # at once): this object takes it over at once, without the time an empty file is otherwise watched
         try:
@@ -1043,6 +1047,7 @@ class PathLock:
                     mine = self._identity(os.fstat(fd))
                 except OSError:
                     pass
+
                 # Closed before the removal, everywhere: Windows cannot remove a file this process has open,
                 # and a Windows drive seen through 9p keeps the path of an open file in a removed-but-there
                 # state until the descriptor is closed. Nothing is lost by it: the soft lock is the line in
@@ -2250,6 +2255,7 @@ def safe_delete_directory(
             except Exception as e:
                 if logger is not None:
                     logger.debug(f"utils.files.self_delete_directory - error releasing lock: {str(e)}")
+
                 # Don't fail on lock release error if deletion succeeded
                 if not fail_on_error:
                     pass
@@ -2576,6 +2582,7 @@ def unzip(
 
                 # Split path
                 parts = orig_path.split('/')
+
                 # Remove empty parts
                 parts = [p for p in parts if p]
                 
@@ -2742,6 +2749,7 @@ def shard_name(
             # Extract shard from name, padding with underscores if needed
             if start < len(name):
                 shard = name[start:end].lower() # important to enable faster search ...
+
                 # Fill remainder with underscores if shard is shorter than expected
                 if len(shard) < length:
                     shard = shard + '_' * (length - len(shard))

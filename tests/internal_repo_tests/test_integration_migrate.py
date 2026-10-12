@@ -23,6 +23,7 @@ def cm(tmp_path, monkeypatch):
                 'CMETA_DEBUG', 'CMETA_VERBOSE'):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv('CMETA_HOME', str(tmp_path))
+
     # Each test sees its own notices (they are printed once per process)
     monkeypatch.setattr(cmeta_repos, '_migrated_notices', set())
     return CMeta(home=str(tmp_path))

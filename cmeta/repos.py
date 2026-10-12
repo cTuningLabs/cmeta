@@ -1346,6 +1346,7 @@ class Repos:
 
             entry['cmeta'] = repo_meta.copy()
             entry['cmeta']['method'] = method
+
             # Keep clean copy just in case
             entry['_cmr'] = repo_meta
 

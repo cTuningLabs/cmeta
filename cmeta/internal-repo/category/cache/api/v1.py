@@ -111,6 +111,7 @@ def entry_state(
             info['state'] = 'broken'
             info['why'] = 'the result file is not a result'
             return info
+
         # No result file: broken only for an entry the task engine's cache flow made (its request record
         # since cmeta-aops 0.45, or the ctx file of a finished attempt). Other cache artifacts never carry
         # a result - a program's build workspace (compile-and-run-program runs with cache: False and keeps

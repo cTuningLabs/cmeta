@@ -1982,6 +1982,7 @@ class Category(InitCategory):
             record = index_uids.get(uid)
             if record is not None:
                 old_path = record.get('path', '')
+
                 # A conflict only when the folder the index knows still holds this very UID
                 if old_path and not _same_folder(old_path, e['path']) and _uid_in_folder(old_path) == uid:
                     errors.append({'ref': _ref(parts), 'path': e['path'],

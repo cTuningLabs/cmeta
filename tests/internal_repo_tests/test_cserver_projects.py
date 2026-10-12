@@ -74,6 +74,7 @@ def test_the_terminal_lists_the_page_itself(cm):
 def test_a_fresh_home_has_the_browse_card(cm):
     j = _web(cm, native_action='projects')['json']
     assert 'error' not in j
+
     # The page leaves itself out; the engine's other page, cserver.browse, is the one card of a fresh home
     assert [(p['alias'], p['href']) for p in j['pages']] == [('cserver.browse', URLS['url_server'] + 'browse')]
     assert j['count'] == 1
@@ -123,6 +124,7 @@ def test_repositories_hidden_by_the_cserver_config(cm):
     assert r['return'] == 0, r
 
     assert [p for p in _web(cm, native_action='projects')['json']['pages'] if p['repo'] == 'local'] == []
+
     # Hidden from the page, not from the terminal or from its own URL.
     r = cm.access({'category': 'cserver.projects', 'command': 'pages', 'con': False})
     assert 'cserver.hello' in [p['alias'] for p in r['pages']]
