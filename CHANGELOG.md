@@ -3,6 +3,52 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.35.1.1)
+- **Any lock timeout is waited for as given, and it is the whole wait.** `CMETA_LOCK_TIMEOUT`,
+  `CMETA_INDEX_LOCK_TIMEOUT` and the cache wait of cmeta-aops (`CMETA_CACHE_WAIT_TIMEOUT`) took `inf`, `nan` or a
+  number over Python's `threading.TIMEOUT_MAX` (4,294,967 s on Windows, about 49.7 days), and a waiter that found
+  the lock busy failed after its notice with Python's own error (OverflowError, ValueError) instead of waiting -
+  only under contention, so it went unseen. Now `inf` waits until the lock is free ("waiting without a limit"),
+  a value over `TIMEOUT_MAX` waits as long as Python can, and `nan` is no number of seconds: the default, with the
+  warning a word gets. `PathLock.acquire` refuses a nan timeout by name and counts it from its start: the wait
+  for another thread of the same process is part of it (before, the full timeout began again after it).
+  Tests: `tests/core_tests/test_utils_files_lock_limits.py`.
+- **The index keeps the newest meta of an updated artifact.** `update` wrote the meta file under its lock and
+  then the record of the index under the index lock, from its own copy of the meta: two updates that crossed
+  between the two steps left the older meta in the index (the file had both changes; a `find` on the other one
+  missed the artifact until the next update or reindex). The record is now written from the file, read again
+  under the index lock. Tests: `tests/internal_repo_tests/test_integration_concurrent_updates.py` - eight
+  processes updating one artifact with the OS lock and with the soft lock, and the crossing forced in one
+  process. `move`/`copy` and the reindex of one artifact have the same two steps and are left as they were.
+- **A command stopped by its timeout is stopped with every process it started, and says so.** On Linux and macOS
+  `utils.sys.run(timeout=...)` sent SIGTERM to the command's process group and then waited for it without a
+  limit: a process that ignored SIGTERM went on running, and a call that captured the output waited for its end.
+  Now whatever is left in the group after `RUN_STOP_GRACE_SECONDS` (3) gets SIGKILL, and the result has
+  `timed_out: True` - the return code -1 alone also means a command that cannot be started, and on Linux and
+  macOS one ended by SIGHUP. The session of the command is made with `start_new_session=True` instead of
+  `preexec_fn=os.setsid` (no Python code between fork and exec, which can deadlock a program with threads).
+  Windows (a Job Object) stopped the whole tree already; its helper takes an optional `timeout_info`, its return
+  value is unchanged. Tests: `tests/core_tests/test_utils_sys_run_timeout.py`.
+- **Durations on the monotonic clock.** A read without a lock (`safe_read_file`) retried a failing read for
+  `READ_RETRY_SECONDS` on the wall clock: when the clock was set forward between the start and the first check
+  (NTP, a virtual machine's clock sync - WSL2 was seen stepping it by seconds every 30 s), the file was never read
+  and the call returned success with no data. Now the monotonic clock, and always one try. The tests of locks
+  and timeouts measure on the monotonic clock as well; two of them set the wall clock on purpose. The timing
+  prints of a reindex, of the utils category's scan and of cserver.browse moved to the monotonic clock too, and
+  a test guards the rule for the whole package (`tests/core_tests/test_durations_use_the_monotonic_clock.py`:
+  every `time.time()` that is subtracted, added or compared, with the two places that compare the wall clock
+  with a time written into a lock file as the allowed exceptions).
+- **A soft lock's heartbeat is pushed to the drive** (an fsync after each beat): another NFS client sees the line
+  of a live holder change when it is written, not when the client's cache is written back (measured between two
+  machines over NFS: every ~5 s without it, against 20 s of silence before a takeover). Only the heartbeat - a
+  background thread, once every 2 s: at the acquisition an fsync cost 1.4 to 3 ms per lock in soft mode
+  (measured on NTFS, ext4 and WSL2's 9p). New tests of the soft lock: a silent line of a live pid of this system
+  (a pid given again) is taken after the silence, a holder whose threads keep every core busy keeps beating, and
+  the counter of six processes stays exact with every core busy.
+- Docs: seven places still said that a waiter's notice goes to the standard error (it is a `cMeta warning:` line
+  on the standard output since 0.35.1).
+
+
 ## 0.35.1
 - **A new home says where it is and what chose it.** The home is chosen as before - `CMETA_HOME`, else
   `<VIRTUAL_ENV>/CMETA`, else `<CONDA_PREFIX>/CMETA`, else `CMETA_HOME2`, else `~/CMETA` - and nothing of that

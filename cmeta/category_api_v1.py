@@ -624,7 +624,9 @@ class Category(InitCategory):
 
                updated = True
 
-               # Update index
+               # Update index - under the index lock, with the meta as the file holds it then: another update
+               # may write the file between this write and this record, and the record that comes to the
+               # index last must not bring an older meta than the file has
                if not no_index:
                    artifact_index_file = artifact['index_file']
 
@@ -632,7 +634,19 @@ class Category(InitCategory):
 
                    sharding_slices_num = artifact.get('sharding_slices_num', 0)
 
-                   r = self.cm.repos.add_to_index(cmeta, artifact_cmeta_ref_parts, artifact_path, sharding_slices_num = sharding_slices_num)
+                   r = self.cm.repos.lock_index('the update of a record')
+                   if r['return']>0: return r
+                   index_lock = r['lock']
+
+                   try:
+                       r = utils.files.safe_read_file(found_cmeta_filename, fail_on_error=self.fail_on_error, logger=self.logger)
+                       current = r['data'] if r['return'] == 0 and isinstance(r.get('data'), dict) else cmeta
+
+                       r = self.cm.repos.add_to_index(current, artifact_cmeta_ref_parts, artifact_path,
+                                                      sharding_slices_num = sharding_slices_num, index_lock = index_lock)
+                   finally:
+                       index_lock.release()
+
                    if r['return']>0: return r
 
             # Provide info

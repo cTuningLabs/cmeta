@@ -122,9 +122,9 @@ def test_a_create_whose_record_cannot_be_written_leaves_nothing_behind(cm, tmp_p
 
     holder = hold(str(index_file) + '.lock', 'a test holding the index file')
     try:
-        t0 = time.time()
+        t0 = time.monotonic()
         rc, out = finish(start(['log', 'create', 'late'], tmp_path, CMETA_LOCK_TIMEOUT='5'), timeout=120)
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
     finally:
         stop(holder)
 

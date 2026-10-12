@@ -542,7 +542,7 @@ def run(
     os_env: dict = os.environ,  # Environment variables to inject into the subprocess.
     capture_output: bool = False,  # False by default.
     text_cmd: str = 'RUN',  # Text prefix for command display.
-    timeout: int = None,  # None by default. TBD: Current timeout doesn't terminate subprocesses.
+    timeout: int = None,  # None by default. A command that runs longer is stopped with every process it started (returncode -1).
     verbose: bool = False,  # If True, print extra info.
     hide_in_cmd: list = None,  # List of keys in CMD to hide (for secrets).
     hide_in_env: list = None,  # List of keys in ENV to hide (for secrets).
@@ -578,7 +578,9 @@ def run(
             genv (dict | None): Global ENV (force in the end).
             capture_output (bool): False by default.
             text_cmd (str): Text prefix for command display.
-            timeout (int | None): None by default. TBD: Current timeout doesn't terminate subprocesses.
+            timeout (int | None): None by default. A command that runs longer is stopped with every process
+                it started (returncode -1, 'timed_out': True): its process group on Linux and macOS (SIGTERM,
+                then SIGKILL after RUN_STOP_GRACE_SECONDS), its Job Object on Windows.
             verbose (bool): If True, print extra info.
             hide_in_cmd (list | None): List of keys in CMD to hide (for secrets).
             hide_in_env (list | None): List of keys in ENV to hide (for secrets).
@@ -604,7 +606,9 @@ def run(
             skip_print_env (bool): Suppress environment output even in verbose mode.
 
         Returns:
-            dict: Unified output with 'return', 'returncode', 'stdout', 'stderr'.
+            dict: Unified output with 'return', 'returncode', 'stdout', 'stderr'; with a timeout also
+                'timed_out' (True when the timeout stopped the command - the returncode -1 alone does not
+                say so: it is also the code of a command that cannot be started, and of SIGHUP).
 
         Raises:
             Exception: Propagated runtime errors, if any.
@@ -857,19 +861,25 @@ def run(
             if con and print_extra_line:
                 print ('')
 
+            # Whether this command was stopped by the timeout: said explicitly - the return code -1 is also the
+            # code of a command that cannot be started, and on Linux and macOS of one ended by SIGHUP
+            timed_out = False
+
             try:
                 use_popen = (timeout is not None and not is_windows)
 
                 if use_popen:
                     # ----- UNIX: custom Popen + process group handling -----
                     import signal
+                    # A session of its own (setsid in the child, as preexec_fn=os.setsid did - without
+                    # running Python code between fork and exec, which can deadlock a program with threads)
                     process = subprocess.Popen(
                         _cmd,
                         stdout=subprocess.PIPE if capture_output else None,
                         stderr=subprocess.PIPE if capture_output else None,
                         shell=True,
                         env=cur_env,
-                        preexec_fn=os.setsid
+                        start_new_session=True
                     )
 
                     try:
@@ -877,9 +887,10 @@ def run(
                         returncode = process.returncode
 
                     except subprocess.TimeoutExpired:
-                        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                        _stop_process_group(process.pid, process)
                         stdout, stderr = process.communicate()
                         returncode = -1
+                        timed_out = True
 
                     # bytes in, text out: never a decode error, whatever the machine's language
                     stdout, stderr = decode_output(stdout), decode_output(stderr)
@@ -887,6 +898,7 @@ def run(
                 else:
                     # ----- Windows with timeout: delegate to your wrapper -----
                     if timeout is not None and is_windows:
+                        timeout_info = {}
                         returncode, stdout, stderr = run_command_with_timeout_tree_kill_on_windows(
                             cmd=_cmd,
                             capture_output=capture_output,
@@ -894,7 +906,9 @@ def run(
                             timeout=timeout,
                             shell=True,
                             text=False,
+                            timeout_info=timeout_info,
                         )
+                        timed_out = timeout_info.get('timed_out', False)
                         stdout, stderr = decode_output(stdout), decode_output(stderr)
 
                     # ----- Normal subprocess.run (any OS) -----
@@ -924,6 +938,9 @@ def run(
             _result['stderr'] = stderr
             _result['cur_env'] = cur_env
             _result['cmd'] = _cmd
+
+            if timeout is not None:
+                _result['timed_out'] = timed_out
 
             if returncode != 0:
                 break
@@ -991,6 +1008,50 @@ def run(
     return _result
 
 ###################################################################################################
+RUN_STOP_GRACE_SECONDS = 3      # after SIGTERM, how long the processes of a timed-out command may take to end before SIGKILL
+
+def _stop_process_group(
+    pgid: int,  # The process group of the command (its first process, started with os.setsid).
+    process = None,  # The Popen object of that first process: reaped here as soon as it ends.
+    grace: float = None,  # Seconds between SIGTERM and SIGKILL (None: RUN_STOP_GRACE_SECONDS).
+):
+    """
+        Stop a timed-out command on Linux and macOS with every process it started: SIGTERM to its process
+        group, then SIGKILL to whatever is still in the group after `grace` seconds - a process that ignores
+        SIGTERM or is slow to end (before, such a process went on running, and a call that captured the
+        output waited for it). A process that left the group (a session of its own) is not reached.
+    """
+    import signal
+    import time
+
+    if grace is None:
+        grace = RUN_STOP_GRACE_SECONDS
+
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        return
+
+    deadline = time.monotonic() + grace
+
+    while time.monotonic() < deadline:
+        # The first process is reaped as soon as it ends: only the living members of the group answer then
+        if process is not None:
+            process.poll()
+
+        try:
+            os.killpg(pgid, 0)
+        except (ProcessLookupError, PermissionError):
+            return                          # nobody left: everything ended on SIGTERM
+
+        time.sleep(0.05)
+
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+###################################################################################################
 def run_command_with_timeout_tree_kill_on_windows(
     cmd: str,  # Command string to execute.
     capture_output: bool,  # If True, capture stdout and stderr.
@@ -998,6 +1059,7 @@ def run_command_with_timeout_tree_kill_on_windows(
     timeout: float,  # Timeout in seconds.
     shell: bool = True,  # If True, run command through shell.
     text: bool = True,  # If True, decode output as text (the locale's encoding, strictly); run() passes False and decodes with decode_output().
+    timeout_info: dict = None,  # Optional: gets 'timed_out': True when the timeout stopped the command (the return value stays as it was).
 ):
     """
         Run command on Windows with timeout and process tree termination.
@@ -1126,6 +1188,8 @@ def run_command_with_timeout_tree_kill_on_windows(
             # Drain pipes after kill
             stdout, stderr = process.communicate()
             returncode = -1  # or choose a sentinel you like
+            if timeout_info is not None:
+                timeout_info['timed_out'] = True
     finally:
         kernel32.CloseHandle(hjob)
 

@@ -167,10 +167,10 @@ def test_a_locked_entry_is_running_and_is_neither_cleaned_nor_deleted(cm, tmp_pa
         assert r['return'] == 0 and r['removed'] == [] and uid in r['skipped'], r
 
         # A delete waits for the folder lock and then fails as a whole: the record stays with the folder
-        t0 = time.time()
+        t0 = time.monotonic()
         r = cm.access({'category': CATEGORY, 'command': 'delete', 'arg1': uid, 'force': True, 'con': False},
                       )
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
         assert r['return'] > 0 and 'locked by another process' in r['error'], r
         assert os.path.isdir(folder)
         assert aliases_in_index(tmp_path) == {'task--y--building'}

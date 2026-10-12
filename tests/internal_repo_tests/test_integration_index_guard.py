@@ -86,11 +86,11 @@ def start_paused_reindex(tmp_path):
     go = tmp_path / 'reindex-go'
     proc = subprocess.Popen([sys.executable, '-c', PAUSED_REINDEX, str(tmp_path), str(marker), str(go)],
                             env=env_for(tmp_path), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    deadline = time.time() + 60
+    deadline = time.monotonic() + 60
     while not marker.exists():
         if proc.poll() is not None:
             raise AssertionError('the reindex ended before it held the lock: ' + finish(proc)[1])
-        if time.time() > deadline:
+        if time.monotonic() > deadline:
             proc.kill()
             raise AssertionError('the paused reindex did not take the lock in 60 s')
         time.sleep(0.01)
@@ -202,10 +202,10 @@ def test_a_writer_waiting_for_a_reindex_says_so_and_gives_up_after_the_limit(cm,
     make(cm, 'present')
     reindex, go = start_paused_reindex(tmp_path)
     try:
-        t0 = time.time()
+        t0 = time.monotonic()
         writer = start(['log', 'create', 'late'], tmp_path, CMETA_INDEX_LOCK_TIMEOUT='5')
         rc, out = finish(writer, timeout=120)
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
     finally:
         go.touch()
         rc_reindex, out_reindex = finish(reindex)

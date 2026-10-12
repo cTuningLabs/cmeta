@@ -64,7 +64,7 @@ LOCK_IDENTITY_RETRIES = 50       # consecutive identity mismatches after which a
 LOCK_NOTE_MAX = 512              # bytes of the note a holder may leave in its lock file for the message of a waiter
 LOCK_TIMEOUT_ENV = 'CMETA_LOCK_TIMEOUT'
 LOCK_TIMEOUT = 30                # seconds a writer waits for the lock of a file (the environment variable changes it)
-LOCK_NOTICE_SECONDS = 3          # a waiter says so on stderr after this long
+LOCK_NOTICE_SECONDS = 3          # a waiter says so (a cMeta warning line on stdout) after this long
 READ_RETRY_SECONDS = 3           # how long a read without a lock is retried when the file cannot be read (a write in progress)
 PICKLE_PROTOCOL = 4              # readable by every Python the engine supports, whatever the default of the Python that writes
 ERROR_CODE_FILE_NOT_FOUND = 16
@@ -182,7 +182,7 @@ def is_path_within(
 # In every mode the threads of one process are serialized on the path first (a threading.Lock per path),
 # which POSIX record locks and soft locks need (they are per process), and the busy wait polls with a
 # delay that doubles from LOCK_POLL_START to LOCK_POLL_MAX until the timeout. The engine's own writers
-# (_acquire_lock) wait LOCK_TIMEOUT seconds (CMETA_LOCK_TIMEOUT) and say so on stderr after
+# (_acquire_lock) wait LOCK_TIMEOUT seconds (CMETA_LOCK_TIMEOUT) and say so on stdout after
 # LOCK_NOTICE_SECONDS, naming the holder when it left a note in the lock file (_acquire_with_notice).
 
 _LOCK_BUSY_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name in ('EWOULDBLOCK', 'EAGAIN', 'EACCES', 'EDEADLK', 'EDEADLOCK')) if e is not None)
@@ -233,6 +233,21 @@ def _beat_forever():
                     lock._write_beat()
         except Exception:
             pass
+
+
+def _push_soft_line(fd):
+    """Push a heartbeat of a soft holder, just written through its open descriptor, to the file system. A
+    network file system keeps a write in the cache of its client until the file is closed or the cache is
+    written back: another machine sees the line change only then (an NFS client: every ~5 s, measured), and a
+    client that defers its writeback longer would let the line look silent for LOCK_SOFT_SILENT_SECONDS and the
+    lock of a live holder be taken over. In the heartbeat only - a background thread, once per
+    LOCK_SOFT_HEARTBEAT_SECONDS: at the acquisition an fsync cost 1.4 to 3 ms per lock (measured on NTFS, ext4
+    and WSL2's 9p), and the first line reaches an NFS server anyway (the holder's stat of the file writes it
+    back). Best effort: a file system that refuses fsync keeps the line."""
+    try:
+        os.fsync(fd)
+    except (OSError, ValueError):
+        pass
 
 
 def _lock_thread_lock(lock_file):
@@ -405,15 +420,22 @@ class PathLock:
         timeout: float = 3,  # Seconds to wait for the lock (0: one try).
         note: str = None,  # A short note left in the lock file for the message of a waiter (see read_note).
     ):
-        """Take the lock or raise TimeoutError; returns self."""
+        """Take the lock or raise TimeoutError; returns self. The timeout is the whole wait (the turn of this
+        thread among the threads of the process, then the lock between processes); inf waits until the lock
+        is free; nan is refused (ValueError)."""
         timeout = max(float(timeout), 0.0)
+        if timeout != timeout:
+            raise ValueError(f"the timeout to wait for the lock {self.lock_file} is not a number of seconds (nan)")
+
+        # Python's thread locks refuse inf and any limit over threading.TIMEOUT_MAX (4,294,967 s on
+        # Windows): such a limit waits for the thread as long as Python can, which is until it is free
+        deadline = time.monotonic() + timeout
         thread_lock = _lock_thread_lock(self.lock_file)
-        if not thread_lock.acquire(timeout=timeout):
+        if not thread_lock.acquire(timeout=min(timeout, threading.TIMEOUT_MAX)):
             raise TimeoutError(f"the lock {self.lock_file} is held by another thread of this process (waited {timeout} s)")
 
         self._owner_pid = os.getpid()           # before the lock is taken: the heartbeat thread reads it
         try:
-            deadline = time.monotonic() + timeout
             delay = LOCK_POLL_START
             while True:
                 if self._try():
@@ -802,7 +824,8 @@ class PathLock:
                 os.write(fd, line)
         except (OSError, ValueError):
             return                          # the drive refuses for the moment: the line stays as it is
-        self._line = line
+        self._line = line                   # the line of the file from now on - pushed to the drive after
+        _push_soft_line(fd)
 
     def _open_if_mine(self, line):
         """Open the file at the lock path and keep it open when it carries `line`: ('mine', descriptor);
@@ -1145,18 +1168,24 @@ def lock_timeout(
     """
         The seconds a writer waits for a lock: `default` (LOCK_TIMEOUT, 30 s, for the lock of a file)
         unless the environment variable `env_name` (CMETA_LOCK_TIMEOUT) holds a number of seconds; a value
-        that is not a number is ignored with a warning.
+        that is not a number (a word, nan) is ignored with a warning. `inf` is no limit.
 
         Returns:
-            float: The seconds (0 or more).
+            float: The seconds (0 or more; inf: until the lock is free).
     """
     x = os.environ.get(env_name, '').strip()
     if x != '':
         try:
-            return max(float(x), 0.0)
+            value = float(x)
         except ValueError:
-            (logger if logger is not None else logging.getLogger('cmeta.utils.files')).warning(
-                f'{env_name}="{x}" is not a number of seconds - {default:g} is used')
+            value = None
+
+        # nan is no number of seconds (and a lock refuses it)
+        if value is not None and value == value:
+            return max(value, 0.0)
+
+        (logger if logger is not None else logging.getLogger('cmeta.utils.files')).warning(
+            f'{env_name}="{x}" is not a number of seconds - {default:g} is used')
     return max(float(default), 0.0)
 
 ##########################################################################################
@@ -1170,18 +1199,21 @@ def _acquire_with_notice(
     logger = None,  # Optional logger: the notice is a warning there too.
 ):
     """
-        Take `lock` within `timeout` seconds. A waiter that has not got it after LOCK_NOTICE_SECONDS says
-        so on stderr, naming the holder when it left a note in the lock file, and keeps waiting for the rest
-        of the time; when the lock stays held, the TimeoutError names the holder and the environment
-        variable that lengthens the wait.
+        Take `lock` within `timeout` seconds (inf: until it is free). A waiter that has not got it after
+        LOCK_NOTICE_SECONDS says so in a `cMeta warning:` line on the standard output, naming the holder
+        when it left a note in the lock file, and keeps waiting for the rest of the time; when the lock
+        stays held, the TimeoutError names the holder and the environment variable that lengthens the wait.
 
         Returns:
             PathLock: the lock, acquired.
 
         Raises:
             TimeoutError: the lock stayed held for `timeout` seconds.
+            ValueError: the timeout is nan (whether the lock is free or not).
     """
     timeout = max(float(timeout), 0.0)
+    if timeout != timeout:
+        raise ValueError(f'the timeout to wait for {subject} is not a number of seconds (nan)')
     first = min(float(LOCK_NOTICE_SECONDS), timeout)
 
     try:
@@ -1193,8 +1225,9 @@ def _acquire_with_notice(
             raise TimeoutError(f'{subject} stayed locked by another process{held_by} for {timeout:g} s ({e}) - set {env_name} to wait longer')
 
     # A warning, not an error: on the standard output ("cMeta warning: ..."), and in the log
+    limit = f'waiting up to {timeout:g} s' if timeout != float('inf') else 'waiting without a limit'
     message = (f'{subject} is locked by another process{held_by} - '
-               f'{what} continues when it is released (waiting up to {timeout:g} s; {env_name} changes it)')
+               f'{what} continues when it is released ({limit}; {env_name} changes it)')
     console_line(message, 'warning', logger=logger)
 
     try:
@@ -1215,7 +1248,7 @@ def _acquire_lock(
     """
         Acquire the lock of a path (`<filepath>.lock`, see PathLock) for process- and thread-safe
         file operations. Blocks until the lock is acquired or the timeout expires; a waiter says so on
-        stderr after LOCK_NOTICE_SECONDS (see _acquire_with_notice).
+        stdout after LOCK_NOTICE_SECONDS (see _acquire_with_notice).
 
         Args:
             filepath (str): Path to the file to lock.
@@ -1514,22 +1547,25 @@ def safe_read_file(
                 return _error(str(e), 1, None, fail_on_error)
 
         else:
-            # Retry reading with timeout when no lock
-            start_time = time.time()
+            # Retry reading with timeout when no lock - on the monotonic clock, and at least once: the wall clock
+            # can be set forward meanwhile (NTP, a VM's clock sync) and the read was then never tried at all,
+            # which returned success with no data
+            deadline = time.monotonic() + retry
             last_error = None
 
-            while time.time() - start_time < retry:
+            while True:
                 try:
                     data = _read_file_data(filepath, encoding=encoding)
                     break  # Success, exit retry loop
 
                 except Exception as e:
                     last_error = e
-                    if time.time() - start_time < retry:
-                        if logger is not None:
-                            logger.debug(f"utils.files.safe_read_file - retrying read file '{filepath}' due to error: {str(e)} ...")
-                        time.sleep(RETRY_DELAY)  # Small delay before retry
-                        
+                    if time.monotonic() >= deadline:
+                        break
+                    if logger is not None:
+                        logger.debug(f"utils.files.safe_read_file - retrying read file '{filepath}' due to error: {str(e)} ...")
+                    time.sleep(RETRY_DELAY)  # Small delay before retry
+
             if data is None and last_error:
                 return _error(str(last_error), 1, None, fail_on_error)
     else:
