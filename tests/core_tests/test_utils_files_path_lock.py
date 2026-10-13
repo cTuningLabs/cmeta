@@ -143,7 +143,7 @@ time.sleep(float(sys.argv[2]))
 HOOKED_WAITER = r'''
 import os, sys, time
 from cmeta.utils import files
-lock_file, marker, go, out = sys.argv[1:5]
+lock_file, marker, go, out, released = sys.argv[1:6]
 real = files.fcntl.flock
 state = {'first': True}
 def hooked(fd, op):
@@ -158,8 +158,10 @@ files.fcntl.flock = hooked
 lock = files.PathLock(lock_file)
 lock.acquire(timeout=60)
 same = files.PathLock._identity(os.fstat(lock._fd)) == files.PathLock._identity(os.stat(lock_file))
+# Taken after the newcomer's release? The test marks its release with a file made just before it: no clock
+# reading is compared between two processes (a monotonic clock may start from zero in each process)
 with open(out, 'w') as f:
-    f.write('%f %d %s %s\n' % (time.monotonic(), lock.identity_retries, lock.mode, same))
+    f.write('%s %d %s %s\n' % (os.path.exists(released), lock.identity_retries, lock.mode, same))
 lock.release()
 '''
 
@@ -370,9 +372,10 @@ def test_a_lock_file_removed_under_a_waiter_never_gives_two_holders(tmp_path):
     flock on A succeeds (nobody holds A any more) - and the identity check sends it back to try B."""
     lock_file = str(tmp_path / 'race.lock')
     marker, go, out = str(tmp_path / 'marker'), str(tmp_path / 'go'), str(tmp_path / 'out')
+    released = str(tmp_path / 'released')
 
     holder = files.PathLock(lock_file).acquire(timeout=5)
-    waiter = start(HOOKED_WAITER, lock_file, marker, go, out)
+    waiter = start(HOOKED_WAITER, lock_file, marker, go, out, released)
     wait_for(marker)                       # the waiter has opened A
 
     holder.release()                       # A is removed, then released
@@ -383,13 +386,13 @@ def test_a_lock_file_removed_under_a_waiter_never_gives_two_holders(tmp_path):
     time.sleep(0.5)
     assert not os.path.exists(out), 'the waiter acquired while the newcomer held B'
 
-    released_at = time.monotonic()
+    open(released, 'w').close()            # from now on the waiter may hold the lock
     newcomer.release()
     waiter.wait(60)
     assert waiter.returncode == 0, waiter.stdout.read().decode('utf-8', 'replace')
     with open(out) as f:
-        acquired_at, retries, mode, same = f.read().split()
-    assert float(acquired_at) >= released_at - 0.001
+        after_the_release, retries, mode, same = f.read().split()
+    assert after_the_release == 'True', 'the waiter acquired before the newcomer released B'
     assert int(retries) >= 1
     assert mode == 'flock' and same == 'True'
     assert not os.path.exists(lock_file)
