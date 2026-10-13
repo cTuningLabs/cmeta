@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.35.1.1)
+## 0.35.2
 - **Any lock timeout is waited for as given, and it is the whole wait.** `CMETA_LOCK_TIMEOUT`,
   `CMETA_INDEX_LOCK_TIMEOUT` and the cache wait of cmeta-aops (`CMETA_CACHE_WAIT_TIMEOUT`) took `inf`, `nan` or a
   number over Python's `threading.TIMEOUT_MAX` (4,294,967 s on Windows, about 49.7 days), and a waiter that found
