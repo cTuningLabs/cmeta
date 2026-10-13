@@ -54,6 +54,13 @@ All notable changes to cMeta are documented here, newest first.
   that asks cTuning.ai for the newest version and ends with an error when it cannot be reached. The flag acts on
   its own only; after a category it stays an ordinary parameter of the command. In Python:
   `config.home_path(home=None)`, the home that `CMeta(home=home)` uses. Tests: `tests/core_tests/test_config_home.py`.
+- **`cx --version` names the folder of an editable or folder install as its system writes it.** The lines
+  "Installed as" and "Update with" took the folder from the file URL the installer records and decoded only `%20`:
+  on Windows they showed `D:/%21FGG_Repos/...`, and the `git -C "..." pull` they suggested failed for any folder
+  with `!`, `#`, `+`, an accent and the like. Now every escape is decoded and a Windows folder keeps its drive
+  letter (or server) and backslashes: `git -C "D:\!FGG_Repos\...\cmeta" pull`. A cMeta installed from a folder
+  without `-e` is reinstalled from the URL the installer recorded: pip takes only a URL after `@` (the path it was
+  shown failed with pip, and with uv when the folder name had an escape). Tests: `tests/core_tests/test_install_info.py`.
 
 
 ## 0.35.1

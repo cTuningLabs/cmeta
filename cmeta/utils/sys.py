@@ -1686,6 +1686,7 @@ def describe_cmeta_install(
     """
 
     import re
+    import urllib.parse
 
     exe = executable or 'python'
     direct_url = direct_url or {}
@@ -1693,11 +1694,23 @@ def describe_cmeta_install(
     vcs = direct_url.get('vcs_info') or {}
     editable = bool((direct_url.get('dir_info') or {}).get('editable'))
 
+    # The folder of a file URL (PEP 610 records file:///D:/%21work/cmeta) as its system writes it: every percent
+    # escape decoded (%21 is "!", %20 a space) and a Windows folder with its drive letter or server and backslashes
     def local_path(u):
-        path = u[len('file://'):] if u.startswith('file://') else u
-        if re.match(r'^/[A-Za-z]:/', path):          # file:///C:/... on Windows
-            path = path[1:]
-        return path.replace('%20', ' ')
+        host, path = '', u
+        if u.startswith('file:'):
+            parts = urllib.parse.urlsplit(u)
+            host, path = parts.netloc, parts.path
+
+        path = urllib.parse.unquote(path)
+
+        if re.match(r'^/[A-Za-z]:([/\\]|$)', path):          # file:///C:/...
+            return path[1:].replace('/', '\\')
+
+        if host and host.lower() != 'localhost':            # file://server/share/... (a UNC path)
+            return '\\\\' + host + path.replace('/', '\\')
+
+        return path
 
     info = {'return': 0, 'note': ''}
 
@@ -1715,13 +1728,15 @@ def describe_cmeta_install(
                              'dependencies in pyproject.toml changed'})
         return info
 
-    # Where the package came from: a git repository, a local directory, or PyPI
+    # Where the package came from: a git repository, a local directory, or PyPI. A local directory is named as
+    # a folder for people, and reinstalled from the URL the installer recorded (what pip and uv take after "@")
+    folder = ''
     if vcs.get('vcs') == 'git' and url:
         source, rev = 'git', vcs.get('requested_revision') or ''
         target = 'git+%s%s' % (url, '@' + rev if rev else '')
     elif url.startswith('file:'):
         source, rev = 'local', ''
-        target = local_path(url)
+        target, folder = url, local_path(url)
     else:
         source, rev, target = 'pypi', '', ''
 
@@ -1740,7 +1755,7 @@ def describe_cmeta_install(
         method = 'pip'
 
     where = {'pypi': 'from PyPI', 'git': 'from git' + (' (%s)' % rev if rev else ''),
-             'local': 'from ' + target}[source]
+             'local': 'from ' + folder}[source]
     spec = 'cmeta%s @ %s' % (extras, target) if target else 'cmeta' + extras
 
     if method == 'uv tool':
