@@ -6,6 +6,9 @@ cMeta author and developer: (C) 2025-2026 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
+import functools
+import inspect
+import os
 import re
 
 from typing import Dict, Any, List, Optional
@@ -372,6 +375,151 @@ def check_params(
         'checked_params': checked_params,
         'remaining_params': remaining_params
     }
+
+
+###################################################################################################
+# The words of the command line, read by what a command expects (cMeta 0.37). For the parameters a
+# keyword-style function annotates `bool`, the words yes/no, true/false, on/off and 1/0 become booleans
+# (before, `--x=no` handed the command the string 'no', which is true). A command or a task can also DESCRIBE
+# its sensitive parameters in its metadata (`cli_params`: a type, allowed values, a range), checked only for
+# the parameters it names. Only strings are touched: the Python API passes Python values and is left alone.
+
+CLI_TYPES_ENV = 'CMETA_CLI_TYPES'          # off / 0 / no / false: the words stay text everywhere (as before 0.37)
+CLI_TYPES_META_KEY = 'cli_types'           # false in a category's _cmeta or a task's _desc: the words stay text for it
+CLI_PARAMS_META_KEY = 'cli_params'         # the described parameters: per command in a category, flat in a task
+
+BOOL_WORDS = {'1': True, 'on': True, 'true': True, 'yes': True, '0': False, 'off': False, 'false': False, 'no': False}
+
+CLI_TYPES = {'bool': bool, 'int': int, 'float': float, 'str': str}
+
+# Python 3.14 evaluates annotations lazily: ask for the forward-reference form, which never raises
+try:
+    import annotationlib
+    _SIGNATURE_ARGS = {'annotation_format': annotationlib.Format.FORWARDREF}
+except ImportError:
+    _SIGNATURE_ARGS = {}
+
+
+def cli_types_enabled():
+    """
+        Whether the words of the command line are read by annotations and descriptions (the default) or stay
+        text as before cMeta 0.37: CMETA_CLI_TYPES=off (0, no, false) turns the reading off for a process.
+    """
+    return os.environ.get(CLI_TYPES_ENV, '').strip().lower() not in ('0', 'off', 'no', 'false')
+
+
+def _is_bool_annotation(
+    annotation,  # The annotation of a parameter: a class, a typing form, or a string.
+):
+    """
+        True for `bool`, also as the string 'bool' (`from __future__ import annotations`). A default of None is
+        fine (`sort: bool = None`); a union form such as `bool | None` is not read - annotate `bool`.
+    """
+    return annotation is bool or (isinstance(annotation, str) and annotation.strip() == 'bool')
+
+
+@functools.lru_cache(maxsize=512)
+def bool_params_of(
+    func,  # The function (or bound method) that will receive the parameters.
+):
+    """
+        The names of the parameters `func` annotates `bool`, read once per function (empty without a signature).
+    """
+    try:
+        return frozenset(name for name, p in inspect.signature(func, **_SIGNATURE_ARGS).parameters.items()
+                         if _is_bool_annotation(p.annotation))
+    except (TypeError, ValueError):
+        return frozenset()
+
+
+def _word_as(
+    value,  # The string from the command line.
+    kind,  # bool, int or float; str or None keep the string.
+):
+    """
+        (the string as `kind`, None), or (None, the name of the type the string is not).
+    """
+    text = value.strip()
+
+    if kind is bool:
+        word = text.lower()
+        return (BOOL_WORDS[word], None) if word in BOOL_WORDS else (None, 'bool')
+
+    if kind in (int, float):
+        try:
+            return kind(text), None
+        except ValueError:
+            return None, kind.__name__
+
+    return value, None
+
+
+def typed_params_from_cli(
+    func,  # The function (or bound method) that will receive the parameters.
+    params,  # The parameters as the command line made them (changed in place).
+    described = None,  # The described parameters of the command or task: name -> type name or dict, if any.
+    where = '',  # Text naming the command or task for an error (' of "cache show"'), or a callable giving it.
+    fail_on_error = False,  # If True, raise exceptions instead of returning error dictionaries.
+):
+    """
+        Read the words of the command line by what the function expects: the strings of `params` for the
+        parameters `func` annotates `bool` become booleans; the strings for the parameters `described` names
+        (name -> 'bool' | 'int' | 'float' | 'str', or name -> {'type', 'values', 'min', 'max'}) become the
+        described type and are checked against the allowed values and the range. Any other parameter, and
+        any value that is not a string, is left as it is. A string that is not of the type is an error.
+
+        Returns:
+            dict: {'return': 0, 'converted': {name: value}} or {'return': 1, 'error': ...}.
+    """
+    def error(text, name, hint = ''):
+        place = where() if callable(where) else where
+        return _error(f"{text} for '{name}'{place}{hint}", 1, None, fail_on_error)
+
+    bool_hint = ': use yes/no, true/false, on/off, 1/0 or the flags --{0} / --{0}-'
+    converted = {}
+
+    for name in params.keys() & bool_params_of(func):
+        if isinstance(params[name], str):
+            value, wrong = _word_as(params[name], bool)
+
+            if wrong:
+                return error(f"Invalid bool value '{params[name]}'", name, bool_hint.format(name))
+
+            params[name] = converted[name] = value
+
+    for name, desc in (described or {}).items():
+        desc = {'type': desc} if isinstance(desc, str) else desc
+
+        if name not in params or not isinstance(desc, dict):
+            continue
+
+        kind = CLI_TYPES.get(str(desc.get('type', '')).strip().lower())
+        value = params[name]
+
+        if kind in (bool, int, float) and isinstance(value, str):
+            value, wrong = _word_as(value, kind)
+
+            if wrong:
+                return error(f"Invalid {wrong} value '{params[name]}'", name, bool_hint.format(name) if wrong == 'bool' else '')
+
+            params[name] = converted[name] = value
+
+        values = desc.get('values')
+
+        if values is not None and value not in values:
+            return error(f"Invalid value '{value}'", name, f": must be one of {', '.join(map(str, values))}")
+
+        try:
+            if desc.get('min') is not None and value < desc['min']:
+                return error(f"Invalid value {value}", name, f": must be at least {desc['min']}")
+
+            if desc.get('max') is not None and value > desc['max']:
+                return error(f"Invalid value {value}", name, f": must be at most {desc['max']}")
+
+        except TypeError:          # a value that cannot be compared with the bound: not this check's business
+            pass
+
+    return {'return': 0, 'converted': converted}
 
 
 def print_params_help(

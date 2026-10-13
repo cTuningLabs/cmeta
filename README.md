@@ -434,7 +434,8 @@ command):
 
 ### Flag syntax at a glance
 
-- Booleans: `--flag` (True), `--flag-` (False), `--no-flag` (False).
+- Booleans: `--flag` (True), `--flag-` (False), `--no-flag` (False); `--flag=yes` / `--flag=no` (also
+  true/false, on/off, 1/0) when the command annotates the parameter `bool` - any other word is an error.
 - Strings: `--key=value` (repeats overwrite — last wins); `--key value` is the
   flag `--key` and a positional `value`.
 - Lists: `--key,=v1,v2,v3` (trailing comma on the key).

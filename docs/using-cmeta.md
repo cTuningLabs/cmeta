@@ -119,10 +119,31 @@ Parsed by `cmeta/utils/cli.py::parse_cmd`. Full rules:
 - `--flag-` → **False** (trailing dash — handy when you want to explicitly
   override a default `True`).
 - `--no-flag` → **False** (alternative form).
-- `--flag=false` / `--flag=true` → literal string values `"false"` / `"true"`.
-  (Don't rely on this for boolean semantics — use the trailing-dash / `--no-`
-  forms above.) The engine's own control flags (`--quiet`, `--verbose`,
-  `--json`, ...) read `yes`/`no`, `true`/`false`, `on`/`off`, `1`/`0` as booleans.
+- `--flag=no` / `--flag=yes` → a **boolean** when the command annotates the
+  parameter `bool` (`sort: bool = False` in its signature, which `--help` shows):
+  `yes`/`no`, `true`/`false`, `on`/`off`, `1`/`0`, any case. Any other word is
+  an error naming the parameter and the command. The engine's own control flags
+  (`--quiet`, `--verbose`, `--json`, ...) read the same words. A parameter
+  without the annotation gets the text as it is (`"false"` is a true string).
+  `CMETA_CLI_TYPES=off` keeps every word text, as before cMeta 0.37, and so does
+  `cli_types: false` in a category's `_cmeta`; only the command line is read,
+  never the Python API.
+- A category can **describe** the sensitive parameters of a command in its
+  `_cmeta` and the engine converts and checks them: a type (`bool`, `int`,
+  `float`, `str`), allowed `values`, a `min` and a `max`. Nothing else is
+  checked; describe what matters, when it matters.
+
+  ```yaml
+  cli_params:
+    show:                      # the command
+      limit: int               # --limit=10 arrives as 10, --limit=ten is an error
+      mode:
+        values: [fast, full]   # --mode=auto is an error
+      ratio:
+        type: float
+        min: 0
+        max: 1
+  ```
 
 **Strings and ints**
 - `--key=value`, with the `=`: `--key value` is the flag `--key` (True)

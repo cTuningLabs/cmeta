@@ -244,7 +244,10 @@ not a failure. Details and shell examples in
 
 ## Flag syntax
 
-- Booleans: `--flag` (True), `--flag-` or `--no-flag` (False).
+- Booleans: `--flag` (True), `--flag-` or `--no-flag` (False); `--flag=yes` / `--flag=no` (also true/false,
+  on/off, 1/0) when the command annotates the parameter `bool` - any other word is an error. A parameter without
+  the annotation gets the text as it is. A category can describe sensitive parameters of a command in its
+  `_cmeta` (`cli_params`: a type, allowed values, a range) and the engine checks them (using-cmeta.md §3.5).
 - Strings: `--key=value` (last wins). `--key value` is the flag `--key` and a
   positional `value`.
 - Bare `key=value` works when the part before `=` looks like a key; other text

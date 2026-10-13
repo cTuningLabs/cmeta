@@ -893,6 +893,25 @@ class CMeta:
                                               f'is passed to the command unparsed, and this command does not read it).\n\n'
                                               f'Rerun with {extra_flags_help}--help to view API usage and options')
 
+                    # The words of the command line, read by what the command expects (cMeta 0.37): for the request
+                    # the command line made (a nested call passes Python values), a keyword-style function gets
+                    # booleans for the parameters it annotates bool, and the parameters its category describes
+                    # (`cli_params` in the category's _cmeta, per command) their described type, values and range
+                    if keyword_style and inside_cli and nested_call == 0 and utils.cli.cli_types_enabled() \
+                            and category_meta.get(utils.cli.CLI_TYPES_META_KEY, True):
+                        described = category_meta.get(utils.cli.CLI_PARAMS_META_KEY) or {}
+
+                        def where():
+                            r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error=False)
+                            return f' of "{r["obj"]} {command}"' if 'obj' in r else f' of "{command}"'
+
+                        r = utils.cli.typed_params_from_cli(func, command_params, described.get(command), where=where)
+
+                        if r['return'] > 0:
+                            extra_flags_help = category_meta.get('extra_flags_help', '')
+
+                            return self.error(f"{r['error']}\n\nRerun with {extra_flags_help}--help to view API usage and options")
+
                     try:
                         command_params['ctx'] = ctx
                         if keyword_style:

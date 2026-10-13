@@ -3,6 +3,21 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.36.0.1)
+- **The words of the command line are read by what a command expects.** For the parameters a command annotates
+  `bool` (`sort: bool = False`, as `--help` shows), `--sort=no` now hands it `False`: yes/no, true/false, on/off
+  and 1/0 in any case are booleans, and any other word is an error naming the parameter and the command.
+  Before, the command got the string `'no'`, which is true - a latent bug in every such parameter. A parameter
+  without the annotation gets the text as it is; the Python API is never read (it passes Python values), and
+  neither is a nested call. A category can also describe the sensitive parameters of a command in its `_cmeta`
+  (`cli_params`, per command: a type among bool, int, float and str, allowed `values`, a `min` and a `max`), and
+  the engine converts and checks exactly those - the gradual way: describe what matters, when it matters. Two
+  switches keep the words text as before: `CMETA_CLI_TYPES=off` for a process and `cli_types: false` in a
+  category's `_cmeta`. The helper is `utils.cli.typed_params_from_cli`; the aops task category calls it for a
+  task's `run()`, so `--x=no` and `--use.<key>.x=no` reach a task as booleans too (cmeta-aops 0.46). The cost is
+  below a microsecond per call. Docs: using-cmeta.md §3.5, common-commands.md, the use-cmeta-cli skill.
+
+
 ## 0.36.0
 - **The command line: free text with `=` stays text, a negative number is a value, a control flag takes a word,
   and `--` is refused in words.** Four small corrections of the parser, none of which changes a command that
