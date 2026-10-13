@@ -41,6 +41,27 @@ class Category(InitCategory):
         """
         super().__init__(*args, module_file_path = __file__, **kwargs)
 
+    def native_host_install_(self, ctx, arg1=None, apply=False):
+        """Register a native messaging host declared by a cMeta artifact."""
+        from . import native_host
+        try:
+            return native_host.install(self.cm, arg1, apply=apply)
+        except Exception as exc:
+            return self.cm.error(str(exc))
+
+    def native_host_check_(self, ctx, arg1=None):
+        """Check native messaging transport and the artifact's declared requests."""
+        from . import native_host
+        try:
+            return native_host.check(self.cm, arg1)
+        except Exception as exc:
+            return self.cm.error(str(exc))
+
+    def native_host_run_(self, ctx, arg1=None):
+        """Serve one framed native message using cx's active cMeta home."""
+        from . import native_host
+        return native_host.serve(self.cm, arg1)
+
     ############################################################
     def test(
         self,

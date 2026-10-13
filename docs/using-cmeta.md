@@ -193,7 +193,7 @@ All shipped in `cmeta/internal-repo/` and available immediately after install.
 | **category** | The category system itself — `add`, `find`, `ls`, `rm`, `mv`. |
 | **repo** | Content repositories — `get`, `clone`, `pull`, `checkout`, `status`, `zip`/`unzip`, `plug`/`unplug`, `space`, `list`. |
 | **config** | Named configuration artifacts — `get`, `set`, `unset`, `read`, `show`. |
-| **utils** | Helper commands — UID/UUID, JSON⇄YAML, clipboard helpers. |
+| **utils** | Helper commands — UID/UUID, JSON⇄YAML, clipboard helpers, native messaging hosts. |
 | **app** | Runnable applications. Ships the `cserver` local web app. |
 | **script** | Portable shell / Python scripts. |
 | **asset** | Data / model / file assets. |
@@ -208,6 +208,40 @@ Every category inherits the standard base commands: `find`, `list`, `read`,
 `create`, `update`, `delete`, `move`, `copy`, `info`, `tags`, `get`, `set`,
 `index`, `test`. Categories add their own commands on top (e.g. `repo get`,
 `app run`).
+
+### Native messaging hosts for cMeta add-ons
+
+An add-on artifact can declare `native-host.json` with its Mozilla host name,
+allowed extension IDs, a Python `entry` inside the artifact, and optional
+non-interactive `checks`. Its entry exports `dispatch(request, cm)` and returns
+a JSON-serializable dictionary. For example:
+
+```json
+{
+  "name": "example_cmeta_host",
+  "description": "Example cMeta add-on",
+  "entry": "bridge/host.py",
+  "allowed_extensions": ["example@example.org"],
+  "checks": [{"command": "ping"}]
+}
+```
+
+Use the artifact's UID-only `<category-UID>::<artifact-UID>` reference so a
+rename does not break registration:
+
+```bash
+cx --print-home
+cx utils native-host-install <category-UID>::<artifact-UID> --apply
+cx utils native-host-check <category-UID>::<artifact-UID>
+```
+
+The per-user launcher calls `cx utils native-host-run` using that reference.
+Each request uses the cMeta home active in the desktop session and resolves
+the artifact from its repository anew. No Python executable or repository path
+is saved in the launcher. Mozilla still requires an absolute manifest path;
+cMeta keeps that manifest in per-user application data. Keep `cx` or `cmeta` on the
+desktop session's PATH and ensure its active home contains the artifact.
+`native-host-check` sends the declared requests without opening an AI session.
 
 ---
 
