@@ -625,7 +625,8 @@ this order (first match wins):
 after the home path; `config.home_choice(home)` in Python), and the command that
 sets up a new home says where it is and what chose it, once, in one line on the
 standard output (`cMeta info: a new cMeta home is set up in …`). So a script
-never has to assume `~/CMETA` - and must not: ask `cx --version` for the home and
+never has to assume `~/CMETA` - and must not: ask `cx --print-home` for the home
+(one line, the absolute path; `config.home_path()` in Python) and
 `cx repo find <alias>` for the folder of a repository.
 
 > **Installing `cx` globally does not give you a global home.** Rule 2 reads an

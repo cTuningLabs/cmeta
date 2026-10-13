@@ -64,6 +64,17 @@ without it &mdash; there is no uvicorn to run it with, and a `uv tool`
 environment has no pip to add one afterwards. Drop it (`uv tool install cmeta`)
 if you will never run the web app.
 
+**Which Python.** uv uses a Python that is already on the machine; on a machine
+without one it downloads its newest. That is 3.15 today, and not every
+dependency of cMeta ships wheels for 3.15 yet (PyYAML does not), so the install
+would have to compile it and fails without a C compiler. Until they all do, ask
+for an earlier one on such a machine &mdash; the website installer does so by
+default:
+
+```bash
+uv tool install --python ">=3.9,<3.15" "cmeta[server]"
+```
+
 Quote the extra. In `zsh` &mdash; the default shell on macOS &mdash; square
 brackets are a filename pattern, so an unquoted `cmeta[server]` never reaches
 uv: it fails with `zsh: no matches found`. `"cmeta[server]"` works in every
@@ -93,7 +104,7 @@ For when cMeta is a dependency of one project, and its repositories should live
 and die with that project:
 
 ```bash
-uv venv cmeta-env
+uv venv cmeta-env                        # no Python on the machine: uv venv --python ">=3.9,<3.15" cmeta-env (see Option 1)
 source cmeta-env/bin/activate            # Windows: cmeta-env\Scripts\activate.bat
 uv pip install cmeta
 cx --version
@@ -157,8 +168,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force "cmeta[server]==0.35.1"
-pip install "cmeta==0.35.1"
+uv tool install --force "cmeta[server]==0.35.2"
+pip install "cmeta==0.35.2"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other
@@ -201,7 +212,8 @@ starts, in this order:
 
 `cx --version` prints the home it resolved and, on the next line, what chose it
 (`cMeta home chosen by: …`), and `cx --home=<path> …` overrides it for a single
-command.
+command. `cx --print-home` prints the path alone, for scripts: one line, no
+network access, and a home that does not exist yet is not set up.
 
 The command that sets up a new home says so once, in one line of information on
 the standard output (the standard error is for errors only):
@@ -212,8 +224,8 @@ cMeta info: a new cMeta home is set up in /opt/venv/CMETA (chosen by VIRTUAL_ENV
 
 **A script never assumes `~/CMETA`.** Inside a virtual or conda environment - a
 container image that exports `VIRTUAL_ENV` is enough - the home is
-`<environment>/CMETA`. Ask cMeta instead: `cx --version` for the home, `cx repo
-find <alias>` for the folder of a repository.
+`<environment>/CMETA`. Ask cMeta instead: `cx --print-home` for the home, `cx
+repo find <alias>` for the folder of a repository.
 
 **Set `CMETA_HOME` only to choose another folder**, or to keep one home even
 while a project's virtual environment is active. Rule 2 reads an environment

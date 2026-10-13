@@ -68,15 +68,42 @@ def test_editable_install_updates_the_checkout():
     du = {'url': 'file:///C:/work/cmeta', 'dir_info': {'editable': True}}
     i = describe_cmeta_install(installer='uv', direct_url=du, executable=EXE)
     assert i['method'] == 'editable'
-    assert i['update'] == ['git -C "C:/work/cmeta" pull']
+    assert i['label'] == 'an editable install of C:\\work\\cmeta'
+    assert i['update'] == ['git -C "C:\\work\\cmeta" pull']
 
 
 def test_non_editable_local_directory():
     du = {'url': 'file:///home/u/src/cmeta', 'dir_info': {}}
     i = describe_cmeta_install(installer='uv', direct_url=du, receipt=RECEIPT)
     assert i['source'] == 'local'
-    assert i['update'] == ['uv tool install --force "cmeta[server] @ /home/u/src/cmeta"']
+    assert i['label'] == 'uv tool, from /home/u/src/cmeta'
+
+    # Reinstalled from the URL the installer recorded: pip takes only a URL after "@"
+    assert i['update'] == ['uv tool install --force "cmeta[server] @ file:///home/u/src/cmeta"']
     assert 'directory' in i['note']
+
+
+# The file URL -> the folder as its system writes it
+FOLDERS = [
+    ('file:///D:/%21FGG_Repos/repos/cmeta', 'D:\\!FGG_Repos\\repos\\cmeta'),
+    ('file:///C:/Users/Gr%C3%A9goire/my%20work/c%23meta', 'C:\\Users\\Grégoire\\my work\\c#meta'),
+    ('file:///c:/', 'c:\\'),
+    ('file://server/share/cmeta', '\\\\server\\share\\cmeta'),
+    ('file:///home/u/my%20work/c%2Bmeta', '/home/u/my work/c+meta'),
+    ('file://localhost/home/u/cmeta', '/home/u/cmeta'),
+]
+
+
+def test_a_folder_is_named_as_its_system_writes_it():
+    for url, folder in FOLDERS:
+        e = describe_cmeta_install(installer='pip', direct_url={'url': url, 'dir_info': {'editable': True}}, executable=EXE)
+        assert e['label'] == 'an editable install of ' + folder, (url, e)
+        assert e['update'] == ['git -C "%s" pull' % folder], (url, e)
+
+        # Installed from the folder without -e: named the same, reinstalled from its URL
+        f = describe_cmeta_install(installer='pip', direct_url={'url': url, 'dir_info': {}}, executable=EXE)
+        assert f['label'] == 'pip, from ' + folder, (url, f)
+        assert f['update'] == ['"%s" -m pip install --force-reinstall "cmeta @ %s"' % (EXE, url)], (url, f)
 
 
 def test_running_from_a_checkout_and_frozen():

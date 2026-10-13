@@ -75,9 +75,9 @@ def test_a_writer_waiting_for_a_file_lock_says_so_and_gives_up_after_the_limit(t
     assert files.safe_write_file(target, {'n': 0})['return'] == 0
     holder = hold(target + '.lock', 'a test holding the file', 60)
     try:
-        t0 = time.time()
+        t0 = time.monotonic()
         r = files.safe_write_file(target, {'n': 1}, timeout=5)
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
     finally:
         stop(holder)
 
@@ -178,9 +178,9 @@ def test_a_replace_waits_for_a_target_that_is_busy_and_gives_up_after_the_lock_t
         t = threading.Thread(target=read_for_a_while, args=(2.0,))
         t.start()
         time.sleep(0.2)
-        t0 = time.time()
+        t0 = time.monotonic()
         files._replace_file(temp, target)
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
         t.join()
     else:
         # POSIX: os.replace itself never waits for a reader; a busy target is shown with a hook
@@ -193,9 +193,9 @@ def test_a_replace_waits_for_a_target_that_is_busy_and_gives_up_after_the_lock_t
             return real(a, b)
 
         monkeypatch.setattr(os, 'replace', busy)
-        t0 = time.time()
+        t0 = time.monotonic()
         files._replace_file(temp, target)
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
         monkeypatch.setattr(os, 'replace', real)
 
     assert 1.0 < elapsed < 20, elapsed
@@ -210,19 +210,19 @@ def test_a_replace_waits_for_a_target_that_is_busy_and_gives_up_after_the_lock_t
         t = threading.Thread(target=read_for_a_while, args=(4.0,))
         t.start()
         time.sleep(0.2)
-        t0 = time.time()
+        t0 = time.monotonic()
         with pytest.raises(PermissionError):
             files._replace_file(temp, target)
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
         t.join()
     else:
         def always_busy(a, b):
             raise PermissionError(errno.EACCES, 'busy for the test')
         monkeypatch.setattr(os, 'replace', always_busy)
-        t0 = time.time()
+        t0 = time.monotonic()
         with pytest.raises(PermissionError):
             files._replace_file(temp, target)
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
         monkeypatch.setattr(os, 'replace', real)
 
     assert 0.9 <= elapsed < 10, elapsed
@@ -256,10 +256,10 @@ def test_the_cache_sees_a_change_that_keeps_the_timestamp(tmp_path):
 
     # A missing file never seen: the not-found code at once; a file read before that is missing is
     # retried for a moment (a replace in progress, the swap of a reindex) and found again
-    t0 = time.time()
+    t0 = time.monotonic()
     r = files.safe_read_file_via_cache(str(tmp_path / 'absent.json'), cache)
     assert r['return'] == files.ERROR_CODE_FILE_NOT_FOUND
-    assert time.time() - t0 < 0.5
+    assert time.monotonic() - t0 < 0.5
     r = files.safe_read_file_via_cache(str(tmp_path), cache)
     assert r['return'] == 1 and 'is a directory' in r['error']
 
@@ -269,10 +269,10 @@ def test_the_cache_sees_a_change_that_keeps_the_timestamp(tmp_path):
     r = files.safe_read_file_via_cache(target, cache)
     assert r['return'] == 0 and r['data'] == {'a': 33}, r
     os.replace(target, gone)
-    t0 = time.time()
+    t0 = time.monotonic()
     r = files.safe_read_file_via_cache(target, cache)
     assert r['return'] == files.ERROR_CODE_FILE_NOT_FOUND
-    assert 0.05 < time.time() - t0 < 2, time.time() - t0
+    assert 0.05 < time.monotonic() - t0 < 2, time.monotonic() - t0
     os.replace(gone, target)
 
 

@@ -143,7 +143,7 @@ time.sleep(float(sys.argv[2]))
 HOOKED_WAITER = r'''
 import os, sys, time
 from cmeta.utils import files
-lock_file, marker, go, out = sys.argv[1:5]
+lock_file, marker, go, out, released = sys.argv[1:6]
 real = files.fcntl.flock
 state = {'first': True}
 def hooked(fd, op):
@@ -158,8 +158,10 @@ files.fcntl.flock = hooked
 lock = files.PathLock(lock_file)
 lock.acquire(timeout=60)
 same = files.PathLock._identity(os.fstat(lock._fd)) == files.PathLock._identity(os.stat(lock_file))
+# Taken after the newcomer's release? The test marks its release with a file made just before it: no clock
+# reading is compared between two processes (a monotonic clock may start from zero in each process)
 with open(out, 'w') as f:
-    f.write('%f %d %s %s\n' % (time.time(), lock.identity_retries, lock.mode, same))
+    f.write('%s %d %s %s\n' % (os.path.exists(released), lock.identity_retries, lock.mode, same))
 lock.release()
 '''
 
@@ -188,9 +190,9 @@ def start(script, *args):
 
 
 def wait_for(path, seconds=30):
-    deadline = time.time() + seconds
+    deadline = time.monotonic() + seconds
     while not os.path.exists(path):
-        if time.time() > deadline:
+        if time.monotonic() > deadline:
             raise AssertionError(f'{path} did not appear in {seconds} s')
         time.sleep(0.005)
 
@@ -370,9 +372,10 @@ def test_a_lock_file_removed_under_a_waiter_never_gives_two_holders(tmp_path):
     flock on A succeeds (nobody holds A any more) - and the identity check sends it back to try B."""
     lock_file = str(tmp_path / 'race.lock')
     marker, go, out = str(tmp_path / 'marker'), str(tmp_path / 'go'), str(tmp_path / 'out')
+    released = str(tmp_path / 'released')
 
     holder = files.PathLock(lock_file).acquire(timeout=5)
-    waiter = start(HOOKED_WAITER, lock_file, marker, go, out)
+    waiter = start(HOOKED_WAITER, lock_file, marker, go, out, released)
     wait_for(marker)                       # the waiter has opened A
 
     holder.release()                       # A is removed, then released
@@ -383,13 +386,13 @@ def test_a_lock_file_removed_under_a_waiter_never_gives_two_holders(tmp_path):
     time.sleep(0.5)
     assert not os.path.exists(out), 'the waiter acquired while the newcomer held B'
 
-    released_at = time.time()
+    open(released, 'w').close()            # from now on the waiter may hold the lock
     newcomer.release()
     waiter.wait(60)
     assert waiter.returncode == 0, waiter.stdout.read().decode('utf-8', 'replace')
     with open(out) as f:
-        acquired_at, retries, mode, same = f.read().split()
-    assert float(acquired_at) >= released_at - 0.001
+        after_the_release, retries, mode, same = f.read().split()
+    assert after_the_release == 'True', 'the waiter acquired before the newcomer released B'
     assert int(retries) >= 1
     assert mode == 'flock' and same == 'True'
     assert not os.path.exists(lock_file)
@@ -898,7 +901,11 @@ def test_a_soft_lock_line_names_the_system_and_the_heartbeat_rewrites_its_time(s
     beat = data.split()
     assert float(beat[2]) > float(words[2]) and beat[0] == words[0] and beat[1] == words[1] and beat[3] == words[3]
     assert len(data) == len(first) and data.endswith('\n')          # rewritten in place: the same length, never empty
-    assert lock._line != first.encode()                              # the holder knows the line it wrote last
+
+    # The holder knows the line it wrote last - read under the heartbeat's lock, as the engine does: the beat
+    # thread writes the file, then records the line, and this thread can run in between (seen 1 in 10 on a Mac)
+    with files._beat_lock:
+        assert lock._line != first.encode()
 
     # the processes of one system agree on its name
     out = subprocess.run([sys.executable, '-c', 'from cmeta.utils import files; print(files._lock_system_id())'],
@@ -970,6 +977,129 @@ def test_a_dead_holder_of_this_system_is_known_by_its_pid_before_the_silence(sof
     assert lock.mode == 'soft' and 0.4 <= time.monotonic() - started < 4
     lock.release()
     assert not os.path.exists(soft)
+
+
+BUSY_SOFT_HOLDER = r'''
+import sys, threading, time
+from cmeta.utils import files
+files.LOCK_SOFT_HEARTBEAT_SECONDS = float(sys.argv[2])
+files._lock_soft_paths.add(sys.argv[1])
+lock = files.PathLock(sys.argv[1]).acquire(timeout=60)
+print('LOCKED', lock.mode, flush=True)
+
+# Every other thread of the holder keeps the interpreter busy: the heartbeat thread competes with them
+end = time.monotonic() + float(sys.argv[3])
+def spin():
+    x = 0
+    while time.monotonic() < end:
+        x += 1
+threads = [threading.Thread(target=spin) for _ in range(4)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+lock.release()
+print('RELEASED', flush=True)
+'''
+
+BURNER = r'''
+import sys, time
+end = time.monotonic() + float(sys.argv[1])
+x = 0
+while time.monotonic() < end:
+    x += 1
+'''
+
+
+def burners(seconds):
+    """A process per core, each one busy with the CPU for `seconds`: the load around a test."""
+    return [subprocess.Popen([sys.executable, '-c', BURNER, str(seconds)], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for _ in range(os.cpu_count() or 2)]
+
+
+def stop_all(procs):
+    for p in procs:
+        if p.poll() is None:
+            p.kill()
+    for p in procs:
+        p.wait(30)
+
+
+def test_a_silent_line_of_a_live_pid_of_this_system_is_taken_over_after_the_silence(soft, monkeypatch):
+    """A pid of this system that is alive but beats no more - its holder died and the pid was given to another
+    process (Windows gives pids again soon) - keeps the lock only until the silence: the rule of the dead pid
+    does not take it, the rule of the silence does."""
+    monkeypatch.setattr(files, 'LOCK_SOFT_SILENT_SECONDS', 0.8)
+    other = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        with open(soft, 'w') as f:
+            f.write(f'{other.pid} {files._lock_host_name()} {time.time() - 5:.3f} {files._lock_system_id()}\n')
+
+        # Not before the silence ...
+        with pytest.raises(TimeoutError):
+            files.PathLock(soft).acquire(timeout=0.4)
+
+        # ... and after it (a new waiter watches the line for the whole silence first)
+        started = time.monotonic()
+        lock = files.PathLock(soft).acquire(timeout=10)
+        waited = time.monotonic() - started
+        assert lock.mode == 'soft' and 0.8 <= waited < 8, waited
+        lock.release()
+        assert not os.path.exists(soft)
+        assert other.poll() is None             # the pid was alive all along
+    finally:
+        other.kill()
+        other.wait(30)
+
+
+def test_a_holder_whose_threads_keep_the_cpu_busy_keeps_beating(tmp_path, monkeypatch):
+    """The heartbeat is a thread of the holder: it beats while the holder's other threads keep the interpreter
+    busy and every core of the machine is loaded. A waiter that takes a lock silent for 2 s over never gets
+    this one while it is held, and gets it at once when it is released."""
+    lock_file = str(tmp_path / 'busy.lock')
+    monkeypatch.setattr(files, '_lock_soft_paths', {lock_file})
+    monkeypatch.setattr(files, 'LOCK_SOFT_SILENT_SECONDS', 2.0)
+
+    load = burners(60)
+    holder = start(BUSY_SOFT_HOLDER, lock_file, 0.25, 6)
+    try:
+        line = holder.stdout.readline().decode('utf-8', 'replace')
+        assert line.startswith('LOCKED soft'), line
+
+        with pytest.raises(TimeoutError):
+            files.PathLock(lock_file).acquire(timeout=4)
+
+        lock = files.PathLock(lock_file).acquire(timeout=60)
+        lock.release()
+        out, _ = holder.communicate(timeout=60)
+        assert b'RELEASED' in out, out
+    finally:
+        stop_all(load)
+        if holder.poll() is None:
+            holder.kill()
+            holder.wait(30)
+    assert not os.path.exists(lock_file)
+
+
+def test_soft_lock_excludes_processes_with_every_core_busy(tmp_path):
+    target = str(tmp_path / 'counter.txt')
+    log_path = str(tmp_path / 'log.txt')
+    load = burners(300)
+    try:
+        outputs = run_workers(COUNTER_WORKER, [('pathlock', target, log_path, 25, 'soft')] * 6)
+    finally:
+        stop_all(load)
+    for rc, out in outputs:
+        assert rc == 0 and 'OK' in out, out
+    with open(target) as f:
+        assert int(f.read().strip()) == 6 * 25
+    with open(log_path) as f:
+        lines = f.read().splitlines()
+    assert len(lines) == 6 * 25 and all(line.endswith(' soft') for line in lines)
+    assert not os.path.exists(target + '.lock')
+    assert not [name for name in os.listdir(tmp_path) if '.take-' in name]
 
 
 @pytest.mark.skipif(not hasattr(os, 'fork'), reason='fork is a POSIX matter')

@@ -101,6 +101,16 @@ def process(
 
     args = params.get('args', [])
 
+    # `cx --print-home`: the home this command line uses, in one line and nothing else - no network, no index, and a
+    # home that does not exist yet is not set up (for scripts; `cx --version` is a report for people). After a
+    # category the flag stays an ordinary parameter of the command, as before.
+    if len(args) == 0 and config.is_on(params.get('print_home')):
+        home = config.home_path(cmeta.home_path if cmeta is not None else cmeta_init['home'])
+
+        print(home)
+
+        return {'return': 0, 'home': home}
+
     # If positional arguments are not present, check first level params
     if len(args) == 0 and (params.get('help', False) or params.get('h', False) or len(params)==0):
         print ('Common Meta Framework Usage:')

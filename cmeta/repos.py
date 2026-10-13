@@ -643,7 +643,7 @@ class Repos:
                 follow_migrated (bool): When an artifact is looked up by its alias alone (no UID, no
                     wildcards) and the alias is a migration stub (meta key `migrated_to`, see the
                     `migrate` command), return the artifact the stub points to instead, with a notice
-                    on stderr. A lookup with a UID always returns exactly what it names.
+                    on stdout. A lookup with a UID always returns exactly what it names.
             Returns:
                 dict: Dictionary with 'return': 0 and 'artifacts' list on success,
                       or 'return' > 0 and 'error' on failure.
@@ -855,7 +855,7 @@ class Repos:
             A stub is what `migrate` leaves under an old alias: an artifact whose meta has
             `migrated_to` (the new "alias,UID") and `migrated_when`. The target is found by its UID,
             in any repository; a stub pointing to a stub is followed too, up to MAX_MIGRATED_HOPS.
-            Each stub followed prints one notice per process on stderr.
+            Each stub followed prints one notice per process on stdout.
 
             Args:
                 artifacts: Artifacts found by alias in one category.
@@ -1005,7 +1005,7 @@ class Repos:
             its whole rebuild and swap, the index of pulled or plugged repositories for its duration and
             every write of a record for a moment, so that a write never lands in an index that is about
             to be replaced and two rebuilds never race for the swap. Readers do not take it. A waiter
-            says so on stderr after INDEX_LOCK_NOTICE_SECONDS, naming the holder when it left a note, and
+            says so on stdout after INDEX_LOCK_NOTICE_SECONDS, naming the holder when it left a note, and
             gives up after INDEX_LOCK_TIMEOUT seconds (the environment variable INDEX_LOCK_TIMEOUT_ENV
             changes that).
 
@@ -1134,7 +1134,7 @@ class Repos:
         from tqdm import tqdm
 
         import time
-        time_start = time.time()
+        time_start = time.monotonic()
 
         conx = True if verbose else False
 
@@ -1709,7 +1709,7 @@ class Repos:
                 if r['return']>0: return r
 
         
-        time_end = time.time()
+        time_end = time.monotonic()
         elapsed = time_end - time_start
 
         if conx:

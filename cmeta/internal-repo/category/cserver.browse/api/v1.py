@@ -712,7 +712,7 @@ def _cache_load():
     d = _disk['dir']
     if not d or _disk['loaded'] == d:
         return
-    t0 = time.time()
+    t0 = time.monotonic()
     _disk['loaded'] = d
     try:
         with open(os.path.join(d, CACHE_FILE), 'rb') as fh:
@@ -727,7 +727,7 @@ def _cache_load():
     except Exception as e:                       # unreadable or of another Python: read the files again
         _disk['error'] = 'the cache could not be read (%s: %s); the _desc files were read again' % (
             type(e).__name__, e)
-    _disk['load_ms'] = int((time.time() - t0) * 1000)
+    _disk['load_ms'] = int((time.monotonic() - t0) * 1000)
 
 
 def _cache_save(files):
@@ -833,7 +833,7 @@ def _conn_run():
         with _conn_lock:
             want = _conn['want']
             _conn.update(done=0, total=len(items))
-        t0 = time.time()
+        t0 = time.monotonic()
         try:
             _cache_load()
             res, err = _conn_compute(items, by_uid, by_key), ''
@@ -845,8 +845,8 @@ def _conn_run():
         with _conn_lock:
             if res is not None:
                 _conn.update(res)
-                _conn.update(ready=True, stamp=stamp, want_built=want, t=time.time(),
-                             ms=int((time.time() - t0) * 1000),
+                _conn.update(ready=True, stamp=stamp, want_built=want, t=time.monotonic(),
+                             ms=int((time.monotonic() - t0) * 1000),
                              built=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             _conn['error'] = err
             if res is None or (_conn['want'] == want and _catalog['stamp'] == stamp):
@@ -861,7 +861,7 @@ def _conn_request(force=False):
     with _conn_lock:
         if force:
             _conn['want'] += 1
-        due = _conn['ready'] and time.time() - _conn.get('t', 0) > REFRESH_AFTER
+        due = _conn['ready'] and time.monotonic() - _conn.get('t', 0) > REFRESH_AFTER
         if (force or due or _conn['stamp'] != _catalog['stamp']) and not _conn['building']:
             _conn['building'] = True
             t = threading.Thread(target=_conn_run, name='cserver.browse connection index', daemon=True)
@@ -1062,7 +1062,7 @@ class Category(InitCategory):
         with _lock:
             if not force and _catalog['stamp'] == stamp:
                 return _catalog
-            t0 = time.time()
+            t0 = time.monotonic()
             items, by_uid, by_key = [], {}, {}
             r = self.cm.repos.find_in_index('category', CATEGORY_UID)
             cats = r.get('artifacts', []) if r.get('return', 1) == 0 else []
@@ -1101,7 +1101,7 @@ class Category(InitCategory):
                     by_key[(it['cat_uid'].lower(), it['alias_l'])] = it['uid']
             _catalog.update({'stamp': stamp, 'items': items, 'by_uid': by_uid, 'by_key': by_key, 'skipped': skipped,
                              'built': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                             'ms': int((time.time() - t0) * 1000), 'categories': len(cats)})
+                             'ms': int((time.monotonic() - t0) * 1000), 'categories': len(cats)})
             return _catalog
 
     def _visible(self, cfg=None):
@@ -1163,7 +1163,7 @@ class Category(InitCategory):
     def _search(self, params, items=None):
         """The query, the pickers and the dates -> one page of rows, the total, the facets and the timing. Words
         and _desc qualifiers read the text of the _desc files too (the first search of a process waits for it)."""
-        t0 = time.time()
+        t0 = time.monotonic()
         params = params or {}
         items = self._visible() if items is None else items
         pq = parse_query(params.get('q', ''))
@@ -1182,7 +1182,7 @@ class Category(InitCategory):
         page = found[offset:offset + limit]
         out = {'total': len(found), 'offset': offset, 'limit': limit, 'sort': sort,
                'dir': 'desc' if desc else 'asc', 'rows': [_row(it, pq['words'], texts) for it in page],
-               'of': len(items), 'ms': int((time.time() - t0) * 1000), 'catalog': self._catalog_info(),
+               'of': len(items), 'ms': int((time.monotonic() - t0) * 1000), 'catalog': self._catalog_info(),
                'descs': {'asked': asked, 'searched': texts is not None, 'count': len(texts or {})}}
         if str(params.get('facets', '1')).lower() not in ('0', 'no', 'false'):
             out['facets'] = _facets(found)
@@ -1291,22 +1291,22 @@ class Category(InitCategory):
         """The graph of the query, or of everything within depth hops of a focus: the artifacts (a fair sample
         when there are more than max_nodes), their categories, the cMeta node, and the connections and uses
         between what is drawn - with the notices and the timings of every stage."""
-        T, t0 = {}, time.time()
+        T, t0 = {}, time.monotonic()
         cat = self._catalog()
-        T['catalog'] = int((time.time() - t0) * 1000)
+        T['catalog'] = int((time.monotonic() - t0) * 1000)
 
-        t1 = time.time()
+        t1 = time.monotonic()
         th = self._conn_start()
         if th is not None and _conn_behind():        # the first build, or one after an index change or a reload:
             th.join(INDEX_WAIT)                      # wait for it (a routine refresh is not waited for)
-        T['index'] = int((time.time() - t1) * 1000)
+        T['index'] = int((time.monotonic() - t1) * 1000)
         if not _conn['ready']:
             return {'error': 'the connections are still being read (%d of %d artifacts) - try again in a moment'
                              % (_conn['done'], _conn['total']), 'index': _conn_status()}
         with _conn_lock:
             out, uses, ai, adj = _conn['out'], _conn['uses'], _conn.get('ai', {}), _conn['adj']
 
-        t2 = time.time()
+        t2 = time.monotonic()
         by_uid = cat['by_uid']
         vis = self._visible()
         ui_repos, ui_cats = _list(params.get('repos')), _list(params.get('cats'))
@@ -1354,9 +1354,9 @@ class Category(InitCategory):
                             cand.append(v)
                             grown += 1
         matched = len(cand) - grown
-        T['select'] = int((time.time() - t2) * 1000)
+        T['select'] = int((time.monotonic() - t2) * 1000)
 
-        t3 = time.time()
+        t3 = time.monotonic()
         cset = set(cand)
         deg = {u: sum(1 for v in adj.get(u, ()) if v in cset) for u in cand}
         iso_hidden = 0
@@ -1427,7 +1427,7 @@ class Category(InitCategory):
             nodes.append(n)
             if show_cats:
                 links.append({'s': '__cat__' + it['cat_uid'].lower(), 't': u, 'k': 'member'})
-        T['graph'] = int((time.time() - t3) * 1000)
+        T['graph'] = int((time.monotonic() - t3) * 1000)
 
         n_drawn = len(picked)
         if focus and not start:
@@ -1460,7 +1460,7 @@ class Category(InitCategory):
                            % status['built'])
         if status['error']:
             notices.append('The connections could not all be read: %s' % status['error'])
-        T['server'] = int((time.time() - t0) * 1000)
+        T['server'] = int((time.monotonic() - t0) * 1000)
         return {'nodes': nodes, 'links': links,
                 'cats': [[cat_alias[c], n, c] for c, n in per_cat.most_common()],
                 'stats': {'matched': matched, 'drawn': n_drawn, 'capped': capped, 'grown': grown,

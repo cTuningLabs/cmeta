@@ -120,6 +120,7 @@ params_command2_desc = [
 
 params_command3_desc = [
   {'key':'version', 'aliases':['V'], 'desc': 'Show version'},
+  {'key':'print_home', 'aliases':['print-home'], 'type': bool, 'desc': 'Print the path of the cMeta home and nothing else (for scripts: no network, nothing set up)'},
 ]
 
 params_init_desc = [
@@ -319,6 +320,49 @@ def home_choice(
     return {'source': 'given', 'value': '', 'text': 'this run: --home or the home argument of CMeta'}
 
 
+def _home_of_the_flag():
+    """
+        The home of a bare `--home` (`home=True`): CMETA_HOME, else CMETA_HOME2, else ~/CMETA - a virtual or
+        conda environment is not asked.
+
+        Returns:
+            str: The folder.
+    """
+    home = os.environ.get(cfg['env_var_home'], '').strip()
+
+    if home == '':
+        home = os.environ.get(cfg['env_var_home2'], '').strip()
+
+    if home == '':
+        home = os.path.join(Path.home(), cfg['capitalized_name'])
+
+    return home
+
+
+def home_path(
+    home = None,  # As `--home` or the `home` argument of CMeta gives it: a folder, True (a bare `--home`) or None.
+):
+    """
+        The cMeta home that `CMeta(home=home)` uses, as an absolute path: `home` when it is a folder; for a bare
+        `--home` (True) CMETA_HOME, else CMETA_HOME2, else ~/CMETA; without `home` the environment's choice
+        (`home_from_env`: CMETA_HOME, <VIRTUAL_ENV>/CMETA, <CONDA_PREFIX>/CMETA, CMETA_HOME2, ~/CMETA).
+
+        Nothing is created and nothing but the environment is read: the folder may not exist yet.
+        `cx --print-home` prints it.
+
+        Args:
+            home (str | bool | None): A folder, True for a bare `--home`, or None for the environment's choice.
+        Returns:
+            str: The absolute path of the home.
+    """
+    if home is None:
+        home = home_from_env()[0]
+    elif is_on(home):
+        home = _home_of_the_flag()
+
+    return os.path.abspath(str(home))
+
+
 def check_init_vars_from_env():
     """
         Load CMeta initialization parameters from environment variables.
@@ -391,19 +435,9 @@ def update_init_and_setup_logger(
     for k in force_init:
         init[k] = force_init[k]
 
+    # A bare `--home` (True rather than a path): CMETA_HOME, else CMETA_HOME2, else ~/CMETA
     if is_on(init.get('home')):
-        ENV_CMETA_HOME = cfg['env_var_home']
-        ENV_CMETA_HOME2 = cfg['env_var_home2']
-
-        # If home is specified as bool True (rather than path),
-        # Check internal vars and then USER space
-        home = os.environ.get(ENV_CMETA_HOME, '').strip()
-        if home == '':
-            home = os.environ.get(ENV_CMETA_HOME2, '').strip()
-        if home == '':
-            home = os.path.join(Path.home(), cfg['capitalized_name'])
-
-        init['home'] = home
+        init['home'] = _home_of_the_flag()
 
     if init.get('log_file') is not None and init.get('log_level') is None:
         init['log_level'] = 'DEBUG'

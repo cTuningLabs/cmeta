@@ -1,6 +1,8 @@
 """
 Tests of how the cMeta home is chosen (`config.home_from_env`) and of what says so: `config.home_choice`, the
-line of the first run on a new home, and the "cMeta home chosen by" line of `cx --version`.
+line of the first run on a new home, and the "cMeta home chosen by" line of `cx --version`; and of what gives it
+to a script: `config.home_path` and `cx --print-home` - the home an instance uses, as an absolute path, with
+nothing set up and no network.
 
 The order is the one cMeta always had - CMETA_HOME, <VIRTUAL_ENV>/CMETA, <CONDA_PREFIX>/CMETA, CMETA_HOME2,
 ~/CMETA - and nothing of it changes: only the words about it are new. They are for whoever expects the home
@@ -219,3 +221,94 @@ def test_cx_version_names_what_chose_the_home_and_the_first_command_says_it_once
     rc, out, err = cx(['--version'], user)
     assert rc == 0, out + err
     assert f'cMeta home path:           {user / "CMETA"}' in out and 'cMeta home chosen by:      the default' in out, out
+
+
+# `config.home_path` and `cx --print-home`: the home that an instance uses, as an absolute path
+
+@pytest.mark.parametrize('settings, variable, home', ORDER)
+def test_home_path_is_the_home_of_an_instance_and_sets_up_nothing(tmp_path, user, monkeypatch, settings, variable, home):
+    for name, folder in settings.items():
+        monkeypatch.setenv(name, place(tmp_path, user, folder))
+
+    expected = place(tmp_path, user, home)
+
+    assert config.home_path() == os.path.abspath(expected)
+    assert not os.path.exists(expected)
+
+    assert config.home_path() == os.path.abspath(str(CMeta().home_path))
+
+
+def test_home_path_of_a_given_home_and_of_a_bare_home_flag(tmp_path, user, monkeypatch):
+    monkeypatch.setenv('VIRTUAL_ENV', str(tmp_path / 'venv'))
+
+    # A folder: itself
+    given = str(tmp_path / 'given')
+    assert config.home_path(given) == given == os.path.abspath(str(CMeta(home=given).home_path))
+
+    # A bare --home asks no virtual environment: CMETA_HOME, else CMETA_HOME2, else ~/CMETA
+    for value in (True, 'yes', 'on', '1', 'true'):
+        assert config.home_path(value) == str(user / 'CMETA'), value
+
+    assert config.home_path(True) == os.path.abspath(str(CMeta(home=True).home_path))
+
+    monkeypatch.setenv('CMETA_HOME2', str(tmp_path / 'second'))
+    assert config.home_path(True) == str(tmp_path / 'second') == os.path.abspath(str(CMeta(home=True).home_path))
+
+    monkeypatch.setenv('CMETA_HOME', str(tmp_path / 'explicit'))
+    assert config.home_path(True) == str(tmp_path / 'explicit') == os.path.abspath(str(CMeta(home=True).home_path))
+
+
+def test_a_relative_home_is_given_absolute(tmp_path, user, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('CMETA_HOME', os.path.join('relative', 'home'))
+
+    assert config.home_path() == os.path.join(os.getcwd(), 'relative', 'home')
+    assert config.home_path() == os.path.abspath(str(CMeta().home_path))
+
+
+def test_cx_print_home_prints_the_home_and_nothing_else(tmp_path, user):
+    venv = str(tmp_path / 'venv')
+    home = os.path.join(venv, 'CMETA')
+
+    # Any network access would fail, and the command would with it
+    offline = {'HTTP_PROXY': 'http://127.0.0.1:9', 'HTTPS_PROXY': 'http://127.0.0.1:9'}
+
+    # One line on the standard output, nothing on the standard error, and the home is not set up
+    for flag in ('--print-home', '--print_home', '--print-home=yes'):
+        rc, out, err = cx([flag], user, VIRTUAL_ENV=venv, **offline)
+        assert rc == 0 and out.splitlines() == [home] and err == '', (flag, rc, out, err)
+
+    assert not os.path.exists(venv)
+    assert not os.path.exists(user / 'CMETA')
+
+    # --home wins; a bare --home asks no virtual environment
+    given = str(tmp_path / 'given')
+
+    rc, out, err = cx([f'--home={given}', '--print-home'], user, VIRTUAL_ENV=venv, **offline)
+    assert rc == 0 and out.splitlines() == [given] and err == '', out + err
+
+    rc, out, err = cx(['--home', '--print-home'], user, VIRTUAL_ENV=venv, **offline)
+    assert rc == 0 and out.splitlines() == [str(user / 'CMETA')] and err == '', out + err
+
+    assert not os.path.exists(given)
+
+    # Without any variable: the default
+    rc, out, err = cx(['--print-home'], user, **offline)
+    assert rc == 0 and out.splitlines() == [str(user / 'CMETA')] and err == '', out + err
+
+    # In the help of the global flags
+    rc, out, err = cx(['--help'], user)
+    assert rc == 0 and '--print-home' in out, out + err
+
+
+def test_after_a_category_print_home_stays_a_parameter_of_the_command(tmp_path, user):
+    home = str(tmp_path / 'home')
+
+    # As before: the command gets it (and this one has no such parameter); nothing prints the home alone
+    rc, out, err = cx(['repo', 'find', '--print-home'], user, CMETA_HOME=home)
+    assert rc != 0 and out.splitlines() != [home], out + err
+    assert 'print_home' in out + err, out + err
+
+    # An "off" value is not the flag: as before, no category is an error
+    rc, out, err = cx(['--print-home=no'], user, CMETA_HOME=home)
+    assert rc != 0 and '"category" is not defined' in err, out + err

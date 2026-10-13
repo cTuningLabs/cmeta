@@ -1421,7 +1421,7 @@ class Category(InitCategory):
         import time
         from datetime import datetime
 
-        start_time = time.time()
+        start_time = time.monotonic()
 
         con = ctx.get('control',{}).get('con', False)
 
@@ -1499,7 +1499,7 @@ class Category(InitCategory):
                     if con and num > 0:
                         print ('')
 
-        elapsed_time = time.time() - start_time
+        elapsed_time = time.monotonic() - start_time
 
         if con:
             print ('*'*80)
