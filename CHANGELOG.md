@@ -47,6 +47,13 @@ All notable changes to cMeta are documented here, newest first.
   the counter of six processes stays exact with every core busy.
 - Docs: seven places still said that a waiter's notice goes to the standard error (it is a `cMeta warning:` line
   on the standard output since 0.35.1).
+- **`cx --print-home` prints the cMeta home and nothing else.** One line on the standard output: the absolute path
+  of the home this command line uses (`--home`, `CMETA_HOME`, a virtual or conda environment, `CMETA_HOME2`,
+  `~/CMETA` - the same choice as every command), without any network access or index, and a home that does not
+  exist yet is not set up. For scripts, which read the home from `cx --version` until now - a report for people
+  that asks cTuning.ai for the newest version and ends with an error when it cannot be reached. The flag acts on
+  its own only; after a category it stays an ordinary parameter of the command. In Python:
+  `config.home_path(home=None)`, the home that `CMeta(home=home)` uses. Tests: `tests/core_tests/test_config_home.py`.
 
 
 ## 0.35.1

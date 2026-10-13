@@ -64,7 +64,7 @@ cx app run cserver                                 # every web page as cards at 
 There is nothing to configure. Everything cMeta fetches or creates goes into one
 folder, its home: `~/CMETA` (`%USERPROFILE%\CMETA` on Windows). To keep it
 elsewhere, set `CMETA_HOME` to another path; `cx --version` always shows the home in
-use.
+use, and `cx --print-home` prints its path alone, for scripts.
 
 The web app answers on `127.0.0.1` alone until you tell it otherwise. Serving
 it to your own phone, tablet, or another machine takes one flag, and one shared

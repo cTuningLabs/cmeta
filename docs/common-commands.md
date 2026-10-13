@@ -17,6 +17,7 @@ cx category list                 # which categories (plugins) exist
 cx <category> --help             # commands available in a category
 cx <category> <command> --help   # flags/args for one command
 cx --version                     # version + check for a newer release
+cx --print-home                  # the path of the cMeta home, alone (for scripts)
 ```
 
 Global CLI aliases: `add→create`, `rm→delete`, `ls→list`, `search→find`,

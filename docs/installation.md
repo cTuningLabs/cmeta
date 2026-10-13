@@ -212,7 +212,8 @@ starts, in this order:
 
 `cx --version` prints the home it resolved and, on the next line, what chose it
 (`cMeta home chosen by: …`), and `cx --home=<path> …` overrides it for a single
-command.
+command. `cx --print-home` prints the path alone, for scripts: one line, no
+network access, and a home that does not exist yet is not set up.
 
 The command that sets up a new home says so once, in one line of information on
 the standard output (the standard error is for errors only):
@@ -223,8 +224,8 @@ cMeta info: a new cMeta home is set up in /opt/venv/CMETA (chosen by VIRTUAL_ENV
 
 **A script never assumes `~/CMETA`.** Inside a virtual or conda environment - a
 container image that exports `VIRTUAL_ENV` is enough - the home is
-`<environment>/CMETA`. Ask cMeta instead: `cx --version` for the home, `cx repo
-find <alias>` for the folder of a repository.
+`<environment>/CMETA`. Ask cMeta instead: `cx --print-home` for the home, `cx
+repo find <alias>` for the folder of a repository.
 
 **Set `CMETA_HOME` only to choose another folder**, or to keep one home even
 while a project's virtual environment is active. Rule 2 reads an environment
