@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.35.2.1)
+## 0.36.0
 - **The command line: free text with `=` stays text, a negative number is a value, a control flag takes a word,
   and `--` is refused in words.** Four small corrections of the parser, none of which changes a command that
   worked: (1) a bare `key=value` is a flag only when the part before the first `=` looks like a key (a letter or
