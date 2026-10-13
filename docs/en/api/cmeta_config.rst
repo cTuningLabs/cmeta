@@ -16,6 +16,8 @@ Functions
 
 .. autofunction:: cmeta.config.home_from_env
 
+.. autofunction:: cmeta.config.home_path
+
 .. autofunction:: cmeta.config.is_on
 
 .. autofunction:: cmeta.config.set_logging
