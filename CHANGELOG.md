@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.36.0.1)
+## 0.37.0
 - **The words of the command line are read by what a command expects.** For the parameters a command annotates
   `bool` (`sort: bool = False`, as `--help` shows), `--sort=no` now hands it `False`: yes/no, true/false, on/off
   and 1/0 in any case are booleans, and any other word is an error naming the parameter and the command.
