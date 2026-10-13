@@ -82,7 +82,7 @@ produces APA and BibTeX automatically. The BibTeX entry:
   author  = {Fursin, Grigori},
   title   = {{cMeta (Common Meta Framework)}},
   year    = {2026},
-  version = {0.36.0},
+  version = {0.37.0},
   license = {Apache-2.0},
   url     = {https://github.com/cTuningLabs/cmeta},
   note    = {cTuning Labs}

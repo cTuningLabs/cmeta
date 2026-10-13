@@ -1,7 +1,7 @@
-API Reference (v0.36.0)
+API Reference (v0.37.0)
 =======================
 
-This section contains the complete API reference for cMeta v0.36.0.
+This section contains the complete API reference for cMeta v0.37.0.
 
 .. toctree::
    :maxdepth: 2

@@ -88,6 +88,7 @@ Parsed by `cmeta/utils/cli.py::parse_cmd`. Rules:
 |--------|--------|
 | `--key` | boolean `True` |
 | `--key-` | boolean `False` |
+| `--key=yes` / `--key=no` | boolean when the command annotates `key: bool` (also true/false, on/off, 1/0); any other word is an error; text for a parameter without the annotation |
 | `--no-key` | boolean `False` |
 | `--key=value` | string / int (repeats overwrite — last wins); `--key value` is the flag `--key` (True) + a positional `value` |
 | `--key,=v1,v2,v3` | list `[v1, v2, v3]` (trailing comma on the key requests split) |
