@@ -3,6 +3,25 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.35.2.1)
+- **The command line: free text with `=` stays text, a negative number is a value, a control flag takes a word,
+  and `--` is refused in words.** Four small corrections of the parser, none of which changes a command that
+  worked: (1) a bare `key=value` is a flag only when the part before the first `=` looks like a key (a letter or
+  `_`, then letters, digits, `_`, `.`, `,`, `-`) - `cx host run h "echo a=b"`, a URL with a query string or a
+  Python one-liner with `==` was cut into a parameter named by its first words ("unexpected keyword argument
+  'echo a'") and is one positional argument now; every key that worked (`name=v`, `a.b=v`, `tags,=a,b`,
+  `name=John Smith`, `path=C:\x\y`) works as before; (2) a negative number (`-5`, `-1.5`) is a positional
+  argument, not a flag named `5` (`--delta=-5` was and is a value); (3) the engine's own control flags
+  (`--quiet`, `--verbose`, `--json`, `--debug`, ...) given a word - `--quiet=yes`, `--json=no` - took the value
+  converted for the flag before them or failed with "cannot access local variable 'converted_value'" (a typo);
+  they read yes/no, true/false, on/off, 1/0 now and refuse any other word by name; (4) text after `--`
+  reaches a command as `unparsed`, and a keyword-style command that has no such parameter says `"<category>
+  <command>" takes no arguments after "--"` instead of Python's TypeError. The docs said `--key value` was a
+  form: it never was (`--key value` is the flag `--key` and a positional `value`) and the docs say so now.
+  Tests: `tests/core_tests/test_cli_parse_table.py` - the table of every token kind, every bool control flag
+  with every word, the three command styles with text after `--`, and the command line end to end.
+
+
 ## 0.35.2
 - **Any lock timeout is waited for as given, and it is the whole wait.** `CMETA_LOCK_TIMEOUT`,
   `CMETA_INDEX_LOCK_TIMEOUT` and the cache wait of cmeta-aops (`CMETA_CACHE_WAIT_TIMEOUT`) took `inf`, `nan` or a

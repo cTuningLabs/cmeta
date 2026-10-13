@@ -121,10 +121,12 @@ Parsed by `cmeta/utils/cli.py::parse_cmd`. Full rules:
 - `--no-flag` → **False** (alternative form).
 - `--flag=false` / `--flag=true` → literal string values `"false"` / `"true"`.
   (Don't rely on this for boolean semantics — use the trailing-dash / `--no-`
-  forms above.)
+  forms above.) The engine's own control flags (`--quiet`, `--verbose`,
+  `--json`, ...) read `yes`/`no`, `true`/`false`, `on`/`off`, `1`/`0` as booleans.
 
 **Strings and ints**
-- `--key=value` or `--key value`.
+- `--key=value`, with the `=`: `--key value` is the flag `--key` (True)
+  followed by the positional `value` — there is no separate-value form.
 - Repeated `--key=v1 --key=v2` → **last value wins**. For real lists, use:
 - `--key,=v1,v2,v3` → list `[v1, v2, v3]`. Trailing comma on the *key*
   signals CSV split. `--key,=` alone → `[]`.
@@ -134,15 +136,25 @@ Parsed by `cmeta/utils/cli.py::parse_cmd`. Full rules:
 - Multiple `--k.a=1 --k.b=2 --k.c.d=3` merge into `{'k': {'a':'1','b':'2','c':{'d':'3'}}}`.
 
 **Positional tokens** — anything not consumed as a flag becomes `arg1`, `arg2`,
-... in order. First two are conventionally `<category>` and `<command>`.
+... in order. First two are conventionally `<category>` and `<command>`. A
+negative number (`-5`, `-1.5`) is a positional token too, not a flag
+(`--delta=-5` is a value, as always).
 
 **Hyphen / underscore equivalence** — `--log-level` == `--log_level`.
 
-**Bare `key=value`** (no leading dashes) is treated the same as `--key=value`.
+**Bare `key=value`** (no leading dashes) is treated the same as `--key=value`
+when the part before the first `=` looks like a key: a letter or `_`, then
+letters, digits, `_`, `.`, `,` or `-` (`name=v`, `a.b=v`, `tags,=a,b`). The
+value may hold anything (`path=C:\x\y`, `url=https://x/f?id=42`). Any other
+token with an `=` — a command such as `"echo a=b"`, a URL with a query string,
+an expression — is one positional token, kept as it is.
 
-**`--` separator** — everything after a lone `--` is captured under `unparsed`
-(rarely needed; use for pass-through to sub-processes like
-`cx app run <a> -- --sub-flag`).
+**`--` separator** — everything after a lone `--` reaches the command
+untouched, as the list `unparsed`, for the commands that pass words on to a
+program of their own (in cmeta-aops: `cx task run cmd -- echo a=b`,
+`cx tool run <tool> -- --its-own-flag`, `cxt run-ai -- <harness flags>`). A
+command that does not read it stops with `"<category> <command>" takes no
+arguments after "--"`.
 
 **`@file` inclusion (YAML or JSON)** — replace a bunch of `--k=v` flags with a
 single reusable file:

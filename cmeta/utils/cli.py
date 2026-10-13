@@ -6,10 +6,20 @@ cMeta author and developer: (C) 2025-2026 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
+import re
+
 from typing import Dict, Any, List, Optional
 
 from .files import safe_read_file
 from .common import deep_merge, _error
+
+# A bare key=value is a flag only when the part before the first "=" looks like a key: a letter or "_", then
+# letters, digits, "_", "." (nested keys), "," (list keys) or "-". Free text that holds "=" - a command, a URL
+# with a query string, an expression - stays one positional argument.
+KEY_LIKE = re.compile(r'^[^\W\d][\w.,-]*$')
+
+# A negative number is a value (a positional argument), not a flag
+NEGATIVE_NUMBER = re.compile(r'^-\d+(\.\d+)?$')
 
 def parse_cmd(
     cmd,  # Command string to parse, list of arguments, or None.
@@ -20,8 +30,9 @@ def parse_cmd(
 
         Supports various argument formats:
 
-        - Positional arguments: stored in 'positional_arguments' list
-        - Flags: --key=value, -key=value, key=value
+        - Positional arguments: stored in the 'args' list; a negative number (-5, -1.5) is one too
+        - Flags: --key=value, -key=value, key=value (a bare key=value only when the part before "=" looks like a
+          key - KEY_LIKE: free text with "=", such as "echo a=b" or a URL with a query, stays positional)
         - Boolean flags: --key (True), --key- (False), --no-key (False)
         - List flags: --key, (creates list)
         - Nested keys: --parent.child=value
@@ -90,6 +101,12 @@ def parse_cmd(
         elif argument.startswith('---'):
             return _error(f'Flag "{argument}" has unknown prefix "---"', 1, None, fail_on_error)
 
+        # A negative number is a positional argument, not a flag
+        elif NEGATIVE_NUMBER.match(argument):
+            if params.get('args') is None:
+                params['args'] = []
+            params['args'].append(argument)
+
         # Handle double-dash flags (--key=value)
         elif argument.startswith('-'):
             flag_content = argument[2:] if argument.startswith('--') else argument[1:]
@@ -109,8 +126,8 @@ def parse_cmd(
 
         # Handle non-flag arguments
         else:
-            # Check if it's a key=value pair without dashes
-            if '=' in argument:
+            # A key=value pair without dashes - when the part before "=" looks like a key
+            if '=' in argument and KEY_LIKE.match(argument.split('=', 1)[0]):
                 r = split_flag(argument, params, fix_keys=True)
                 if r['return']>0: return r
             else:
@@ -310,9 +327,9 @@ def check_params(
                             tmp_converted_value = input_value.lower().strip()
 
                             if tmp_converted_value in ['1', 'on', 'true', 'yes']:
-                                convert_value = True
+                                converted_value = True
                             elif tmp_converted_value in ['0', 'off', 'false', 'no']:
-                                convert_value = False
+                                converted_value = False
                             else:
                                 return _error(f"Invalid bool value '{input_value}' for '{main_key}'", 1, None, fail_on_error)
 
