@@ -245,7 +245,13 @@ not a failure. Details and shell examples in
 ## Flag syntax
 
 - Booleans: `--flag` (True), `--flag-` or `--no-flag` (False).
-- Strings: `--key=value` or `--key value` (last wins).
+- Strings: `--key=value` (last wins). `--key value` is the flag `--key` and a
+  positional `value`.
+- Bare `key=value` works when the part before `=` looks like a key; other text
+  with `=` (`"echo a=b"`, a URL with a query) and negative numbers (`-5`) are
+  positional.
+- `--` passes everything after it to the command untouched (`unparsed`), for
+  the commands that read it.
 - Lists: `--key,=v1,v2,v3` (note the comma on the *key*).
 - Nested: `--parent.child=value` → `{'parent': {'child': value}}`.
 - Param files: `@input.yaml` / `@input.json` deep-merge into the params

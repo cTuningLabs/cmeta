@@ -89,14 +89,15 @@ Parsed by `cmeta/utils/cli.py::parse_cmd`. Rules:
 | `--key` | boolean `True` |
 | `--key-` | boolean `False` |
 | `--no-key` | boolean `False` |
-| `--key=value` / `--key value` | string / int (repeats overwrite — last wins) |
+| `--key=value` | string / int (repeats overwrite — last wins); `--key value` is the flag `--key` (True) + a positional `value` |
 | `--key,=v1,v2,v3` | list `[v1, v2, v3]` (trailing comma on the key requests split) |
 | `--key,=` | empty list `[]` |
 | `--parent.child=v` | nested dict `{'parent': {'child': v}}` |
-| `key=value` (no dashes) | same as `--key=value` |
+| `key=value` (no dashes) | same as `--key=value` when the part before `=` looks like a key (a letter or `_`, then letters, digits, `_ . , -`); other text with `=` (`"echo a=b"`, a URL with a query) is positional |
+| `-5`, `-1.5` | positional (a negative number is not a flag) |
 | `@somefile.yaml` | inline the YAML/JSON file as flags (deep-merged) |
 | `@@somefile.yaml` | same, then delete the file |
-| `--` | everything after → `unparsed` list |
+| `--` | everything after → `unparsed` list, for the commands that read it (others say "takes no arguments after --") |
 | bare token | positional → `arg1`, `arg2`, ... |
 
 Examples:

@@ -871,9 +871,31 @@ class CMeta:
                         self.logger.debug(f'Calling {command_func_name}() @ {filename}:{start_line}-{end_line}')
                         self.logger.debug(f'  with parameters {command_params} ...')
 
+                    # The text after "--" reaches a command as "unparsed": a keyword-style function without such a
+                    # parameter (and without **kwargs) cannot take it - say so in words, not with Python's TypeError
+                    keyword_style = command_func_name.endswith('_') and not command_func_name.endswith('__')
+
+                    if keyword_style and 'unparsed' in command_params:
+                        try:
+                            takes_unparsed = any(p.name == 'unparsed' or p.kind == inspect.Parameter.VAR_KEYWORD
+                                                 for p in inspect.signature(func).parameters.values())
+                        except (TypeError, ValueError):
+                            takes_unparsed = True      # no signature to read: the call itself will tell
+
+                        if not takes_unparsed:
+                            r = utils.names.restore_cmeta_obj(cmeta_ref_parts, key='artifact', fail_on_error = self_fail_on_error)
+                            if self.catch_error(r): return r
+                            category_str = r['obj']
+
+                            extra_flags_help = category_meta.get('extra_flags_help', '')
+
+                            return self.error(f'"{category_str} {command}" takes no arguments after "--" (the text after "--" '
+                                              f'is passed to the command unparsed, and this command does not read it).\n\n'
+                                              f'Rerun with {extra_flags_help}--help to view API usage and options')
+
                     try:
                         command_params['ctx'] = ctx
-                        if command_func_name.endswith('_') and not command_func_name.endswith('__'):
+                        if keyword_style:
                             result = func(**command_params)
                         else:
                             result = func(command_params)

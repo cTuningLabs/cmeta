@@ -49,3 +49,8 @@ Functions
 .. autofunction:: cmeta.utils.sys.run_command_with_timeout_tree_kill_on_windows
 
 .. autofunction:: cmeta.utils.sys.system_code_pages
+
+Constants
+---------
+
+.. autodata:: cmeta.utils.sys.RUN_STOP_GRACE_SECONDS

@@ -435,7 +435,8 @@ command):
 ### Flag syntax at a glance
 
 - Booleans: `--flag` (True), `--flag-` (False), `--no-flag` (False).
-- Strings: `--key=value` or `--key value` (repeats overwrite — last wins).
+- Strings: `--key=value` (repeats overwrite — last wins); `--key value` is the
+  flag `--key` and a positional `value`.
 - Lists: `--key,=v1,v2,v3` (trailing comma on the key).
 - Nested dicts: `--parent.child=value` merges into `{'parent': {'child': ...}}`.
 - Reusable param files: `@input.yaml` / `@input.json` deep-merges into the
