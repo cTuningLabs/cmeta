@@ -290,6 +290,39 @@ def cli_timings(home, cx, results):
 ##########################################################################################
 # Comparison with an earlier run
 
+def module_timings(home, cm, results):
+    """
+    The cost of a call to a module the engine has loaded: load_module checks the module's file on every call
+    (and, since 0.37.1, the files of the helper modules it imported, so that a changed helper reloads it).
+    Hand-made modules with 0, 5 and 10 helpers, and one real command of an engine category (utils uid: its v1.py
+    imports the helper common.py).
+    """
+    from cmeta.utils.sys import load_module
+
+    cache = {}
+    for n in (0, 5, 10):
+        folder = os.path.join(home, 'bench-modules', 'cat', 'mod%d' % n)
+        os.makedirs(folder, exist_ok=True)
+        for i in range(n):
+            with open(os.path.join(folder, 'helper%d.py' % i), 'w') as f:
+                f.write('X = %d\n' % i)
+        path = os.path.join(folder, 'api_v1.py')
+        with open(path, 'w') as f:
+            f.write(''.join('from . import helper%d\n' % i for i in range(n)) + 'Y = 1\n')
+
+        r = load_module(path, cache)
+        assert r['return'] == 0, r.get('error')
+        results.add('load_module, cached: %d helpers' % n, timed_calls(lambda: load_module(path, cache), 20000), 'us',
+                    'on every task or category call')
+
+    def uid():
+        r = cm.access({'category': 'utils', 'command': 'uid', 'con': False})
+        assert r['return'] == 0, r.get('error')
+
+    uid()
+    results.add('cm.access of "utils uid", warm', timed_calls(uid, 2000), 'us', 'a real command: v1.py + its helper common.py')
+
+
 def compare(results, before_path):
     with open(before_path) as f:
         before = json.load(f)['results']
@@ -538,6 +571,9 @@ def main():
             os.unlink(p)
         except OSError:
             pass
+
+    section('Loaded modules (checked on every task or category call)')
+    module_timings(home, cm, results)
 
     errors = []
     if args.procs > 0:
