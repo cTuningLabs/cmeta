@@ -3,6 +3,19 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## 0.37.1
+- **Fix: a process that lives on (a cserver) runs a changed task with its changed helpers.** `utils.sys.load_module`
+  loads a module again when its file changes (the hot reload of a cserver), but its `from . import <helper>` got
+  the helper modules loaded before: after a task and its helper were updated, a cserver failed with "module
+  'task_c36be4b9314a45e0.setup.upgrade' has no attribute 'newest_allowed'" until it was restarted, and a change
+  to a helper alone was never seen. Now a module loaded again first forgets the helper modules of its package,
+  and a changed helper - also one imported inside a function - loads the module again; the helpers are checked at
+  most once a second per module (`HELPER_CHECK_SECONDS`), the module's own file on every call as before. Measured
+  with the module section new in `tests/benchmarks/benchmark_engine.py` and a cached `cx tool setup git` in one
+  process (41 module calls, ~20 helpers): no change beyond the noise on Windows and Linux; checking the helpers on
+  every call would have cost ~12 us per helper on Windows (+5% on that call). Tests: `test_utils_sys_load_module.py`.
+
+
 ## 0.37.0
 - **The words of the command line are read by what a command expects.** For the parameters a command annotates
   `bool` (`sort: bool = False`, as `--help` shows), `--sort=no` now hands it `False`: yes/no, true/false, on/off

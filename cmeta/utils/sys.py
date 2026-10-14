@@ -12,6 +12,10 @@ from .common import _error
 from .cli import print_params_help
 from . import files
 
+# How often a loaded module's helper files are checked for changes (load_module): a changed helper is seen
+# within this time, the module's own file on every call
+HELPER_CHECK_SECONDS = 1.0
+
 ###################################################################################################
 def system_code_pages():
     """
@@ -80,6 +84,127 @@ def decode_output(
     return text.replace('\r\n', '\n').replace('\r', '\n')
 
 ###################################################################################################
+def _package_helpers(
+    package_name: str,  # The package of a loaded module ("task_c36be4b9314a45e0.setup").
+    module_path: str,  # The module itself, left out.
+):
+    """
+        The files of the helper modules a loaded package holds: the modules of its folder that its modules
+        imported ("from . import upgrade"), when they were loaded or later inside a function.
+
+        Args:
+            package_name (str): The package of a loaded module.
+            module_path (str): The module itself, left out.
+        Returns:
+            list: The files of the helper modules.
+    """
+    import sys, types
+
+    package = sys.modules.get(package_name)
+    if package is None:
+        return []
+
+    files = []
+    for value in list(vars(package).values()):
+        if isinstance(value, types.ModuleType):
+            path = getattr(value, '__file__', None)
+            if path and path != module_path:
+                files.append(path)
+
+    return files
+
+###################################################################################################
+def _helper_times(
+    package_name: str,  # The package of a loaded module.
+    module_path: str,  # The module itself, left out.
+):
+    """
+        The helper modules of a module just loaded, each with the time its file was changed.
+
+        Args:
+            package_name (str): The package of a loaded module.
+            module_path (str): The module itself, left out.
+        Returns:
+            dict: file -> modification time.
+    """
+    import os
+
+    times = {}
+    for path in _package_helpers(package_name, module_path):
+        try:
+            times[path] = os.path.getmtime(path)
+        except OSError:
+            pass
+
+    return times
+
+###################################################################################################
+def _helpers_changed(
+    cached: dict,  # The cache entry of a loaded module (its "helpers": file -> time).
+    package_name: str,  # Its package.
+    module_path: str,  # The module itself.
+):
+    """
+        True when a helper module of a loaded module changed on disk since it was seen, or is gone. A helper
+        imported after the module was loaded (inside a function) is recorded as it is now. The helpers are
+        checked at most every HELPER_CHECK_SECONDS.
+
+        Args:
+            cached (dict): The cache entry of a loaded module.
+            package_name (str): Its package.
+            module_path (str): The module itself.
+        Returns:
+            bool: True when the module must be loaded again.
+    """
+    import os, time
+
+    # At most once a second per module: a file check costs ~12 us on Windows, and a cached "cx tool setup" makes
+    # ~40 module calls with ~20 helpers (2026-10-14); the module's own file is still checked on every call
+    now = time.monotonic()
+    if now - cached.get('helpers_checked', now) < HELPER_CHECK_SECONDS:
+        return False
+    cached['helpers_checked'] = now
+
+    seen = cached.setdefault('helpers', {})
+    for path in _package_helpers(package_name, module_path):
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return True
+
+        if path not in seen:
+            seen[path] = mtime
+        elif seen[path] != mtime:
+            return True
+
+    return False
+
+###################################################################################################
+def _forget_helpers(
+    package_name: str,  # The package of a module about to be loaded again.
+    module_name: str,  # The module itself, kept.
+):
+    """
+        Before a module is loaded again: the other modules of its package leave sys.modules and the package,
+        so that its imports read them again from their files. The objects already handed out keep working.
+
+        Args:
+            package_name (str): The package of a module about to be loaded again.
+            module_name (str): The module itself, kept.
+    """
+    import sys
+
+    package = sys.modules.get(package_name)
+    prefix = package_name + '.'
+
+    for name in [n for n in list(sys.modules) if n.startswith(prefix) and n != module_name]:
+        sys.modules.pop(name, None)
+
+        short = name[len(prefix):]
+        if package is not None and '.' not in short and short in vars(package):
+            delattr(package, short)
+
+###################################################################################################
 def load_module(
     module_path: str,  # Absolute path to the Python module file.
     module_cache: dict,  # Dictionary to store cached module information.
@@ -112,7 +237,7 @@ def load_module(
         Raises:
             Exception: Propagated runtime errors, if any.
     """
-    import os, sys, importlib.util, importlib.machinery, re, hashlib
+    import os, sys, importlib.util, importlib.machinery, re, hashlib, time
 
     def sanitize(
         name,  # Object or artifact name.
@@ -175,8 +300,14 @@ def load_module(
 
     if module_path in module_cache:
         cached = module_cache[module_path]
-        if cached.get("timestamp") == timestamp:
+        if cached.get("timestamp") == timestamp and (engine_module or not _helpers_changed(cached, full_package_name, module_path)):
             return {"return": 0, "cache": cached}
+
+        # Loaded again (the module or one of its helpers changed on disk): the helper modules of its package are
+        # forgotten first, so that its "from . import <helper>" reads them again from their files - else a running
+        # process (a cserver) ran the new module with the helpers of before: "module ... has no attribute ..."
+        if not engine_module:
+            _forget_helpers(full_package_name, full_module_name)
 
     try:
         if engine_module:
@@ -211,6 +342,9 @@ def load_module(
             "python_module": module,
             "timestamp": timestamp,
             "full_module_name": full_module_name,
+            # the files of the helpers it imported, with their times: a changed helper loads it again
+            "helpers": {} if engine_module else _helper_times(full_package_name, module_path),
+            "helpers_checked": time.monotonic(),
         }
 
         if init_class:
