@@ -4,6 +4,10 @@ All notable changes to cMeta are documented here, newest first.
 
 
 ## DEV VERSION (0.37.1.1)
+- **Fix: a full reindex inside a container.** The new index replaces the old one by renaming the index folder away;
+  on overlayfs (a later step of a Containerfile, any container started from an image whose home already has an index)
+  a folder of a lower image layer cannot be renamed, and `cx --reindex` failed with `Invalid cross-device link`;
+  the entrypoint of cMeta's container templates hid it. On EXDEV the new index now replaces the old one file by file.
 - **Fix: a repository in a folder this process cannot write is read without a lock file.** A read takes the lock
   of the file through its sidecar `<file>.lock`; in a read-only folder (a read-only mount, a repository mounted into
   a container under another uid, another user's folder) that file cannot be created, and the read waited the whole
