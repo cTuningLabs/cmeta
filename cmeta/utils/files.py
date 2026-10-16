@@ -184,6 +184,10 @@ def is_path_within(
 # delay that doubles from LOCK_POLL_START to LOCK_POLL_MAX until the timeout. The engine's own writers
 # (_acquire_lock) wait LOCK_TIMEOUT seconds (CMETA_LOCK_TIMEOUT) and say so on stdout after
 # LOCK_NOTICE_SECONDS, naming the holder when it left a note in the lock file (_acquire_with_notice).
+# A lock file that cannot be created at all - a folder read-only for this process (a read-only mount, a
+# repository mounted into a container under another uid) - is refused at once (LockFileRefused, see
+# PathLock._lock_file_refused): nobody holds it and waiting does not help; safe_read_file then reads without
+# it, and a write fails with that reason.
 
 _LOCK_BUSY_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name in ('EWOULDBLOCK', 'EAGAIN', 'EACCES', 'EDEADLK', 'EDEADLOCK')) if e is not None)
 _LOCK_UNSUPPORTED_ERRNOS = tuple(e for e in (getattr(errno, name, None) for name in ('ENOLCK', 'ENOSYS', 'EOPNOTSUPP', 'ENOTSUP', 'EINVAL', 'ENOTTY', 'EPERM', 'EBADF')) if e is not None)
@@ -369,6 +373,17 @@ class _LockUnsupported(Exception):
     pass
 
 
+class LockFileRefused(PermissionError):
+    """
+        The lock file of a path cannot be created: its folder is read-only for this process (a read-only mount,
+        a folder of another user, a repository mounted into a container under another uid). Not a busy lock -
+        nobody holds it, and waiting does not help: a reader goes on without the lock (nobody can write there
+        through this process), a writer fails at once with this message (before 0.37.2 both waited for the
+        whole lock timeout and were told "locked by another process").
+    """
+    pass
+
+
 class PathLock:
     """
         An exclusive lock on a path for processes and threads, through the sidecar file `<path>.lock`
@@ -400,6 +415,7 @@ class PathLock:
         self._wrote = None                # the line of a soft lock file this object wrote and could not confirm
         self._beat_seen = {}              # path -> (identity, content, monotonic time): the lines this waiter watches for a heartbeat
         self._owner_pid = None            # the process that took the lock (a forked child never releases its parent's lock)
+
 
     def __enter__(self):
         self.acquire()
@@ -566,10 +582,49 @@ class PathLock:
     def _folder_is_there(self):
         return os.path.isdir(os.path.dirname(self.lock_file) or '.')
 
+    def _lock_file_refused(self, e):
+        """
+        Whether a failed open means the lock file CANNOT be created here (LockFileRefused), not "busy for a
+        moment": a read-only file system (EROFS); on POSIX a permission error where no lock file exists and the
+        folder does not let this process create one (access W_OK|X_OK: the bits, the ACLs, the uid); on Windows,
+        where a lock file being deleted by the holder that just released it is refused too, a permission error
+        where a file of another name cannot be created either (a probe file, removed at once) - one answer in
+        one try, so a single try (timeout 0, the probe of a cache entry) gets it right as well.
+        """
+        erofs = getattr(errno, 'EROFS', None)
+        if erofs is not None and getattr(e, 'errno', None) == erofs:
+            return True
+        if not isinstance(e, PermissionError) or os.path.lexists(self.lock_file):
+            return False
+
+        folder = os.path.dirname(self.lock_file) or '.'
+        if os.name != 'nt':
+            return not os.access(folder, os.W_OK | os.X_OK)
+
+        probe = f'{self.lock_file}.probe-{os.getpid()}-{threading.get_ident()}'
+        try:
+            fd = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o644)
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        os.close(fd)
+        try:
+            os.remove(probe)
+        except OSError:
+            pass
+        return False
+
     def _open_failed_for_the_moment(self, e):
         """An open of the lock file that failed for a moment: the file being removed by the process that
         just released it (Windows: PermissionError; 9p and other network mounts: ENOENT with the folder
-        there) or held by a scanner. A missing folder is a real error."""
+        there) or held by a scanner. A missing folder is a real error; a folder where the lock file cannot be
+        created at all raises LockFileRefused."""
+        if self._lock_file_refused(e):
+            folder = os.path.dirname(self.lock_file) or '.'
+            raise LockFileRefused(getattr(e, 'errno', None) or errno.EACCES,
+                                  f"the lock file cannot be created - '{folder}' is read-only for this process "
+                                  f"({getattr(e, 'strerror', None) or e})", self.lock_file) from e
         if isinstance(e, PermissionError):
             self._last_error = e
             return True
@@ -1275,6 +1330,10 @@ def _acquire_lock(
     try:
         _acquire_with_notice(file_lock, timeout, f"'{filepath}'", what if what is not None else f"the operation on '{filepath}'",
                              LOCK_TIMEOUT_ENV, note=note, logger=logger)
+    except LockFileRefused:
+        if logger is not None:
+            logger.debug(f"utils.files._acquire_lock - {lockfile} cannot be created (the folder is read-only) ...")
+        raise
     except TimeoutError:
         if logger is not None:
             logger.debug(f"utils.files._acquire_lock - failed to lock {lockfile} in time ...")
@@ -1337,6 +1396,9 @@ def _release_lock(
     lockfile = _get_lockfile_path(filepath)
 
     try:
+        if file_lock is None:
+            # a read that went on without the lock (LockFileRefused: a folder this process cannot write)
+            return
         if file_lock.is_locked:
             file_lock.release()
             if logger is not None:
@@ -1500,9 +1562,19 @@ def safe_read_file(
 
     # We need to acquire lock first and then check if file exists
     # to avoid cases, when file was deleted before writing
+    file_lock = None
     if lock:
         try:
             file_lock = _acquire_lock(filepath, timeout, logger, what=f"the read of '{filepath}'")
+        except LockFileRefused as e:
+            # A folder this process cannot write (a read-only mount, another user's repository): the lock is
+            # there for writers, and nobody writes here through this process - the file is read without it, as
+            # a read without a lock (retried for a moment); a caller that keeps the lock to write gets
+            # file_lock None, and its write fails with the reason
+            if logger is not None:
+                logger.debug(f"utils.files.safe_read_file - {e}: '{filepath}' is read without the lock")
+            lock = False
+            timeout = None
         except Exception as e:
             return _error(None, 1, e, fail_on_error)
 
@@ -1584,6 +1656,9 @@ def safe_read_file(
 
     if last_modified is not None:
         r['last_modified'] = last_modified
+
+    if keep_locked and file_lock is None and not lock:
+        r['file_lock'] = None
 
     if lock:
         if keep_locked:

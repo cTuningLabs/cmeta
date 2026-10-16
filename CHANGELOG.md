@@ -3,6 +3,21 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.37.1.1)
+- **Fix: a repository in a folder this process cannot write is read without a lock file.** A read takes the lock
+  of the file through its sidecar `<file>.lock`; in a read-only folder (a read-only mount, a repository mounted into
+  a container under another uid, another user's folder) that file cannot be created, and the read waited the whole
+  lock timeout (30 s) before failing as "locked by another process" - `cx repo plug` of such a repository failed.
+  Such a lock is now refused at once (`utils.files.LockFileRefused`: EROFS; on POSIX the folder's access for this
+  process; on Windows a probe file of another name refused as well, so a lock file being deleted stays a busy lock):
+  a read goes on without it, a write fails at once and says that the folder is read-only for this process.
+- **Executable website artifacts.** `cx website run <entry> <action> -- <options>` invokes the Python
+  manager named by `website.runner` in the entry's `_desc.yaml`, using literal arguments and returning
+  its exit code. `website build` delegates to that manager for executable entries; static websites keep
+  the existing template builder. Runtime setup, state management and deployment actions remain in the
+  entry. See `internal-repo/category/website/README.md`.
+
+
 ## 0.37.1
 - **Fix: a process that lives on (a cserver) runs a changed task with its changed helpers.** `utils.sys.load_module`
   loads a module again when its file changes (the hot reload of a cserver), but its `from . import <helper>` got
