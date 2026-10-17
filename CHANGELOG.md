@@ -24,6 +24,10 @@ All notable changes to cMeta are documented here, newest first.
   Tests: `test_integration_plug_guard.py`.
 - **Fix: a descriptor with a category but no artifact gets its new name written.** The name was made in memory only (a
   typo, `repo_update`), and the next index found a repository that "names no artifact" and left it out.
+- **Tests: the engine benchmark and the uid test leave the clipboard alone.** `utils uid` copies the UID to the
+  clipboard by default; the benchmark timed 2000 such calls, and where Windows refuses the clipboard (a locked
+  workstation, an ssh session, a service) pyperclip waits 0.5 s per copy - the benchmark test ran past its 900 s. Both
+  now pass `clipboard: False`.
 
 
 ## 0.37.2
