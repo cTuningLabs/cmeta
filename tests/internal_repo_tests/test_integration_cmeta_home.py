@@ -255,7 +255,7 @@ def test_ctx_origin_preserves_first_params(cm):
 
 def test_utils_uid_generates_valid_uid(cm):
     from cmeta.utils.names import is_valid_cmeta_uid
-    r = cm.access({'category': 'utils', 'command': 'uid', 'con': False})
+    r = cm.access({'category': 'utils', 'command': 'uid', 'con': False, 'clipboard': False})
     assert r['return'] == 0
     uid = r.get('uid') or r.get('cmeta_uid')
     if uid is not None:

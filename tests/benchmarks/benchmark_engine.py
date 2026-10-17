@@ -315,8 +315,11 @@ def module_timings(home, cm, results):
         results.add('load_module, cached: %d helpers' % n, timed_calls(lambda: load_module(path, cache), 20000), 'us',
                     'on every task or category call')
 
+    # Never the clipboard: the call is what is measured, and the user's clipboard is not ours to overwrite 2000 times.
+    # Where the clipboard cannot be opened (a locked workstation, an ssh session or a service on Windows) pyperclip
+    # retries for 0.5 s per copy, and the benchmark ran past its test's 900 s (2026-10-17)
     def uid():
-        r = cm.access({'category': 'utils', 'command': 'uid', 'con': False})
+        r = cm.access({'category': 'utils', 'command': 'uid', 'con': False, 'clipboard': False})
         assert r['return'] == 0, r.get('error')
 
     uid()

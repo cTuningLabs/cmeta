@@ -100,6 +100,11 @@ Functions
 
 .. autofunction:: cmeta.utils.files.zip_directory
 
+Exceptions
+----------
+
+.. autoexception:: cmeta.utils.files.LockFileRefused
+
 Constants
 ---------
 

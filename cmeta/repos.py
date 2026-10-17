@@ -179,7 +179,38 @@ class Repos:
             if r['return']>0: return r
             self._soft_lock_registered = True
 
+            # The internal repository the index names is gone: the home was indexed by an installation of the engine
+            # that is not there any more (a tool reinstalled onto another Python, a virtual environment made again).
+            # Its records named files that are gone ("cx app find cserver" answered a folder that is not there) until
+            # a full reindex: the index takes the internal repository of this engine at once
+            gone = r.get('internal_repo_gone')
+            if gone:
+                utils.common.console_line(f'the internal repository this home was indexed with is gone ({gone}): '
+                                          f'indexing the one of this engine ({self._this_internal_repo_path()})',
+                                          'info', logger=self.logger, con=con)
+                r = self.index(con=False, verbose=verbose)
+                if r['return']>0:
+                    # (a home this process cannot write: it goes on as before, "cx --reindex" heals it)
+                    utils.common.console_line(f'could not index the internal repository of this engine: {r.get("error", "")}',
+                                              'warning', logger=self.logger, con=con)
+
         return {'return':0}
+
+    ###################################################################################################
+    def _this_internal_repo_path(self):
+        """
+            The internal repository of this engine: the folder that CMETA_INTERNAL_REPO_PATH names, or the
+            `internal-repo` folder next to this module.
+        """
+        force_internal_repo_path = os.environ.get(self.cfg['env_var_internal_repo_path'], '').strip()
+        if force_internal_repo_path != '':
+            return os.path.normpath(force_internal_repo_path)
+
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'internal-repo')
+
+    @staticmethod
+    def _same_path(path1, path2):
+        return os.path.normcase(os.path.normpath(path1)) == os.path.normcase(os.path.normpath(path2))
 
     ###################################################################################################
     def _register_soft_lock(
@@ -201,6 +232,9 @@ class Repos:
         """
             At the start of a process: the repositories of the index that ask for the soft lock (see
             `_register_soft_lock`). The index of repositories is small and read through the cache.
+
+            Returns 'internal_repo_gone': the internal repository the index names when it is another one than
+            this engine's and is not there any more (see `init`).
         """
         index_repo_file = os.path.join(self.index_path, 'repo' + self.index_extension)
         if not os.path.isfile(index_repo_file):
@@ -209,10 +243,22 @@ class Repos:
         r = utils.files.safe_read_file_via_cache(index_repo_file, self.file_cache, fail_on_error=self.fail_on_error, logger=self.logger)
         if r['return']>0: return r
 
-        for entry in (r['data'].get(self.KEY_INDEX_UIDS) or {}).values():
-            self._register_soft_lock(entry.get('path'), entry.get('_cmr') or entry.get('cmeta') or {})
+        internal_repo_gone = None
+        this_internal_repo_path = None
 
-        return {'return':0}
+        for entry in (r['data'].get(self.KEY_INDEX_UIDS) or {}).values():
+            path = entry.get('path')
+            self._register_soft_lock(path, entry.get('_cmr') or entry.get('cmeta') or {})
+
+            # (the internal repository is known by the name of its folder, as in _index)
+            if path and os.path.normpath(path).endswith('internal-repo'):
+                if this_internal_repo_path is None:
+                    this_internal_repo_path = self._this_internal_repo_path()
+                if not self._same_path(path, this_internal_repo_path) and \
+                        not os.path.isfile(os.path.join(path, self.cfg['repo_meta_desc'])):
+                    internal_repo_gone = path
+
+        return {'return':0, 'internal_repo_gone': internal_repo_gone}
 
     ###################################################################################################
     def add_to_index(
@@ -1201,15 +1247,10 @@ class Repos:
         repos_config_path = self.repos_config_path
 
         # Then checking internal repo path
-        this_module_path = os.path.dirname(os.path.abspath(__file__))
+        this_internal_repo_path = self._this_internal_repo_path()
 
-        force_internal_repo_path = os.environ.get(self.cfg['env_var_internal_repo_path'], '').strip()
-        if force_internal_repo_path != '':
-            this_internal_repo_path = force_internal_repo_path
-        else:
-            this_internal_repo_path = os.path.join(this_module_path, 'internal-repo')
-
-        existing_internal_repo_path = None
+        # The internal repository of another installation of the engine that repos.json named (see below)
+        other_internal_repo_paths = []
 
         if conx:
             print (f'Repo file path: {repos_config_path}')
@@ -1237,7 +1278,8 @@ class Repos:
 
             extra_meta = local_meta.get('meta', {})
 
-            if path.endswith('internal-repo') and os.path.normpath(path) != this_internal_repo_path:
+            if path.endswith('internal-repo') and not self._same_path(path, this_internal_repo_path):
+                other_internal_repo_paths.append(path)
                 path = this_internal_repo_path
                 to_update = True
 
@@ -1322,6 +1364,15 @@ class Repos:
             # Out of reach since the run before: its records leave the index with this run (an incremental run
             # keeps the records of the repositories it does not scan; a full rebuild has none of them anyway)
             delete_repo_paths = list(delete_repo_paths) + [path for path in newly_unreachable if path not in delete_repo_paths]
+
+        if len(other_internal_repo_paths) > 0 and not clean:
+            # repos.json named the internal repository of another installation of the engine (the home was indexed by
+            # it) and names this engine's from now on: so do the records. An incremental run (a plug, a pull, the
+            # reindex of one repository) kept those of the other one - also when it was gone - and the categories
+            # and the apps of the two engines were mixed until a full reindex
+            if this_internal_repo_path not in add_repo_paths:
+                add_repo_paths = list(add_repo_paths) + [this_internal_repo_path]
+            delete_repo_paths = list(delete_repo_paths) + [path for path in other_internal_repo_paths if path not in delete_repo_paths]
 
         if len(paths_to_repos) == 0:
             return {'return':1, 'error':f'could not find any repository in {repos_config_path}'}
@@ -1684,6 +1735,19 @@ class Repos:
             for category_mix in categories:
                 index_artifacts[category_mix['category']] = {}
 
+        # The registered repositories nested inside a repository being indexed again or removed (the engine's
+        # internal repository inside a repository that holds the engine's source tree): their records lie inside the
+        # outer folder but are not the outer repository's, and its scan does not descend into them to bring them
+        # back - an incremental index of the outer one dropped them for good (the cserver app, 2026-10-17)
+        norm = lambda p: os.path.normcase(os.path.normpath(p))
+        registered = list(repos_to_write.keys())
+        removed = set(norm(p) for p in add_repo_paths + delete_repo_paths)
+        nested_in = {}
+        for remove_path in add_repo_paths + delete_repo_paths:
+            nested_in[remove_path] = [p for p in registered
+                                      if norm(p) != norm(remove_path) and norm(p) not in removed
+                                      and utils.files.is_path_within(remove_path, p)]
+
         if index_artifacts:
             if conx:
                 print ('')
@@ -1715,13 +1779,15 @@ class Repos:
                         uids = existing_category_index.setdefault(self.KEY_INDEX_UIDS, {})
                         lowercase_aliases = existing_category_index.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
 
-                        # Remove UIDs of old/updated repos
+                        # Remove UIDs of old/updated repos - not those of a registered repository nested inside one
+                        # of them (see nested_in above)
                         for uid in list(uids.keys()):
                             artifact = uids[uid]
                             path = artifact['path']
 
                             for remove_path in add_repo_paths + delete_repo_paths:
-                                if utils.files.is_path_within(remove_path, path):
+                                if utils.files.is_path_within(remove_path, path) and \
+                                        not any(utils.files.is_path_within(inner, path) for inner in nested_in.get(remove_path, [])):
                                     del(uids[uid])
                                     break
 
