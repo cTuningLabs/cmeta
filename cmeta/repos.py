@@ -1234,7 +1234,16 @@ class Repos:
         if conx:
             print ('='*40)
         if con:
-            print ('Reindexing all repos - it can take some time ...')
+            # What this run does: a full rebuild, or the repositories it indexes again or removes (it said "all repos"
+            # for the reindex of one repository too)
+            if clean:
+                print ('Reindexing all repos - it can take some time ...')
+            elif len(add_repo_paths) > 0:
+                print ('Indexing again: ' + ', '.join(add_repo_paths))
+            elif len(delete_repo_paths) > 0:
+                print ('Removing from the index: ' + ', '.join(delete_repo_paths))
+            else:
+                print ('Updating the index of the repositories ...')
         if conx:
             print ('')
             print (f'Index path:     {index_path}')

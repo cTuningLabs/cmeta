@@ -35,6 +35,12 @@ All notable changes to cMeta are documented here, newest first.
   changed outside cMeta is indexed again on its own (`cx repo reindex <repository>`, as documented: before, a pull
   of the declaring repository picked such artifacts up by the way, and never their deletions). Tests:
   `test_integration_category_scan.py`.
+- **An incremental index says what it does.** The reindex of one repository (and a plug, a pull, an unplug) printed
+  "Reindexing all repos - it can take some time ..."; it now names the repositories it indexes again (`Indexing
+  again: <path>`) or removes (`Removing from the index: <path>`). The full rebuild keeps its line.
+- **The help of `--repro` names its files:** `cmeta-repro-input.json`, `cmeta-repro-input2.json` and
+  `cmeta-repro-output.json`, replayed with `cx @cmeta-repro-input.json` (it named a `cmeta-reproduce-input.json`
+  that the engine never wrote). And "Quietly" in the help of `-q`.
 
 
 ## 0.37.3

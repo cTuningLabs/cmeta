@@ -234,6 +234,22 @@ def test_a_repository_forgotten_between_two_runs_still_loses_its_records(three):
     assert records(home) == others
 
 
+def test_an_incremental_run_says_what_it_indexes(three, capsys):
+    """The reindex of one repository said "Reindexing all repos"; it names what it indexes again or removes."""
+    cm, repos, home = three
+    capsys.readouterr()
+
+    assert access(cm, category='repo', command='reindex', arg1='b', con=True)['return'] == 0
+    out = capsys.readouterr().out
+    assert 'Reindexing all repos' not in out
+    assert 'Indexing again: ' + str(repos['b']) in out
+
+    assert access(cm, category='repo', command='unplug', arg1='c', con=True)['return'] == 0
+    out = capsys.readouterr().out
+    assert 'Reindexing all repos' not in out
+    assert 'Removing from the index: ' in out and str(repos['c']) in out
+
+
 def test_two_registered_repositories_with_one_uid_are_said(three, capsys):
     cm, repos, home = three
     twin = repos['c'].parent / 'c-twin'
