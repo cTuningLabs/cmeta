@@ -1446,7 +1446,58 @@ class Repos:
             # Keep clean copy just in case
             entry['_cmr'] = repo_meta
 
+            if uid in index_repos[self.KEY_INDEX_UIDS]:
+                # (the records of both name one repository by this UID, and so does the removal of records below)
+                utils.common.console_line(f'two registered repositories carry the UID {uid}: "{index_repos[self.KEY_INDEX_UIDS][uid]["path"]}" and "{path}" - '
+                                          f'the index knows one repository by its UID; give the copy a UID of its own in its {self.cfg["repo_meta_desc"]}',
+                                          'warning', logger=self.logger, con=con)
+
             index_repos[self.KEY_INDEX_UIDS][uid] = entry
+
+        # The repositories whose records leave every category index with this run (below), by UID: from the
+        # descriptor of a repository that is reachable now, else from the record this index had for it (an
+        # unplugged repository, one out of reach) - read before the index of repositories is rewritten here.
+        # A touched repository of no known UID was never indexed, left the index when it went out of reach, or
+        # lost its registration and its record between two runs (an unplug rewrites repos.json, then runs the
+        # index; another process's run can rebuild the index of repositories in between): its records, if any,
+        # are the ones at its path that belong to no registered repository
+        touched_uids = set()
+        touched_paths_without_uid = []
+        registered_uids = set()
+
+        if not clean and (len(add_repo_paths)>0 or len(delete_repo_paths)>0):
+            old_repo_records = {}
+
+            if os.path.isfile(index_repo_file):
+                r = utils.files.safe_read_file(index_repo_file, fail_on_error=False, logger=self.logger)
+                if r['return']==0:
+                    old_repo_records = r['data'].get(self.KEY_INDEX_UIDS, {})
+
+            for path in repos_meta:
+                uid = utils.names.parse_cmeta_name(repos_meta[path].get('artifact')).get('name', {}).get('uid')
+                if uid is not None:
+                    registered_uids.add(uid.lower())
+
+            for touched_path in list(add_repo_paths) + list(delete_repo_paths):
+                uid = None
+
+                for path in repos_meta:
+                    if self._same_path(path, touched_path):
+                        uid = utils.names.parse_cmeta_name(repos_meta[path].get('artifact')).get('name', {}).get('uid')
+                        break
+
+                if uid is None:
+                    for record in old_repo_records.values():
+                        if self._same_path(record.get('path', ''), touched_path):
+                            uid = record.get('cmeta_ref_parts', {}).get('artifact_uid')
+                            break
+
+                if uid is None:
+                    self.logger.debug(f'no UID is known for the repository at {touched_path}: its records are found by their path')
+                    touched_paths_without_uid.append(touched_path)
+                    continue
+
+                touched_uids.add(uid.lower())
 
         if conx:
             print('')
@@ -1472,6 +1523,17 @@ class Repos:
 
         categories = []
         categories_to_index = []
+
+        # The categories as this index knew them, for the rule below (read before the index of categories is rewritten)
+        old_category_records = {}
+
+        if not clean and len(add_repo_paths)>0:
+            old_index_category_file = os.path.join(index_path, 'category' + self.index_extension)
+
+            if os.path.isfile(old_index_category_file):
+                r = utils.files.safe_read_file(old_index_category_file, fail_on_error=False, logger=self.logger)
+                if r['return']==0:
+                    old_category_records = r['data'].get(self.KEY_INDEX_UIDS, {})
 
         for path in paths_to_repos:
             repo_meta = repos_meta[path]
@@ -1565,9 +1627,17 @@ class Repos:
                         categories.append(category_entry)
 
                         if path in add_repo_paths:
-                            categories_to_index.append(category_entry)
-# ??? FGG 20260611 - we actually need to check all existing categories and not just in the pulled repo
-# because it can have artifacts with categories defined somewhere else
+                            # The other repositories are scanned below for a category of a repository indexed again
+                            # only when the category is new to the index or changed (its folder or its meta): a
+                            # category can have artifacts in repositories plugged before it was known (the reason
+                            # for the scan, 2026-06-11), but their artifacts of a category known as it was are
+                            # indexed already, and a repository whose folders changed is indexed again on its own.
+                            # Before, every repository was scanned for every category the touched one declares:
+                            # `cx repo pull cmeta-aops` cost a full reindex (2026-10-17)
+                            old = old_category_records.get(uid)
+
+                            if old is None or old.get('cmeta') != category_meta or not self._same_path(old.get('path', ''), category_path):
+                                categories_to_index.append(category_entry)
 
                         cmeta_ref_parts = {'category_alias':'category', 'category_uid':'dd9ea50e7f76467f', 'artifact_uid':uid}
 
@@ -1732,21 +1802,13 @@ class Repos:
                         index_artifacts[category] = {self.KEY_INDEX_UIDS:{}, self.KEY_INDEX_LOWERCASE_ALIASES:{}}
 
         else:
+            # (a removal only: the records of the removed repositories leave every category index below; the
+            # indexes of the repositories and of the categories were rebuilt whole above)
             for category_mix in categories:
-                index_artifacts[category_mix['category']] = {}
+                if category_mix['category'] in ['category', 'repo']:
+                    continue
 
-        # The registered repositories nested inside a repository being indexed again or removed (the engine's
-        # internal repository inside a repository that holds the engine's source tree): their records lie inside the
-        # outer folder but are not the outer repository's, and its scan does not descend into them to bring them
-        # back - an incremental index of the outer one dropped them for good (the cserver app, 2026-10-17)
-        norm = lambda p: os.path.normcase(os.path.normpath(p))
-        registered = list(repos_to_write.keys())
-        removed = set(norm(p) for p in add_repo_paths + delete_repo_paths)
-        nested_in = {}
-        for remove_path in add_repo_paths + delete_repo_paths:
-            nested_in[remove_path] = [p for p in registered
-                                      if norm(p) != norm(remove_path) and norm(p) not in removed
-                                      and utils.files.is_path_within(remove_path, p)]
+                index_artifacts[category_mix['category']] = {}
 
         if index_artifacts:
             if conx:
@@ -1779,25 +1841,29 @@ class Repos:
                         uids = existing_category_index.setdefault(self.KEY_INDEX_UIDS, {})
                         lowercase_aliases = existing_category_index.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
 
-                        # Remove UIDs of old/updated repos - not those of a registered repository nested inside one
-                        # of them (see nested_in above)
+                        # The records of the repositories indexed again or removed leave: a record names its
+                        # repository by UID (cmeta_ref_parts.repo_uid) and the UID decides - not the path, which
+                        # took the records of a repository nested in a touched one and of another installation's
+                        # internal repository with it (issue #13; the two fixes of 0.37.3 were cases of it). The
+                        # path decides only for a touched repository whose UID is known nowhere (see above), and
+                        # a record of a registered repository stays wherever it lies
                         for uid in list(uids.keys()):
-                            artifact = uids[uid]
-                            path = artifact['path']
+                            record_repo_uid = str(uids[uid].get('cmeta_ref_parts', {}).get('repo_uid', '')).lower()
 
-                            for remove_path in add_repo_paths + delete_repo_paths:
-                                if utils.files.is_path_within(remove_path, path) and \
-                                        not any(utils.files.is_path_within(inner, path) for inner in nested_in.get(remove_path, [])):
-                                    del(uids[uid])
-                                    break
+                            if record_repo_uid in touched_uids or \
+                                    (len(touched_paths_without_uid) > 0 and record_repo_uid not in registered_uids and
+                                     any(utils.files.is_path_within(p, uids[uid].get('path', '')) for p in touched_paths_without_uid)):
+                                del(uids[uid])
 
-                        # Remove aliases
-                        updated_uids_keys = list(uids.keys())
+                        # The aliases of the records that left; an alias shared by records of two repositories
+                        # keeps the one that stays (a dict lookup: the list of every UID made this quadratic)
                         for lowercase_alias in list(lowercase_aliases.keys()):
-                            for uid in lowercase_aliases[lowercase_alias]:
-                                if uid not in updated_uids_keys:
-                                    del(lowercase_aliases[lowercase_alias])
-                                    break
+                            kept = [xuid for xuid in lowercase_aliases[lowercase_alias] if xuid in uids]
+
+                            if len(kept) == 0:
+                                del(lowercase_aliases[lowercase_alias])
+                            elif len(kept) != len(lowercase_aliases[lowercase_alias]):
+                                lowercase_aliases[lowercase_alias] = kept
 
                         if len(add_repo_paths)>0:
                             # Merge new ones

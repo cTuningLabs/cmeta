@@ -24,6 +24,9 @@ EXPECTED = (
     'repo plug (incremental index of the repo)',
     'full reindex (cx --reindex)',
     'records in the index',
+    'reindex one repository (cx repo reindex)',
+    'incremental index: records lost',
+    'incremental index: records changed',
     'find by alias (1 hit)',
     'find by UID (1 hit)',
     'find a missing alias (error 16)',
@@ -63,5 +66,29 @@ def test_benchmark_runs_and_reports_every_section(tmp_path):
     assert results['records in the index']['median'] == 50
     assert results['concurrent creates: folders on disk']['median'] == 6
     assert results['index consistency: broken alias links']['median'] == 0
+    assert results['incremental index: records lost']['median'] == 0
+    assert results['incremental index: records changed']['median'] == 0
     assert data['worker_errors'] == []
     assert data['meta']['n'] == 50
+
+
+def test_benchmark_spreads_the_artifacts_over_repositories_and_categories(tmp_path):
+    out = tmp_path / 'bench.json'
+    env = dict(os.environ)
+    for v in ('CMETA_HOME', 'CMETA_HOME2', 'VIRTUAL_ENV', 'CONDA_PREFIX', 'CMETA_DEBUG', 'CMETA_VERBOSE', 'CMETA_FAIL_ON_ERROR'):
+        env.pop(v, None)
+
+    r = subprocess.run([sys.executable, SCRIPT, '--home', str(tmp_path / 'home'), '--n', '30', '--repos', '3', '--categories', '2',
+                        '--writes', '2', '--procs', '2', '--per', '2', '--json', str(out)],
+                       env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=900)
+    assert r.returncode == 0, r.stdout.decode('utf-8', 'replace')[-4000:]
+
+    results = json.loads(out.read_text(encoding='utf-8'))['results']
+    assert results['records in the index']['median'] == 15                 # the log category: every other artifact
+    assert results['repo plug: all 3 repositories']['n'] == 1
+    assert results['reindex the repository that declares the categories']['n'] == 3
+    assert results['repo unplug (the records of one repository leave)']['n'] == 1
+    assert results['incremental index: records lost']['median'] == 0
+    assert results['incremental index: records changed']['median'] == 0
+    assert results['concurrent creates: folders on disk']['median'] == 4
+    assert results['index consistency: broken alias links']['median'] == 0

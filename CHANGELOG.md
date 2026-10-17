@@ -3,6 +3,40 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.37.3.1)
+- **The incremental index removes records by the UID of their repository, never by path (issue #13, its first
+  step).** An incremental index (`cx repo plug`, `pull`, `unzip`, `unplug`, `cx repo reindex <repository>`, a
+  repository out of reach) drops the records of the repositories it touches and scans the touched ones again. It
+  did so by path - every record whose path lay inside a touched folder - and needed a special case for each way a
+  path misleads: a repository nested in another one, the internal repository of another installation (the two fixes
+  of 0.37.3). Every record names its repository by UID (`cmeta_ref_parts.repo_uid`, since the first release), and
+  that UID now decides: the records of every other repository stay as they are, by construction - also when the
+  folder of a touched repository is gone (`cx repo unplug <path>` of a moved or deleted folder: its UID comes from
+  the record the index had for it). The path decides in one case only: a repository whose registration and record
+  both left between two runs (an `unplug` rewrites repos.json and then runs the index, and the index run of another
+  process can come in between) loses the records at its path that belong to no registered repository - a nested
+  registered repository keeps its own. Two registered repositories that carry one UID (a registration written by
+  hand: `plug` refuses one) are one repository to the index, and the index now says so (`cMeta warning: two
+  registered repositories carry the UID ...`). In the same block: an alias shared by records of two repositories keeps the record that stays when
+  the other repository leaves (the whole alias entry left before, and `cx <category> find <alias>` failed until a
+  full reindex), and the clean-up of the aliases after a removal is linear (it looked every alias up in a list of
+  every UID). The layout of the index is unchanged (one file per category, rewritten for every category at an
+  incremental run); the files per repository of issue #13 wait for the day the numbers ask for them -
+  `tests/benchmarks/benchmark_engine.py` now measures an index of many repositories and categories (`--repos`,
+  `--categories`): the incremental index of one repository, and whether a record of another one was lost or
+  changed (none may be). Tests: `test_integration_reindex_by_uid.py`, `test_integration_parallel_repositories.py`
+  (reindexes, writes, unplug/plug, full rebuilds and finds at once: the index ends as a full rebuild makes it).
+- **An index run of a repository that declares categories no longer scans every repository for them.** A category
+  can have artifacts in repositories plugged before it was known, so when a repository that declares a category
+  arrives, every repository is scanned for that category (since 2026-06). That scan ran at EVERY incremental index
+  of the declaring repository, for every category it declares: `cx repo pull cmeta-aops` (task, tool, program ...)
+  cost a full reindex. Now it runs only for a category new to the index or changed (its folder or its meta) - the
+  other repositories' artifacts of a category known as it was are indexed already, and a repository whose folders
+  changed outside cMeta is indexed again on its own (`cx repo reindex <repository>`, as documented: before, a pull
+  of the declaring repository picked such artifacts up by the way, and never their deletions). Tests:
+  `test_integration_category_scan.py`.
+
+
 ## 0.37.3
 - **Fix: a repository inside another registered repository keeps its records when the outer one is indexed again.**
   An incremental index (`cx repo plug`, `pull`, `unzip`, `unplug`, `cx repo reindex <repository>`, a repository out
