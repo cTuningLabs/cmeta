@@ -6,6 +6,7 @@ cMeta author and developer: (C) 2025-2026 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
+import errno
 import json
 import logging
 from typing import Dict, Any, List, Optional
@@ -1105,7 +1106,17 @@ class Repos:
         # (os.replace with the retries that Windows needs when another process still reads a file)
         try:
             if os.path.isdir(index_path):
-                utils.files._replace_file(index_path, index_old_path, self.logger)
+                try:
+                    utils.files._replace_file(index_path, index_old_path, self.logger)
+                except OSError as e:
+                    if getattr(e, 'errno', None) != errno.EXDEV:
+                        raise
+                    # overlayfs (a later step of a Containerfile, a container's entrypoint): a folder made in a
+                    # lower layer of the image cannot be renamed (EXDEV), its files can - the new index replaces
+                    # them one by one (seen 2026-10-16 building an app image on cmeta/ubuntu)
+                    self._replace_index_files(index_tmp_path, index_path)
+                    shutil.rmtree(index_tmp_path, ignore_errors=True)
+                    return r
             utils.files._replace_file(index_tmp_path, index_path, self.logger)
         except Exception as e:
             if not os.path.isdir(index_path) and os.path.isdir(index_old_path):
@@ -1116,6 +1127,42 @@ class Repos:
         shutil.rmtree(index_old_path, ignore_errors=True)
 
         return r
+
+
+    def _replace_index_files(
+        self,
+        new_path,  # The complete new index (a temporary folder).
+        index_path,  # The index folder, which cannot be renamed.
+    ):
+        """
+            The files of the new index replace those of the index one by one (os.replace of each file, each one
+            atomic), then the files the new index does not have are removed - for a file system that refuses to
+            rename the index folder itself (EXDEV on overlayfs). The index lock is held by the caller.
+        """
+        import shutil
+
+        new_names = set(os.listdir(new_path))
+        for name in sorted(new_names):
+            src = os.path.join(new_path, name)
+            dst = os.path.join(index_path, name)
+            if os.path.isdir(src):
+                if os.path.isdir(dst):
+                    shutil.rmtree(dst)
+                shutil.copytree(src, dst)
+            else:
+                utils.files._replace_file(src, dst, self.logger)
+
+        for name in os.listdir(index_path):
+            if name in new_names:
+                continue
+            path = os.path.join(index_path, name)
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 
     def _index(

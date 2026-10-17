@@ -9,6 +9,9 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 import os
 import shutil
 import glob
+import subprocess
+import sys
+from pathlib import Path
 from copy import deepcopy
 
 from cmeta.category import InitCategory
@@ -76,6 +79,19 @@ class Category(InitCategory):
         # Path to artifact
         path = artifacts[0]['path']
         artifact_path = path
+
+        # Executable website artifacts keep their deployment logic in the entry.
+        r = {'return': 0, 'data': {}}
+        if any(os.path.isfile(os.path.join(path, '_desc' + ext)) for ext in ('.yaml', '.json')):
+            r = self.cm.utils.files.safe_read_yaml_or_json(os.path.join(path, '_desc'))
+            if r['return'] > 0:
+                return r
+
+        if (r.get('data') or {}).get('website', {}).get('runner'):
+            if subdir is not None or ignore_dirs:
+                return {'return': 1, 'error': 'Runner websites use website run for build options'}
+
+            return self.run_(ctx, arg1, arg2='build')
 
         if subdir != None:
             path = os.path.join(path, subdir)
@@ -220,3 +236,59 @@ class Category(InitCategory):
                 if r['return'] > 0: return r
 
         return {'return':0}
+
+    def run_(self, ctx, arg1, arg2='status', unparsed=None):
+        """Run an action using the Python manager declared in a website's _desc.yaml.
+
+        The website.runner path is relative to the artifact. Options after --
+        are passed as literal arguments to that manager; no shell is involved.
+        The manager runs with the current cMeta Python and artifact directory.
+        """
+
+        p = self._prepare_input_from_ctx(ctx, base=True)
+        p.update(command='find', arg1=arg1, con=False)
+        r = self.cm.access(p)
+        if r['return'] > 0:
+            return r
+
+        artifacts = r.get('artifacts', [])
+        if len(artifacts) != 1:
+            return {'return': 1, 'error': 'Select exactly one website artifact'}
+
+        path = Path(artifacts[0]['path']).resolve()
+        r = self.cm.utils.files.safe_read_yaml_or_json(str(path / '_desc'))
+        if r['return'] > 0:
+            return r
+
+        website = (r.get('data') or {}).get('website', {})
+        runner = website.get('runner')
+        if not isinstance(runner, str) or not runner:
+            return {'return': 1, 'error': 'This website has no website.runner in _desc.yaml'}
+
+        script = (path / runner).resolve()
+        try:
+            script.relative_to(path)
+        except ValueError:
+            return {'return': 1, 'error': 'website.runner must stay inside the website artifact'}
+
+        if not script.is_file() or script.suffix != '.py':
+            return {'return': 1, 'error': 'website.runner must name an existing Python script'}
+
+        if unparsed is None:
+            unparsed = []
+        if not isinstance(unparsed, (list, tuple)):
+            return {'return': 1, 'error': 'Website runner options must be an argument list after --'}
+
+        # utils.sys.run uses a shell; direct argv preserves literal runner options.
+        argv = [sys.executable, str(script), str(arg2 or 'status')]
+        argv.extend(str(value) for value in unparsed)
+        try:
+            result = subprocess.run(argv, cwd=str(path))
+        except OSError as exc:
+            return {'return': 1, 'error': str(exc)}
+
+        if result.returncode:
+            return {'return': result.returncode if result.returncode > 0 else 1,
+                    'error': 'Website manager failed; see its output above'}
+
+        return {'return': 0, 'action': str(arg2 or 'status'), 'path': str(path)}

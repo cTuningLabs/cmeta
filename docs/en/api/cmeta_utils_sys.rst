@@ -53,4 +53,6 @@ Functions
 Constants
 ---------
 
+.. autodata:: cmeta.utils.sys.HELPER_CHECK_SECONDS
+
 .. autodata:: cmeta.utils.sys.RUN_STOP_GRACE_SECONDS
