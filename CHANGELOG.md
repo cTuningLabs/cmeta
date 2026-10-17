@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.37.1.1)
+## 0.37.2
 - **Fix: a full reindex inside a container.** The new index replaces the old one by renaming the index folder away;
   on overlayfs (a later step of a Containerfile, any container started from an image whose home already has an index)
   a folder of a lower image layer cannot be renamed, and `cx --reindex` failed with `Invalid cross-device link`;
