@@ -394,17 +394,18 @@ class Category(InitCategory):
 
                 path = os.path.join(repos_path, folder)
 
-            # Never the folder of the repositories of this home, nor a folder that holds it (the home, the user's
-            # folder): a repository there holds every other one. A bare "cx repo plug" typed in ~/CMETA/repos
-            # registered that folder as the repository "repos" (a P14s Gen 4, 2026-09-18), and every incremental
-            # index of it could take the records of the other repositories out of the index
+            # Never the folder of the repositories of this home, nor the home itself: a repository there holds every
+            # other one. A bare "cx repo plug" typed in ~/CMETA/repos registered that folder as the repository "repos"
+            # (a P14s Gen 4, 2026-09-18), and every incremental index of it could take the records of the other
+            # repositories out of the index. A folder further up can be a repository of its own that holds the home:
+            # a project with its virtual environment inside it (the home <project>/.venv/CMETA)
             if path:
                 xpath = os.path.normcase(os.path.abspath(os.path.normpath(str(path))))
                 xrepos = os.path.normcase(os.path.abspath(os.path.normpath(str(repos_path))))
-                if xpath == xrepos or utils.files.is_path_within(xpath, xrepos):
-                    return {'return':1, 'error':f'{path} is the folder of the repositories of this cMeta home{"" if xpath == xrepos else " or holds it"}: '
-                                               f'a repository there would hold every other one - plug the folder of one repository '
-                                               f'("cx repo plug <folder>"), or make a new one with "cx repo init <name>"'}
+                if xpath in (xrepos, os.path.dirname(xrepos)):
+                    what = 'the folder of the repositories of this cMeta home' if xpath == xrepos else 'this cMeta home (it holds the folder of the repositories)'
+                    return {'return':1, 'error':f'{path} is {what}: a repository there would hold every other one - plug the folder '
+                                               f'of one repository ("cx repo plug <folder>"), or make a new one with "cx repo init <name>"'}
 
             # Check method
             if not method and url:
