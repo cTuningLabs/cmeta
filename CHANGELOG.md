@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.37.3.1)
+## 0.37.4
 - **The incremental index removes records by the UID of their repository, never by path (issue #13, its first
   step).** An incremental index (`cx repo plug`, `pull`, `unzip`, `unplug`, `cx repo reindex <repository>`, a
   repository out of reach) drops the records of the repositories it touches and scans the touched ones again. It
