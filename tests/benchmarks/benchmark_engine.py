@@ -1,14 +1,16 @@
 """
 A benchmark of the cMeta engine's hot paths: the index reads behind `find`, the locked index writes behind
-`create`, `update`, `delete` and `reindex`, the full reindex, the reload of a changed index, and the primitives
-they are built on (stat, file lock, record copy, pickle, atomic replace). It makes a home of its own with N
-hand-made artifacts in one category and prints one table; with --json it also writes the numbers, and with
---compare <json> it prints every number next to the one of an earlier run (the before/after check of an engine
-change). With --procs P it also lets P processes create artifacts in the same category at once and reports
-the throughput and whether every record made it into the index.
+`create`, `update`, `delete` and `reindex`, the incremental index of one repository among many (`cx repo reindex`,
+`unplug`, `plug`), the full reindex, the reload of a changed index, and the primitives they are built on (stat,
+file lock, record copy, pickle, atomic replace). It makes a home of its own with N hand-made artifacts spread over
+R repositories (--repos) and C categories (--categories; one of each by default) and prints one table; with --json
+it also writes the numbers, and with --compare <json> it prints every number next to the one of an earlier run
+(the before/after check of an engine change). With --procs P it also lets P processes create artifacts in the
+same category at once and reports the throughput and whether every record made it into the index.
 
     python tests/benchmarks/benchmark_engine.py --home <empty folder> --n 10000 --json before.json
     python tests/benchmarks/benchmark_engine.py --home <empty folder> --n 10000 --json after.json --compare before.json
+    python tests/benchmarks/benchmark_engine.py --home <empty folder> --n 10000 --repos 20 --categories 10
 
 Nothing outside --home is touched: CMETA_HOME is set to it for this process and its workers. The folder is
 removed first when it holds the marker of an earlier run and refused otherwise. The pytest module next to
@@ -99,26 +101,46 @@ def prepare_home(home):
         f.write('made by tests/benchmarks/benchmark_engine.py - safe to delete\n')
 
 
-def make_artifacts(home, n, seed=20261008):
-    """A repository folder with N artifacts of the log category, written by hand (no engine call)."""
+def repo_alias(i, repos):
+    """The alias of repository i: the one name of the single-repository run, numbered otherwise."""
+    return REPO_ALIAS if repos == 1 else '%s-%02d' % (REPO_ALIAS, i)
+
+
+def make_artifacts(home, n, repos=1, categories=1, seed=20261008):
+    """R repository folders with N artifacts in all, written by hand (no engine call): artifact i goes to
+    repository i % R and category i % C. Category 0 is the engine's log category; the others are hand-made
+    categories declared in the first repository (a _cmeta.yaml and no api folder: the base commands serve them)."""
     rnd = random.Random(seed)
-    repo = os.path.join(home, 'bench', REPO_ALIAS)
-    cat_dir = os.path.join(repo, CATEGORY)
-    os.makedirs(cat_dir)
-    with open(os.path.join(repo, '_cmr.yaml'), 'w', encoding='utf-8') as f:
-        f.write('artifact: %s,%s\ncategory: repo,f4f792ab40c7498f\n' % (REPO_ALIAS, REPO_UID))
+    repo_paths = []
+    for i in range(repos):
+        repo = os.path.join(home, 'bench', repo_alias(i, repos))
+        os.makedirs(repo)
+        uid = REPO_UID if repos == 1 else 'b0c4e5f6a7b8%04x' % i
+        with open(os.path.join(repo, '_cmr.yaml'), 'w', encoding='utf-8') as f:
+            f.write('artifact: %s,%s\ncategory: repo,f4f792ab40c7498f\n' % (repo_alias(i, repos), uid))
+        repo_paths.append(repo)
+    category_refs = [CATEGORY_REF]
+    for j in range(1, categories):
+        name = 'bench-cat-%02d' % j
+        uid = 'c0c4e5f6a7b8%04x' % j
+        folder = os.path.join(repo_paths[0], 'category', name)
+        os.makedirs(folder)
+        with open(os.path.join(folder, '_cmeta.yaml'), 'w', encoding='utf-8') as f:
+            f.write('artifact: %s,%s\ncategory: category,dd9ea50e7f76467f\n' % (name, uid))
+        category_refs.append('%s,%s' % (name, uid))
     uids = []
     for i in range(n):
         alias = 'art-%06d' % i
         uid = '%016x' % rnd.getrandbits(64)
         uids.append(uid)
-        folder = os.path.join(cat_dir, alias)
-        os.mkdir(folder)
+        category_ref = category_refs[i % categories]
+        folder = os.path.join(repo_paths[i % repos], category_ref.split(',')[0], alias)
+        os.makedirs(folder)
         with open(os.path.join(folder, '_cmeta.yaml'), 'w', encoding='utf-8') as f:
             f.write('artifact: %s,%s\ncategory: %s\ntags:\n  - bench\n  - g%d\n'
-                    'desc: benchmark artifact number %d of the log category\nowner: benchmark\n'
-                    'generator: script\n' % (alias, uid, CATEGORY_REF, i % 10, i))
-    return repo, uids
+                    'desc: benchmark artifact number %d\nowner: benchmark\n'
+                    'generator: script\n' % (alias, uid, category_ref, i % 10, i))
+    return repo_paths, uids
 
 
 ##########################################################################################
@@ -189,7 +211,7 @@ def candidate_unlock(path, fd, keep_file):
 ##########################################################################################
 # The worker of the concurrency measurement
 
-def worker_create(home, prefix, count):
+def worker_create(home, prefix, count, repos):
     for v in ENV_TO_DROP:
         os.environ.pop(v, None)
     os.environ['CMETA_HOME'] = home
@@ -199,7 +221,7 @@ def worker_create(home, prefix, count):
     errors = []
     for i in range(count):
         t0 = time.perf_counter()
-        r = cm.access({'category': CATEGORY, 'command': 'create', 'arg1': '%s:%s-%04d' % (REPO_ALIAS, prefix, i),
+        r = cm.access({'category': CATEGORY, 'command': 'create', 'arg1': '%s:%s-%04d' % (repo_alias(0, repos), prefix, i),
                        'meta': {'tags': ['concurrent']}, 'yaml': True, 'con': False})
         times.append(time.perf_counter() - t0)
         if r['return'] > 0:
@@ -207,7 +229,7 @@ def worker_create(home, prefix, count):
     print(json.dumps({'times': times, 'errors': errors}))
 
 
-def concurrent_creates(home, procs, per, results):
+def concurrent_creates(home, procs, per, results, repos):
     section('Concurrent creates: %d processes x %d artifacts in the same category at once' % (procs, per))
     env = dict(os.environ)
     env['CMETA_HOME'] = home
@@ -215,7 +237,7 @@ def concurrent_creates(home, procs, per, results):
     children = []
     for p in range(procs):
         children.append(subprocess.Popen([sys.executable, os.path.abspath(__file__), '--worker-create', 'cw%d' % p,
-                                          str(per), '--home', home],
+                                          str(per), '--home', home, '--repos', str(repos)],
                                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env))
     times = []
     errors = []
@@ -236,7 +258,7 @@ def concurrent_creates(home, procs, per, results):
     return errors
 
 
-def check_index(home, cm, procs, per, results):
+def check_index(home, cm, procs, per, results, repo_path):
     """Every record the workers made is in the index, and the alias map agrees with the records."""
     r = cm.access({'category': CATEGORY, 'command': 'find', 'arg1': 'cw*', 'con': False})
     found = len(r.get('artifacts', [])) if r['return'] == 0 else 0
@@ -256,7 +278,7 @@ def check_index(home, cm, procs, per, results):
             bad += 1
     results.value('index consistency: broken alias links', bad, 's', '0 = aliases and records agree')
     on_disk = 0
-    cat_dir = os.path.join(home, 'bench', REPO_ALIAS, CATEGORY)
+    cat_dir = os.path.join(repo_path, CATEGORY)
     for name in os.listdir(cat_dir):
         if name.startswith('cw'):
             on_disk += 1
@@ -340,7 +362,7 @@ def compare(results, before_path):
             ratio = now['median'] / old['median']
             if 'per second' in name:                      # a rate: more is better
                 flag = '  faster' if ratio > 1.25 else ('  slower' if ratio < 0.8 else '')
-            elif name.endswith(('lost', 'links', 'on disk', 'index', 'size')):   # counts, not times
+            elif name.endswith(('lost', 'changed', 'links', 'on disk', 'index', 'size')):   # counts, not times
                 flag = ''
             else:
                 flag = '  slower' if ratio > 1.25 else ('  faster' if ratio < 0.8 else '')
@@ -354,7 +376,9 @@ def compare(results, before_path):
 def main():
     parser = argparse.ArgumentParser(description='benchmark of the cMeta engine hot paths')
     parser.add_argument('--home', required=True, help='an empty folder (or the home of an earlier run) used as CMETA_HOME')
-    parser.add_argument('--n', type=int, default=10000, help='artifacts in the category (default 10000)')
+    parser.add_argument('--n', type=int, default=10000, help='artifacts in all (default 10000)')
+    parser.add_argument('--repos', type=int, default=1, help='repositories they are spread over (default 1)')
+    parser.add_argument('--categories', type=int, default=1, help='categories they are spread over (default 1: the log category)')
     parser.add_argument('--writes', type=int, default=100, help='creates/updates/reindexes/deletes timed (default 100)')
     parser.add_argument('--procs', type=int, default=4, help='processes of the concurrent-create measurement (0 = skip)')
     parser.add_argument('--per', type=int, default=25, help='creates per process in that measurement')
@@ -369,7 +393,7 @@ def main():
     home = os.path.abspath(args.home)
 
     if args.worker_create:
-        worker_create(home, args.worker_create[0], int(args.worker_create[1]))
+        worker_create(home, args.worker_create[0], int(args.worker_create[1]), args.repos)
         return
 
     for v in ENV_TO_DROP:
@@ -383,9 +407,10 @@ def main():
     results = Results()
     meta = {'python': sys.version.split()[0], 'platform': platform.platform(), 'machine': platform.machine(),
             'cmeta': cmeta.__version__, 'cmeta_path': os.path.dirname(cmeta.__file__), 'home': home, 'n': args.n,
+            'repos': args.repos, 'categories': args.categories,
             'pickle_default_protocol': pickle.DEFAULT_PROTOCOL, 'date': time.strftime('%Y-%m-%d %H:%M:%S')}
     section('Benchmark of the cMeta engine')
-    for k in ('python', 'platform', 'cmeta', 'cmeta_path', 'home', 'n', 'pickle_default_protocol'):
+    for k in ('python', 'platform', 'cmeta', 'cmeta_path', 'home', 'n', 'repos', 'categories', 'pickle_default_protocol'):
         print('  %-24s %s' % (k, meta[k]))
 
     prepare_home(home)
@@ -396,24 +421,74 @@ def main():
     results.value('CMeta() first run of a home', time.perf_counter() - t0, 'ms', 'the home and its index are made')
     results.add('CMeta() warm', timed_calls(lambda: CMeta(home=home), 5), 'ms', 'a new engine object on an existing home')
 
-    section('Index build of %d hand-made artifacts' % args.n)
+    section('Index build of %d hand-made artifacts in %d repositories and %d categories' % (args.n, args.repos, args.categories))
     t0 = time.perf_counter()
-    repo, uids = make_artifacts(home, args.n)
+    repo_paths, uids = make_artifacts(home, args.n, args.repos, args.categories)
     results.value('writing %d artifact folders by hand' % args.n, time.perf_counter() - t0, 's', 'not the engine')
-    t0 = time.perf_counter()
-    r = cm.access({'category': 'repo', 'command': 'plug', 'arg1': repo, 'con': False})
-    assert r['return'] == 0, r.get('error')
-    results.value('repo plug (incremental index of the repo)', time.perf_counter() - t0, 's')
+    plug_times = []
+    for repo in repo_paths:
+        t0 = time.perf_counter()
+        r = cm.access({'category': 'repo', 'command': 'plug', 'arg1': repo, 'con': False})
+        assert r['return'] == 0, r.get('error')
+        plug_times.append(time.perf_counter() - t0)
+    results.value('repo plug (incremental index of the repo)', plug_times[-1], 's', 'the last repository plugged')
+    if args.repos > 1:
+        results.value('repo plug: all %d repositories' % args.repos, sum(plug_times), 's', 'one incremental index each')
     results.add('full reindex (cx --reindex)', timed_calls(lambda: cm.repos.reindex(con=False), 2), 's')
     index_file = os.path.join(home, 'index', CATEGORY + '.pkl')
-    results.value('index file size', os.path.getsize(index_file) / 1024.0, 's', 'KB (unit column: KB)')
+    results.value('index file size', os.path.getsize(index_file) / 1024.0, 's', 'KB (unit column: KB), the log category')
     with open(index_file, 'rb') as f:
         index_data = pickle.load(f)
-    results.value('records in the index', len(index_data['uids']), 's', '(unit column: records)')
+    results.value('records in the index', len(index_data['uids']), 's', '(unit column: records), the log category')
+
+    section('Incremental index of one repository among %d, %d categories (the file of every category is rewritten)'
+            % (args.repos, args.categories))
+    index_dir = os.path.join(home, 'index')
+
+    def category_records():
+        """file -> {uid: (repository uid, path)} of every category file of the index (repo and category files left out)."""
+        found = {}
+        for name in os.listdir(index_dir):
+            if not name.endswith('.pkl') or name in ('repo.pkl', 'category.pkl'):
+                continue
+            with open(os.path.join(index_dir, name), 'rb') as f:
+                data = pickle.load(f)
+            found[name] = {u: (rec['cmeta_ref_parts'].get('repo_uid'), rec['path']) for u, rec in data['uids'].items()}
+        return found
+
+    def repo_command(command, arg1):
+        r = cm.access({'category': 'repo', 'command': command, 'arg1': arg1, 'con': False})
+        assert r['return'] == 0, r.get('error')
+
+    last = repo_alias(args.repos - 1, args.repos)
+    before = category_records()
+    results.add('reindex one repository (cx repo reindex)', timed_calls(lambda: repo_command('reindex', last), 3), 's',
+                'declares no category' if args.categories > 1 else '')
+    if args.categories > 1:
+        results.add('reindex the repository that declares the categories',
+                    timed_calls(lambda: repo_command('reindex', repo_alias(0, args.repos)), 3), 's',
+                    'every repository is scanned for them')
+    if args.repos > 1:
+        results.add('repo unplug (the records of one repository leave)', timed_calls(lambda: repo_command('unplug', last), 1), 's')
+        results.add('repo plug again (its records come back)', timed_calls(lambda: repo_command('plug', repo_paths[-1]), 1), 's')
+    after = category_records()
+    lost = 0
+    changed = 0
+    for name in before:
+        for u, rec in before[name].items():
+            now = after.get(name, {}).get(u)
+            if now is None:
+                lost += 1
+            elif now != rec:
+                changed += 1
+    total = sum(len(v) for v in before.values())
+    results.value('incremental index: records lost', lost, 's', 'of %d (0 = every record of every repository kept)' % total)
+    results.value('incremental index: records changed', changed, 's', '0 = the records of the other repositories as they were')
 
     section('Reads with a warm cache (the index already loaded in this process)')
-    alias = 'art-%06d' % (args.n // 2)
-    uid = uids[args.n // 2]
+    mid = (args.n // 2) // args.categories * args.categories          # an artifact of the log category
+    alias = 'art-%06d' % mid
+    uid = uids[mid]
 
     def find(**p):
         p.setdefault('category', CATEGORY)
@@ -453,7 +528,7 @@ def main():
     w = args.writes
 
     def create(i):
-        r = cm.access({'category': CATEGORY, 'command': 'create', 'arg1': '%s:new-%04d' % (REPO_ALIAS, i),
+        r = cm.access({'category': CATEGORY, 'command': 'create', 'arg1': '%s:new-%04d' % (repo_alias(0, args.repos), i),
                        'meta': {'tags': ['new']}, 'yaml': True, 'con': False})
         assert r['return'] == 0, r.get('error')
 
@@ -580,8 +655,8 @@ def main():
 
     errors = []
     if args.procs > 0:
-        errors = concurrent_creates(home, args.procs, args.per, results)
-        check_index(home, cm, args.procs, args.per, results)
+        errors = concurrent_creates(home, args.procs, args.per, results, args.repos)
+        check_index(home, cm, args.procs, args.per, results, repo_paths[0])
         if errors:
             print('  worker errors (%d): %s' % (len(errors), errors[:3]))
 

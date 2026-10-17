@@ -97,8 +97,8 @@ params_desc = [
   {'key':'help', 'aliases':['h'], 'type': bool, 'desc': 'Show help' },
   {'key':'reindex', 'type': bool, 'desc': 'Reindex all artifacts'},
   {'key':'verbose', 'aliases':['v'], 'type': bool, 'desc': 'Use verbose output'},
-  {'key':'quiet', 'aliases':['q'], 'type': bool, 'desc': 'Quetly select default answer to questions'},
-  {'key':'repro', 'aliases':['r'], 'type': bool, 'desc': 'Save input and related into to cmeta-reproduce-input.json'},
+  {'key':'quiet', 'aliases':['q'], 'type': bool, 'desc': 'Quietly select default answer to questions'},
+  {'key':'repro', 'aliases':['r'], 'type': bool, 'desc': 'Record the call in cmeta-repro-input.json, cmeta-repro-input2.json and cmeta-repro-output.json (replay it with "cx @cmeta-repro-input.json")'},
 ]
 
 params_command_desc = [
