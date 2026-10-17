@@ -3,7 +3,7 @@
 All notable changes to cMeta are documented here, newest first.
 
 
-## DEV VERSION (0.37.2.1)
+## 0.37.3
 - **Fix: a repository inside another registered repository keeps its records when the outer one is indexed again.**
   An incremental index (`cx repo plug`, `pull`, `unzip`, `unplug`, `cx repo reindex <repository>`, a repository out
   of reach) removed every record whose path lay inside the folder of a repository it touched - also the records of
