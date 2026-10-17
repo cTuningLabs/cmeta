@@ -394,6 +394,18 @@ class Category(InitCategory):
 
                 path = os.path.join(repos_path, folder)
 
+            # Never the folder of the repositories of this home, nor a folder that holds it (the home, the user's
+            # folder): a repository there holds every other one. A bare "cx repo plug" typed in ~/CMETA/repos
+            # registered that folder as the repository "repos" (a P14s Gen 4, 2026-09-18), and every incremental
+            # index of it could take the records of the other repositories out of the index
+            if path:
+                xpath = os.path.normcase(os.path.abspath(os.path.normpath(str(path))))
+                xrepos = os.path.normcase(os.path.abspath(os.path.normpath(str(repos_path))))
+                if xpath == xrepos or utils.files.is_path_within(xpath, xrepos):
+                    return {'return':1, 'error':f'{path} is the folder of the repositories of this cMeta home{"" if xpath == xrepos else " or holds it"}: '
+                                               f'a repository there would hold every other one - plug the folder of one repository '
+                                               f'("cx repo plug <folder>"), or make a new one with "cx repo init <name>"'}
+
             # Check method
             if not method and url:
                 if url.endswith('.zip'):
@@ -540,13 +552,19 @@ class Category(InitCategory):
                         repo_meta['subdir'] = subdir
 #                    repo_meta.update(repo_meta_to_index)
 
-                    repo_update = True
+                    # (was "repo_update", a typo: a descriptor with a category but no artifact got its new name in
+                    # memory only, and the next index found a repository that "names no artifact")
+                    repo_updated = True
 
                 if keep:
                     repo_meta['keep'] = True
                     repo_meta_to_index['keep'] = True
 
                 if repo_updated:
+                    if con and not os.path.isfile(repo_meta_desc_path):
+                        # A folder without a descriptor becomes a repository: said, not done silently
+                        print (f'cMeta info: {path} has no {self.cm.cfg["repo_meta_desc"]}: it becomes the repository "{repo_meta.get("artifact", "")}"')
+
                     r = utils.files.safe_write_file(repo_meta_desc_path, repo_meta, file_lock=repo_meta_file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger)
                     if r['return']>0: return r
                 elif repo_meta_file_lock is not None:

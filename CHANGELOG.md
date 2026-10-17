@@ -3,6 +3,29 @@
 All notable changes to cMeta are documented here, newest first.
 
 
+## DEV VERSION (0.37.2.1)
+- **Fix: a repository inside another registered repository keeps its records when the outer one is indexed again.**
+  An incremental index (`cx repo plug`, `pull`, `unzip`, `unplug`, `cx repo reindex <repository>`, a repository out
+  of reach) removed every record whose path lay inside the folder of a repository it touched - also the records of
+  another registered repository nested in that folder, and the outer repository's scan does not descend into it to
+  bring them back. Where the engine's source tree (and so its internal repository) lies inside a plugged repository,
+  a pull or reindex of that repository took the `cserver` app out of the index ("app cserver not found") until a full
+  reindex; plugging an outer repository after an inner one lost the inner one's records the same way. A record is
+  now removed only when its own repository is the one indexed again or removed. And `.` (the artifact of the
+  current directory) names the deepest repository that holds the folder - it could name the outer one. Tests:
+  `test_integration_reindex_nested.py` (a reindex of either repository, the plug order, unplug, an outer repository
+  out of reach, the internal repository inside a plugged repository, the current directory).
+- **Fix: the folder of the repositories cannot become a repository.** A bare `cx repo plug` plugs the current
+  directory, and typed in `~/CMETA/repos` it wrote a `_cmr.yaml` there and registered the folder of the repositories
+  itself as the repository "repos" - every other repository nested in it (a test machine, 2026-09-18). `cx repo plug`,
+  `init` and `get` now refuse the folder of the repositories of the home and a folder that holds it (the home, the
+  user's folder), with the cure; a folder without a descriptor still becomes a repository, and says so
+  (`cMeta info: ... has no _cmr.yaml: it becomes the repository "<alias>,<uid>"`).
+  Tests: `test_integration_plug_guard.py`.
+- **Fix: a descriptor with a category but no artifact gets its new name written.** The name was made in memory only (a
+  typo, `repo_update`), and the next index found a repository that "names no artifact" and left it out.
+
+
 ## 0.37.2
 - **Fix: a full reindex inside a container.** The new index replaces the old one by renaming the index folder away;
   on overlayfs (a later step of a Containerfile, any container started from an image whose home already has an index)

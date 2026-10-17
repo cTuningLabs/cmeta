@@ -1684,6 +1684,19 @@ class Repos:
             for category_mix in categories:
                 index_artifacts[category_mix['category']] = {}
 
+        # The registered repositories nested inside a repository being indexed again or removed (the engine's
+        # internal repository inside a repository that holds the engine's source tree): their records lie inside the
+        # outer folder but are not the outer repository's, and its scan does not descend into them to bring them
+        # back - an incremental index of the outer one dropped them for good (the cserver app, 2026-10-17)
+        norm = lambda p: os.path.normcase(os.path.normpath(p))
+        registered = list(repos_to_write.keys())
+        removed = set(norm(p) for p in add_repo_paths + delete_repo_paths)
+        nested_in = {}
+        for remove_path in add_repo_paths + delete_repo_paths:
+            nested_in[remove_path] = [p for p in registered
+                                      if norm(p) != norm(remove_path) and norm(p) not in removed
+                                      and utils.files.is_path_within(remove_path, p)]
+
         if index_artifacts:
             if conx:
                 print ('')
@@ -1715,13 +1728,15 @@ class Repos:
                         uids = existing_category_index.setdefault(self.KEY_INDEX_UIDS, {})
                         lowercase_aliases = existing_category_index.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
 
-                        # Remove UIDs of old/updated repos
+                        # Remove UIDs of old/updated repos - not those of a registered repository nested inside one
+                        # of them (see nested_in above)
                         for uid in list(uids.keys()):
                             artifact = uids[uid]
                             path = artifact['path']
 
                             for remove_path in add_repo_paths + delete_repo_paths:
-                                if utils.files.is_path_within(remove_path, path):
+                                if utils.files.is_path_within(remove_path, path) and \
+                                        not any(utils.files.is_path_within(inner, path) for inner in nested_in.get(remove_path, [])):
                                     del(uids[uid])
                                     break
 

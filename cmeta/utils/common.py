@@ -524,15 +524,24 @@ def detect_cid_in_the_current_directory(
 
     repo_artifacts = r['artifacts']
 
+    # The deepest repository that holds the path: a registered repository can lie inside another one (the engine's
+    # internal repository inside a repository that holds the engine's source tree) - the first one found could be
+    # the outer repository, and "." named its artifact instead of the nested repository's
     found = False
+    best_repo = None
+    best_path = None
     for repo in repo_artifacts:
         repo_path = os.path.normpath(os.path.abspath(repo['full_path']))
-        if files.is_path_within(repo_path, cur_dir):
+        if files.is_path_within(repo_path, cur_dir) and (best_path is None or len(repo_path) > len(best_path)):
             found = True
-            break
+            best_repo = repo
+            best_path = repo_path
 
     if not found:
         return {'return':1, 'error':'no cMeta repository found in the current path'}
+
+    repo = best_repo
+    repo_path = best_path
 
     if debug and logger is not None:
         logger.debug(f'Detecting cMeta repository in the current path: {repo}')
