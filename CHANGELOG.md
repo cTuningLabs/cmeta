@@ -2,6 +2,12 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## Unreleased
+- **Declarative website task adapters:** website descriptions can forward `run` and
+  `bootstrap` to reusable task artifacts with ordinary CLI parameters. Existing
+  static builds and legacy Python runners retain their behavior. Task references
+  and category dependencies use rename-safe aliases/UIDs.
+
 
 ## 0.37.4
 - **The incremental index removes records by the UID of their repository, never by path (issue #13, its first

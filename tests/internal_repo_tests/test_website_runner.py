@@ -71,3 +71,28 @@ def test_runner_failure_is_not_reported_as_success(website):
     (path / 'manage.py').write_text('raise SystemExit(7)\n', encoding='utf-8')
 
     assert call(cm, 'run')['return'] == 7
+
+
+def test_declared_tasks_receive_native_flags_and_bootstrap_action(website, monkeypatch):
+    cm, path = website
+    (path / '_desc.yaml').write_text(yaml.safe_dump({'automation': {
+        'run': {'task': 'movable-runner,1234567890abcdef', 'reference_param': 'website'},
+        'bootstrap': {'task': 'movable-manager,fedcba0987654321', 'reference_param': 'definition',
+                      'params': {'action': 'bootstrap'}},
+    }}), encoding='utf-8')
+    original = cm.access
+    requests = []
+    def capture(params):
+        if isinstance(params.get('category'), str) and params['category'].startswith('task,'):
+            requests.append(params)
+            return {'return': 0}
+        return original(params)
+    monkeypatch.setattr(cm, 'access', capture)
+    assert call(cm, 'run', current=True, params={'port': 8118})['return'] == 0
+    assert requests[-1]['arg1'] == 'movable-runner,1234567890abcdef'
+    assert requests[-1]['params'] == {'port': 8118} and requests[-1]['current'] is True
+    assert '::sample,' in requests[-1]['website']
+    assert call(cm, 'bootstrap', project_home='a project with spaces')['return'] == 0
+    assert requests[-1]['action'] == 'bootstrap'
+    assert requests[-1]['project_home'] == 'a project with spaces'
+    assert '::sample,' in requests[-1]['definition']
