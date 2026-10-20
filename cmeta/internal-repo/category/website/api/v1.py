@@ -237,8 +237,12 @@ class Category(InitCategory):
 
         return {'return':0}
 
-    def run_(self, ctx, arg1, arg2='status', unparsed=None):
-        """Run an action using the Python manager declared in a website's _desc.yaml.
+    def bootstrap_(self, ctx, arg1: str, **options):
+        """Bootstrap a website through the task declared in automation.bootstrap."""
+        return self.run_(ctx, arg1, arg2='bootstrap', **options)
+
+    def run_(self, ctx, arg1: str, arg2: str = None, unparsed=None, **options):
+        """Run a declared task adapter, or the legacy Python website manager.
 
         The website.runner path is relative to the artifact. Options after --
         are passed as literal arguments to that manager; no shell is involved.
@@ -260,7 +264,27 @@ class Category(InitCategory):
         if r['return'] > 0:
             return r
 
-        website = (r.get('data') or {}).get('website', {})
+        description = r.get('data') or {}
+        operation = 'bootstrap' if arg2 == 'bootstrap' else 'run'
+        automation = description.get('automation', {}).get(operation)
+        if automation:
+            if not isinstance(automation, dict) or not automation.get('task'):
+                return {'return': 1, 'error': 'Website automation needs a task reference'}
+            if unparsed:
+                return {'return': 1, 'error': 'Task websites accept ordinary --flags; do not use -- passthrough'}
+            p = self._prepare_input_from_ctx(ctx)
+            p.update(automation.get('params') or {})
+            p.update(options)
+            parts = artifacts[0]['cmeta_ref_parts']
+            reference = 'website,' + self.cmeta['artifact'].split(',')[-1] + '::' + parts['artifact_alias'] + ',' + parts['artifact_uid']
+            p.update(category=self.cmeta['uses_categories']['task'], command='run', arg1=automation['task'])
+            p[automation.get('reference_param', 'website')] = reference
+            if arg2 and operation == 'run':
+                p['action'] = arg2
+            return self.cm.access(p)
+        if options:
+            return {'return': 1, 'error': 'Legacy website.runner options must follow --'}
+        website = description.get('website', {})
         runner = website.get('runner')
         if not isinstance(runner, str) or not runner:
             return {'return': 1, 'error': 'This website has no website.runner in _desc.yaml'}
