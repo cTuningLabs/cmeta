@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## Unreleased
+## 0.37.5
 - **Declarative website task adapters:** website descriptions can forward `run` and
   `bootstrap` to reusable task artifacts with ordinary CLI parameters. Existing
   static builds and legacy Python runners retain their behavior. Task references
