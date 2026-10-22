@@ -54,6 +54,7 @@
 #cbr h1, #cbr h2, #cbr h3, #cbr p, #cbr li, #cbr td, #cbr th, #cbr label, #cbr summary { color: inherit; }
 #cbr a { color: var(--cbr-accent); text-decoration: none; }
 #cbr a:hover { text-decoration: underline; }
+#cbr pre a.cbr-cref { text-decoration: underline dotted; }   /* a {{{cRef}}}/path in a shown text */
 #cbr code, #cbr pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
 #cbr [hidden] { display: none !important; }
 

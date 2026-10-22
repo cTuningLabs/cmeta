@@ -21,7 +21,7 @@
 
   // The state in the URL: the query, the view, the open artifact, and the graph (focus, depth, nodes, switches:
   // '' = the default, '1' / '0' = set)
-  var URL_KEYS = ['q', 'repos', 'cats', 'after', 'before', 'sort', 'dir', 'uid', 'focus', 'depth', 'max_nodes',
+  var URL_KEYS = ['q', 'repos', 'cats', 'after', 'before', 'sort', 'dir', 'uid', 'file', 'focus', 'depth', 'max_nodes',
                   'categories', 'core', 'isolated', 'neighbors', 'labels', 'links'];
   var st = {view: 'search'};
   URL_KEYS.forEach(function (k) { st[k] = ''; });
@@ -59,6 +59,40 @@
     return e;
   }
   function quoteIf(v) { return /[\s"]/.test(v) ? '"' + v.replace(/"/g, '') + '"' : v; }
+
+  // A location written in a text as {{{<category>::<alias>,<UID>}}}/<path> (how memories, records and docs name a
+  // place inside an artifact) becomes a link that opens that artifact here - and that file, when a path follows
+  var CREF_RE = /\{\{\{([^{}:]+)::([^{}]+?),([0-9a-fA-F]{16})\}\}\}((?:\/[^\s"'`<>)\]]*)?)/g;
+  function withRefs(text) {
+    var frag = document.createDocumentFragment(), last = 0, m;
+    CREF_RE.lastIndex = 0;
+    while ((m = CREF_RE.exec(text))) {
+      var rel = m[4].replace(/[.,;:]+$/, '');
+      var end = m.index + m[0].length - (m[4].length - rel.length);
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      frag.appendChild(refLink(m[3].toLowerCase(), rel.replace(/^\/+/, ''), text.slice(m.index, end)));
+      last = end;
+      CREF_RE.lastIndex = end;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    return frag;
+  }
+  function refLink(uid, rel, label) {
+    var href = '?uid=' + uid + (rel ? '&file=' + encodeURIComponent(rel) : '');
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('uid', uid);
+      if (rel) u.searchParams.set('file', rel); else u.searchParams.delete('file');
+      href = u.toString();
+    } catch (e) { /* old browser: the short form */ }
+    var a = h('a', {href: href, class: 'cbr-cref', title: 'open ' + (rel ? rel + ' in ' : '') + 'this artifact'}, label);
+    a.addEventListener('click', function (e) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;   // a new tab or window follows the href
+      e.preventDefault();
+      openDetail(uid, rel);
+    });
+    return a;
+  }
   function busy(on, what) {
     busyCount = Math.max(0, busyCount + (on ? 1 : -1));
     var b = $('cbr-busy');
@@ -132,6 +166,7 @@
         if (st[k]) u.searchParams.set(k, st[k]); else u.searchParams.delete(k);
       });
       if (st.view !== 'search') u.searchParams.set('view', st.view); else u.searchParams.delete('view');
+      u.searchParams.delete('cref');           // an outside cRef was resolved by the server into uid and file
       history.replaceState(null, '', u.toString());
     } catch (e) { /* old browser: the state stays in the page */ }
     $('cbr-json').href = st.view === 'graph' ? apiUrl('graph') + '&' + qs(graphParams())
@@ -407,9 +442,10 @@
     return h('div', {class: 'cbr-cmd'}, h('code', {}, text), b);
   }
   var detailToken = 0;       // a later open or a close wins over an answer still on its way
-  function openDetail(uid) {
+  function openDetail(uid, file) {
     if (!uid) return;
     st.uid = uid;
+    st.file = file || '';
     syncUrl();
     var my = ++detailToken;
     call('artifact', {uid: uid}, 'reading the artifact').then(function (d) {
@@ -461,14 +497,15 @@
         fbtn.addEventListener('click', function () { listFiles(d.row.uid, fbox, fbtn); });
         box.appendChild(fbtn);
         box.appendChild(fbox);
+        if (st.file) listFiles(d.row.uid, fbox, fbtn, st.file);
       }
       box.appendChild(h('h3', {}, 'Commands'));
       (d.commands || []).forEach(function (c) { box.appendChild(cmdLine(c)); });
       box.appendChild(h('h3', {}, 'Meta (_cmeta)'));
-      box.appendChild(h('pre', {}, JSON.stringify(d.meta, null, 2)));
+      box.appendChild(h('pre', {}, withRefs(JSON.stringify(d.meta, null, 2))));
       if (d.desc) {
         box.appendChild(h('h3', {}, 'Description (' + d.desc_file + ')'));
-        box.appendChild(h('pre', {}, JSON.stringify(d.desc, null, 2)));
+        box.appendChild(h('pre', {}, withRefs(JSON.stringify(d.desc, null, 2))));
       }
       box.hidden = false;
       box.scrollTop = 0;
@@ -478,6 +515,7 @@
     detailToken++;
     $('cbr-detail').hidden = true;
     st.uid = '';
+    st.file = '';
     syncUrl();
   }
   // Open the folder on this machine (a browser on the server's own machine only): file manager, shell, Far
@@ -549,7 +587,7 @@
 
   /* ------------------------------------------------------------------ the files of one artifact */
   var blobUrl = null;
-  function listFiles(uid, box, btn) {
+  function listFiles(uid, box, btn, want) {
     if (box.getAttribute('data-loaded')) {
       box.hidden = !box.hidden;
       btn.textContent = box.hidden ? 'List the files' : 'Hide the files';
@@ -569,12 +607,16 @@
         li.addEventListener('click', function () {
           ul.querySelectorAll('li.on').forEach(function (x) { x.classList.remove('on'); });
           li.classList.add('on');
+          st.file = f.rel;
+          syncUrl();
           openFile(uid, f.rel, view);
         });
+        if (want && f.rel === want) li.classList.add('on');
         ul.appendChild(li);
       });
       box.appendChild(ul);
       box.appendChild(view);
+      if (want) openFile(uid, want, view);     // a link or the URL named the file: open it (also one past the list)
     }).catch(function (e) { box.hidden = false; box.textContent = e.message; });
   }
   function openFile(uid, rel, view) {
@@ -582,11 +624,11 @@
       view.innerHTML = '';
       if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
       var close = h('button', {type: 'button', class: 'cbr-copy'}, 'close');
-      close.addEventListener('click', function () { view.innerHTML = ''; });
+      close.addEventListener('click', function () { view.innerHTML = ''; st.file = ''; syncUrl(); });
       view.appendChild(h('div', {class: 'cbr-fhead'}, h('b', {}, j.rel), ' · ' + fmtSize(j.size) +
         (j.truncated ? ' · the first 512 KB' : '') + ' ', close));
       if (j.kind === 'text') {
-        view.appendChild(h('pre', {}, j.text));
+        view.appendChild(h('pre', {}, withRefs(j.text)));
       } else if (j.kind === 'binary' && j.b64) {
         var bin = atob(j.b64), arr = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -864,14 +906,15 @@
     });
     pickerLabel('repos');
     pickerLabel('cats');
-    var wantUid = st.uid;
+    var wantUid = st.uid, wantFile = st.file;
     call('options', {}, 'loading the index').then(function (o) {
       options = o;
       subtitle(o);
       buildPicker('repos');
       buildPicker('cats');
       setView(st.view);
-      if (wantUid) openDetail(wantUid);
+      if (wantUid) openDetail(wantUid, wantFile);
+      if (CFG.notice) showError(CFG.notice);   // a cref= that names nothing this server shows
     }).catch(function (e) { showError(e.message); });
   }
   // The connections are read in the background; any answer that carries the state of that index updates this

@@ -6,6 +6,16 @@ All notable changes to cMeta are documented here, newest first.
 - **The browse page quotes a reference it cannot paste as it is:** the COMMANDS panel of `/browse` puts an
   `alias,UID` that holds a space or another shell character in double quotes (`cx note find "My notes,0123456789abcdef"`),
   which cmd, PowerShell, bash and zsh all accept; a reference made of plain characters stays as it was.
+- **The browse page follows the references written in texts:** a location written as
+  `{{{<category>::<alias>,<UID>}}}/<relative path>` in a file, the `_cmeta` or the `_desc` the page shows becomes a
+  link that opens that artifact on the same page, and that file when a path follows; the new URL key `file`
+  (`/browse?uid=<UID>&file=<relative path>`) opens an artifact with one of its files shown. The file reader's guards
+  are unchanged (a path inside the artifact only; no key or secret categories and files).
+- **The browse page opens an artifact named from outside by its cRef:** `/browse?cref=<category>::<alias>,<UID>[/<path>]`
+  (the category's UID may be added, the UID or the category left out, or the `{{{...}}}/<path>` form pasted as it is)
+  opens that artifact, and that file when a path follows - a stable address for links from other tools (a CRM, a
+  ticket, a chat) that also works behind a host that serves the page under its own path. The UID decides when it is
+  given (a renamed artifact keeps it); otherwise the category and the alias. A reference this server does not show says so.
 
 
 ## 0.37.5

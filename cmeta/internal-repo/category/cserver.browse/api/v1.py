@@ -109,8 +109,8 @@ DEPTH_MAX = 12
 DESC_MAX_BYTES = 400000          # a larger _desc is summarised, not sent
 
 # What the URL of the page keeps: the query, the view, the open artifact and the graph controls
-STATE_KEYS = ('q', 'repos', 'cats', 'after', 'before', 'view', 'sort', 'dir', 'uid',
-              'focus', 'depth', 'max_nodes', 'categories', 'core', 'isolated', 'neighbors', 'labels', 'links')
+STATE_KEYS = ('q', 'repos', 'cats', 'after', 'before', 'view', 'sort', 'dir', 'uid', 'file',
+              'focus','depth', 'max_nodes', 'categories', 'core', 'isolated', 'neighbors', 'labels', 'links')
 
 UID_RE = re.compile(r'^[0-9a-fA-F]{16}$')
 KEY_RE = re.compile(r'^[A-Za-z_][\w.\-]*$')
@@ -1211,6 +1211,40 @@ class Category(InitCategory):
             return None
         return it if any(x is it for x in self._visible()) else None
 
+    def _resolve_cref(self, text):
+        """(UID, relative path, notice) for an artifact named from outside: `cref=<category>::<alias>,<UID>[/<path>]`,
+        with or without the category's UID, the artifact's UID or the category, or as {{{<cRef>}}}/<path> - the UID
+        decides when it is there (a renamed artifact keeps it), else the category and the alias."""
+        s = str(text or '').strip()
+        m = re.match(r'^\{\{\{(.+?)\}\}\}(/.*)?$', s)
+        if m:
+            ref, rel = m.group(1), m.group(2) or ''
+        else:
+            # the path starts at the first '/' after the artifact part (an alias never holds a '/')
+            i = s.find('::')
+            j = s.find('/', i + 2 if i >= 0 else 0)
+            ref, rel = (s[:j], s[j:]) if j >= 0 else (s, '')
+        rel = rel.strip().strip('/')
+        cat_part, art_part = ref.split('::', 1) if '::' in ref else ('', ref)
+        cat_alias, _, cat_uid = cat_part.partition(',')
+        alias, uid = art_part.strip(), ''
+        if ',' in art_part:
+            a, u = art_part.rsplit(',', 1)
+            if UID_RE.match(u.strip()):
+                alias, uid = a.strip(), u.strip().lower()
+        if uid and self._item(uid) is not None:
+            return uid, rel, ''
+        by_key = self._catalog()['by_key']
+        for key in (cat_uid.strip().lower(), cat_alias.strip().lower()):
+            u = by_key.get((key, alias.lower())) if key else None
+            if u and self._item(u) is not None:
+                return u, rel, ''
+        if not cat_part and alias:
+            hits = [it['uid'] for it in self._visible() if it['alias_l'] == alias.lower()]
+            if len(hits) == 1:
+                return hits[0], rel, ''
+        return '', rel, 'cref %s: no such artifact on this server (or it is hidden here)' % s
+
     def _artifact(self, uid, local, files_on):
         """One artifact: its meta, its _desc, what it connects to and what it uses (resolved to the catalog), what
         connects to it (from the connection index), and its commands."""
@@ -1657,6 +1691,11 @@ class Category(InitCategory):
             dark = theme == 'dark' or str(query.get('dark', '')).lower() in ('1', 'true', 'yes')
             version = getattr(self.cm, '__version__', '')
             state = {k: str(query.get(k) or '') for k in STATE_KEYS}
+            notice = ''
+            if str(query.get('cref') or '').strip():   # an artifact (and a file of it) named from outside by its cRef
+                uid, rel, notice = self._resolve_cref(query.get('cref'))
+                if uid:
+                    state['uid'], state['file'] = uid, rel
             if not any(state.values()):                # a bare /browse: what this server opens with
                 for k, key in DEFAULT_KEYS:
                     v = cfg.get(key)
@@ -1669,7 +1708,7 @@ class Category(InitCategory):
                       'files': self._files_on(misc, cfg),
                       'open': _open_buttons(cfg) if open_on else {},
                       'graph': {'max_nodes': GRAPH_DEFAULT, 'max': GRAPH_MAX, 'depth_max': DEPTH_MAX},
-                      'state': state}
+                      'state': state, 'notice': notice}
             with open(os.path.join(path_to_files, 'index.html'), encoding='utf-8') as f:
                 body = f.read()
             body = (body.replace('%%CONFIG%%', _js(config)).replace('%%VERSION%%', _esc(version))
