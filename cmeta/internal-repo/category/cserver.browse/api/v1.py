@@ -1258,17 +1258,20 @@ class Category(InitCategory):
         mig_uid = _cref_uid(mig)[0] if mig else ''
         ref = '%s,%s' % (it['alias'], it['uid'])
         cmd_cat = it['cat'] or 'category'
+        # the commands are pasted into a shell: an alias with a space or another shell character is quoted
+        # (double quotes work in cmd, PowerShell, bash and zsh)
+        shell_ref = ref if re.fullmatch(r'[A-Za-z0-9._,@:+=/-]+', ref) else '"%s"' % ref
         out = {'row': _row(it), 'repo_uid': it['repo_uid'], 'meta': it['meta'], 'desc': desc_out,
                'desc_file': desc_file, 'connections': links, 'uses': uses, 'ai_uses': ai_uses, 'incoming': incoming,
                'incoming_total': n_in, 'index': _conn_status(),
                'files': bool(files_on) and not SECRET_DIR_RE.search(it['cat']),
                'cref': '%s,%s::%s' % (it['cat'], it['cat_uid'], ref),
                'migrated_to_uid': mig_uid if mig_uid in shown else '',
-               'commands': ['cx %s find %s' % (cmd_cat, ref),
-                            'cx %s info %s' % (cmd_cat, ref),
-                            'cx %s read %s' % (cmd_cat, ref),
-                            'cx %s tags %s --add=<tag> --remove=<tag>' % (cmd_cat, ref),
-                            'cx %s update %s --meta.<key>=<value>' % (cmd_cat, ref)]}
+               'commands': ['cx %s find %s' % (cmd_cat, shell_ref),
+                            'cx %s info %s' % (cmd_cat, shell_ref),
+                            'cx %s read %s' % (cmd_cat, shell_ref),
+                            'cx %s tags %s --add=<tag> --remove=<tag>' % (cmd_cat, shell_ref),
+                            'cx %s update %s --meta.<key>=<value>' % (cmd_cat, shell_ref)]}
         if local:
             out['path'] = it['path']
         return out

@@ -2,6 +2,12 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.37.5.1)
+- **The browse page quotes a reference it cannot paste as it is:** the COMMANDS panel of `/browse` puts an
+  `alias,UID` that holds a space or another shell character in double quotes (`cx note find "My notes,0123456789abcdef"`),
+  which cmd, PowerShell, bash and zsh all accept; a reference made of plain characters stays as it was.
+
+
 ## 0.37.5
 - **Declarative website task adapters:** website descriptions can forward `run` and
   `bootstrap` to reusable task artifacts with ordinary CLI parameters. Existing
