@@ -16,6 +16,7 @@ All notable changes to cMeta are documented here, newest first.
   opens that artifact, and that file when a path follows - a stable address for links from other tools (a CRM, a
   ticket, a chat) that also works behind a host that serves the page under its own path. The UID decides when it is
   given (a renamed artifact keeps it); otherwise the category and the alias. A reference this server does not show says so.
+  The short form `/cref/<category>::<alias>,<UID>[/<path>]` of the engine's cserver redirects there.
 
 
 ## 0.37.5

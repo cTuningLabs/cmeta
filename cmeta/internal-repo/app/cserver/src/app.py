@@ -491,6 +491,23 @@ async def favicon():
     return FileResponse(os.path.join(home_dir_static, "images", "favicon.ico"))
 
 ##################################################################################################
+@app.get("/cref/{ref:path}")
+async def cref_shortcut(
+    request: Request,  # Input dictionary used by this function.
+    ref: str,  # <category>::<alias>,<UID>[/<relative path>] - any form the browse page's cref= takes.
+):
+    """
+    The short address of an artifact: /cref/<category>::<alias>,<UID>[/<relative path>] opens it - and that file -
+    in the browse page (/browse?cref=...), which resolves the reference and applies this server's rules.
+
+    Returns:
+        RedirectResponse: 303 to the browse page.
+    """
+    root = request.scope.get('root_path', '') or ''
+    return RedirectResponse(url = root + '/browse?cref=' + urllib.parse.quote(ref, safe = ''),
+                            status_code = status.HTTP_303_SEE_OTHER)
+
+##################################################################################################
 ##################################################################################################
 @app.api_route("/{task}", methods=["GET", "POST"], response_class=HTMLResponse)
 @app.api_route("/{task}/", methods=["GET", "POST"], response_class=HTMLResponse)
