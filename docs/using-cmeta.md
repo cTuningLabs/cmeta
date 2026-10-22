@@ -636,6 +636,26 @@ keeps working only when the rename was a `migrate`, §5.2). This is what makes
 cMeta references **semantically portable** across projects, forks and time —
 recommended for anything you share, publish, or automate against.
 
+### 6.1 A location inside an artifact, in text
+
+In a README, a note, an agent's memory or any text that travels between
+machines, write a file or folder inside an artifact as the reference followed
+by the relative path, not as one machine's absolute path:
+
+```
+{{{<category>::<artifact alias>,<artifact UID>}}}/<relative path, forward slashes>
+
+{{{fgg.project::cMeta,5e1b787a2f2a4549}}}/cmeta/docs/using-cmeta.md
+{{{repo::fgg,ad5d4f15885b4bfb}}}/work/2026          # a repository root, or a folder of it that is no artifact
+```
+
+The braces stand for the artifact's folder on whichever machine reads the
+text: `cx utils find_by_cid <cRef>` resolves them (one substitution), and a
+viewer can turn them into links. Keep the artifact's `alias,UID` (a rename
+keeps the UID). A path outside cMeta stays a full path that names its machine.
+Do not use the form inside a templated value of a `_desc.yaml` (`cmd`, `env`,
+...): the engine's own `{{ }}` expansion would read `{{{x}}}` as a key `{x`.
+
 ---
 
 ## 7. cMeta repositories
