@@ -1658,6 +1658,9 @@ class Category(InitCategory):
                 elif na == 'index':
                     self._conn_start()
                     out = _conn_status()
+                elif na == 'resolve':              # a cRef (any form the page's cref= takes) -> uid, file, notice
+                    uid, rel, notice = self._resolve_cref(query.get('cref'))
+                    out = {'uid': uid, 'rel': rel, 'notice': notice}
                 elif na == 'artifact':
                     th = self._conn_start()
                     if th is not None and not _conn['ready']:

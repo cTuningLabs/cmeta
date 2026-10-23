@@ -1,0 +1,36 @@
+artifact: a24a8d9cf3164903
+category: category,dd9ea50e7f76467f
+authors: Grigori Fursin
+creation_timestamp: '2026-10-22T21:07:49.429512+00:00'
+generator:
+  method: agent
+  agent: Claude Code 2.1.308
+  via: cmeta 0.37.5
+  by: Grigori Fursin
+last_api_version: 1
+base_category_default_api_versions:
+  '1': 1
+name: cMeta cref - the page of one artifact, named by its cRef
+desc: 'The full-page view of one artifact: /cref/<category>::<alias>,<UID>[/<relative path>]. The title, the
+  artifact''s text (README.md, or the file its category names - the latest dated copy of a note), the connections
+  grouped by category, what connects to it, and, folded at the end, the commands, the _cmeta, the _desc and the
+  files. The cRef stays in the address bar: it is how artifacts are referenced. Resolved and read through
+  cserver.browse (one catalogue, the same rules); extended through cref_view in a category''s _cmeta.yaml or an
+  artifact''s _desc.'
+permanent: true
+card: false
+tags:
+- cserver
+- web
+- cref
+- artifact
+- reader
+uses_categories:
+  category: category,dd9ea50e7f76467f
+last_update_timestamp: '2026-10-22T21:12:22.238356+00:00'
+last_generator:
+  method: agent
+  agent: Claude Code 2.1.308
+  via: cmeta 0.37.5
+  by: Grigori Fursin
+  date: '2026-10-22'

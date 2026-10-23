@@ -70,28 +70,22 @@
       var rel = m[4].replace(/[.,;:]+$/, '');
       var end = m.index + m[0].length - (m[4].length - rel.length);
       if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-      frag.appendChild(refLink(m[3].toLowerCase(), rel.replace(/^\/+/, ''), text.slice(m.index, end)));
+      frag.appendChild(refLink(m[3].toLowerCase(), rel.replace(/^\/+/, ''), text.slice(m.index, end), m[1], m[2]));
       last = end;
       CREF_RE.lastIndex = end;
     }
     if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
     return frag;
   }
-  function refLink(uid, rel, label) {
-    var href = '?uid=' + uid + (rel ? '&file=' + encodeURIComponent(rel) : '');
-    try {
-      var u = new URL(window.location.href);
-      u.searchParams.set('uid', uid);
-      if (rel) u.searchParams.set('file', rel); else u.searchParams.delete('file');
-      href = u.toString();
-    } catch (e) { /* old browser: the short form */ }
-    var a = h('a', {href: href, class: 'cbr-cref', title: 'open ' + (rel ? rel + ' in ' : '') + 'this artifact'}, label);
-    a.addEventListener('click', function (e) {
-      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;   // a new tab or window follows the href
-      e.preventDefault();
-      openDetail(uid, rel);
-    });
-    return a;
+  // The page of one artifact (cserver.cref): /cref/<category>::<alias>,<UID>[/<path>] - the cRef stays in the
+  // address bar. A row of the search or the table opens it; the graph keeps its side panel and offers it.
+  function crefUrl(cat, alias, uid, rel) {
+    return (CFG.url_server || '/') + 'cref/' + encodeURI(cat + '::' + alias + ',' + uid) +
+           (rel ? '/' + rel.split('/').map(encodeURIComponent).join('/') : '');
+  }
+  function refLink(uid, rel, label, cat, alias) {
+    var href = cat ? crefUrl(cat, alias, uid, rel) : '?uid=' + uid + (rel ? '&file=' + encodeURIComponent(rel) : '');
+    return h('a', {href: href, class: 'cbr-cref', title: 'open ' + (rel ? rel + ' of ' : '') + (alias || 'this artifact')}, label);
   }
   function busy(on, what) {
     busyCount = Math.max(0, busyCount + (on ? 1 : -1));
@@ -325,7 +319,7 @@
     ol.innerHTML = '';
     last.rows.forEach(function (r) {
       var title = h('button', {type: 'button', class: 'cbr-r-title', html: hl(r.alias)});
-      title.addEventListener('click', function () { openDetail(r.uid); });
+      title.addEventListener('click', function () { window.location.href = crefUrl(r.cat, r.alias, r.uid); });
       var li = h('li', {}, title);
       if (r.name && r.name !== r.alias) li.appendChild(h('span', {class: 'cbr-r-name', html: hl(r.name)}));
       if (r.migrated_to) li.appendChild(h('span', {class: 'cbr-badge', title: 'migrated to ' + r.migrated_to}, 'migrated'));
@@ -381,7 +375,7 @@
       (r.tags || []).slice(0, 6).forEach(function (t) { tags.appendChild(chip(t)); });
       var tr = h('tr', {}, a, h('td', {}, r.cat), h('td', {class: 'repo'}, r.repo || '(registry)'), tags,
                  h('td', {class: 'when'}, r.created), h('td', {class: 'when'}, r.updated));
-      tr.addEventListener('click', function () { openDetail(r.uid); });
+      tr.addEventListener('click', function () { window.location.href = crefUrl(r.cat, r.alias, r.uid); });
       tb.appendChild(tr);
     });
     if (!last.rows.length) tb.appendChild(h('tr', {}, h('td', {colspan: '6', class: 'cbr-muted'}, 'Nothing matches.')));
@@ -455,7 +449,8 @@
       box.innerHTML = '';
       var close = h('button', {type: 'button', class: 'cbr-d-close', title: 'Close (Esc)'}, '×');
       close.addEventListener('click', closeDetail);
-      box.appendChild(h('div', {class: 'cbr-d-head'}, h('h2', {}, d.row.alias), close));
+      var full = h('a', {class: 'cbr-btn cbr-d-full', href: crefUrl(d.row.cat, d.row.alias, d.row.uid), title: 'The page of this artifact'}, 'Open full view');
+      box.appendChild(h('div', {class: 'cbr-d-head'}, h('h2', {}, d.row.alias), full, close));
       if (d.row.name && d.row.name !== d.row.alias) box.appendChild(h('div', {class: 'cbr-d-name'}, d.row.name));
       box.appendChild(cmdLine(d.cref));
       var facts = h('table', {class: 'cbr-d-facts'});

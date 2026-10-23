@@ -16,7 +16,13 @@ All notable changes to cMeta are documented here, newest first.
   opens that artifact, and that file when a path follows - a stable address for links from other tools (a CRM, a
   ticket, a chat) that also works behind a host that serves the page under its own path. The UID decides when it is
   given (a renamed artifact keeps it); otherwise the category and the alias. A reference this server does not show says so.
-  The short form `/cref/<category>::<alias>,<UID>[/<path>]` of the engine's cserver redirects there.
+  The short form `/cref/<category>::<alias>,<UID>[/<path>]` of the engine's cserver serves the page of that one
+  artifact (the new category `cserver.cref`): the title, its README / note first, the connections, then the
+  technical parts folded (`_cmeta`, `_desc`, the files, the commands) - the cRef stays in the address bar. A
+  category's `_cmeta.yaml` (or an artifact's `_desc`) may carry `cref_view` (`title`, `text`, `hide`) to shape the
+  page; `misc.persona` of a host hides the technical parts for a non-technical reader; `{{{cRef}}}/path` and the
+  artifact's own wikilinks in the text become links. A page whose `_cmeta` says `card: false` (this one: it needs a
+  cRef) gets no card on the cserver home page; `cx cserver.projects pages` still lists it.
 
 
 ## 0.37.5

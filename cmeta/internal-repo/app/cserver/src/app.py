@@ -497,15 +497,19 @@ async def cref_shortcut(
     ref: str,  # <category>::<alias>,<UID>[/<relative path>] - any form the browse page's cref= takes.
 ):
     """
-    The short address of an artifact: /cref/<category>::<alias>,<UID>[/<relative path>] opens it - and that file -
-    in the browse page (/browse?cref=...), which resolves the reference and applies this server's rules.
+    The page of an artifact: /cref/<category>::<alias>,<UID>[/<relative path>] is served by cserver.cref as it is -
+    the cRef stays in the address bar - which resolves the reference through cserver.browse and applies this
+    server's rules.
 
     Returns:
-        RedirectResponse: 303 to the browse page.
+        Response: the page of cserver.cref.
     """
-    root = request.scope.get('root_path', '') or ''
-    return RedirectResponse(url = root + '/browse?cref=' + urllib.parse.quote(ref, safe = ''),
-                            status_code = status.HTTP_303_SEE_OTHER)
+    r = await cm.utils.net.unify_request(request)
+    if r['return'] > 0:
+        return JSONResponse(content = r, status_code = 400)
+    query = r['query']
+    query['cref'] = ref
+    return await _serve_page(request, 'cref', query)
 
 ##################################################################################################
 ##################################################################################################
