@@ -54,6 +54,7 @@
 #cbr h1, #cbr h2, #cbr h3, #cbr p, #cbr li, #cbr td, #cbr th, #cbr label, #cbr summary { color: inherit; }
 #cbr a { color: var(--cbr-accent); text-decoration: none; }
 #cbr a:hover { text-decoration: underline; }
+#cbr pre a.cbr-cref { text-decoration: underline dotted; }   /* a {{{cRef}}}/path in a shown text */
 #cbr code, #cbr pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
 #cbr [hidden] { display: none !important; }
 
@@ -245,6 +246,7 @@
 .cbr-d-head { display: flex; align-items: flex-start; gap: 10px; }
 .cbr-d-head h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; flex: 1; }
 .cbr-d-close { border: 0; background: none; font-size: 22px; line-height: 1; cursor: pointer; color: var(--cbr-muted); }
+.cbr-d-full { font-size: 12px; white-space: nowrap; align-self: center; }   /* the page of the artifact (cserver.cref) */
 .cbr-d-name { color: var(--cbr-muted); margin: 4px 0 8px; }
 .cbr-d-facts { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 10px; }
 .cbr-d-facts td { padding: 3px 6px 3px 0; vertical-align: top; overflow-wrap: anywhere; }

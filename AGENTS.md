@@ -82,7 +82,7 @@ provenance stamped on new artifacts: `CMETA_AUTHORS`, `CMETA_COPYRIGHT`,
 | `repos.py` | `Repos` — index and resolve content repositories + artifacts (by alias / UID / tags / wildcards). Owns the per-category `.pkl` index files. |
 | `packages.py` | `Packages` — detect installed tools/versions and auto-install Python packages. |
 | `config.py` | Global `cfg` dict, param descriptors, env-var handling, command aliases (`add→create`, `rm→delete`, `ls→list`, `search→find`, `mv→move`, ...). |
-| `cli.py` | CLI entry points wired in `pyproject.toml` `[project.scripts]`: `main_cmeta`/`main_meta`/`main_cx`/`main_cxt`/`main_cserver` + `u*` unbuffered variants. |
+| `cli.py` | CLI entry points wired in `pyproject.toml` `[project.scripts]`: `main_cmeta`/`main_meta`/`main_cx`/`main_cxt`/`main_cxa`/`main_cserver` + `u*` variants that put a bare `--home` first. `cxt` = `cx task run`, `cxa` = `cx task run run-ai`. |
 | `version.py` | `__version__` — single source of truth (wired via dynamic version in `pyproject.toml`). |
 | `utils/` | Helpers: `common`, `files`, `names` (cmeta ref parsing), `net`, `sys`, `cli`. |
 | `internal-repo/` | Built-in content repo shipped as package data (see §4). |

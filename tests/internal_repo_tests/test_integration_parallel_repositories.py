@@ -187,8 +187,9 @@ def leftovers(home):
 def home(tmp_path, monkeypatch):
     """Four repositories: a declares the categories and holds artifacts of both, b holds artifacts of both, c is
     empty (the churner's), d holds log artifacts (the plugger's)."""
-    for var in ('CMETA_HOME', 'CMETA_HOME2', 'VIRTUAL_ENV', 'CONDA_PREFIX', 'CMETA_DEBUG', 'CMETA_VERBOSE',
-                'CMETA_FAIL_ON_ERROR', 'CMETA_INDEX_LOCK_TIMEOUT', 'CMETA_LOCK_TIMEOUT', 'CMETA_SOFT_LOCK_PATHS'):
+    # Every CMETA_* variable, as the workers' env_for: a CMETA_INTERNAL_REPO_PATH of the machine's own engine made
+    # this process's full rebuild index another internal repository than the workers' (the laptop, 2026-10-24)
+    for var in [k for k in os.environ if k.startswith('CMETA_')] + ['VIRTUAL_ENV', 'CONDA_PREFIX']:
         monkeypatch.delenv(var, raising=False)
     home = tmp_path / 'home'
     monkeypatch.setenv('CMETA_HOME', str(home))

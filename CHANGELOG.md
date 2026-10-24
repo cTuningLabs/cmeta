@@ -2,6 +2,36 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.37.5.2)
+- **`cxa` is the short form of `cx task run run-ai`,** as `cxt` is of `cx task run`: every argument after it goes to
+  run-ai unchanged (`cxa "one prompt"`, `cxa --new`, `cxa --project=work::x --on=my-host --on_screen`,
+  `cxa -- <harness flags>`); `ucxa` is its `u` twin (a bare `--home` first), as `ucxt` is `cxt`'s.
+- **`ucserver` starts again, and `cserver` uses the home `cx` uses:** `cli.py` defined `main_cserver` twice, so the
+  second one (the `--home` twin) replaced the first and `main_ucserver`, which `pyproject.toml` names for `ucserver`,
+  did not exist (`ucserver` stopped with an AttributeError). The twin is `main_ucserver` now; a new test checks that
+  every entry point of `pyproject.toml` names a function of `cli.py`.
+- **The browse page quotes a reference it cannot paste as it is:** the COMMANDS panel of `/browse` puts an
+  `alias,UID` that holds a space or another shell character in double quotes (`cx note find "My notes,0123456789abcdef"`),
+  which cmd, PowerShell, bash and zsh all accept; a reference made of plain characters stays as it was.
+- **The browse page follows the references written in texts:** a location written as
+  `{{{<category>::<alias>,<UID>}}}/<relative path>` in a file, the `_cmeta` or the `_desc` the page shows becomes a
+  link that opens that artifact on the same page, and that file when a path follows; the new URL key `file`
+  (`/browse?uid=<UID>&file=<relative path>`) opens an artifact with one of its files shown. The file reader's guards
+  are unchanged (a path inside the artifact only; no key or secret categories and files).
+- **The browse page opens an artifact named from outside by its cRef:** `/browse?cref=<category>::<alias>,<UID>[/<path>]`
+  (the category's UID may be added, the UID or the category left out, or the `{{{...}}}/<path>` form pasted as it is)
+  opens that artifact, and that file when a path follows - a stable address for links from other tools (a CRM, a
+  ticket, a chat) that also works behind a host that serves the page under its own path. The UID decides when it is
+  given (a renamed artifact keeps it); otherwise the category and the alias. A reference this server does not show says so.
+  The short form `/cref/<category>::<alias>,<UID>[/<path>]` of the engine's cserver serves the page of that one
+  artifact (the new category `cserver.cref`): the title, its README / note first, the connections, then the
+  technical parts folded (`_cmeta`, `_desc`, the files, the commands) - the cRef stays in the address bar. A
+  category's `_cmeta.yaml` (or an artifact's `_desc`) may carry `cref_view` (`title`, `text`, `hide`) to shape the
+  page; `misc.persona` of a host hides the technical parts for a non-technical reader; `{{{cRef}}}/path` and the
+  artifact's own wikilinks in the text become links. A page whose `_cmeta` says `card: false` (this one: it needs a
+  cRef) gets no card on the cserver home page; `cx cserver.projects pages` still lists it.
+
+
 ## 0.37.5
 - **Declarative website task adapters:** website descriptions can forward `run` and
   `bootstrap` to reusable task artifacts with ordinary CLI parameters. Existing
