@@ -51,7 +51,8 @@ On a minimal Linux image install `curl` first (`apt-get install -y curl`,
 
 Installs cMeta as a **standalone command**, the way uv or ripgrep are installed:
 its own private environment that you never activate, real `cx` / `cmeta` /
-`cxt` / `cserver` shims on `PATH`, and an interpreter uv downloads itself.
+`cxt` / `cxa` / `cserver` shims on `PATH`, and an interpreter uv downloads itself
+(`cxt <task>` is `cx task run <task>`, `cxa` is `cx task run run-ai`).
 
 ```bash
 uv tool install "cmeta[server]"
@@ -415,13 +416,14 @@ Common flags for category `program` include
   ```
 
   The same two commands update the repository later. uv's command shims
-  (`cx.exe`, `cxt.exe` in `%USERPROFILE%\.local\bin`) are unsigned launchers
+  (`cx.exe`, `cxt.exe`, `cxa.exe` in `%USERPROFILE%\.local\bin`) are unsigned launchers
   and can be blocked as well (`blocked by your organization's Device Guard
   policy`). The signed way in is the interpreter of the tool environment
   itself, a copy of the Store Python's launcher:
   `"%APPDATA%\uv\tools\cmeta\Scripts\python.exe" -m cmeta --version`. A
   `cx.cmd` on `PATH` holding `@"%APPDATA%\uv\tools\cmeta\Scripts\python.exe" -m cmeta %*`
-  gives `cx` back; `cxt <task> ...` is `cx task run <task> ...`.
+  gives `cx` back; `cxt <task> ...` is `cx task run <task> ...` and `cxa ...` is
+  `cx task run run-ai ...`.
 
 ---
 

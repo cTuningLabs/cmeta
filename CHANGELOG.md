@@ -2,7 +2,14 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.37.5.1)
+## DEV VERSION (0.37.5.2)
+- **`cxa` is the short form of `cx task run run-ai`,** as `cxt` is of `cx task run`: every argument after it goes to
+  run-ai unchanged (`cxa "one prompt"`, `cxa --new`, `cxa --project=work::x --on=my-host --on_screen`,
+  `cxa -- <harness flags>`); `ucxa` is its `u` twin (a bare `--home` first), as `ucxt` is `cxt`'s.
+- **`ucserver` starts again, and `cserver` uses the home `cx` uses:** `cli.py` defined `main_cserver` twice, so the
+  second one (the `--home` twin) replaced the first and `main_ucserver`, which `pyproject.toml` names for `ucserver`,
+  did not exist (`ucserver` stopped with an AttributeError). The twin is `main_ucserver` now; a new test checks that
+  every entry point of `pyproject.toml` names a function of `cli.py`.
 - **The browse page quotes a reference it cannot paste as it is:** the COMMANDS panel of `/browse` puts an
   `alias,UID` that holds a space or another shell character in double quotes (`cx note find "My notes,0123456789abcdef"`),
   which cmd, PowerShell, bash and zsh all accept; a reference made of plain characters stays as it was.

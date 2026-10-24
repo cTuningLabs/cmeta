@@ -173,7 +173,7 @@ an expression — is one positional token, kept as it is.
 **`--` separator** — everything after a lone `--` reaches the command
 untouched, as the list `unparsed`, for the commands that pass words on to a
 program of their own (in cmeta-aops: `cx task run cmd -- echo a=b`,
-`cx tool run <tool> -- --its-own-flag`, `cxt run-ai -- <harness flags>`). A
+`cx tool run <tool> -- --its-own-flag`, `cxt run-ai -- <harness flags>`, or its short form `cxa -- <harness flags>`). A
 command that does not read it stops with `"<category> <command>" takes no
 arguments after "--"`.
 
