@@ -467,9 +467,9 @@ def main_ucxt() -> int:
 
     return main(args = args)
 
-def main_cserver() -> int:
+def main_ucserver() -> int:
     """
-        Entry point for the 'cserver' command-line interface.
+        Entry point for the 'ucserver' command-line interface: 'cx --home app run cserver'.
 
         Returns:
             int: Exit code (0 for success, non-zero for errors).
