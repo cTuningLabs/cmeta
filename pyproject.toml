@@ -87,14 +87,14 @@ cmeta = "cmeta.cli:main_cmeta"
 meta = "cmeta.cli:main_meta"
 cx = "cmeta.cli:main_cx"
 cxt = "cmeta.cli:main_cxt"
-cxa = "cmeta.cli:main_cxa"
+cxai = "cmeta.cli:main_cxai"
 cserver = "cmeta.cli:main_cserver"
 
 ucmeta = "cmeta.cli:main_ucmeta"
 umeta = "cmeta.cli:main_umeta"
 ucx = "cmeta.cli:main_ucx"
 ucxt = "cmeta.cli:main_ucxt"
-ucxa = "cmeta.cli:main_ucxa"
+ucxai = "cmeta.cli:main_ucxai"
 ucserver ="cmeta.cli:main_ucserver"
 
 [tool.setuptools.dynamic]

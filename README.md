@@ -299,7 +299,7 @@ and benchmarking. More background in
 cMeta is normally a tool you use everywhere rather than a dependency of one
 project, so the recommended route installs it as a **standalone command** — its
 own private environment that you never activate, `cx` / `cmeta` / `cxt` /
-`cxa` / `cserver` on `PATH` (`cxt` is `cx task run`, `cxa` is `cx task run run-ai`), and an interpreter [uv](https://github.com/astral-sh/uv)
+`cxai` / `cserver` on `PATH` (`cxt` is `cx task run`, `cxai` is `cx task run run-ai`), and an interpreter [uv](https://github.com/astral-sh/uv)
 downloads itself. No system Python, no root, and PEP 668 never enters the
 picture:
 
@@ -666,7 +666,7 @@ cmeta/               # framework package (engine)
   repos.py           # content-repo indexing / resolution
   packages.py        # tool detection + Python package installation
   config.py          # global cfg dict + param descriptors + command aliases
-  cli.py             # console entry points (cmeta, meta, cx, cxt, cxa, cserver)
+  cli.py             # console entry points (cmeta, meta, cx, cxt, cxai, cserver)
   utils/             # common helpers, files, names (ref parsing), net, sys
   internal-repo/     # built-in content repo (categories + shipped artifacts)
 tests/               # pytest suite

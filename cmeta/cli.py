@@ -372,12 +372,12 @@ def main_cxt() -> int:
 
     return main(args = args)
 
-def main_cxa() -> int:
+def main_cxai() -> int:
     """
-        Entry point for the 'cxa' command-line interface: 'cx task run run-ai'.
+        Entry point for the 'cxai' command-line interface: 'cx task run run-ai'.
 
-        Every argument after 'cxa' goes to the task run-ai unchanged
-        ('cxa --new' = 'cx task run run-ai --new').
+        Every argument after 'cxai' goes to the task run-ai unchanged
+        ('cxai --new' = 'cx task run run-ai --new').
 
         Returns:
             int: Exit code (0 for success, non-zero for errors).
@@ -489,9 +489,9 @@ def main_ucxt() -> int:
 
     return main(args = args)
 
-def main_ucxa() -> int:
+def main_ucxai() -> int:
     """
-        Entry point for the 'ucxa' command-line interface: 'cx --home task run run-ai'.
+        Entry point for the 'ucxai' command-line interface: 'cx --home task run run-ai'.
 
         Returns:
             int: Exit code (0 for success, non-zero for errors).
