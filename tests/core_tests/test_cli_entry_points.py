@@ -1,7 +1,7 @@
 """
 The command-line entry points of pyproject.toml: each one names a function that exists in cmeta/cli.py, and the
 shortcuts put their words in front of the user's arguments (`cxt` = `cx task run`, `cxai` = `cx task run run-ai`,
-their `u` twins with a bare `--home` first). Before 0.37.5.2 `cli.py` defined `main_cserver` twice and
+their `u` twins with a bare `--home` first). Before 0.37.6 `cli.py` defined `main_cserver` twice and
 `main_ucserver`, the entry point of `ucserver`, did not exist.
 
 Licensed under the Apache License, Version 2.0.

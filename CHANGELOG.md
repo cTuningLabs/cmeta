@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.37.5.2)
+## 0.37.6
 - **`cxai` is the short form of `cx task run run-ai`,** as `cxt` is of `cx task run`: every argument after it goes to
   run-ai unchanged (`cxai "one prompt"`, `cxai --new`, `cxai --project=work::x --on=my-host --on_screen`,
   `cxai -- <harness flags>`); `ucxai` is its `u` twin (a bare `--home` first), as `ucxt` is `cxt`'s.
