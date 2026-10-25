@@ -20,13 +20,19 @@ Functions
 
 .. autofunction:: cmeta.cli.main_cx
 
+.. autofunction:: cmeta.cli.main_cxai
+
 .. autofunction:: cmeta.cli.main_cxt
 
 .. autofunction:: cmeta.cli.main_meta
 
 .. autofunction:: cmeta.cli.main_ucmeta
 
+.. autofunction:: cmeta.cli.main_ucserver
+
 .. autofunction:: cmeta.cli.main_ucx
+
+.. autofunction:: cmeta.cli.main_ucxai
 
 .. autofunction:: cmeta.cli.main_ucxt
 
