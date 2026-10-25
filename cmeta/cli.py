@@ -372,6 +372,28 @@ def main_cxt() -> int:
 
     return main(args = args)
 
+def main_cxai() -> int:
+    """
+        Entry point for the 'cxai' command-line interface: 'cx task run run-ai'.
+
+        Every argument after 'cxai' goes to the task run-ai unchanged
+        ('cxai --new' = 'cx task run run-ai --new').
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    global caller
+    caller = "cx"
+
+    args = ['task', 'run', 'run-ai'] + sys.argv[1:]
+
+    return main(args = args)
+
 def main_cserver() -> int:
     """
         Entry point for the 'cserver' command-line interface.
@@ -467,9 +489,28 @@ def main_ucxt() -> int:
 
     return main(args = args)
 
-def main_cserver() -> int:
+def main_ucxai() -> int:
     """
-        Entry point for the 'cserver' command-line interface.
+        Entry point for the 'ucxai' command-line interface: 'cx --home task run run-ai'.
+
+        Returns:
+            int: Exit code (0 for success, non-zero for errors).
+
+        Args:
+            None.
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    global caller
+    caller = "cx"
+
+    args = ['--home', 'task', 'run', 'run-ai'] + sys.argv[1:]
+
+    return main(args = args)
+
+def main_ucserver() -> int:
+    """
+        Entry point for the 'ucserver' command-line interface: 'cx --home app run cserver'.
 
         Returns:
             int: Exit code (0 for success, non-zero for errors).

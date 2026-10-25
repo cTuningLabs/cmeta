@@ -10,8 +10,10 @@ server and where cMeta lives.
 
 There is no registry: the list is discovered from the index - every category whose alias starts with "cserver."
 in EVERY plugged repository. A category whose api defines web_ is a page; the others (helper actions,
-artifact-only categories) are listed in a footnote. Links are built from urls['url_server'] (on the engine
-cserver a page is /<alias without the cserver. prefix>), never hard-coded.
+artifact-only categories) are listed in a footnote. A page whose _cmeta says `card: false` is reached through
+links only (cserver.cref needs a cRef to show anything): no card for it, the terminal still lists it. Links are
+built from urls['url_server'] (on the engine cserver a page is /<alias without the cserver. prefix>), never
+hard-coded.
 
     cx cserver.projects pages                   the same list in the terminal
     cx cserver.projects pages --repo=aops       only the repositories whose alias contains "aops"
@@ -132,6 +134,7 @@ class Category(InitCategory):
                 'tags': [str(t) for t in (meta.get('tags') or [])],
                 'updated': str(meta.get('last_update_timestamp') or meta.get('creation_timestamp') or '')[:10],
                 'self': alias == own,
+                'card': meta.get('card', True) is not False,     # card: false - a page reached through links only
                 'path': path,
             }
             (pages if self._has_web(path) else others).append(item)
@@ -155,9 +158,9 @@ class Category(InitCategory):
     def _payload(self, urls, query):
         """The JSON the page renders: the other pages with their hrefs, repos in order, counts, the version.
 
-        This page itself is left out of the cards (it is the page being looked at); repositories matching
-        hide_repos of the cserver config are left out, and ?repo=<text> keeps only the repositories
-        whose alias contains the text.
+        This page itself is left out of the cards (it is the page being looked at), and so is a page whose _cmeta
+        says card: false; repositories matching hide_repos of the cserver config are left out, and ?repo=<text>
+        keeps only the repositories whose alias contains the text.
         """
         r = self._scan()
         if r['return'] > 0:
@@ -166,7 +169,8 @@ class Category(InitCategory):
         want = str((query or {}).get('repo') or '').strip().lower()
 
         def keep(p):
-            return not p['self'] and not _hidden(p['repo'], hide) and (not want or want in p['repo'].lower())
+            return (not p['self'] and p['card'] and not _hidden(p['repo'], hide)
+                    and (not want or want in p['repo'].lower()))
 
         pages = [p for p in r['pages'] if keep(p)]
         others = [p for p in r['others'] if keep(p)]

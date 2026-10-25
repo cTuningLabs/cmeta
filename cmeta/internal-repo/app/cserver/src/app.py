@@ -491,6 +491,27 @@ async def favicon():
     return FileResponse(os.path.join(home_dir_static, "images", "favicon.ico"))
 
 ##################################################################################################
+@app.get("/cref/{ref:path}")
+async def cref_shortcut(
+    request: Request,  # Input dictionary used by this function.
+    ref: str,  # <category>::<alias>,<UID>[/<relative path>] - any form the browse page's cref= takes.
+):
+    """
+    The page of an artifact: /cref/<category>::<alias>,<UID>[/<relative path>] is served by cserver.cref as it is -
+    the cRef stays in the address bar - which resolves the reference through cserver.browse and applies this
+    server's rules.
+
+    Returns:
+        Response: the page of cserver.cref.
+    """
+    r = await cm.utils.net.unify_request(request)
+    if r['return'] > 0:
+        return JSONResponse(content = r, status_code = 400)
+    query = r['query']
+    query['cref'] = ref
+    return await _serve_page(request, 'cref', query)
+
+##################################################################################################
 ##################################################################################################
 @app.api_route("/{task}", methods=["GET", "POST"], response_class=HTMLResponse)
 @app.api_route("/{task}/", methods=["GET", "POST"], response_class=HTMLResponse)

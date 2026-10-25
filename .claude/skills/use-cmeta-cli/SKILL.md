@@ -1,6 +1,6 @@
 ---
 name: use-cmeta-cli
-description: Use cMeta from the command line (`cx` / `cmeta` / `cxt` / `cserver`) — argument model, discovery flow, global flags, output modes, aliases, `.` current-directory shortcut, `@file` includes, ctx-through-CLI patterns, and script-friendly conventions. Portable — same recipes work in any repo that ships cMeta categories/artifacts.
+description: Use cMeta from the command line (`cx` / `cmeta` / `cxt` / `cxai` / `cserver`) — argument model, discovery flow, global flags, output modes, aliases, `.` current-directory shortcut, `@file` includes, ctx-through-CLI patterns, and script-friendly conventions. Portable — same recipes work in any repo that ships cMeta categories/artifacts.
 ---
 
 # use-cmeta-cli — using cMeta from the command line
@@ -19,8 +19,9 @@ Shipped by `pyproject.toml` `[project.scripts]`:
 | `cmeta` | Full name — same as `cx`. |
 | `meta` | Alias of `cmeta`. |
 | `cxt` | Shortcut for `cx task run …`. |
+| `cxai` | Shortcut for `cx task run run-ai …` (every argument goes to run-ai unchanged). |
 | `cserver` | Shortcut for `cx app run cserver …` (local FastAPI UI). |
-| `ucx` / `ucmeta` / `umeta` / `ucxt` / `ucserver` | "u" variants — force `--home` (unbuffered / alt HOME). |
+| `ucx` / `ucmeta` / `umeta` / `ucxt` / `ucxai` / `ucserver` | "u" variants — force `--home` (unbuffered / alt HOME). |
 
 All entry points call the same dispatch — they just prepend arguments.
 
