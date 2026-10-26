@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## 0.37.6
+## 0.37.7
 - **pip in the tool environment:** the installers (`install.sh`, `install.ps1`, the website's) and the documented
   commands install cMeta with `uv tool install --with pip`, so the Python packages a page or a task asks for are
   installed the usual way on every platform; a tool environment without pip still works through the uv fallback above.
@@ -25,6 +25,8 @@ All notable changes to cMeta are documented here, newest first.
   password configured (the gate runs before any route, so a request that reached the page passed it, or was exempt as
   local or by an api key). A page that guards a secret of its own - the fleet's `cserver.screens`, a shell on the
   hosts - can then trust the gate instead of asking a token of its own from a browser elsewhere.
+
+## 0.37.6
 - **`cxai` is the short form of `cx task run run-ai`,** as `cxt` is of `cx task run`: every argument after it goes to
   run-ai unchanged (`cxai "one prompt"`, `cxai --new`, `cxai --project=work::x --on=my-host --on_screen`,
   `cxai -- <harness flags>`); `ucxai` is its `u` twin (a bare `--home` first), as `ucxt` is `cxt`'s.
