@@ -43,6 +43,7 @@ cx config set ctuning_server --meta.api_key={your API Access Token}
 # Where the local web app listens, and one shared password in front of it:
 cx config set cserver --meta.param.host=0.0.0.0 --meta.param.port=8004
 cx config set cserver --meta.password="a passphrase of your own"
+cx config set cserver --meta.login_email=you@example.com      # or a code by e-mail (with the login_smtp_* keys)
 
 # What its home page "/" shows (/projects by default; none = a plain welcome),
 # and repositories to leave off that list on a shared server:

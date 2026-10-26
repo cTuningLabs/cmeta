@@ -1064,6 +1064,25 @@ cookie, so the password is asked once per browser and not again on every page.
 | `password_lockout_min` | `5` | How many minutes that wait lasts. |
 | `password_trust_proxy` | `no` | Count failed attempts per forwarded client instead of per connection. Set it only when the server sits behind a reverse proxy you control. |
 
+**A code by e-mail instead of, or beside, the password.** Set `login_email` to
+your address (a comma-separated list is fine) and the SMTP settings below, and
+the prompt offers a "Send a code" button next to the masked address: a six-digit
+code arrives by mail, is good for ten minutes, and a correct one keeps the
+browser in for `login_days`. A password set as well stays a second way in. The
+codes live hashed, with their expiry, in `login-codes.json` of the cserver
+config artifact, so the server's workers share them. The same restart rule and
+the same caveat apply: the code and the cookie travel in clear text unless HTTPS
+or a private overlay network carries them.
+
+| Key | Default | What it does |
+|---|---|---|
+| `login_email` | — | Who receives the codes. Any value here turns the e-mail way on. |
+| `login_smtp_host`, `login_smtp_port` | —, `587` | The SMTP server. Port 465 means TLS from the start, any other port STARTTLS (`login_smtp_starttls=no` turns it off). |
+| `login_smtp_user`, `login_smtp_password` | — | The SMTP login; `login_smtp_password_file` reads the password from a file instead. |
+| `login_smtp_from` | the user | The sender address. |
+| `login_days` | `30` | How long a code keeps a browser in. |
+| `login_code_minutes` | `10` | How long a code is good for. One code per address per minute, five tries. |
+
 **Behind a reverse proxy.** A proxy adds `X-Forwarded-For`, and any caller can
 send that header too, so it is never taken as proof of where a request came
 from: a request carrying one never receives the loopback exemption, whatever it

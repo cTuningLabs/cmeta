@@ -13,6 +13,9 @@ import hmac
 import html as html_escaper
 import ipaddress
 import os
+import socket
+import json
+import asyncio
 import mimetypes
 import secrets
 import time
@@ -70,6 +73,7 @@ cm = CMetaAsync(max_workers = max_workers, debug = cm_debug, print_host_info = c
 # Get configuration
 
 cfg = {}
+cfg_path = ''
 
 @app.on_event("startup")
 async def test_cmeta_repos():
@@ -85,11 +89,12 @@ async def test_cmeta_repos():
     Raises:
         Exception: Propagated runtime errors, if any.
     """
-    global cm, cfg
+    global cm, cfg, cfg_path
     r = await cm.access({'category':'config,cc6bfe174be847ed', 'command':'get', 'arg1':'cserver'})
     if r['return'] > 0: cmeta_catch(r)
 
     cfg = r['config_cmeta']
+    cfg_path = (r.get('artifact') or {}).get('path', '') or ''      # the folder: the e-mailed login codes live there
 
 ##################################################################################################
 # One shared password in front of every page (optional)
@@ -114,6 +119,22 @@ async def test_cmeta_repos():
 # Behind a reverse proxy on the same host, every request arrives from loopback. Such a proxy normally adds
 # `X-Forwarded-For`, which already disables the exemption; if yours does not, set password_allow_local=no.
 # Set password_trust_proxy=yes to count failed attempts per forwarded client rather than per proxy.
+
+# A code by e-mail instead of (or beside) the password - off until `login_email` is set:
+#
+#   cx config set cserver --meta.login_email=you@example.com          # who receives the codes (a comma-separated list is fine)
+#   cx config set cserver --meta.login_smtp_host=smtp.example.com --meta.login_smtp_port=587
+#   cx config set cserver --meta.login_smtp_user=you@example.com --meta.login_smtp_password="<app password>"
+#   cx config set cserver --meta.login_days=30                        # how long a code keeps a browser in (30)
+#   cx config set cserver --meta.login_code_minutes=10                # how long a code is good for (10)
+#   cx config set cserver --meta.login_smtp_from=...                  # the sender (the user by default)
+#   cx config set cserver --meta.login_smtp_password_file=<path>      # the password read from a file instead
+#
+# Port 465 means TLS from the start, any other port STARTTLS (login_smtp_starttls=no turns it off). The login page
+# then shows the masked address, a "Send a code" button and the code field; a code is six digits, one per minute
+# per address, five tries, kept hashed with its expiry in `login-codes.json` of the cserver config artifact (the
+# workers share it through that file). A password set as well stays a second way in. Same caveats as the password:
+# clear text unless HTTPS or an overlay network such as Tailscale carries it.
 
 LOGIN_PATH = '/_cserver_login'
 
@@ -161,6 +182,141 @@ def _session_token(digest):
     every session that was opened with the old one.
     """
     return hmac.new(session_secret.encode('utf-8'), digest.encode('utf-8'), hashlib.sha256).hexdigest()
+
+
+def _login_emails():
+    """The addresses a code may be sent to (login_email, comma-separated); [] when the e-mail way is off."""
+    return [e.strip().lower() for e in _cfg_str('login_email').replace(';', ',').split(',') if e.strip()]
+
+
+def _gate_on():
+    """Whether this server asks browsers for a password or an e-mailed code."""
+    return bool(_password_sha256() or _login_emails())
+
+
+def _mask_email(email):
+    """g***@example.com: enough to recognise the address on the login page, not enough to copy it."""
+    name, _, domain = email.partition('@')
+    return (name[:1] + '***' if name else '***') + '@' + domain
+
+
+def _email_token(email):
+    """What a session opened with a code stores: the address keyed by the cookie secret (see _session_token)."""
+    return hmac.new(session_secret.encode('utf-8'), ('email:' + email).encode('utf-8'), hashlib.sha256).hexdigest()
+
+
+def _past(written, plus=0.0):
+    """Whether the wall clock is past a time written down (a code's expiry or sending time in the codes file, a
+    login's end in the session cookie), `plus` seconds later: the one wall-clock comparison that is right - the
+    writer and the reader are different processes and the written time must be read back as it was."""
+    return time.time() > float(written or 0) + plus
+
+
+def _later(seconds):
+    """A wall-clock time to write down, `seconds` from now (read back by _past)."""
+    return time.time() + float(seconds)
+
+
+def _codes_path():
+    return os.path.join(cfg_path, 'login-codes.json') if cfg_path else ''
+
+
+def _codes_read():
+    try:
+        with open(_codes_path(), encoding='utf-8') as f:
+            codes = json.load(f)
+        return codes if isinstance(codes, dict) else {}
+    except Exception:
+        return {}
+
+
+def _codes_write(codes):
+    """Written whole, then named into place: a worker never reads a half file."""
+    path = _codes_path()
+    if not path:
+        raise RuntimeError('the cserver config artifact has no folder: a code cannot be kept')
+    tmp = path + '.tmp-%d' % os.getpid()
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(codes, f)
+    os.replace(tmp, path)
+
+
+def _send_code(email):
+    """Makes a six-digit code for the address, keeps its hash with the expiry, sends it; one per minute."""
+    codes = _codes_read()
+    entry = codes.get(email) or {}
+    if not _past(entry.get('sent_at'), 60):
+        raise RuntimeError('a code was sent less than a minute ago: look in the mailbox, or wait a moment')
+    code = '%06d' % secrets.randbelow(1000000)
+    minutes = max(1, _cfg_int('login_code_minutes', 10))
+    codes[email] = {'hash': _email_token(email + ':' + code), 'until': _later(minutes * 60), 'tries': 0, 'sent_at': time.time()}
+    _codes_write(codes)
+
+    import smtplib
+    from email.message import EmailMessage
+    host = _cfg_str('login_smtp_host')
+    if not host:
+        raise RuntimeError('login_smtp_host is not set in the cserver config')
+    port = _cfg_int('login_smtp_port', 587)
+    user = _cfg_str('login_smtp_user')
+    password = _cfg_str('login_smtp_password')
+    if not password and _cfg_str('login_smtp_password_file'):
+        with open(_cfg_str('login_smtp_password_file'), encoding='utf-8') as f:
+            password = f.read().strip()
+    sender = _cfg_str('login_smtp_from') or user or ('cserver@' + socket.gethostname())
+    realm = _cfg_str('password_realm') or 'cMeta server'
+    msg = EmailMessage()
+    msg['Subject'] = '%s: your code %s' % (realm, code)
+    msg['From'] = sender
+    msg['To'] = email
+    msg.set_content('Your code for %s is %s.\n\nIt is good for %d minutes. If you did not ask for it, ignore this message.\n'
+                    % (realm, code, minutes))
+    timeout = max(5, _cfg_int('login_smtp_timeout', 30))
+    if port == 465:
+        server = smtplib.SMTP_SSL(host, port, timeout=timeout)
+    else:
+        server = smtplib.SMTP(host, port, timeout=timeout)
+    try:
+        server.ehlo()
+        if port != 465 and _cfg_bool('login_smtp_starttls', True):
+            server.starttls()
+            server.ehlo()
+        if user:
+            server.login(user, password)
+        server.send_message(msg)
+    finally:
+        try:
+            server.quit()
+        except Exception:
+            pass
+
+
+def _check_code(email, given):
+    """True when the code is the one sent to the address and still good; a used or spent code is removed."""
+    codes = _codes_read()
+    entry = codes.get(email)
+    if not entry:
+        return False
+    ok = not _past(entry.get('until')) and hmac.compare_digest(_email_token(email + ':' + given.strip()), str(entry.get('hash') or ''))
+    entry['tries'] = int(entry.get('tries') or 0) + 1
+    if ok or entry['tries'] >= 5 or _past(entry.get('until')):
+        codes.pop(email, None)
+    else:
+        codes[email] = entry
+    _codes_write(codes)
+    return ok
+
+
+def _session_open(request, wanted):
+    """Whether the session cookie opens the gate: the password's token, or a code login that has not run out."""
+    auth = request.session.get('auth')
+    if auth and wanted and auth == wanted:
+        until = request.session.get('auth_until')
+        return until is None or not _past(until)
+    token = request.session.get('auth_email')
+    if token and any(hmac.compare_digest(token, _email_token(e)) for e in _login_emails()):
+        return not _past(request.session.get('auth_until'))
+    return False
 
 
 # Headers a reverse proxy adds. Anyone can send them, so they are never trusted for the loopback exemption.
@@ -262,10 +418,39 @@ def _wants_json(request):
     return 'application/json' in accept and 'text/html' not in accept
 
 
-def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUTHORIZED):
-    """A self-contained prompt: no assets to fetch, so it renders before anything else is authorised."""
+def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUTHORIZED, sent_to=None, ok=False):
+    """A self-contained prompt: no assets to fetch, so it renders before anything else is authorised.
+
+    With login_email set: the masked address(es) each with a "Send a code" button, then - once sent - the code
+    field; with a password set: the password field (both when both are set). `sent_to` is the index of the address
+    a code has just gone to; `ok` colours the message as a notice rather than an error.
+    """
     realm = _cfg_str('password_realm') or 'cMeta server'
-    note = ('<p class="msg">%s</p>' % html_escaper.escape(message)) if message else ''
+    note = ('<p class="msg%s">%s</p>' % (' ok' if ok else '', html_escaper.escape(message))) if message else ''
+    emails = _login_emails()
+    hidden_next = '<input type="hidden" name="next" value="%s">' % html_escaper.escape(next_url, quote=True)
+    parts = []
+    if emails:
+        if sent_to is not None and 0 <= sent_to < len(emails):
+            parts.append('<form method="post" action="%s">%s<input type="hidden" name="email" value="%d">'
+                         '<p>The code sent to <b>%s</b>:</p>'
+                         '<input type="text" name="code" placeholder="6 digits" inputmode="numeric" pattern="[0-9]{6}" '
+                         'autocomplete="one-time-code" autofocus required>'
+                         '<button type="submit">Open</button></form>'
+                         % (LOGIN_PATH, hidden_next, sent_to, html_escaper.escape(_mask_email(emails[sent_to]))))
+        buttons = ''.join('<button type="submit" name="send" value="%d"%s>%s a code to %s</button>'
+                          % (i, ' class="second"' if (sent_to is not None or i) else '',
+                             'Send again' if sent_to == i else 'Send', html_escaper.escape(_mask_email(e)))
+                          for i, e in enumerate(emails))
+        parts.append('<form method="post" action="%s">%s%s</form>' % (LOGIN_PATH, hidden_next, buttons))
+    if _password_sha256():
+        parts.append('<form method="post" action="%s">%s%s'
+                     '<input type="password" name="password" placeholder="Password" autocomplete="current-password"%s required>'
+                     '<button type="submit"%s>Open</button></form>'
+                     % (LOGIN_PATH, hidden_next, '<p class="or">or the password</p>' if emails else '',
+                        '' if emails else ' autofocus', ' class="second"' if emails else ''))
+    lead = ('This server asks for a code sent by e-mail' + (' or its password' if _password_sha256() else '')
+            if emails else 'This server asks for a password') + ' before showing its pages.'
     body = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -275,57 +460,60 @@ def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUT
  body {margin:0; min-height:100vh; display:grid; place-items:center;
        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:#f4f5f8; color:#14161a;}
- form {width:min(92vw,360px); padding:26px 24px; background:#fff; border:1px solid #e3e6ec;
+ main {width:min(92vw,360px); padding:26px 24px; background:#fff; border:1px solid #e3e6ec;
        border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.06);}
+ form {margin:0;}
  h1 {margin:0 0 4px; font-size:19px; font-weight:640;}
- p {margin:0 0 18px; font-size:13.5px; color:#6b7180;}
+ p {margin:0 0 14px; font-size:13.5px; color:#6b7180;}
  p.msg {color:#a21b1b; font-weight:560;}
- input[type=password] {width:100%%; padding:12px 13px; font-size:16px; color:inherit; background:#fff;
+ p.msg.ok {color:#1b7a3d;}
+ p.or {margin:14px 0 6px; text-align:center;}
+ input[type=password], input[type=text] {width:100%%; padding:12px 13px; font-size:16px; color:inherit; background:#fff;
        border:1px solid #d7dbe3; border-radius:9px; box-sizing:border-box;}
- input[type=password]:focus {outline:2px solid rgba(92,15,201,.18); border-color:#5c0fc9;}
+ input:focus {outline:2px solid rgba(92,15,201,.18); border-color:#5c0fc9;}
  button {width:100%%; margin-top:12px; padding:12px; font-size:15px; font-weight:560; color:#fff;
        background:#5c0fc9; border:0; border-radius:9px; cursor:pointer;}
  button:hover {background:#4a0ca4;}
+ button.second {background:#fff; color:#5c0fc9; border:1px solid #d7dbe3;}
+ button.second:hover {background:#f4f5f8;}
  @media (prefers-color-scheme: dark) {
    body {background:#101216; color:#e8eaee;}
-   form {background:#1b1e24; border-color:#2c3038; box-shadow:none;}
+   main {background:#1b1e24; border-color:#2c3038; box-shadow:none;}
    p {color:#9aa1ad;}
    p.msg {color:#ff9d9d;}
-   input[type=password] {background:#14161a; border-color:#343a44; color:#e8eaee;}
+   p.msg.ok {color:#8fe0a8;}
+   input[type=password], input[type=text] {background:#14161a; border-color:#343a44; color:#e8eaee;}
    button {background:#7c4dff;}
+   button.second {background:#1b1e24; color:#c9b6ff; border-color:#343a44;}
  }
 </style></head>
 <body>
- <form method="post" action="%(action)s">
+ <main>
   <h1>%(realm)s</h1>
-  <p>This server asks for a password before showing its pages.</p>
+  <p>%(lead)s</p>
   %(note)s
-  <input type="hidden" name="next" value="%(next)s">
-  <input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required>
-  <button type="submit">Open</button>
- </form>
+  %(forms)s
+ </main>
 </body></html>
-""" % {'realm': html_escaper.escape(realm),
-       'action': LOGIN_PATH,
-       'next': html_escaper.escape(next_url, quote=True),
-       'note': note}
+""" % {'realm': html_escaper.escape(realm), 'lead': html_escaper.escape(lead), 'note': note, 'forms': ''.join(parts)}
     return HTMLResponse(content=body, status_code=status_code)
 
 
 @app.middleware("http")
 async def password_gate(request: Request, call_next):
-    """Ask for the shared password before any route runs, when one is configured."""
+    """Ask for the shared password, or a code sent by e-mail, before any route runs, when one is configured."""
     digest = _password_sha256()
+    emails = _login_emails()
 
     path = request.url.path
 
-    if not digest:
-        # no password configured: the server behaves exactly as it always did
+    if not digest and not emails:
+        # nothing configured: the server behaves exactly as it always did
         if path == LOGIN_PATH:
             return RedirectResponse(url='/', status_code=status.HTTP_303_SEE_OTHER)
         return await call_next(request)
 
-    wanted = _session_token(digest)
+    wanted = _session_token(digest) if digest else ''
     ip = _throttle_key(request)
 
     # the login form itself
@@ -352,21 +540,56 @@ async def password_gate(request: Request, call_next):
             form = {k: v[0] for k, v in urllib.parse.parse_qs(raw, keep_blank_values=True).items()}
         except Exception:
             form = {}
-        given = str(form.get('password', '') or '')
         next_url = str(form.get('next', '') or '/') or '/'
         if not next_url.startswith('/') or next_url.startswith('//'):
             next_url = '/'                       # never redirect off this server
 
-        if hmac.compare_digest(hashlib.sha256(given.encode('utf-8')).hexdigest(), digest):
+        def index_of(key):
+            try:
+                i = int(str(form.get(key, '')).strip())
+            except ValueError:
+                return None
+            return i if 0 <= i < len(emails) else None
+
+        # "Send a code": the address by its index, never the address itself from the form
+        if emails and form.get('send', '') != '':
+            i = index_of('send')
+            if i is None:
+                return _login_page(request, next_url, 'No such address.')
+            try:
+                await asyncio.to_thread(_send_code, emails[i])
+            except Exception as e:
+                return _login_page(request, next_url, 'The code could not be sent: %s' % e)
+            return _login_page(request, next_url, 'A code was sent to %s - it is good for %d minutes.'
+                               % (_mask_email(emails[i]), max(1, _cfg_int('login_code_minutes', 10))), sent_to=i, ok=True)
+
+        # the code
+        if emails and form.get('code', '') != '':
+            i = index_of('email')
+            given = str(form.get('code', '') or '')
+            if i is not None and given.strip().isdigit() and _check_code(emails[i], given):
+                _login_failures.pop(ip, None)
+                request.session.pop('auth', None)
+                request.session['auth_email'] = _email_token(emails[i])
+                request.session['auth_until'] = _later(max(1, _cfg_int('login_days', 30)) * 86400)
+                return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
+            _login_failures[ip] = [fails + 1, since or now]
+            return _login_page(request, next_url, 'Wrong or expired code.', sent_to=i)
+
+        # the password
+        given = str(form.get('password', '') or '')
+        if digest and hmac.compare_digest(hashlib.sha256(given.encode('utf-8')).hexdigest(), digest):
             _login_failures.pop(ip, None)
+            request.session.pop('auth_email', None)
             request.session['auth'] = wanted
+            request.session['auth_until'] = _later(session_max_age)
             return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
 
         _login_failures[ip] = [fails + 1, since or now]
-        return _login_page(request, next_url, 'Wrong password.')
+        return _login_page(request, next_url, 'Wrong password.' if digest else 'Ask for a code first.')
 
     # already in, or exempt
-    if request.session.get('auth') == wanted:
+    if _session_open(request, wanted):
         return await call_next(request)
     if path == '/favicon.ico':
         return await call_next(request)
@@ -400,7 +623,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,
     session_cookie="cserver_session",
-    max_age=session_max_age,  # a week by default, so a tablet is not asked for the password again every hour
+    max_age=max(session_max_age, 31 * 86400),  # the gate keeps its own expiry per login (auth_until): a week for the password, login_days for a code
     same_site="lax",
     https_only=False  # Set to True in production with HTTPS
 )
@@ -619,9 +842,12 @@ async def _serve_page(
     # names this machine (a loopback peer alone could be a page reached by DNS rebinding). A page may then offer
     # more than to the network - cserver.browse shows the files of an artifact and opens its folder.
     # same_origin: no browser said the request came from a page of another site - for actions with side effects.
+    # password_gate: this server asks browsers for its password (the gate runs before any route), so a request that
+    # reached the page passed it, or was exempt as local or by an api key - a page with a secret of its own may trust it.
     cmeta_params['misc'] = {'client_local': (_is_local(_peer_ip(request)) and not _via_proxy(request)
                                              and _host_local(request)),
-                            'same_origin': _same_origin(request)}
+                            'same_origin': _same_origin(request),
+                            'password_gate': _gate_on()}
 
     r = await cm.access(cmeta_params)
     if r['return']>0:
@@ -733,8 +959,10 @@ async def task_files(
     if media_type is None:
         media_type = 'application/octet-stream'
 
-    if media_type == 'text/html':
-        html_meta={'request': request}
-        return templates.TemplateResponse(request, 'task.html', html_meta, status_code = 200)
+    # A real file under files/ is served as it is - an HTML asset too (a self-contained page such as a 3D view with
+    # its own <html>, import map and module scripts): wrapping it in the server's template left only the shell, so
+    # the page loaded without its scripts (the dcloc 3D map was blank, 2026-10-26). Text keeps a UTF-8 charset.
+    if media_type and media_type.startswith('text/'):
+        return FileResponse(full_file_path, media_type=media_type + '; charset=utf-8')
 
     return FileResponse(full_file_path, media_type=media_type)

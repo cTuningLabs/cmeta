@@ -25,6 +25,8 @@ PACKAGE = pathlib.Path(cmeta.__file__).parent
 ALLOWED = (
     ('utils/files.py', 'age = time.time() - float(words[2])'),   # a soft lock line: the time its holder wrote
     ('utils/files.py', 'time.time() - mtime'),                   # the time the file system gave a lock file
+    ('internal-repo/app/cserver/src/app.py', 'return time.time() > float(written or 0) + plus'),   # a login's end, a code's expiry: written in the cookie or the codes file, read by another worker
+    ('internal-repo/app/cserver/src/app.py', 'return time.time() + float(seconds)'),               # the time written down for that
 )
 
 

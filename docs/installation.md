@@ -55,15 +55,18 @@ its own private environment that you never activate, real `cx` / `cmeta` /
 (`cxt <task>` is `cx task run <task>`, `cxai` is `cx task run run-ai`).
 
 ```bash
-uv tool install "cmeta[server]"
+uv tool install --with pip "cmeta[server]"
 uv tool update-shell          # put the shims on PATH (once per machine)
 cx --version
 ```
 
 The `server` extra is included because `cx app run cserver` cannot start
-without it &mdash; there is no uvicorn to run it with, and a `uv tool`
-environment has no pip to add one afterwards. Drop it (`uv tool install cmeta`)
-if you will never run the web app.
+without it &mdash; there is no uvicorn to run it with. `--with pip` puts pip
+into the tool's environment: a `uv tool` environment has none, and cMeta
+installs the Python packages a page or a task asks for with pip (without it,
+cMeta falls back to `uv pip install` for that interpreter, or to `ensurepip`).
+Drop the extra (`uv tool install --with pip cmeta`) if you will never run the
+web app.
 
 **Which Python.** uv uses a Python that is already on the machine; on a machine
 without one it downloads its newest. That is 3.15 today, and not every
@@ -73,7 +76,7 @@ for an earlier one on such a machine &mdash; the website installer does so by
 default:
 
 ```bash
-uv tool install --python ">=3.9,<3.15" "cmeta[server]"
+uv tool install --with pip --python ">=3.9,<3.15" "cmeta[server]"
 ```
 
 Quote the extra. In `zsh` &mdash; the default shell on macOS &mdash; square
@@ -169,7 +172,7 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force "cmeta[server]==0.37.6"
+uv tool install --force --with pip "cmeta[server]==0.37.6"
 pip install "cmeta==0.37.6"
 ```
 

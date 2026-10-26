@@ -3,6 +3,28 @@
 All notable changes to cMeta are documented here, newest first.
 
 ## 0.37.6
+- **pip in the tool environment:** the installers (`install.sh`, `install.ps1`, the website's) and the documented
+  commands install cMeta with `uv tool install --with pip`, so the Python packages a page or a task asks for are
+  installed the usual way on every platform; a tool environment without pip still works through the uv fallback above.
+- **A page's HTML files are served as they are:** a `.html` under a category's `files/` was rendered as the server's
+  own empty page template, so a self-contained page (the dcloc 3D map: its own `<html>`, an import map, module
+  scripts) lost everything but the shell. A real file is now served raw whatever its type; text with a UTF-8 charset.
+- **A package is installed without pip too:** `Packages.install_command` uses `python -m pip` when pip is importable,
+  else `uv pip install --python <this python>` when uv is on the PATH (a cMeta installed as a uv tool runs on a Python
+  without pip: the first page that needed numpy or pytz failed with "No module named pip"), else pip after ensurepip.
+- **No console window for a captured child on Windows:** `utils.sys.no_window_flags()` adds CREATE_NO_WINDOW to a
+  child whose output is captured when this process has no console of its own (a detached cserver's ssh calls flashed
+  a window each); a child that inherits the standard handles keeps them.
+- **A code by e-mail beside the cserver's password:** off until `login_email` is set in the cserver config; the login
+  page then shows the masked address and a "Send a code" button, then the code field; six digits, good
+  `login_code_minutes` (10), one per address per minute, five tries, kept hashed with its expiry in `login-codes.json`
+  of the config artifact (the workers share it); a code keeps the browser in for `login_days` (30); SMTP from
+  `login_smtp_host/port/user/password[_file]/from/starttls`. The password stays a second way in; `misc['password_gate']`
+  is true for either. The login's expiry is the gate's own (`auth_until`), the cookie's lifetime the longest login.
+- **A page is told whether the server asks a password:** `misc['password_gate']` is true when the cserver has a
+  password configured (the gate runs before any route, so a request that reached the page passed it, or was exempt as
+  local or by an api key). A page that guards a secret of its own - the fleet's `cserver.screens`, a shell on the
+  hosts - can then trust the gate instead of asking a token of its own from a browser elsewhere.
 - **`cxai` is the short form of `cx task run run-ai`,** as `cxt` is of `cx task run`: every argument after it goes to
   run-ai unchanged (`cxai "one prompt"`, `cxai --new`, `cxai --project=work::x --on=my-host --on_screen`,
   `cxai -- <harness flags>`); `ucxai` is its `u` twin (a bare `--home` first), as `ucxt` is `cxt`'s.
