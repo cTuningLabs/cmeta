@@ -31,11 +31,7 @@ import uvicorn
 
 app = FastAPI()
 
-# The key that signs the session cookie. A fixed, published default would let anyone forge a session on any
-# server reachable over a network, so it is taken from the environment (CSERVER_SESSION_SECRET, exported both by
-# `cx app run cserver --param.session_secret=...` and by a `param:` block in the cserver config) and is otherwise
-# random per start - in which case restarting the server simply asks for the password again.
-session_secret = os.environ.get('CSERVER_SESSION_SECRET', '').strip() or secrets.token_urlsafe(32)
+# The key that signs the session cookie: _session_secret() below, once cMeta is there to find the config artifact.
 
 # How long a session cookie stays valid, in seconds (CSERVER_SESSION_MAX_AGE / --param.session_max_age).
 try:
@@ -68,6 +64,56 @@ cm_debug = True if os.environ.get('CSERVER_CM_DEBUG', '').lower() in ['1', 'yes'
 cm_print_host_info = True if os.environ.get('CSERVER_CM_PRINT_HOST_INFO', '').lower() in ['1', 'yes', 'true'] else False
 
 cm = CMetaAsync(max_workers = max_workers, debug = cm_debug, print_host_info = cm_print_host_info)
+
+
+def _session_secret():
+    """
+    The key that signs the session cookie. A fixed, published default would let anyone forge a session on any
+    server reachable over a network, so it is: the environment's CSERVER_SESSION_SECRET (exported both by
+    `cx app run cserver --param.session_secret=...` and by a `param:` block in the cserver config); else the file
+    `session-secret` in the folder of the cserver config artifact - made once, random, readable by the owner alone
+    on Linux and macOS (a folder of the user's own on Windows) and shared by every worker and every start, so a
+    restart or an upgrade of the server keeps every browser signed in (until 2026-10-26 the key was random per
+    start, and every restart asked for the password again); else, without that folder, random per start.
+    """
+    given = os.environ.get('CSERVER_SESSION_SECRET', '').strip()
+    if given:
+        return given
+    try:
+        # a plain CMeta for this one call: CMetaAsync.access_sync cannot serve a command that calls cm.access itself
+        # (the nested call lands on the coroutine), and the config's "get" does
+        from cmeta.core import CMeta
+        r = CMeta(debug=cm_debug).access({'category': 'config,cc6bfe174be847ed', 'command': 'get', 'arg1': 'cserver', 'con': False})
+        folder = ((r.get('artifact') or {}).get('path') or '') if r.get('return', 1) == 0 else ''
+    except Exception:
+        folder = ''
+    if not folder:
+        return secrets.token_urlsafe(32)
+    path = os.path.join(folder, 'session-secret')
+    try:
+        with open(path, encoding='utf-8') as f:
+            value = f.read().strip()
+        if len(value) >= 32:
+            return value
+    except OSError:
+        pass
+    value = secrets.token_urlsafe(32)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)      # made once: a worker that lost the race reads the winner's
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(value + '\n')
+    except FileExistsError:
+        try:
+            with open(path, encoding='utf-8') as f:
+                value = f.read().strip() or value
+        except OSError:
+            pass
+    except OSError:
+        pass
+    return value
+
+
+session_secret = _session_secret()
 
 ##################################################################################################
 # Get configuration
@@ -418,6 +464,15 @@ def _wants_json(request):
     return 'application/json' in accept and 'text/html' not in accept
 
 
+def _days_text(seconds):
+    """"7 days", "1 day", "36 hours": how long the tick keeps a browser signed in."""
+    days = seconds / 86400
+    if days >= 1 and abs(days - round(days)) < 0.05:
+        return '%d day%s' % (round(days), '' if round(days) == 1 else 's')
+    hours = max(1, round(seconds / 3600))
+    return '%d hour%s' % (hours, '' if hours == 1 else 's')
+
+
 def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUTHORIZED, sent_to=None, ok=False):
     """A self-contained prompt: no assets to fetch, so it renders before anything else is authorised.
 
@@ -446,9 +501,10 @@ def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUT
     if _password_sha256():
         parts.append('<form method="post" action="%s">%s%s'
                      '<input type="password" name="password" placeholder="Password" autocomplete="current-password"%s required>'
+                     '<label class="keep"><input type="checkbox" name="keep" value="1" checked> Keep me signed in for %s (12 hours otherwise)</label>'
                      '<button type="submit"%s>Open</button></form>'
                      % (LOGIN_PATH, hidden_next, '<p class="or">or the password</p>' if emails else '',
-                        '' if emails else ' autofocus', ' class="second"' if emails else ''))
+                        '' if emails else ' autofocus', _days_text(session_max_age), ' class="second"' if emails else ''))
     lead = ('This server asks for a code sent by e-mail' + (' or its password' if _password_sha256() else '')
             if emails else 'This server asks for a password') + ' before showing its pages.'
     body = """<!DOCTYPE html>
@@ -468,6 +524,8 @@ def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUT
  p.msg {color:#a21b1b; font-weight:560;}
  p.msg.ok {color:#1b7a3d;}
  p.or {margin:14px 0 6px; text-align:center;}
+ label.keep {display:block; margin:10px 0 12px; font-size:13px; color:#6b7180; cursor:pointer;}
+ label.keep input {margin:0 6px 0 0; vertical-align:middle;}
  input[type=password], input[type=text] {width:100%%; padding:12px 13px; font-size:16px; color:inherit; background:#fff;
        border:1px solid #d7dbe3; border-radius:9px; box-sizing:border-box;}
  input:focus {outline:2px solid rgba(92,15,201,.18); border-color:#5c0fc9;}
@@ -582,7 +640,8 @@ async def password_gate(request: Request, call_next):
             _login_failures.pop(ip, None)
             request.session.pop('auth_email', None)
             request.session['auth'] = wanted
-            request.session['auth_until'] = _later(session_max_age)
+            keep = str(form.get('keep', '') or '') != ''              # the tick "Keep me signed in": a week (session_max_age), else 12 hours
+            request.session['auth_until'] = _later(session_max_age if keep else min(session_max_age, 12 * 3600))
             return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
 
         _login_failures[ip] = [fails + 1, since or now]
