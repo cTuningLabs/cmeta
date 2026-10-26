@@ -1020,7 +1020,7 @@ async def task_files(
 
     # A real file under files/ is served as it is - an HTML asset too (a self-contained page such as a 3D view with
     # its own <html>, import map and module scripts): wrapping it in the server's template left only the shell, so
-    # the page loaded without its scripts (the dcloc 3D map was blank, 2026-10-26). Text keeps a UTF-8 charset.
+    # the page loaded without its scripts (a self-contained 3D page was blank, 2026-10-26). Text keeps a UTF-8 charset.
     if media_type and media_type.startswith('text/'):
         return FileResponse(full_file_path, media_type=media_type + '; charset=utf-8')
 

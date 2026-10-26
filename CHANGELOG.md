@@ -7,7 +7,7 @@ All notable changes to cMeta are documented here, newest first.
   commands install cMeta with `uv tool install --with pip`, so the Python packages a page or a task asks for are
   installed the usual way on every platform; a tool environment without pip still works through the uv fallback above.
 - **A page's HTML files are served as they are:** a `.html` under a category's `files/` was rendered as the server's
-  own empty page template, so a self-contained page (the dcloc 3D map: its own `<html>`, an import map, module
+  own empty page template, so a self-contained page (a 3D map page: its own `<html>`, an import map, module
   scripts) lost everything but the shell. A real file is now served raw whatever its type; text with a UTF-8 charset.
 - **A package is installed without pip too:** `Packages.install_command` uses `python -m pip` when pip is importable,
   else `uv pip install --python <this python>` when uv is on the PATH (a cMeta installed as a uv tool runs on a Python
