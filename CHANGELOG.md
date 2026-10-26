@@ -2,6 +2,19 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.37.8
+- **The cserver keeps its session key:** the key that signs the session cookie is made once and kept as
+  `session-secret` in the folder of the cserver config artifact (owner-only), shared by every worker and every start,
+  so a restart or an upgrade of the server no longer asks every browser for the password again;
+  `CSERVER_SESSION_SECRET` still pins one. The password form has the tick "Keep me signed in for 7 days", on by
+  default (`CSERVER_SESSION_MAX_AGE`); without it a login lasts 12 hours.
+- **`CMetaAsync.access_sync()` serves re-entering commands** (KI-001): the command runs on a plain `CMeta` of the
+  calling process, made at the first call with the constructor arguments of the async object, as a worker process
+  does for `await cm.access()`; before, a command that called `cm.access()` itself got an un-awaited coroutine back.
+  The async path is unchanged. Tests in `tests/core_tests/test_core_async_access_sync.py`.
+- **Docs:** `docs/async-and-concurrency.md` (the synchronous call on the async object), `docs/known-issues.md`
+  (KI-001 fixed), `docs/using-cmeta.md` (the session key and the tick), the regenerated API page of `utils.sys`.
+
 ## 0.37.7
 - **pip in the tool environment:** the installers (`install.sh`, `install.ps1`, the website's) and the documented
   commands install cMeta with `uv tool install --with pip`, so the Python packages a page or a task asks for are
