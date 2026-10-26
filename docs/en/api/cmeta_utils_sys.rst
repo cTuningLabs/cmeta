@@ -42,6 +42,8 @@ Functions
 
 .. autofunction:: cmeta.utils.sys.load_module
 
+.. autofunction:: cmeta.utils.sys.no_window_flags
+
 .. autofunction:: cmeta.utils.sys.plus_env
 
 .. autofunction:: cmeta.utils.sys.run

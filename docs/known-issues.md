@@ -10,7 +10,7 @@ is deliberate or ambiguous; the fix depends on a design call) · **in progress**
 
 | ID | Area | Status | Summary |
 |----|------|--------|---------|
-| [KI-001](#ki-001) | async | open | `CMetaAsync.access_sync()` returns a coroutine instead of a result dict for re-entrant commands. |
+| [KI-001](#ki-001) | async | fixed | `CMetaAsync.access_sync()` returned a coroutine instead of a result dict for re-entrant commands. |
 | [KI-002](#ki-002) | error handling | needs decision | `CMeta.error(fail_on_error=False)` cannot force raising off. |
 | [KI-003](#ki-003) | docs | fixed | The published documentation site carried only the API reference, not the written guides. |
 
@@ -18,10 +18,10 @@ is deliberate or ambiguous; the fix depends on a design call) · **in progress**
 
 ## KI-001
 
-**`CMetaAsync.access_sync()` returns a coroutine for commands that re-enter the
-framework** — *async, open.*
+**`CMetaAsync.access_sync()` returned a coroutine for commands that re-enter the
+framework** — *async, fixed.*
 
-`access_sync()` calls `CMeta.access()` with `self` still bound to the
+`access_sync()` called `CMeta.access()` with `self` still bound to the
 **async** instance. Any command whose `api/v1.py` re-enters cMeta through
 `self.cm.access(...)` therefore reaches `CMetaAsync.access()` — the `async`
 override — and gets back an un-awaited coroutine, which is then returned to the
@@ -49,12 +49,15 @@ re-enter, which makes it easy to miss: simple commands appear to work.
 `await cm.access(...)` is **not** affected — worker processes build a plain
 `CMeta`, so nested calls resolve to the synchronous implementation.
 
-*Likely fix:* have `access_sync()` (or the object handed to category APIs as
-`self.cm`) delegate to a plain `CMeta` instance rather than to `self`.
-
-*Workaround:* use `await cm.access(...)` on the event loop, and construct a
-separate `CMeta()` where synchronous calls are genuinely needed. Documented in
-[async-and-concurrency.md](async-and-concurrency.md#access_sync--know-the-limitation).
+*Fixed by:* `access_sync()` now runs the command on a plain `CMeta` of the
+calling process, made at the first call with the constructor arguments of the
+async object - exactly what a worker process does for `await cm.access(...)` -
+so a nested `self.cm.access(...)` resolves to the synchronous implementation and
+the result dict comes back. The async path is unchanged. The tests are in
+`tests/core_tests/test_core_async_access_sync.py` (the re-entrant `config get`,
+a simple command compared with a plain `CMeta`, one engine reused across calls,
+an error as a dict, the async path). Documented in
+[async-and-concurrency.md](async-and-concurrency.md#access_sync--synchronous-calls-on-the-async-object).
 
 ---
 

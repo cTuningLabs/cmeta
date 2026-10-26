@@ -129,21 +129,29 @@ Use `asyncio.gather(..., return_exceptions=True)` if you would rather collect
 failures than let the first one abort the group. To bound how much runs at
 once independently of `max_workers`, wrap calls in an `asyncio.Semaphore`.
 
-### `access_sync()` — know the limitation
+### `access_sync()` — synchronous calls on the async object
 
-`CMetaAsync` also exposes `access_sync()`, intended for code already running
-inside a worker where blocking is fine.
+`CMetaAsync` also exposes `access_sync()`: the same call, blocking, in the
+calling process. It is for code that is already on a worker thread where
+blocking is fine, and for the moment before any event loop runs — a server
+that must read its configuration at import, say.
 
-> **Caveat:** `access_sync()` calls `CMeta.access()` with `self` still bound to
-> the *async* instance. Commands whose `api/v1.py` re-enters the framework via
-> `self.cm.access(...)` therefore hit the **async** override and hand back an
-> un-awaited **coroutine instead of a result dict**. `cx repo list` is one such
-> command; simple commands that never re-enter (e.g. `category find`,
-> `utils uid`) do return a dict.
->
-> Don't rely on `access_sync()` on a `CMetaAsync` object. Use `await
-> cm.access(...)` on the event loop, and construct a plain `CMeta()` where you
-> genuinely need synchronous calls.
+The command runs on a **plain `CMeta` of the calling process**, made at the
+first call with the same constructor arguments as the async object (so the
+same home, the same options), exactly as each worker process makes its own
+for `await cm.access(...)`. A command whose `api/v1.py` re-enters the framework
+through `self.cm.access(...)` therefore gets a result dict, as it does in a
+worker.
+
+> Until this was fixed (KI-001 in [known-issues.md](known-issues.md#ki-001))
+> `access_sync()` ran the command on the async object itself, and a nested
+> `self.cm.access(...)` landed on the async `access()` and handed back an
+> un-awaited coroutine instead of the result. Simple commands that never
+> re-enter worked, which hid it.
+
+Never call `cm.access(...)` on a `CMetaAsync` object without `await`: that is
+the coroutine, not a result. On the event loop, `await cm.access(...)`;
+elsewhere, `cm.access_sync(...)`.
 
 ### Who uses this
 

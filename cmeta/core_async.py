@@ -146,6 +146,9 @@ class CMetaAsync(CMeta):
         # Store constructor args for CMeta workers
         self._cmeta_kwargs = kwargs
 
+        # The plain CMeta of this process for access_sync(), made at its first call (KI-001)
+        self._sync_cmeta = None
+
         self._logger.info(
             f"[PID {os.getpid()}] CMetaAsync initialized | max_workers={max_workers}"
         )
@@ -187,10 +190,16 @@ class CMetaAsync(CMeta):
         params,  # Dictionary of parameters to pass to CMeta.access().
     ):
         """
-            Synchronous access using the inherited CMeta.access() method.
+            Synchronous access: the command runs in this process, blocking, on a plain
+            CMeta of this process - made at the first call with the constructor arguments
+            of this object, as a worker process makes its own - so a command that calls
+            cm.access() itself (most of them) gets a result dict, as it does in a worker.
 
             Use this method when already executing in a worker thread or process
-            where blocking is acceptable.
+            where blocking is acceptable, or before an event loop runs (at import).
+            It never runs the command on this async object: until KI-001 was fixed it
+            did, and a nested cm.access() landed on the async access() and handed back
+            an un-awaited coroutine in place of the result.
 
             Args:
                 params: Dictionary of parameters to pass to CMeta.access().
@@ -200,7 +209,10 @@ class CMetaAsync(CMeta):
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
-        return super().access(params)
+        if self._sync_cmeta is None:
+            self._sync_cmeta = CMeta(**self._cmeta_kwargs)
+
+        return self._sync_cmeta.access(params)
 
     def shutdown(self):
         """

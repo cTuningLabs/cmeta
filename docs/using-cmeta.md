@@ -1123,8 +1123,8 @@ config:
 
 | Environment variable | Default | What it does |
 |---|---|---|
-| `CSERVER_SESSION_SECRET` | random per start | The key that signs the session cookie. Left unset, restarting the server asks everyone for the password again; pin it to a long random string to keep sessions across restarts. |
-| `CSERVER_SESSION_MAX_AGE` | `604800` (a week) | How long a session cookie stays valid, in seconds. |
+| `CSERVER_SESSION_SECRET` | the file `session-secret` of the config artifact | The key that signs the session cookie. Left unset, the server makes one at its first start and keeps it in the folder of its config artifact (owner-only), so restarts and upgrades keep every browser signed in; set it to pin your own, or when several servers must share one. |
+| `CSERVER_SESSION_MAX_AGE` | `604800` (a week) | How long a password login keeps a browser signed in, in seconds, with the tick "Keep me signed in" of the login page (ticked by default; unticked, 12 hours). |
 
 What this is and is not. It is a door with a lock: one shared secret, no
 accounts, no password reset, and a naive per-address delay after repeated wrong
