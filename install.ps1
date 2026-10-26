@@ -353,9 +353,9 @@ function Install-Cmeta {
     # otherwise decide there is nothing to do.
     if ($script:EditableMode) {
         Say '     (editable: the install keeps pointing at this directory)'
-        Run 'uv' @('tool', 'install', '--force', '--editable', $target)
+        Run 'uv' @('tool', 'install', '--force', '--with', 'pip', '--editable', $target)
     } else {
-        Run 'uv' @('tool', 'install', '--force', $target)
+        Run 'uv' @('tool', 'install', '--force', '--with', 'pip', $target)
     }
 
     if ($script:NoPathMode) {

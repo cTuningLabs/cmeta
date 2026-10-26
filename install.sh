@@ -391,9 +391,9 @@ install_cmeta() {
     # otherwise decide there is nothing to do.
     if [ "$EDITABLE" = 1 ]; then
         say "     (editable: the install keeps pointing at this directory)"
-        run uv tool install --force --editable "$target"
+        run uv tool install --force --with pip --editable "$target"
     else
-        run uv tool install --force "$target"
+        run uv tool install --force --with pip "$target"
     fi
 
     if [ "$NO_MODIFY_PATH" = 1 ]; then
