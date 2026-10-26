@@ -267,6 +267,40 @@ class Packages:
     # ------------------------------------------------------------------
     # Sync Installation with per-call timeout override
     # ------------------------------------------------------------------
+    def install_command(
+        self,
+        pkg: str,  # The requirement to install (name, name==version, ...).
+        install_args: str = '',  # Extra words for the installer.
+    ):
+        """
+            The command that installs a package into this Python: `python -m pip` when pip is importable; else
+            `uv pip install --python <this python>` when uv is on the PATH (a cMeta installed as a uv tool runs on a
+            Python without pip: `cx` worked but the first page that needed numpy failed with "No module named pip",
+            2026-10-26); else pip after `python -m ensurepip` (bootstrapped once, into this Python).
+
+            Returns:
+                list: The command words.
+        """
+        import importlib.util
+        import shutil
+
+        if importlib.util.find_spec('pip') is not None:
+            cmd = [sys.executable, "-m", "pip", "install", pkg]
+        else:
+            uv = shutil.which('uv')
+            if uv:
+                cmd = [uv, "pip", "install", "--python", sys.executable, pkg]
+            else:
+                self.log("info", "pip is not available in this Python and uv was not found: trying ensurepip")
+                r = subprocess.run([sys.executable, "-m", "ensurepip", "--upgrade"], capture_output=True)
+                if r.returncode != 0 or importlib.util.find_spec('pip') is None:
+                    raise RuntimeError(f"cannot install '{pkg}': this Python has no pip, uv is not on the PATH and "
+                                       f"ensurepip did not provide pip ({sys.executable})")
+                cmd = [sys.executable, "-m", "pip", "install", pkg]
+        if install_args:
+            cmd.extend(install_args.split())
+        return cmd
+
     def pip_install_sync(
         self,
         pkg,  # Package requirement string (e.g., 'numpy>=1.20').
@@ -301,9 +335,7 @@ class Packages:
             print (x)
         self.log("info", x)
 
-        cmd = [sys.executable, "-m", "pip", "install", pkg]
-        if install_args:
-            cmd.extend(install_args.split())
+        cmd = self.install_command(pkg, install_args)
 
         if con:
             print (f"  {' '.join(cmd)}") 
@@ -408,9 +440,7 @@ class Packages:
             print (x)
         self.log("info", x)
 
-        cmd = [sys.executable, "-m", "pip", "install", pkg]
-        if install_args:
-            cmd.extend(install_args.split())
+        cmd = self.install_command(pkg, install_args)
 
         if con:
             print (f"  {' '.join(cmd)}") 

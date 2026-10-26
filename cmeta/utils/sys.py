@@ -666,6 +666,30 @@ def flush_input():
     return
 
 ############################################################
+def no_window_flags():
+    """
+        On Windows, the creation flag that keeps a child from opening a console window when this process has no
+        console of its own (a server started detached, a service): without it every ssh or shell a page runs
+        flashes a window on the desktop (the cserver's /screens page, 2026-10-26). 0 elsewhere, and 0 when this
+        process has a console (the child shares it, as before). Only for a child whose output is captured: a child
+        that inherits the standard handles must keep them (with the flag it prints into its hidden console and the
+        output is lost - `cx host run` printed nothing, 2026-10-26).
+
+        Returns:
+            int: The creationflags value to add.
+    """
+    if os.name != 'nt':
+        return 0
+    try:
+        import ctypes
+        if ctypes.windll.kernel32.GetConsoleWindow():
+            return 0
+    except Exception:
+        return 0
+    import subprocess
+    return getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+
+
 def run(
     cmd: str,  # Command to execute.
     cmds: list = None,  # Command to execute.
@@ -1053,6 +1077,7 @@ def run(
                             shell=True,
                             env=cur_env,
                             timeout=timeout,
+                            creationflags=no_window_flags() if capture_output else 0,
                         )
                         returncode = result.returncode
                         stdout = decode_output(result.stdout) if capture_output else ''
@@ -1303,6 +1328,7 @@ def run_command_with_timeout_tree_kill_on_windows(
             text=text,
             shell=shell,
             env=cur_env,
+            creationflags=no_window_flags() if capture_output else 0,
         )
 
         # Assign to job object so all its children are part of the job
