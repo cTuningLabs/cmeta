@@ -419,3 +419,27 @@ def test_a_bare_page_opens_with_the_presets_of_the_server(cm):
     assert (s['q'], s['repos'], s['cats'], s['view']) == ('tag:sla', 'local', 'log,note', 'graph')
     s = page_config(web(cm, q='gpu'))['state']                 # a URL with a query keeps its own state
     assert (s['q'], s['repos'], s['cats'], s['view']) == ('gpu', '', '', '')
+
+
+def test_catalog_on_an_engine_core_without_scope(cm, monkeypatch):
+    """A server started before an engine upgrade keeps the Repos it loaded while its pages reload: an older
+    find_in_index has no `scope` - the catalog still builds (the lookup without it) and the answer says the engine
+    is stale, so the page can ask for a restart (2026-10-27: TypeError on /browse of a cserver started the night
+    before the upgrade)."""
+    import cmeta.repos
+    original = cmeta.repos.Repos.find_in_index
+
+    def older(self, *args, **kwargs):
+        if 'scope' in kwargs:
+            raise TypeError("Repos.find_in_index() got an unexpected keyword argument 'scope'")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(cmeta.repos.Repos, 'find_in_index', older)
+    out = web(cm, native_action='search', q='sla')['json']
+    assert out['total'] >= 2 and out['catalog']['stale_engine'] is True
+    assert any(r['alias'] == 'sla-report' for r in out['rows'])
+    monkeypatch.undo()
+    # the next build on the real core is clean again (the stamp changes with the index)
+    make(cm, 'sla-extra', tags=['sla'], created='2026-10-02T10:00:00+00:00')
+    out = web(cm, native_action='search', q='sla')['json']
+    assert out['catalog']['stale_engine'] is False and out['total'] >= 3

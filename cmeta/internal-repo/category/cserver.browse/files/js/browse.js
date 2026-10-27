@@ -329,6 +329,8 @@
     if (dsc.asked) s += dsc.searched ? ' · meta and ' + num(dsc.count) + ' descriptions searched'
                                      : ' · the descriptions are not read yet: the meta alone was searched';
     if (r.catalog && r.catalog.built) s += ' · index loaded ' + r.catalog.built;
+    // a server started before an engine upgrade keeps the core it loaded while its pages reload: say so
+    if (r.catalog && r.catalog.stale_engine) showError('This server runs an older cMeta core than its pages (Repos.find_in_index without scope): restart it (cx app run cserver) to load the engine it was upgraded to.');
     $('cbr-status').textContent = s;
   }
   function render() {

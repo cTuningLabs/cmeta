@@ -1100,9 +1100,22 @@ class Category(InitCategory):
                 return _catalog
             t0 = time.monotonic()
             items, by_uid, by_key = [], {}, {}
-            # the whole index, whatever the scope of the request that builds it (scope=False): the catalog is kept
-            # per process and serves every viewer; _visible() applies the scope of each request
-            r = self.cm.repos.find_in_index('category', CATEGORY_UID, scope=False)
+            stale = [False]
+
+            def lookup(alias, uid):
+                # the whole index, whatever the scope of the request that builds it (scope=False): the catalog is
+                # kept per process and serves every viewer; _visible() applies the scope of each request. A server
+                # started before an engine upgrade keeps the core it loaded while its pages reload by themselves: an
+                # older Repos has no `scope` - the lookup goes without it and the page says "restart" (stale_engine)
+                try:
+                    return self.cm.repos.find_in_index(alias, uid, scope=False)
+                except TypeError as e:
+                    if 'scope' not in str(e):
+                        raise
+                    stale[0] = True
+                    return self.cm.repos.find_in_index(alias, uid)
+
+            r = lookup('category', CATEGORY_UID)
             cats = r.get('artifacts', []) if r.get('return', 1) == 0 else []
             skipped = []
             for c in cats:
@@ -1110,7 +1123,7 @@ class Category(InitCategory):
                 if (c.get('cmeta') or {}).get('no_index'):
                     skipped.append(cp.get('artifact_alias', ''))
                     continue
-                rr = self.cm.repos.find_in_index(cp.get('artifact_alias', ''), cp['artifact_uid'], scope=False)
+                rr = lookup(cp.get('artifact_alias', ''), cp['artifact_uid'])
                 if rr.get('return', 1) > 0:
                     continue
                 for a in rr.get('artifacts', []):
@@ -1139,7 +1152,11 @@ class Category(InitCategory):
                     by_key[(it['cat_uid'].lower(), it['alias_l'])] = it['uid']
             _catalog.update({'stamp': stamp, 'items': items, 'by_uid': by_uid, 'by_key': by_key, 'skipped': skipped,
                              'built': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                             'ms': int((time.monotonic() - t0) * 1000), 'categories': len(cats)})
+                             'ms': int((time.monotonic() - t0) * 1000), 'categories': len(cats),
+                             'stale_engine': stale[0]})
+            if stale[0]:
+                print('cMeta warning: cserver.browse runs on an engine core older than its page (Repos.find_in_index without scope): '
+                      'restart this server so that it loads the engine it was upgraded to')
             return _catalog
 
     def _visible(self, cfg=None):
@@ -1242,7 +1259,7 @@ class Category(InitCategory):
 
     def _catalog_info(self):
         return {'artifacts': len(_catalog['items']), 'built': _catalog['built'], 'ms': _catalog['ms'],
-                'categories': _catalog.get('categories', 0)}
+                'categories': _catalog.get('categories', 0), 'stale_engine': bool(_catalog.get('stale_engine'))}
 
     def _options(self):
         """The repositories and categories for the pickers, with counts (visible items only), and the index of the
