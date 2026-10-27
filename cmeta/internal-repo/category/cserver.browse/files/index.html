@@ -6,7 +6,7 @@
   <header class="cbr-head">
     <div class="cbr-title">
       <h1>%%TITLE%%</h1>
-      <p class="cbr-sub" id="cbr-sub">Search, browse and graph the artifacts of every plugged repository.</p>
+      <p class="cbr-sub" id="cbr-sub">Browse, search and graph the artifacts of every plugged repository.</p>
     </div>
     <div class="cbr-tools">
       <button id="cbr-theme" class="cbr-btn" type="button" title="Dark / light">&#9680;</button>
@@ -16,15 +16,15 @@
   </header>
 
   <nav class="cbr-tabs" role="tablist" aria-label="Views">
-    <button type="button" class="cbr-tab" data-view="search" role="tab">Search</button>
-    <button type="button" class="cbr-tab" data-view="browse" role="tab">Browse</button>
-    <button type="button" class="cbr-tab" data-view="graph" role="tab">Graph</button>
+    <button type="button" class="cbr-tab" data-view="browse" role="tab" title="The categories, each opening to its artifacts">Browse</button>
+    <button type="button" class="cbr-tab" data-view="search" role="tab" title="The best matches of the words, as a list">Search</button>
+    <button type="button" class="cbr-tab" data-view="graph" role="tab" title="The same artifacts drawn with their connections">Graph</button>
   </nav>
 
   <form id="cbr-form" class="cbr-bar" autocomplete="off">
     <div class="cbr-row1">
       <input id="cbr-q" type="search" spellcheck="false"
-             placeholder="Names, tags, meta, descriptions  -  e.g.  sla tag:report after:2026-09-01      ( / to focus )">
+             placeholder="Search names, tags, meta and descriptions  -  e.g.  citadel   or   sla tag:report after:2026-09-01      ( / to focus )">
       <button type="submit" class="cbr-go">Search</button>
     </div>
     <div class="cbr-row2">
@@ -59,7 +59,9 @@
       <tr><td><code>uid:14b2</code></td><td>the UID starts with it</td></tr>
       <tr><td><code>task::setup*</code></td><td>a cRef: category::artifact</td></tr>
       <tr><td><code>* ?</code></td><td>patterns: <code>repo:ctuninglabs@*</code>, <code>tag:sla*</code></td></tr>
-      <tr><td>Graph</td><td>the same query, joined by the connections in each <code>_desc</code>; <b>focus</b> (from the detail of an
+      <tr><td>Browse</td><td>the categories on the left, with how many artifacts of each the query keeps; a category opens to its
+        artifacts; the words, the repositories and the dates prune them</td></tr>
+      <tr><td>Graph</td><td>the same query, joined by the connections in each <code>_desc</code>; <b>focus</b> (from the page of an
         artifact, or double-click it) shows everything within N connections of it - the pickers still apply, the words do not</td></tr>
     </table>
   </div>
@@ -67,27 +69,38 @@
   <div id="cbr-status" class="cbr-status" aria-live="polite"></div>
   <div id="cbr-error" class="cbr-error" hidden></div>
 
-  <section id="cbr-view-search" class="cbr-view">
-    <ol id="cbr-list" class="cbr-list"></ol>
-    <div class="cbr-pager" data-pager="search"></div>
+  <section id="cbr-view-browse" class="cbr-view" hidden>
+    <aside class="cbr-toc" id="cbr-toc" aria-label="Categories">
+      <div class="cbr-toc-head">
+        <input id="cbr-toc-filter" type="search" placeholder="filter the categories" aria-label="Filter the categories">
+        <button type="button" id="cbr-toc-fold" class="cbr-link" title="Fold or unfold every group">fold</button>
+      </div>
+      <div id="cbr-toc-list" class="cbr-toc-list"></div>
+    </aside>
+    <div class="cbr-main">
+      <div id="cbr-cat-head" class="cbr-cat-head"></div>
+      <div id="cbr-facets" class="cbr-fstrip" aria-label="Facets"></div>
+      <div class="cbr-tablewrap">
+        <table id="cbr-table" class="cbr-table">
+          <thead><tr>
+            <th data-sort="alias">Artifact</th>
+            <th data-sort="cat">Category</th>
+            <th data-sort="repo">Repository</th>
+            <th>Tags</th>
+            <th data-sort="created">Created</th>
+            <th data-sort="updated">Updated</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="cbr-pager" data-pager="browse"></div>
+      </div>
+    </div>
   </section>
 
-  <section id="cbr-view-browse" class="cbr-view" hidden>
-    <aside id="cbr-facets" class="cbr-facets" aria-label="Facets"></aside>
-    <div class="cbr-tablewrap">
-      <table id="cbr-table" class="cbr-table">
-        <thead><tr>
-          <th data-sort="alias">Artifact</th>
-          <th data-sort="cat">Category</th>
-          <th data-sort="repo">Repository</th>
-          <th>Tags</th>
-          <th data-sort="created">Created</th>
-          <th data-sort="updated">Updated</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-      <div class="cbr-pager" data-pager="browse"></div>
-    </div>
+  <section id="cbr-view-search" class="cbr-view" hidden>
+    <div id="cbr-search-hint" class="cbr-intro" hidden></div>
+    <ol id="cbr-list" class="cbr-list"></ol>
+    <div class="cbr-pager" data-pager="search"></div>
   </section>
 
   <section id="cbr-view-graph" class="cbr-view" hidden>
