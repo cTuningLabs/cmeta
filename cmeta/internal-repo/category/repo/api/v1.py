@@ -1392,6 +1392,11 @@ class Category(InitCategory):
 
         con = ctx.get('control',{}).get('con', False)
         
+        # from the command line the lists arrive as comma-separated strings
+        if isinstance(skip_dirs, str):
+            skip_dirs = [x.strip() for x in skip_dirs.split(',') if x.strip()]
+        if isinstance(skip_files, str):
+            skip_files = [x.strip() for x in skip_files.split(',') if x.strip()]
         if not skip_dirs:
             skip_dirs = ['.venv', '__pycache__', 'tmp*']
 

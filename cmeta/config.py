@@ -116,6 +116,10 @@ params_command2_desc = [
   {'key':'json_file', 'aliases':['json-file', 'jf'], 'type': str, 'desc': 'Specify json file to save command output' },
   {'key':'dump', 'type': bool, 'desc': 'Dump context to cmeta-ctx.json at the end of a command' },
   {'key':'pause_at_the_end', 'type': bool, 'desc': 'Pause at the end of a command' },
+  # The scope of one call: the artifacts of these repositories are not found, listed or read by this call and by
+  # every call it makes (a server applies it per request: what a signed-in person may not see). The repositories
+  # stay registered and listed by "cx repo ls"; only their contents are hidden.
+  {'key':'hide_repos', 'aliases':['hide-repos'], 'types':[str,list], 'desc': 'Hide the artifacts of these repositories (aliases, UIDs or patterns, comma-separated) from this call and every call it makes' },
 ]
 
 params_command3_desc = [

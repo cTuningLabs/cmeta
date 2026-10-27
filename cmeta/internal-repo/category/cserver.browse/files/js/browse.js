@@ -16,23 +16,26 @@
   function $(id) { return document.getElementById(id); }
 
   var THEME_KEY = 'cserver.browse.theme';
-  var VIEWS = ['search', 'browse', 'graph'];
+  var VIEWS = ['browse', 'search', 'graph'];
   var GCFG = CFG.graph || {max_nodes: 300, max: 1000, depth_max: 12};
 
   // The state in the URL: the query, the view, the open artifact, and the graph (focus, depth, nodes, switches:
-  // '' = the default, '1' / '0' = set)
+  // '' = the default, '1' / '0' = set). A bare page opens on Browse: the categories, nothing searched yet.
   var URL_KEYS = ['q', 'repos', 'cats', 'after', 'before', 'sort', 'dir', 'uid', 'file', 'focus', 'depth', 'max_nodes',
                   'categories', 'core', 'isolated', 'neighbors', 'labels', 'links'];
-  var st = {view: 'search'};
+  var st = {view: 'browse'};
   URL_KEYS.forEach(function (k) { st[k] = ''; });
   Object.keys(st).forEach(function (k) { if (CFG.state && CFG.state[k]) st[k] = CFG.state[k]; });
-  if (VIEWS.indexOf(st.view) < 0) st.view = 'search';
+  if (VIEWS.indexOf(st.view) < 0) st.view = 'browse';
   st.offset = 0;
   st.limit = 50;
 
-  var options = null;      // {repos: [[name, n]], cats: [[name, n]], total, catalog, index}
+  var options = null;      // {repos: [[name, n]], cats: [[name, n]], categories: [{alias, n, name, desc, repos}], total, catalog, index}
+  var tocFold = {};        // the folded groups of the category index (by their prefix)
+  var tocFilter = '';      // what the filter box above the category index holds
   var indexState = null;   // the connection index as the last answer reported it: {ready, links, ...}
   var last = null;         // the last search result
+  var lastView = '';       // the tab it was made for (a Browse listing is not a Search result)
   var busyCount = 0;
   var runToken = 0;
 
@@ -78,10 +81,18 @@
     return frag;
   }
   // The page of one artifact (cserver.cref): /cref/<category>::<alias>,<UID>[/<path>] - the cRef stays in the
-  // address bar. A row of the search or the table opens it; the graph keeps its side panel and offers it.
+  // address bar (a host that serves this page says where its /cref/ is: CFG.cref_url). A row of the search or
+  // the table opens it; the graph keeps its side panel and offers it.
   function crefUrl(cat, alias, uid, rel) {
-    return (CFG.url_server || '/') + 'cref/' + encodeURI(cat + '::' + alias + ',' + uid) +
+    return (CFG.cref_url || ((CFG.url_server || '/') + 'cref/')) + encodeURI(cat + '::' + alias + ',' + uid) +
            (rel ? '/' + rel.split('/').map(encodeURIComponent).join('/') : '');
+  }
+  // this page with another state (a category, a repository, the graph of one artifact): the same address, new keys
+  function pageUrl(changes) {
+    var u = new URL(window.location.href);
+    URL_KEYS.concat(['view']).forEach(function (k) { u.searchParams.delete(k); });
+    Object.keys(changes).forEach(function (k) { if (changes[k]) u.searchParams.set(k, changes[k]); });
+    return u.toString();
   }
   function refLink(uid, rel, label, cat, alias) {
     var href = cat ? crefUrl(cat, alias, uid, rel) : '?uid=' + uid + (rel ? '&file=' + encodeURIComponent(rel) : '');
@@ -281,14 +292,33 @@
     syncUrl();
     showError('');
     if (st.view === 'graph') { last = null; return loadGraph(); }
+    // the Search tab waits for words: without them it says what to do (the Browse tab lists the categories)
+    if (st.view === 'search' && !st.q.trim()) { last = null; renderSearchHint(); return; }
     var my = ++runToken;
     return call('search', params(), 'searching')
       .then(function (r) {
         if (my !== runToken) return;          // a newer query has started meanwhile
-        last = r;
+        last = r; lastView = st.view;
         render();
       })
       .catch(function (e) { showError(e.message); });
+  }
+  function renderSearchHint() {
+    $('cbr-list').innerHTML = '';
+    root.querySelector('[data-pager="search"]').innerHTML = '';
+    $('cbr-status').textContent = '';
+    var box = $('cbr-search-hint');
+    box.innerHTML = '';
+    box.hidden = false;
+    box.appendChild(h('h2', {}, 'Search'));
+    box.appendChild(h('p', {}, 'Type words above: a name, a tag, a customer, a GPU, anything in the meta or the descriptions. ' +
+      'The best matches come first, with where each word was found. The repositories, the categories and the dates narrow the search.'));
+    var p = h('p', {class: 'cbr-muted'}, 'Nothing typed yet - or ');
+    var b = h('button', {type: 'button', class: 'cbr-link'}, 'browse the categories');
+    b.addEventListener('click', function () { setView('browse'); });
+    p.appendChild(b);
+    p.appendChild(document.createTextNode(' instead.'));
+    box.appendChild(p);
   }
   function statusLine(r) {
     var s = r.total + ' of ' + r.of + ' artifacts';
@@ -317,6 +347,7 @@
   function renderList() {
     var ol = $('cbr-list');
     ol.innerHTML = '';
+    $('cbr-search-hint').hidden = true;
     last.rows.forEach(function (r) {
       var title = h('button', {type: 'button', class: 'cbr-r-title', html: hl(r.alias)});
       title.addEventListener('click', function () { window.location.href = crefUrl(r.cat, r.alias, r.uid); });
@@ -362,18 +393,161 @@
     el.appendChild(size);
   }
 
-  /* ------------------------------------------------------------------ Browse view */
-  var FACETS = [['repo', 'Repositories'], ['cat', 'Categories'], ['tag', 'Tags'], ['year', 'Created'], ['generator', 'Made by']];
+  /* ------------------------------------------------------------------ Browse view: the categories, then the artifacts */
+  // The index on the left: every category with how many of its artifacts the query keeps (the words, the
+  // repositories and the dates - not the category picked), grouped by the first part of their names; a click opens
+  // the category on the right, a second click closes it. The right side: what is here (nothing picked), or the
+  // category's artifacts in a table, with the tags, years and repositories of the matches as chips to prune by.
+  var FACETS = [['tag', 'Tags'], ['year', 'Created'], ['repo', 'Repositories'], ['generator', 'Made by']];
   var facetOpen = {};
+  function catInfo(alias) {
+    var list = (options && options.categories) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].alias === alias) return list[i];
+    return null;
+  }
+  function tocGroups(counts) {
+    // [{key, items: [[alias, n]]}]: dotted names grouped by their first part when two or more share it
+    var byKey = {}, order = [];
+    counts.forEach(function (x) {
+      var k = x[0].indexOf('.') > 0 ? x[0].split('.')[0] : '';
+      if (!byKey[k]) { byKey[k] = []; order.push(k); }
+      byKey[k].push(x);
+    });
+    var out = [], rest = [];
+    order.sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; }).forEach(function (k) {
+      if (k && byKey[k].length > 1) out.push({key: k, items: byKey[k]});
+      else rest = rest.concat(byKey[k]);
+    });
+    rest.sort(function (a, b) { return a[0].toLowerCase() < b[0].toLowerCase() ? -1 : 1; });
+    if (rest.length) out.push({key: '', items: rest});
+    return out;
+  }
+  function renderToc() {
+    var box = $('cbr-toc-list');
+    box.innerHTML = '';
+    var counts = (last && last.toc) || (options && options.cats) || [];
+    var f = tocFilter.toLowerCase();
+    var shown = counts.filter(function (x) { return !f || x[0].toLowerCase().indexOf(f) >= 0; });
+    var sel = st.cats;
+    var total = 0;
+    counts.forEach(function (x) { total += x[1]; });
+    var all = h('button', {type: 'button', class: 'cbr-toc-all' + (sel ? '' : ' on'), title: 'Every category'},
+                h('span', {class: 'nm'}, 'All categories'), h('span', {class: 'n'}, num(total)));
+    all.addEventListener('click', function () { pickCategory(''); });
+    box.appendChild(all);
+    tocGroups(shown).forEach(function (g) {
+      var gn = 0;
+      g.items.forEach(function (x) { gn += x[1]; });
+      var folded = !!tocFold[g.key] && !f;
+      if (g.key) {
+        var head = h('button', {type: 'button', class: 'cbr-toc-group' + (folded ? ' folded' : ''), 'aria-expanded': folded ? 'false' : 'true'},
+                     h('span', {class: 'tri'}, folded ? '▸' : '▾'), h('span', {class: 'nm'}, g.key + '.*'),
+                     h('span', {class: 'n', title: g.items.length + ' categories, ' + num(gn) + ' artifacts'}, g.items.length + ' · ' + num(gn)));
+        head.addEventListener('click', function () { tocFold[g.key] = !tocFold[g.key]; renderToc(); });
+        box.appendChild(head);
+        if (folded && !(sel && sel.indexOf(g.key + '.') === 0)) return;
+      }
+      var ul = h('div', {class: 'cbr-toc-items' + (g.key ? ' in' : '')});
+      g.items.forEach(function (x) {
+        var info = catInfo(x[0]);
+        var label = g.key ? x[0].slice(g.key.length + 1) : x[0];
+        var b = h('button', {type: 'button', class: 'cbr-toc-item' + (sel === x[0] ? ' on' : ''),
+                             title: x[0] + (info && info.name ? ' - ' + info.name : '')},
+                  h('span', {class: 'nm'}, label), h('span', {class: 'n'}, num(x[1])));
+        b.addEventListener('click', function () { pickCategory(sel === x[0] ? '' : x[0]); });
+        ul.appendChild(b);
+      });
+      box.appendChild(ul);
+    });
+    if (!shown.length) box.appendChild(h('div', {class: 'cbr-muted', style: 'padding:6px'}, f ? 'No category matches the filter.' : 'No category to show.'));
+  }
+  function pickCategory(alias) {
+    st.cats = alias || '';
+    st.sort = '';
+    st.dir = '';
+    pickerLabel('cats');
+    if (options) buildPicker('cats');
+    if (st.view !== 'browse') setView('browse'); else run();
+  }
+  function renderCatHead() {
+    var box = $('cbr-cat-head');
+    box.innerHTML = '';
+    var sel = st.cats;
+    var words = st.q.trim();
+    if (!sel && !words) {
+      // nothing picked: what this server holds and how it is organised
+      var o = options || {repos: [], cats: [], total: 0};
+      var intro = h('div', {class: 'cbr-intro'});
+      intro.appendChild(h('h2', {}, 'What is here'));
+      intro.appendChild(h('p', {}, num(o.total) + ' artifacts in ' + o.cats.length + ' categories of ' + o.repos.length +
+        ' repositories' + (last && last.total !== o.total ? ' - ' + num(last.total) + ' kept by the repositories and dates picked' : '') + '.'));
+      intro.appendChild(h('p', {}, 'A ', h('b', {}, 'repository'), ' is a folder (a git repository, a shared folder) that holds ',
+        h('b', {}, 'categories'), ' - one kind of thing each: a customer, a deal, a GPU, a data centre, a task, a report. ',
+        'A category holds ', h('b', {}, 'artifacts'), ': one folder per thing, with its meta (', h('code', {}, '_cmeta'), ': who, when, tags), ',
+        'its description (', h('code', {}, '_desc'), ': the facts and the connections to other artifacts) and its files - dated records live in ',
+        h('code', {}, 'ck/YYYYMMDD/'), ', one folder per day the facts were observed, so nothing is ever overwritten. ',
+        'Every artifact has an address, its ', h('b', {}, 'cRef'), ' (', h('code', {}, 'category::alias,UID'), '), that any page, document or tool can point at.'));
+      intro.appendChild(h('p', {class: 'cbr-muted'}, 'Pick a category on the left to see its artifacts, type words above to search across them, ' +
+        'or open the Graph tab to see how they connect. Click an artifact for its page: its text, its connections, its files.'));
+      if (o.repos && o.repos.length) {
+        var rp = h('div', {class: 'cbr-intro-repos'}, h('span', {class: 'cbr-muted'}, 'Repositories: '));
+        o.repos.forEach(function (x) {
+          var c = h('button', {type: 'button', class: 'cbr-chip' + (picked('repos').indexOf(x[0]) >= 0 ? ' on' : ''), title: num(x[1]) + ' artifacts - click to keep this repository alone, again for all'},
+                    x[0] + ' (' + num(x[1]) + ')');
+          c.addEventListener('click', function () {
+            st.repos = picked('repos').length === 1 && picked('repos')[0] === x[0] ? '' : x[0];
+            pickerLabel('repos'); if (options) buildPicker('repos'); run();
+          });
+          rp.appendChild(c);
+        });
+        intro.appendChild(rp);
+      }
+      box.appendChild(intro);
+      return;
+    }
+    var head = h('div', {class: 'cbr-cat-title'});
+    if (sel) {
+      var info = catInfo(sel);
+      head.appendChild(h('h2', {}, sel));
+      if (info && (info.name || info.desc)) {
+        head.appendChild(h('p', {class: 'cbr-cat-desc'}, (info.name ? info.name : '') + (info.name && info.desc ? ' - ' : '') + (info.desc || '')));
+      }
+      var line = h('p', {class: 'cbr-muted'}, num(last ? last.total : 0) + ' artifact' + (last && last.total === 1 ? '' : 's') +
+        (words ? ' matching "' + words + '"' : '') + (info && info.repos ? ' in ' + info.repos.map(function (x) { return x[0]; }).join(', ') : '') + ' · ');
+      if (info && info.uid) {
+        line.appendChild(h('a', {href: crefUrl('category', sel, info.uid), title: 'The category itself: its definition, its commands'}, 'the category\'s page'));
+        line.appendChild(document.createTextNode(' · '));
+      }
+      var gl = h('a', {href: pageUrl({view: 'graph', cats: sel, q: st.q, repos: st.repos}), title: 'These artifacts drawn with their connections'}, 'graph');
+      line.appendChild(gl);
+      line.appendChild(document.createTextNode(' · '));
+      var x = h('button', {type: 'button', class: 'cbr-link'}, 'all categories');
+      x.addEventListener('click', function () { pickCategory(''); });
+      line.appendChild(x);
+      head.appendChild(line);
+    } else {
+      head.appendChild(h('h2', {}, 'Matching "' + words + '"'));
+      head.appendChild(h('p', {class: 'cbr-muted'}, num(last ? last.total : 0) + ' artifacts across the categories on the left - pick one to narrow.'));
+    }
+    box.appendChild(head);
+  }
   function renderBrowse() {
+    renderToc();
+    renderCatHead();
     var tb = $('cbr-table').querySelector('tbody');
     tb.innerHTML = '';
+    var wrap = root.querySelector('.cbr-tablewrap');
+    var showTable = !!(st.cats || st.q.trim());
+    wrap.hidden = !showTable;
+    $('cbr-facets').hidden = !showTable;
+    if (!showTable) return;
+    $('cbr-table').classList.toggle('one-cat', !!st.cats);
     last.rows.forEach(function (r) {
       var a = h('td', {class: 'alias', html: hl(r.alias) + (r.name && r.name !== r.alias ? '<span class="nm">' + hl(r.name) + '</span>' : '') +
                        (r.migrated_to ? '<span class="cbr-badge">migrated</span>' : '')});
       var tags = h('td', {});
       (r.tags || []).slice(0, 6).forEach(function (t) { tags.appendChild(chip(t)); });
-      var tr = h('tr', {}, a, h('td', {}, r.cat), h('td', {class: 'repo'}, r.repo || '(registry)'), tags,
+      var tr = h('tr', {}, a, h('td', {class: 'cat'}, r.cat), h('td', {class: 'repo'}, r.repo || '(registry)'), tags,
                  h('td', {class: 'when'}, r.created), h('td', {class: 'when'}, r.updated));
       tr.addEventListener('click', function () { window.location.href = crefUrl(r.cat, r.alias, r.uid); });
       tb.appendChild(tr);
@@ -393,16 +567,18 @@
     if (!last.facets) return;
     FACETS.forEach(function (f) {
       var vals = last.facets[f[0]] || [];
+      if (f[0] === 'repo' && vals.length < 2) return;
       if (!vals.length) return;
-      var sec = h('div', {class: 'cbr-facet'}, h('h3', {}, f[1]));
+      var sec = h('div', {class: 'cbr-facet'}, h('span', {class: 'cbr-facet-name'}, f[1] + ':'));
       var lim = facetOpen[f[0]] ? vals.length : 8;
       vals.slice(0, lim).forEach(function (x) {
-        var b = h('button', {type: 'button', title: x[0]}, h('span', {class: 'nm'}, x[0]), h('span', {class: 'n'}, String(x[1])));
+        var b = h('button', {type: 'button', class: 'cbr-chip', title: f[1] + ' ' + x[0] + ': ' + num(x[1]) + ' - click to narrow'},
+                  x[0] + ' ', h('span', {class: 'n'}, String(x[1])));
         b.addEventListener('click', function () { applyFacet(f[0], x[0]); });
         sec.appendChild(b);
       });
       if (vals.length > 8) {
-        var more = h('button', {type: 'button', class: 'more'}, facetOpen[f[0]] ? 'fewer' : 'all ' + vals.length);
+        var more = h('button', {type: 'button', class: 'cbr-link more'}, facetOpen[f[0]] ? 'fewer' : '+ ' + (vals.length - 8) + ' more');
         more.addEventListener('click', function () { facetOpen[f[0]] = !facetOpen[f[0]]; renderFacets(); });
         sec.appendChild(more);
       }
@@ -410,10 +586,12 @@
     });
   }
   function applyFacet(kind, v) {
-    if (kind === 'repo' || kind === 'cat') {
-      var key = kind === 'repo' ? 'repos' : 'cats';
-      st[key] = v;
-      pickerLabel(key);
+    if (kind === 'cat') {
+      pickCategory(v);
+    } else if (kind === 'repo') {
+      st.repos = v;
+      pickerLabel('repos');
+      if (options) buildPicker('repos');
       run();
     } else if (kind === 'tag') {
       addToQuery('tag:' + quoteIf(v));
@@ -454,7 +632,14 @@
       if (d.row.name && d.row.name !== d.row.alias) box.appendChild(h('div', {class: 'cbr-d-name'}, d.row.name));
       box.appendChild(cmdLine(d.cref));
       var facts = h('table', {class: 'cbr-d-facts'});
-      [['Category', d.row.cat], ['Repository', d.row.repo || '(registry)'], ['UID', d.row.uid],
+      var catLink = h('a', {href: pageUrl({view: 'browse', cats: d.row.cat}), title: 'Every artifact of this category'}, d.row.cat);
+      var repoLink = d.row.repo ? h('a', {href: pageUrl({view: 'browse', repos: d.row.repo}), title: 'Every artifact of this repository'}, d.row.repo)
+                                : document.createTextNode('(registry)');
+      var origin = d.origin || {};
+      var originCell = origin.url ? h('a', {href: origin.url, target: '_blank', rel: 'noopener', title: origin.url},
+                                      (origin.kind === 'github' ? 'GitHub: ' : '') + (origin.label || origin.url))
+                                  : document.createTextNode(origin.label || 'none');
+      [['Category', catLink], ['Repository', repoLink], ['Origin', originCell], ['UID', d.row.uid],
        ['Created', d.row.created], ['Updated', d.row.updated], ['Path', d.path || '']].forEach(function (x) {
         if (x[1]) facts.appendChild(h('tr', {}, h('td', {}, x[0]), h('td', {}, x[1])));
       });
@@ -835,7 +1020,10 @@
     VIEWS.forEach(function (x) { $('cbr-view-' + x).hidden = x !== v; });
     syncUrl();
     if (v === 'graph') loadGraph();
-    else if (last) render();
+    // the Search tab starts clean - the search bar and what to type, never the Browse tab's listing - and shows a
+    // result only for the words typed; the Browse tab keeps its last listing
+    else if (v === 'search' && !st.q.trim()) { last = null; renderSearchHint(); }
+    else if (last && lastView === v) render();
     else run();
   }
 
@@ -879,6 +1067,15 @@
       if (options) { buildPicker('repos'); buildPicker('cats'); }
       run();
     });
+    // the category index: its filter box and the fold of every group
+    $('cbr-toc-filter').addEventListener('input', function () { tocFilter = $('cbr-toc-filter').value.trim(); renderToc(); });
+    $('cbr-toc-fold').addEventListener('click', function () {
+      var groups = tocGroups((last && last.toc) || (options && options.cats) || []).filter(function (g) { return g.key; });
+      var anyOpen = groups.some(function (g) { return !tocFold[g.key]; });
+      groups.forEach(function (g) { tocFold[g.key] = anyOpen; });
+      $('cbr-toc-fold').textContent = anyOpen ? 'unfold' : 'fold';
+      renderToc();
+    });
     $('cbr-help-btn').addEventListener('click', function () { $('cbr-help').hidden = !$('cbr-help').hidden; });
     $('cbr-reload').addEventListener('click', function () {
       call('reload', {}, 'reloading the index').then(function (o) {
@@ -918,8 +1115,8 @@
     if (o && o.total != null) options = o;
     if (o && o.index) indexState = o.index;
     if (!options) return;
-    $('cbr-sub').textContent = 'Search, browse and graph ' + num(options.total) + ' artifacts in ' +
-      options.repos.length + ' repositories and ' + options.cats.length + ' categories' +
+    $('cbr-sub').textContent = 'Browse, search and graph ' + num(options.total) + ' artifacts in ' +
+      options.cats.length + ' categories of ' + options.repos.length + ' repositories' +
       (indexState && indexState.ready ? ', joined by ' + num(indexState.links) + ' connections.' : '.');
   }
   init();

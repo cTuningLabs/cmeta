@@ -184,9 +184,45 @@ _conn = {'stamp': None, 'want': 0, 'ready': False, 'building': False, 'thread': 
 _links_cache = {}                # path of _desc -> ((mtime, size), connections, uses, ai_uses, text)
 _disk = {'key': None, 'dir': '', 'loaded': '', 'files': frozenset(), 'load_ms': 0, 'saved': '', 'error': ''}
 _launchers = {}                  # what the open buttons can start here, found once per process
+_origins = {}                    # repository UID -> (its remote URL, its branch, its path): the origin of its artifacts
 
 
 # ---------------------------------------------------------------------- helpers
+def urllib_quote(s):
+    from urllib.parse import quote
+    return quote(s, safe='')
+
+
+def _git_remote(repo_path):
+    """The web address of a clone's origin remote and its branch, read from .git/config and .git/HEAD (no git
+    process): ('https://github.com/org/name', 'main') or ('', '')."""
+    url, branch = '', ''
+    try:
+        with open(os.path.join(repo_path, '.git', 'config'), encoding='utf-8', errors='replace') as f:
+            section = ''
+            for line in f:
+                s = line.strip()
+                if s.startswith('['):
+                    section = s.lower()
+                elif section == '[remote "origin"]' and s.startswith('url'):
+                    url = s.split('=', 1)[1].strip()
+                    break
+        with open(os.path.join(repo_path, '.git', 'HEAD'), encoding='utf-8', errors='replace') as f:
+            head = f.read().strip()
+        if head.startswith('ref: refs/heads/'):
+            branch = head[len('ref: refs/heads/'):]
+    except OSError:
+        return '', ''
+    if not url:
+        return '', ''
+    # git@github.com:org/name.git | ssh://git@github.com/org/name.git | https://github.com/org/name.git -> https
+    m = re.match(r'^(?:ssh://)?git@([^:/]+)[:/](.+?)(?:\.git)?/?$', url)
+    if m:
+        url = 'https://%s/%s' % (m.group(1), m.group(2))
+    else:
+        url = re.sub(r'\.git/?$', '', url)
+        url = re.sub(r'^https?://[^@/]+@', lambda mm: mm.group(0).split('//')[0] + '//', url)   # a token in the URL is dropped
+    return url, branch
 def _asset(path_to_files, url_files, rel):
     """A versioned URL for a file under files/ (mtime -> a new URL per edit, so no host serves a stale copy)."""
     url = url_files + rel
@@ -1064,7 +1100,9 @@ class Category(InitCategory):
                 return _catalog
             t0 = time.monotonic()
             items, by_uid, by_key = [], {}, {}
-            r = self.cm.repos.find_in_index('category', CATEGORY_UID)
+            # the whole index, whatever the scope of the request that builds it (scope=False): the catalog is kept
+            # per process and serves every viewer; _visible() applies the scope of each request
+            r = self.cm.repos.find_in_index('category', CATEGORY_UID, scope=False)
             cats = r.get('artifacts', []) if r.get('return', 1) == 0 else []
             skipped = []
             for c in cats:
@@ -1072,7 +1110,7 @@ class Category(InitCategory):
                 if (c.get('cmeta') or {}).get('no_index'):
                     skipped.append(cp.get('artifact_alias', ''))
                     continue
-                rr = self.cm.repos.find_in_index(cp.get('artifact_alias', ''), cp['artifact_uid'])
+                rr = self.cm.repos.find_in_index(cp.get('artifact_alias', ''), cp['artifact_uid'], scope=False)
                 if rr.get('return', 1) > 0:
                     continue
                 for a in rr.get('artifacts', []):
@@ -1105,7 +1143,9 @@ class Category(InitCategory):
             return _catalog
 
     def _visible(self, cfg=None):
-        """The catalog items a viewer may see: hide_repos and browse_hide_categories applied."""
+        """The catalog items a viewer may see: the server's hide_repos and browse_hide_categories applied, and the
+        scope of this request (the hide_repos of the access call that serves it - what a host hides from one
+        signed-in person: the artifacts of those repositories are left out, the repositories stay named)."""
         cat = self._catalog()
         cfg = self._cserver_config() if cfg is None else cfg
         hide_repos = _patterns(cfg.get('hide_repos'))
@@ -1116,11 +1156,14 @@ class Category(InitCategory):
             hide_cats = []
         else:
             hide_cats = _patterns(raw)
-        if not hide_repos and not hide_cats:
+        repos = self.cm.repos
+        scoped = bool(getattr(repos, 'hidden_repos', ()))
+        if not hide_repos and not hide_cats and not scoped:
             return cat['items']
         return [it for it in cat['items']
                 if not (hide_repos and it['repo'] and _matches_any(it['repo'], hide_repos))
-                and not (hide_cats and _matches_any(it['cat'], hide_cats))]
+                and not (hide_cats and _matches_any(it['cat'], hide_cats))
+                and not (scoped and it['repo_uid'] and repos.repo_hidden(None, alias=it['repo'], uid=it['repo_uid']))]
 
     # ------------------------------------------------------------ the connection index and its cache
     def _cache_dir(self):
@@ -1173,8 +1216,14 @@ class Category(InitCategory):
         ui_cats = _list(params.get('cats'))
         after = str(params.get('after') or pq['after'] or '').strip()
         before = str(params.get('before') or pq['before'] or '').strip()
-        found = [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before, texts)]
-        sort = str(params.get('sort') or ('relevance' if pq['words'] else 'updated'))
+        # what the category picker does not narrow: the Browse view lists every category with how many of its
+        # artifacts the rest of the query keeps (words, repositories, dates), so a reader prunes by picking one
+        wide = [it for it in items if _item_matches(it, pq, ui_repos, [], after, before, texts)] if ui_cats else None
+        found = [it for it in (wide if wide is not None else items)
+                 if _item_matches(it, pq, [], ui_cats, '', '', texts)] if ui_cats else \
+            [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before, texts)]
+        # a bare query lists by name (a reader browsing a category expects its artifacts in order), words by relevance
+        sort = str(params.get('sort') or ('relevance' if pq['words'] else ('alias' if not (ui_cats or after or before) or ui_cats else 'updated')))
         desc = str(params.get('dir') or ('asc' if sort in ('alias', 'cat', 'repo', 'uid') else 'desc')) == 'desc'
         found = _sort(found, sort, desc, pq['words'])
         limit = _int(params.get('limit'), PAGE_DEFAULT, 1, LIMIT_MAX)
@@ -1186,6 +1235,8 @@ class Category(InitCategory):
                'descs': {'asked': asked, 'searched': texts is not None, 'count': len(texts or {})}}
         if str(params.get('facets', '1')).lower() not in ('0', 'no', 'false'):
             out['facets'] = _facets(found)
+            toc = Counter(it['cat'] for it in (wide if wide is not None else found))
+            out['toc'] = sorted(toc.items(), key=lambda x: x[0].lower())
         out['_found'] = found
         return out
 
@@ -1194,15 +1245,73 @@ class Category(InitCategory):
                 'categories': _catalog.get('categories', 0)}
 
     def _options(self):
-        """The repositories and categories for the pickers, with counts (visible items only)."""
+        """The repositories and categories for the pickers, with counts (visible items only), and the index of the
+        categories for the Browse view: each with its artifacts' count, the repositories they are in, and what
+        the category's own artifact says it is (name, desc)."""
         items = self._visible()
-        repos, cats = Counter(), Counter()
+        repos, cats, per_repo = Counter(), Counter(), {}
+        meta_of = {}
         for it in items:
             repos[it['repo'] or '(registry)'] += 1
             cats[it['cat']] += 1
+            per_repo.setdefault(it['cat'], Counter())[it['repo'] or '(registry)'] += 1
+            if it['cat'] == 'category':
+                meta_of[it['alias_l']] = it
+        categories = []
+        for cat, n in sorted(cats.items(), key=lambda x: x[0].lower()):
+            m = meta_of.get(cat.lower())
+            meta = m['meta'] if m else {}
+            categories.append({'alias': cat, 'uid': (m['uid'] if m else ''), 'n': n,
+                               'repos': sorted(per_repo[cat].items(), key=lambda x: -x[1]),
+                               'name': str(meta.get('name') or ''), 'desc': str(meta.get('desc') or ''),
+                               'defined_in': (m['repo'] if m else ''), 'no_index': bool(meta.get('no_index'))})
         return {'repos': sorted(repos.items(), key=lambda x: x[0].lower()),
-                'cats': sorted(cats.items(), key=lambda x: x[0].lower()),
+                'cats': sorted(cats.items(), key=lambda x: x[0].lower()), 'categories': categories,
                 'total': len(items), 'catalog': self._catalog_info()}
+
+    # ------------------------------------------------------------ where an artifact lives elsewhere (its origin)
+    def _origin(self, it, misc):
+        """Where the artifact's folder can be seen outside this server, from its repository: a host's word first
+        (misc.repo_origins: alias -> URL, or "none"), else the clone's git remote (origin) and branch, else an alias
+        of the form <org>@<name> (how cx names a GitHub clone) -> {'kind': 'github' | 'url' | 'none', 'url', 'label',
+        'repo'}. Read once per repository and process."""
+        repo, repo_uid = it['repo'] or '', it['repo_uid'] or ''
+        if not repo_uid:
+            return {'kind': 'none', 'repo': repo}
+        given = (misc or {}).get('repo_origins') or {}
+        word = str(given.get(repo) or given.get(repo_uid) or '').strip()
+        if word.lower() in ('none', 'no', 'off', '-'):
+            return {'kind': 'none', 'repo': repo, 'url': '', 'label': 'nowhere else (%s is local)' % repo}
+        base = _origins.get(repo_uid)
+        if base is None:
+            base = ('', '')
+            repo_path = next((x['path'] for x in self._catalog()['items'] if x['cat'] == 'repo' and x['uid'] == repo_uid.lower()), '')
+            url, branch = _git_remote(repo_path) if repo_path else ('', '')
+            if not url and '@' in repo and '/' not in repo:
+                org, _, name = repo.partition('@')
+                url = 'https://github.com/%s/%s' % (org, name)
+            base = (url, branch or 'main', repo_path)
+            _origins[repo_uid] = base
+        url, branch = base[0], base[1]
+        if word:
+            url = word.rstrip('/')
+        if not url:
+            return {'kind': 'none', 'repo': repo, 'url': '', 'label': 'no origin known for %s' % repo}
+        rel = ''
+        repo_path = base[2] if len(base) > 2 else ''
+        if repo_path and it['path']:
+            try:
+                rel = os.path.relpath(os.path.realpath(it['path']), os.path.realpath(repo_path)).replace(os.sep, '/')
+                if rel.startswith('..'):
+                    rel = ''
+            except ValueError:
+                rel = ''
+        kind = 'github' if 'github.com' in url else 'url'
+        full = url
+        if rel and kind == 'github':
+            full = '%s/tree/%s/%s' % (url, branch, '/'.join(urllib_quote(p) for p in rel.split('/')))
+        label = url.split('://', 1)[-1]
+        return {'kind': kind, 'repo': repo, 'url': full, 'repo_url': url, 'branch': branch, 'rel': rel, 'label': label}
 
     def _item(self, uid):
         """A catalog item this server shows, by UID (None when it is unknown or hidden)."""
@@ -1245,9 +1354,9 @@ class Category(InitCategory):
                 return hits[0], rel, ''
         return '', rel, 'cref %s: no such artifact on this server (or it is hidden here)' % s
 
-    def _artifact(self, uid, local, files_on):
+    def _artifact(self, uid, local, files_on, misc=None):
         """One artifact: its meta, its _desc, what it connects to and what it uses (resolved to the catalog), what
-        connects to it (from the connection index), and its commands."""
+        connects to it (from the connection index), its commands, and where it lives elsewhere (its origin)."""
         cat = self._catalog()
         it = self._item(uid)
         if it is None:
@@ -1295,12 +1404,18 @@ class Category(InitCategory):
         # the commands are pasted into a shell: an alias with a space or another shell character is quoted
         # (double quotes work in cmd, PowerShell, bash and zsh)
         shell_ref = ref if re.fullmatch(r'[A-Za-z0-9._,@:+=/-]+', ref) else '"%s"' % ref
+        # the category's own artifact (its definition), when this server shows it: the page of the category
+        cat_item = by_uid.get(it['cat_uid'].lower())
+        cat_def = {'uid': cat_item['uid'], 'alias': cat_item['alias'], 'repo': cat_item['repo'],
+                   'name': str(cat_item['meta'].get('name') or ''), 'desc': str(cat_item['meta'].get('desc') or '')} \
+            if cat_item and cat_item['uid'] in shown else None
         out = {'row': _row(it), 'repo_uid': it['repo_uid'], 'meta': it['meta'], 'desc': desc_out,
                'desc_file': desc_file, 'connections': links, 'uses': uses, 'ai_uses': ai_uses, 'incoming': incoming,
                'incoming_total': n_in, 'index': _conn_status(),
                'files': bool(files_on) and not SECRET_DIR_RE.search(it['cat']),
                'cref': '%s,%s::%s' % (it['cat'], it['cat_uid'], ref),
                'migrated_to_uid': mig_uid if mig_uid in shown else '',
+               'origin': self._origin(it, misc), 'category': cat_def,
                'commands': ['cx %s find %s' % (cmd_cat, shell_ref),
                             'cx %s info %s' % (cmd_cat, shell_ref),
                             'cx %s read %s' % (cmd_cat, shell_ref),
@@ -1595,11 +1710,16 @@ class Category(InitCategory):
         return bool((misc or {}).get('client_local'))
 
     def _files_on(self, misc, cfg):
+        """The file browser: the cserver config decides (browse_files yes / no); without a word from it, a host that
+        signs its readers in may open it for them (misc.browse_files, with the scope of each request hiding what
+        they may not read); else a browser on the server's own machine only."""
         v = str(cfg.get('browse_files') or '').strip().lower()
         if v in ('yes', 'on', 'true', '1', 'all'):
             return True
         if v in ('no', 'off', 'false', '0', 'none'):
             return False
+        if (misc or {}).get('browse_files') is True:
+            return True
         return self._client_local(misc)
 
     def _open_on(self, misc, cfg):
@@ -1665,7 +1785,7 @@ class Category(InitCategory):
                     th = self._conn_start()
                     if th is not None and not _conn['ready']:
                         th.join(ARTIFACT_WAIT)         # a fresh worker process: what connects to it comes soon
-                    out = self._artifact(query.get('uid'), local, self._files_on(misc, self._cserver_config()))
+                    out = self._artifact(query.get('uid'), local, self._files_on(misc, self._cserver_config()), misc)
                 elif na == 'graph':
                     out = self._graph(query)
                 elif na in ('files', 'file'):
@@ -1711,6 +1831,10 @@ class Category(InitCategory):
                       'files': self._files_on(misc, cfg),
                       'open': _open_buttons(cfg) if open_on else {},
                       'graph': {'max_nodes': GRAPH_DEFAULT, 'max': GRAPH_MAX, 'depth_max': DEPTH_MAX},
+                      # where the page of one artifact is served (a host's /cref/, else this server's), and the
+                      # knowledge-graph page a host offers besides this page's own Graph tab
+                      'cref_url': str((misc or {}).get('cref_url') or ((urls.get('url_server') or '/') + 'cref/')),
+                      'graph_url': str((misc or {}).get('graph_url') or ''),
                       'state': state, 'notice': notice}
             with open(os.path.join(path_to_files, 'index.html'), encoding='utf-8') as f:
                 body = f.read()

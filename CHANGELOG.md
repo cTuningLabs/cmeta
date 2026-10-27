@@ -2,6 +2,41 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.37.9
+- **The scope of a call: `hide_repos`.** A control key of `cm.access` (and `--hide_repos=<aliases, UIDs or patterns>`
+  on every command line): the artifacts of those repositories are not found, listed, searched, drawn or read by that
+  call and by every call it makes - the index lookups (`Repos.find_in_index`, `find_in_file_system`) leave them out,
+  a category defined only there is not found, the repositories themselves stay registered (the repo category lists
+  them). A server applies it per request, for what a signed-in person may not see: the pages need no change of their
+  own. `Repos.push_hidden_repos` / `pop_hidden_repos` / `repo_hidden`; the scope is per call on one CMeta object (the
+  workers of CMetaAsync have one each). Tests: `tests/internal_repo_tests/test_integration_hide_repos.py`.
+- **cserver.browse opens on the categories.** The Browse tab (the first one now) lists every category on the left,
+  grouped by the first part of its name (`dapple.*`, `cserver.*` ...), each with how many of its artifacts the words,
+  the repositories and the dates keep; a click opens the category's artifacts on the right (sorted by name, paged,
+  the tags / years / repositories as chips to prune by), nothing picked shows what the server holds and how cMeta
+  organises it; the Search tab waits for words. `options` answers the category index (`categories`: name, desc,
+  counts, where defined), `search` the counts per category (`toc`); the detail of an artifact links its category and
+  its repository and names its **origin** (the folder on GitHub, from the clone's remote and branch, an
+  `<org>@<name>` alias, or `misc.repo_origins`); `misc.browse_files` lets a host that signs its readers in open the
+  file browser for them; the catalogue of the page is built unscoped and the scope of each request applied in
+  `_visible()`; `CFG.cref_url` / `graph_url` from the host.
+- **cserver.cref, the page of one artifact, rebuilt:** two columns - the text (README, note, or the facts of
+  `_desc.ck` when there is no text) and the connections grouped by category (each a link to the category's artifacts)
+  on the left; on the right the facts (the category with its definition, the repository, the origin on GitHub, the
+  UID, the dates, who made it, the path on this machine), the buttons Open folder / Shell / Far (a browser on the
+  server's machine), "Focus the graph here" with a depth, the host's knowledge-graph page; folded at the end the
+  commands (with copy buttons), `_cmeta`, `_desc` and the **Files** as a tree of the folder (`ck/` and its `YYYYMMDD`
+  days explained), each file opening in place with its own address. `cref_view.page: cserver.<name>` renders an
+  artifact through a page category instead of a text (a demo, a dashboard). The tags link to the search.
+- **`cx repo zip --skip_dirs=a,b`:** a comma-separated string from the command line is a list (it was read
+  character by character).
+- **The `[server]` extra brings `markdown`:** the pages of content repositories that render Markdown documents
+  (reports, notes) get it from `uv tool install "cmeta[server]"`, `pip install "cmeta[server]"` and the website
+  installers without a `--with`; the engine's own pages keep their own renderer.
+- **cserver.browse:** the Search tab starts clean - the search bar and what to type - whatever the Browse tab was
+  showing; a result appears for the words typed alone. The labels of the graph keep their halo on any host page
+  (`--cbr-surface` with a fallback).
+
 ## 0.37.8
 - **The cserver keeps its session key:** the key that signs the session cookie is made once and kept as
   `session-secret` in the folder of the cserver config artifact (owner-only), shared by every worker and every start,

@@ -93,6 +93,82 @@ class Repos:
 
         self._soft_lock_registered = False   # the repositories that ask for the soft lock were read once (init)
 
+        # The scope of the current call (CMeta.access with hide_repos): the repositories whose artifacts are not
+        # found, listed or read - names (aliases, UIDs) in a set, patterns (with * ? [) in a list, lower-cased.
+        # Empty = everything. The repositories themselves stay listed by the repo category: only their contents hide.
+        self.hidden_repos = ()
+        self._hidden_names = frozenset()
+        self._hidden_patterns = ()
+
+    ###################################################################################################
+    def push_hidden_repos(
+        self,
+        names,  # Repositories to hide: a comma-separated string, a list, or None / '' for no change.
+    ):
+        """
+            Hide the artifacts of more repositories for the calls that follow, until pop_hidden_repos(saved).
+
+            Args:
+                names: aliases, UIDs or fnmatch patterns, as a comma-separated string or a list.
+            Returns:
+                tuple: what to hand back to pop_hidden_repos() to restore the previous scope.
+        """
+        saved = (self.hidden_repos, self._hidden_names, self._hidden_patterns)
+
+        if isinstance(names, str):
+            names = names.split(',')
+
+        words = [str(n).strip().lower() for n in (names or []) if str(n).strip()]
+        if not words:
+            return saved
+
+        hidden = tuple(sorted(set(self.hidden_repos) | set(words)))
+        self.hidden_repos = hidden
+        self._hidden_names = frozenset(w for w in hidden if not any(c in w for c in '*?['))
+        self._hidden_patterns = tuple(w for w in hidden if any(c in w for c in '*?['))
+
+        return saved
+
+    def pop_hidden_repos(
+        self,
+        saved,  # What push_hidden_repos() returned.
+    ):
+        """Restore the scope that push_hidden_repos() replaced."""
+        self.hidden_repos, self._hidden_names, self._hidden_patterns = saved
+
+    def repo_hidden(
+        self,
+        cmeta_ref_parts,  # The cmeta_ref_parts of an index record (repo_alias, repo_uid) or of a repo artifact.
+        alias = None,  # The repository alias, when the parts do not carry it.
+        uid = None,  # The repository UID, when the parts do not carry it.
+    ):
+        """
+            Whether a repository is hidden by the scope of the current call.
+
+            Args:
+                cmeta_ref_parts: an index record's parts (its repo_alias / repo_uid) - or None with alias / uid given.
+            Returns:
+                bool: True when the repository (its alias or its UID) is hidden; False without a scope.
+        """
+        if not self.hidden_repos:
+            return False
+
+        if cmeta_ref_parts is not None:
+            alias = cmeta_ref_parts.get('repo_alias') if alias is None else alias
+            uid = cmeta_ref_parts.get('repo_uid') if uid is None else uid
+
+        alias = str(alias or '').lower()
+        uid = str(uid or '').lower()
+
+        if (alias and alias in self._hidden_names) or (uid and uid in self._hidden_names):
+            return True
+
+        for p in self._hidden_patterns:
+            if (alias and fnmatch.fnmatchcase(alias, p)) or (uid and fnmatch.fnmatchcase(uid, p)):
+                return True
+
+        return False
+
     ###################################################################################################
     def init(
         self,
@@ -460,6 +536,7 @@ class Repos:
         only_uids = False,  # If True, return only UIDs without full metadata.
         add_index_file = False,  # If True, include index_file path in result.
         skip_uids = False,  # If True, skip UID validation.
+        scope = True,  # If True, the hidden repositories of the current call (hide_repos) are left out.
     ):
         """
             Find artifacts in the repository index.
@@ -473,6 +550,9 @@ class Repos:
                 only_uids: If True, return only UIDs without full metadata.
                 add_index_file: If True, include index_file path in result.
                 skip_uids: If True, skip UID validation.
+                scope: If True (the default), the artifacts of the repositories hidden for the current call
+                    (CMeta.access with hide_repos) are left out; a catalogue that filters per viewer itself
+                    passes False.
             Returns:
                 dict: Dictionary with 'return': 0 and 'lst' containing found artifacts,
                       or 'return' > 0 and 'error' on failure.
@@ -535,8 +615,12 @@ class Repos:
 
         result = {'return':0, 'index_file': index_file, 'index': index}
 
+        # The scope of the current call: the artifacts of the hidden repositories are left out (the repositories
+        # themselves - the records of the repo category, which are inside no repository - stay listed)
+        hidden = bool(scope and self.hidden_repos)
+
         # Check if prune by repos
-        if repos or category_uid is not None:
+        if repos or category_uid is not None or hidden:
             pruned_artifact_uids = []
 
             for artifact_uid in artifact_uids:
@@ -551,6 +635,9 @@ class Repos:
                     continue
 
                 if category_uid is not None and artifact_cmeta_ref_parts['category_uid'] != category_uid:
+                    continue
+
+                if hidden and artifact_cmeta_ref_parts.get('repo_uid') and self.repo_hidden(artifact_cmeta_ref_parts):
                     continue
 
                 pruned_artifact_uids.append(artifact_uid)
@@ -637,6 +724,10 @@ class Repos:
 
             repo_alias = repo_cmeta_ref_parts.get('artifact_alias')
             repo_uid = repo_cmeta_ref_parts['artifact_uid']
+
+            # The scope of the current call (hide_repos): a hidden repository is not scanned
+            if self.hidden_repos and self.repo_hidden(None, alias = repo_alias, uid = repo_uid):
+                continue
 
             if category_uid in repo_meta.get('sharding_slices', {}):
                 sharding_slices = repo_meta['sharding_slices'][category_uid]

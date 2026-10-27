@@ -65,6 +65,7 @@ server = [
     "jinja2",
     "starlette",
     "itsdangerous",
+    "markdown",       # the pages of content repositories render Markdown documents (reports, notes) with it
     "cmeta[async]",
 ]
 

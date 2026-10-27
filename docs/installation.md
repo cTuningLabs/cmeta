@@ -61,7 +61,9 @@ cx --version
 ```
 
 The `server` extra is included because `cx app run cserver` cannot start
-without it &mdash; there is no uvicorn to run it with. `--with pip` puts pip
+without it &mdash; there is no uvicorn to run it with (since 0.37.9 it also
+brings `markdown`, which the pages of content repositories use to render their
+documents). `--with pip` puts pip
 into the tool's environment: a `uv tool` environment has none, and cMeta
 installs the Python packages a page or a task asks for with pip (without it,
 cMeta falls back to `uv pip install` for that interpreter, or to `ensurepip`).
@@ -172,8 +174,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force --with pip "cmeta[server]==0.37.8"
-pip install "cmeta==0.37.8"
+uv tool install --force --with pip "cmeta[server]==0.37.9"
+pip install "cmeta==0.37.9"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other

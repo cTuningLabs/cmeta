@@ -373,13 +373,37 @@ class CMeta:
             Access common meta framework in a unified way
 
             Args:
-                request (Dict[str, Any]): Dictionary containing the request data
+                request (Dict[str, Any]): Dictionary containing the request data. The control key `hide_repos`
+                    (aliases, UIDs or patterns of repositories, comma-separated or a list) narrows the scope of
+                    this call and of every call it makes: the artifacts of those repositories are not found,
+                    listed or read until the call returns - a server applies it per request, for what a
+                    signed-in person may not see. The repositories stay registered (the repo category lists
+                    them); only their contents are hidden. The scope is per call on this CMeta object: a
+                    process that serves several callers at once gives each its own CMeta (the workers of
+                    CMetaAsync have one each).
             Returns:
                 Dictionary with {"return": 0, ...} for success or {"return": >0, "error": "error text"} for errors
 
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
+
+        hide = request.get('hide_repos', None) if isinstance(request, dict) else None
+        if hide is None or hide == '' or hide == []:
+            return self._access(request)
+
+        saved = self.repos.push_hidden_repos(hide)
+        try:
+            return self._access(request)
+        finally:
+            self.repos.pop_hidden_repos(saved)
+
+    ###################################################################################################
+    def _access(
+        self,
+        request: Dict[str, Any],  # Dictionary containing the request data
+    ) -> Dict[str, Any]:
+        """The body of access(): the scope of the call (hide_repos) is set and restored around it."""
 
         self_time_start = time.perf_counter()
 
