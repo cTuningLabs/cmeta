@@ -98,6 +98,14 @@
     var href = cat ? crefUrl(cat, alias, uid, rel) : '?uid=' + uid + (rel ? '&file=' + encodeURIComponent(rel) : '');
     return h('a', {href: href, class: 'cbr-cref', title: 'open ' + (rel ? rel + ' of ' : '') + (alias || 'this artifact')}, label);
   }
+  // A text block coloured by its kind (js/hl.js, when its name says one) with the cRefs inside as links; a plain
+  // text keeps the cRef links alone
+  function codePre(text, name) {
+    var pre = h('pre', {});
+    if (window.cmetaHL && cmetaHL.lang(name)) pre.innerHTML = cmetaHL(text, name, {cref_url: CFG.cref_url || ((CFG.url_server || '/') + 'cref/')});
+    else pre.appendChild(withRefs(text));
+    return pre;
+  }
   function busy(on, what) {
     busyCount = Math.max(0, busyCount + (on ? 1 : -1));
     var b = $('cbr-busy');
@@ -329,6 +337,8 @@
     if (dsc.asked) s += dsc.searched ? ' · meta and ' + num(dsc.count) + ' descriptions searched'
                                      : ' · the descriptions are not read yet: the meta alone was searched';
     if (r.catalog && r.catalog.built) s += ' · index loaded ' + r.catalog.built;
+    // a server started before an engine upgrade keeps the core it loaded while its pages reload: say so
+    if (r.catalog && r.catalog.stale_engine) showError('This server runs an older cMeta core than its pages (Repos.find_in_index without scope): restart it (cx app run cserver) to load the engine it was upgraded to.');
     $('cbr-status').textContent = s;
   }
   function render() {
@@ -682,10 +692,10 @@
       box.appendChild(h('h3', {}, 'Commands'));
       (d.commands || []).forEach(function (c) { box.appendChild(cmdLine(c)); });
       box.appendChild(h('h3', {}, 'Meta (_cmeta)'));
-      box.appendChild(h('pre', {}, withRefs(JSON.stringify(d.meta, null, 2))));
+      box.appendChild(codePre(JSON.stringify(d.meta, null, 2), '_cmeta.json'));
       if (d.desc) {
         box.appendChild(h('h3', {}, 'Description (' + d.desc_file + ')'));
-        box.appendChild(h('pre', {}, withRefs(JSON.stringify(d.desc, null, 2))));
+        box.appendChild(codePre(JSON.stringify(d.desc, null, 2), '_desc.json'));
       }
       box.hidden = false;
       box.scrollTop = 0;
@@ -808,7 +818,7 @@
       view.appendChild(h('div', {class: 'cbr-fhead'}, h('b', {}, j.rel), ' · ' + fmtSize(j.size) +
         (j.truncated ? ' · the first 512 KB' : '') + ' ', close));
       if (j.kind === 'text') {
-        view.appendChild(h('pre', {}, withRefs(j.text)));
+        view.appendChild(codePre(j.text, j.rel));
       } else if (j.kind === 'binary' && j.b64) {
         var bin = atob(j.b64), arr = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);

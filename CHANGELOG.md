@@ -2,6 +2,20 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.37.10
+- **The files the pages show are coloured.** The file viewer of the browse page, the text a `/cref/<cRef>/<file>`
+  address shows, a note's front matter and the `_cmeta`/`_desc` blocks are coloured by their kind - yaml, json,
+  python, markdown, shell, bat, ps1, and a generic one for js/css/html - by one dependency-free tokenizer
+  (`cserver.browse/files/js/hl.js`, inlined into the cref page), with every `{{{cRef}}}/path` inside as a link; a
+  plain text keeps the cRef links alone; light and dark themes; a text over 300 KB is left as it is. A 270 KB file
+  colours in a few milliseconds in the browser; nothing changes on the server side.
+- **cserver.browse on a server that outlived an engine upgrade:** a running cserver keeps the engine core it loaded
+  while its pages reload by themselves, so after 0.37.9 a server started before the upgrade answered `/browse` with
+  `TypeError: Repos.find_in_index() got an unexpected keyword argument 'scope'`. The catalogue now builds on the older
+  core too (the lookup without the scope) and the page says in its status that the server runs an older core than
+  its pages and asks for a restart (`catalog.stale_engine`). Test: `test_catalog_on_an_engine_core_without_scope`.
+  The rule stays: restart every server after an engine upgrade (`cx host upgrade --restart`).
+
 ## 0.37.9
 - **The scope of a call: `hide_repos`.** A control key of `cm.access` (and `--hide_repos=<aliases, UIDs or patterns>`
   on every command line): the artifacts of those repositories are not found, listed, searched, drawn or read by that
