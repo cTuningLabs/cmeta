@@ -1861,6 +1861,7 @@ class Category(InitCategory):
                 '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +   # phones: no 980px page
                 '<link rel="stylesheet" href="%s">\n' % _asset(path_to_files, url_files, 'css/browse.css') +
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/graph.js') +
+                '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/hl.js') +      # the file viewer's colouring
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/browse.js')
             )
             return {'return': 0, 'html_meta': {'html': body, 'page_title': title,

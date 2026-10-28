@@ -273,10 +273,10 @@ class Category(InitCategory):
                     front, body = m.group(1), body[m.end():]
                 out = self._render_md(body, desc)
                 if front:
-                    out = ('<details class="cxr-front"><summary>Front matter</summary><pre class="cxr-pre">%s</pre></details>\n'
+                    out = ('<details class="cxr-front"><summary>Front matter</summary><pre class="cxr-pre" data-name="front-matter.yaml">%s</pre></details>\n'
                            % _esc(front)) + out
                 return cand, out, note
-            return cand, '<pre class="cxr-pre">%s</pre>' % _esc(body), note
+            return cand, '<pre class="cxr-pre" data-name="%s">%s</pre>' % (_esc(cand), _esc(body)), note      # coloured by the page's script
         return '', '', ''
 
     def _render_md(self, body, desc):
@@ -454,9 +454,9 @@ class Category(InitCategory):
                 T.append('<details><summary>Commands</summary><p class="cxr-muted">The same artifact from a terminal with cMeta installed.</p>%s</details>'
                          % ''.join('<div class="cxr-cmd"><code>%s</code><button type="button" class="cxr-copy sm" data-copy="%s">copy</button></div>' % (_esc(c), _esc(c)) for c in a['commands']))
             if 'cmeta' not in hide:
-                T.append('<details><summary>See _cmeta <span class="cxr-n">who made it, when, the tags</span></summary><pre class="cxr-pre cxr-refs">%s</pre></details>' % _esc(json.dumps(meta, indent=2, ensure_ascii=False, default=str)))
+                T.append('<details><summary>See _cmeta <span class="cxr-n">who made it, when, the tags</span></summary><pre class="cxr-pre cxr-refs" data-name="_cmeta.json">%s</pre></details>' % _esc(json.dumps(meta, indent=2, ensure_ascii=False, default=str)))
             if 'desc' not in hide and desc:
-                T.append('<details><summary>See _desc <span class="cxr-n">the facts and the connections (%s)</span></summary><pre class="cxr-pre cxr-refs">%s</pre></details>'
+                T.append('<details><summary>See _desc <span class="cxr-n">the facts and the connections (%s)</span></summary><pre class="cxr-pre cxr-refs" data-name="_desc.json">%s</pre></details>'
                          % (_esc(a.get('desc_file') or ''), _esc(json.dumps(desc, indent=2, ensure_ascii=False, default=str))))
             if 'files' not in hide and a.get('files'):
                 T.append('<details id="cxr-files" data-uid="%s"><summary>Files <span class="cxr-n">the artifact\'s folder</span></summary>'
@@ -526,7 +526,7 @@ class Category(InitCategory):
         css = CSS
         html_body = '<div id="cxr" class="cxr%s">%s</div>%s%s' % (
             ' cxr-dark' if dark else '', body,
-            '<script>var CXR_CONFIG = %s;</script>' % _js(config or {}), JS)
+            '<script>var CXR_CONFIG = %s;</script><script>%s</script>' % (_js(config or {}), HL_JS), JS)
         return {'return': 0, 'html_meta': {'html': html_body, 'page_title': title,
                                             'page_extra_style': '<meta name="viewport" content="width=device-width, initial-scale=1">\n<style>%s</style>\n%s' % (css, extra_head or '')}}
 
@@ -535,6 +535,13 @@ def _q(s):
     from urllib.parse import quote
     return quote(str(s), safe='')
 
+
+# The file viewer's colouring, shared with cserver.browse - one source, its files/js/hl.js, inlined into this page
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'cserver.browse', 'files', 'js', 'hl.js'), encoding='utf-8') as _f:
+        HL_JS = _f.read()
+except OSError:
+    HL_JS = ''
 
 CSS = """
 .cxr{--fg:#14161a;--muted:#6b7280;--accent:#2a78d6;--line:#e5e7eb;--soft:#f6f7f9;color:var(--fg);max-width:1180px;margin:0 auto;padding:12px 16px 48px;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -577,12 +584,16 @@ CSS = """
 .cxr-fview{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}.cxr-fhead{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;margin-bottom:4px;overflow-wrap:anywhere}
 .cxr-fview img{max-width:100%;border:1px solid var(--line);border-radius:6px}.cxr-fview iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:6px;background:#fff}
 .cxr-fview .cxr-text{border-top:0;padding-top:0}
+.hl-c{color:#6a737d;font-style:italic}.hl-s{color:#0a7a3f}.hl-k{color:#1f4fbf;font-weight:600}.hl-v{color:#b35c00}.hl-n{color:#9a2a7a}.hl-h{color:#1f4fbf;font-weight:700}.hl-d{color:#7a3ab8}.hl-p{color:#6a737d}.hl-t{color:#1f4fbf}.hl-r{color:var(--accent);text-decoration:underline dotted}
+.cxr-dark .hl-c{color:#8b949e}.cxr-dark .hl-s{color:#7ee787}.cxr-dark .hl-k{color:#79c0ff}.cxr-dark .hl-v{color:#ffa657}.cxr-dark .hl-n{color:#d2a8ff}.cxr-dark .hl-h{color:#79c0ff}.cxr-dark .hl-d{color:#d2a8ff}.cxr-dark .hl-t{color:#79c0ff}
 @media (max-width:860px){.cxr{padding:8px 12px 40px}.cxr-title{font-size:22px}.cxr-cols{grid-template-columns:minmax(0,1fr)}.cxr-side{position:static}.cxr-links{columns:1}}
 """
 
 JS = """<script>
 (function(){
   var C=window.CXR_CONFIG||{};
+  // the text blocks named by their file (the text shown, a front matter, the _cmeta/_desc) coloured by their kind, the cRefs inside as links
+  if(window.cmetaHL){document.querySelectorAll('pre.cxr-pre[data-name]').forEach(function(p){var n=p.getAttribute('data-name');if(cmetaHL.lang(n))p.innerHTML=cmetaHL(p.textContent,n,{cref_url:C.cref_url||'/cref/'});});}
   var b=document.getElementById('cxr-back');
   try{if(b&&history.length>1&&document.referrer&&new URL(document.referrer).origin===location.origin){b.hidden=false;b.addEventListener('click',function(e){e.preventDefault();history.back();});}}catch(e){}
   document.querySelectorAll('.cxr-copy').forEach(function(x){x.addEventListener('click',function(){
@@ -614,7 +625,7 @@ JS = """<script>
       var head=h('div','cxr-fhead');head.appendChild(h('b',null,j.rel));head.appendChild(document.createTextNode(' \\u00b7 '+size(j.size)+(j.truncated?' \\u00b7 the first 512 KB':'')));
       var cl=h('button','cxr-copy sm','close');cl.type='button';cl.addEventListener('click',function(){view.innerHTML='';});head.appendChild(cl);
       var ln=h('a','cxr-copy sm','link');ln.href=(C.cref_url||'/cref/')+encodeURI(C.cref)+'/'+j.rel.split('/').map(encodeURIComponent).join('/');ln.title='The address of this file';head.appendChild(ln);view.appendChild(head);
-      if(j.kind==='text'){var pre=h('pre','cxr-pre cxr-refs');pre.textContent=j.text;view.appendChild(pre);}
+      if(j.kind==='text'){var pre=h('pre','cxr-pre cxr-refs');if(window.cmetaHL){pre.innerHTML=cmetaHL(j.text,j.rel,{cref_url:C.cref_url||'/cref/'});}else{pre.textContent=j.text;}view.appendChild(pre);}
       else if(j.kind==='binary'&&j.b64){var bin=atob(j.b64),arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);blob=URL.createObjectURL(new Blob([arr],{type:j.mime}));
         var a=h('a',null,'open in a new tab');a.href=blob;a.target='_blank';a.rel='noopener';view.appendChild(a);
         if(j.mime.indexOf('image/')===0){var im=document.createElement('img');im.src=blob;im.alt=j.rel;view.appendChild(im);}else if(j.mime==='application/pdf'){var fr=document.createElement('iframe');fr.src=blob;fr.title=j.rel;view.appendChild(fr);}}

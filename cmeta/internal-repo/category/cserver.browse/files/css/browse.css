@@ -330,3 +330,11 @@
   .cbr-legend { display: none; }
   .cbr-gtools { flex-wrap: wrap; max-width: calc(100% - 16px); }
 }
+
+/* The file viewer's colouring (js/hl.js): comments, strings, keys and keywords, values, numbers, headings, cRef links */
+.hl-c { color: #6a737d; font-style: italic; } .hl-s { color: #0a7a3f; } .hl-k { color: #1f4fbf; font-weight: 600; } .hl-v { color: #b35c00; }
+.hl-n { color: #9a2a7a; } .hl-h { color: #1f4fbf; font-weight: 700; } .hl-d { color: #7a3ab8; } .hl-p { color: #6a737d; } .hl-t { color: #1f4fbf; }
+.hl-r { color: var(--cbr-accent, #2a78d6); text-decoration: underline dotted; }
+#cbr.dark .hl-c { color: #8b949e; } #cbr.dark .hl-s { color: #7ee787; } #cbr.dark .hl-k { color: #79c0ff; } #cbr.dark .hl-v { color: #ffa657; }
+#cbr.dark .hl-n { color: #d2a8ff; } #cbr.dark .hl-h { color: #79c0ff; } #cbr.dark .hl-d { color: #d2a8ff; } #cbr.dark .hl-t { color: #79c0ff; }
+
