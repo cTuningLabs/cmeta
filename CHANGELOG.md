@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.37.10.1)
+## 0.37.11
 - **A moved cache entry keeps its tool.** After `cx cache move` (or with a repository synced or mounted elsewhere) an
   entry's recorded `tool_path` (or `git_path`) still named the folder it was saved in, so the cache category called
   the entry `broken` and the task engine installed the tool again - without `-q` it asked, had no one to answer and
