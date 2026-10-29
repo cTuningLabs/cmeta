@@ -214,6 +214,55 @@ def installed_tool(cm, stem, uid, name):
     return folder, uid
 
 
+def stamped_tool(cm, alias, saved=None, tool_path=None):
+    """An entry with a tool installed into its own folder and the result as the task engine saves it: the folder it
+    was saved in (`_cmeta_entry_path`, default its own) and the recorded `tool_path` (default the tool there)."""
+    folder, uid = make_entry(cm, alias)
+    tool = os.path.join(folder, 'content', 'bin', 'tool')
+    os.makedirs(os.path.dirname(tool))
+    with open(tool, 'w') as f:
+        f.write('tool')
+    with open(os.path.join(folder, RESULT), 'w', encoding='utf-8') as f:
+        json.dump({'return': 0, '_cmeta_entry_path': saved or folder, 'path': tool_path or tool}, f)
+    r = cm.access({'category': CATEGORY, 'command': 'update', 'arg1': uid, 'meta': {'params': {'tool_path': tool_path or tool}}, 'con': False})
+    assert r['return'] == 0, r.get('error')
+    return folder, uid, tool
+
+
+def test_a_moved_entry_keeps_its_tool(cm, tmp_path):
+    """
+    cx cache move (or a repository synced or mounted elsewhere): the recorded tool_path still names the folder the
+    entry was saved in - the entry was "broken" and its tool installed again. The result's `_cmeta_entry_path` says
+    which folder that was, and the same path under the entry's current folder counts.
+    """
+    folder, uid, tool = stamped_tool(cm, 'task--t--moved')
+    assert state_of(cm, uid)['state'] == 'ok'
+
+    r = cm.access({'category': CATEGORY, 'command': 'move', 'arg1': uid, 'arg2': 'task--t--moved-here', 'con': False})
+    assert r['return'] == 0, r.get('error')
+    here = os.path.join(os.path.dirname(folder), 'task--t--moved-here')
+    assert not os.path.exists(tool) and os.path.isfile(os.path.join(here, 'content', 'bin', 'tool'))
+    assert state_of(cm, uid)['state'] == 'ok', state_of(cm, uid)
+
+    # without the stamp (an entry saved before it existed) the old rule holds; so it does when the file is gone
+    with open(os.path.join(here, RESULT), 'w', encoding='utf-8') as f:
+        json.dump({'return': 0}, f)
+    s = state_of(cm, uid)
+    assert s['state'] == 'broken' and 'tool_path is gone' in s['why'], s
+    with open(os.path.join(here, RESULT), 'w', encoding='utf-8') as f:
+        json.dump({'return': 0, '_cmeta_entry_path': folder}, f)
+    os.remove(os.path.join(here, 'content', 'bin', 'tool'))
+    assert state_of(cm, uid)['state'] == 'broken'
+
+
+def test_a_path_saved_on_windows_is_relocated_on_any_os(cm, tmp_path):
+    """The folder an entry was saved in on Windows (another case, the other separator) relocates on any OS."""
+    saved = 'C:\\Users\\Someone\\CMETA\\repos\\local\\cache\\task--t--win'
+    folder, uid, tool = stamped_tool(cm, 'task--t--win', saved=saved,
+                                     tool_path='c:\\users\\someone\\cmeta\\repos\\local\\cache\\TASK--T--WIN\\content\\bin\\tool')
+    assert state_of(cm, uid)['state'] == 'ok', state_of(cm, uid)
+
+
 def test_duplicates_are_the_usable_entries_that_answer_the_same_requests(cm, tmp_path):
     params = {'name': 'd', 'version': '1', 'with': {'compute': ['cpu']}}
 

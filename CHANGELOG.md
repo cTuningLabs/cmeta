@@ -2,6 +2,16 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.37.11
+- **A moved cache entry keeps its tool.** After `cx cache move` (or with a repository synced or mounted elsewhere) an
+  entry's recorded `tool_path` (or `git_path`) still named the folder it was saved in, so the cache category called
+  the entry `broken` and the task engine installed the tool again - without `-q` it asked, had no one to answer and
+  failed. The state check now looks for the same path under the entry's current folder when the result records the
+  folder it was saved in (`_cmeta_entry_path`, stamped by the cmeta-aops task engine), with the rules of the task
+  engine's relocation of a cached result (either separator, a path saved on Windows compared without case); an entry
+  without the stamp behaves as before. Tests: `test_a_moved_entry_keeps_its_tool`,
+  `test_a_path_saved_on_windows_is_relocated_on_any_os`.
+
 ## 0.37.10
 - **The files the pages show are coloured.** The file viewer of the browse page, the text a `/cref/<cRef>/<file>`
   address shows, a note's front matter and the `_cmeta`/`_desc` blocks are coloured by their kind - yaml, json,

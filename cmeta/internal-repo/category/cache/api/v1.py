@@ -40,7 +40,8 @@ def entry_state(
         - `failed`: the `failed` tag (the last attempt ended with an error), or a result file with `return > 0`;
         - `broken`: a result file that cannot be read, a result file missing from an entry the task engine's
           cache flow made (its request record, or the ctx file of a finished attempt, is there), or the
-          recorded `tool_path` (or `git_path`) is gone;
+          recorded `tool_path` (or `git_path`) is gone - also under the entry's current folder when the entry
+          moved since it was saved (the result's `_cmeta_entry_path`);
         - `ok`: everything else - a result with `return 0` and the recorded paths present, or a cache
           artifact that never carries a result (a program's build workspace, a folder used as storage).
 
@@ -127,14 +128,48 @@ def entry_state(
         info['why'] = 'no result file (a cache artifact without a task result)'
         return info
 
+    # A moved entry (cx cache move, a repository synced or mounted elsewhere) still records the folder it was saved
+    # in: the same path under its current folder counts - the task engine relocates the result the same way when it
+    # reuses it, and a moved tool was "broken" before, so the next run installed it again (2026-10-29)
+    saved = result.get('_cmeta_entry_path') if isinstance(result, dict) else None
     for key in ('tool_path', 'git_path'):
         p = params.get(key)
         if p and not (os.path.isfile(p) or os.path.isdir(p)):
+            moved = _moved_path(p, saved, result_dir)
+            if moved and (os.path.isfile(moved) or os.path.isdir(moved)):
+                continue
             info['state'] = 'broken'
             info['why'] = f'the recorded {key} is gone: {p}'
             return info
 
     return info
+
+
+def _moved_path(
+    p: str,  # A path recorded in the entry's meta (tool_path, git_path).
+    saved,  # The folder the entry was saved in (the result's _cmeta_entry_path), or None.
+    here: str,  # The folder the entry's result lives in now.
+):
+    """
+        The same path under the entry's current folder when `p` lies in the folder the entry was saved in and the
+        entry has moved since, else None. The rules of the task engine's relocation of a cached result (cmeta-aops
+        `_relocate_cached_result`): either separator, a path saved on Windows compared without case.
+    """
+    if not saved or not here or not isinstance(p, str):
+        return None
+
+    here = str(here).rstrip('/\\')
+    saved = str(saved).rstrip('/\\')
+    if os.path.normcase(saved.replace('\\', '/')) == os.path.normcase(here.replace('\\', '/')):
+        return None
+
+    fold = (os.name == 'nt') or ('\\' in saved) or (len(saved) > 1 and saved[1] == ':')
+    for prefix in sorted({saved, saved.replace('\\', '/'), saved.replace('/', '\\')}, key=len, reverse=True):
+        head = p[:len(prefix)]
+        if (head.lower() == prefix.lower() if fold else head == prefix) and (len(p) == len(prefix) or p[len(prefix)] in '/\\'):
+            return here + p[len(prefix):].replace('\\', '/').replace('/', os.sep)
+
+    return None
 
 
 # The tags that tell the state of an entry, not what it holds
