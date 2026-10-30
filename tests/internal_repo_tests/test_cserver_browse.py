@@ -443,3 +443,50 @@ def test_catalog_on_an_engine_core_without_scope(cm, monkeypatch):
     make(cm, 'sla-extra', tags=['sla'], created='2026-10-02T10:00:00+00:00')
     out = web(cm, native_action='search', q='sla')['json']
     assert out['catalog']['stale_engine'] is False and out['total'] >= 3
+
+
+def test_an_artifact_is_named_by_its_cref_never_by_a_bare_uid(cm):
+    """An artifact's UID is unique only with its category's: the pages name an artifact in their addresses as
+    cref=<category UID>::<artifact UID> (and focus= the same), never ?uid= (the user's rule, 2026-10-30); the ?uid=
+    and focus=<UID> of older links still open."""
+    uid, path = make(cm, 'cref-a')
+    with open(os.path.join(path, 'notes.md'), 'w', encoding='utf-8') as f:
+        f.write('# notes\n')
+    connect(path, 'log::sla-notes')
+    web(cm, native_action='reload')
+    cat_uid = web(cm, native_action='artifact', uid=uid)['json']['row']['cat_uid'].lower()
+    node = '%s::%s' % (cat_uid, uid)
+    other = '0123456789abcdef'
+
+    def resolve(cref):
+        out = web(cm, native_action='resolve', cref=cref)['json']
+        return out['uid'], out['rel']
+
+    # the two UIDs alone, with a path, the long forms; a category UID that is not the artifact's names nothing
+    assert resolve(node) == (uid, '')
+    assert resolve(node + '/notes.md') == (uid, 'notes.md')
+    assert resolve('log,%s::cref-a,%s' % (cat_uid, uid)) == (uid, '')
+    assert resolve('log::cref-a') == (uid, '')
+    assert resolve('%s::%s' % (other, uid))[0] == ''
+    assert resolve('log,%s::cref-a,%s' % (other, uid))[0] == ''
+
+    # the page opens what its address names: the cRef and a file beside it, or an older link's UID
+    s = page_config(web(cm, cref=node, file='notes.md'))['state']
+    assert (s['uid'], s['file']) == (uid, 'notes.md')
+    assert page_config(web(cm, cref=node + '/notes.md'))['state']['file'] == 'notes.md'
+    assert page_config(web(cm, uid=uid))['state']['uid'] == uid
+
+    # the graph: a focus by cRef, a node that carries its category's UID (what the page focuses with)
+    g = graph(cm, focus=node, depth='1')
+    assert g['focus']['uid'] == uid and 'sla-notes' in arts(g)
+    assert all(n['cat_uid'] == cat_uid for n in g['nodes'] if n['kind'] == 'artifact')
+    assert graph(cm, focus='%s::%s' % (other, uid))['focus'] is None
+    assert graph(cm, focus=uid)['focus']['uid'] == uid
+
+    # the page of the artifact links to the browser and the graph by the same cRef
+    r = cm.access({'category': 'cserver.cref', 'command': 'web', 'con': False, 'urls': dict(URLS),
+                   'query': {'cref': 'log::cref-a,' + uid}, 'misc': {}})
+    assert r['return'] == 0, r
+    html = r['html_meta']['html']
+    assert 'browse?cref=%s"' % node in html and 'focus=%s"' % node in html
+    assert 'uid=' + uid not in html and 'focus=' + uid not in html
