@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.37.11.1)
+## 0.37.12
 - **The pages name an artifact by its cRef, never by a bare UID.** An artifact's UID is unique only with its
   category's, so the browse page's address now says `?cref=<category UID>::<artifact UID>` (with `&file=<path>` for an
   open file) for the open artifact, and `focus=<category UID>::<artifact UID>` for a focused graph, instead of
