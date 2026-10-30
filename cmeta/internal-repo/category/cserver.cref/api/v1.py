@@ -378,8 +378,12 @@ class Category(InitCategory):
                                    lambda m: '' if re.sub(r'<[^>]+>', '', m.group(1)).strip().lower() == _esc(str(title)).strip().lower() else m.group(0),
                                    text_html, count=1, flags=re.S)
 
+        # the browser is asked by cRef, never by a bare UID (unique only with its category's): its own form,
+        # <category UID>::<artifact UID> (':' and ',' stay readable in an address)
+        node = '%s::%s' % (str(row.get('cat_uid') or cat).lower(), uid)
+
         def browse_link(**keys):
-            return _esc(browse_url + ('&' if '?' in browse_url else '?') + '&'.join('%s=%s' % (k, _q(v)) for k, v in keys.items() if v))
+            return _esc(browse_url + ('&' if '?' in browse_url else '?') + '&'.join('%s=%s' % (k, _q(v, ':,')) for k, v in keys.items() if v))
 
         H = []
         H.append('<div class="cxr-top"><a class="cxr-back" id="cxr-back" href="#" hidden>&larr; Back</a>'
@@ -390,7 +394,7 @@ class Category(InitCategory):
                  ' &middot; <button type="button" class="cxr-copy" data-copy="%s">Copy cRef</button></span></div>'
                  % (browse_link(view='browse', cats=cat), _esc(cat),
                     browse_link(view='browse', repos=row.get('repo') or ''), _esc(row.get('repo') or '(registry)'),
-                    browse_link(uid=uid), browse_link(view='graph', focus=uid),
+                    browse_link(cref=node), browse_link(view='graph', focus=node),
                     (' &middot; <a href="%s" title="The knowledge-graph page, focused on this artifact">Knowledge graph</a>'
                      % _esc(graph_url + ('&' if '?' in graph_url else '?') + 'focus=' + _q(alias))) if graph_url else '',
                     _esc(short)))
@@ -443,7 +447,7 @@ class Category(InitCategory):
                 H.append('<h3><a href="%s">%s</a> <span class="cxr-n">%d</span></h3><ul class="cxr-links">%s</ul>'
                          % (browse_link(view='browse', cats=g), _esc(g), len(groups[g]), ''.join(item_link(c) for c in groups[g])))
             if n > len(a['incoming']):
-                H.append('<p class="cxr-muted">... and %d more: <a href="%s">open the graph</a></p>' % (n - len(a['incoming']), browse_link(view='graph', focus=uid)))
+                H.append('<p class="cxr-muted">... and %d more: <a href="%s">open the graph</a></p>' % (n - len(a['incoming']), browse_link(view='graph', focus=node)))
             H.append('</section>')
         elif 'incoming' not in hide and a.get('index') and not (a['index'] or {}).get('ready'):
             H.append('<p class="cxr-muted">What connects to this artifact is still being read - open the page again in a moment.</p>')
@@ -496,14 +500,14 @@ class Category(InitCategory):
             H.append('<div id="cxr-open" class="cxr-open" hidden></div>')
             H.append('<div class="cxr-graph"><a class="cxr-btn cxr-primary" id="cxr-focus" href="%s">Focus the graph here</a>'
                      '<label>depth <select id="cxr-depth">%s</select></label></div>'
-                     % (browse_link(view='graph', focus=uid), ''.join('<option value="%d"%s>%s</option>' % (d, ' selected' if d == 2 else '', 'all' if d == 12 else d) for d in (1, 2, 3, 4, 5, 6, 12))))
+                     % (browse_link(view='graph', focus=node), ''.join('<option value="%d"%s>%s</option>' % (d, ' selected' if d == 2 else '', 'all' if d == 12 else d) for d in (1, 2, 3, 4, 5, 6, 12))))
             if graph_url:
                 H.append('<div class="cxr-graph2"><a href="%s">Knowledge graph &#8599;</a></div>'
                          % _esc(graph_url + ('&' if '?' in graph_url else '?') + 'focus=' + _q(alias)))
         H.append('</aside></div>')      # end of the columns
 
         config = {'browse_url': browse_url, 'cref_url': self._cref_url, 'uid': uid, 'cref': short,
-                  'open': bool(misc.get('client_local')) and tech, 'focus_url': browse_url + ('&' if '?' in browse_url else '?') + 'view=graph&focus=' + _q(uid),
+                  'open': bool(misc.get('client_local')) and tech, 'focus_url': browse_url + ('&' if '?' in browse_url else '?') + 'view=graph&focus=' + _q(node, ':'),
                   'files': bool(a.get('files')) and tech and 'files' not in hide, 'file': rel if rel and not shown else ''}
         return self._page(dark, title, '\n'.join(H), config=config, extra_head=page_head)
 
@@ -531,9 +535,9 @@ class Category(InitCategory):
                                             'page_extra_style': '<meta name="viewport" content="width=device-width, initial-scale=1">\n<style>%s</style>\n%s' % (css, extra_head or '')}}
 
 
-def _q(s):
+def _q(s, safe=''):
     from urllib.parse import quote
-    return quote(str(s), safe='')
+    return quote(str(s), safe=safe)
 
 
 # The file viewer's colouring, shared with cserver.browse - one source, its files/js/hl.js, inlined into this page

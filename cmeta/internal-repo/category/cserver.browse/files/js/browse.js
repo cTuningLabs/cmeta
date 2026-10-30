@@ -21,9 +21,11 @@
 
   // The state in the URL: the query, the view, the open artifact, and the graph (focus, depth, nodes, switches:
   // '' = the default, '1' / '0' = set). A bare page opens on Browse: the categories, nothing searched yet.
-  var URL_KEYS = ['q', 'repos', 'cats', 'after', 'before', 'sort', 'dir', 'uid', 'file', 'focus', 'depth', 'max_nodes',
+  // An artifact is named there by its cRef, never by a bare UID (unique only with its category's): the open one is
+  // cref=<category UID>::<artifact UID>, a focus the same; st.uid is the page's own handle, resolved by the server.
+  var URL_KEYS = ['q', 'repos', 'cats', 'after', 'before', 'sort', 'dir', 'cref', 'file', 'focus', 'depth', 'max_nodes',
                   'categories', 'core', 'isolated', 'neighbors', 'labels', 'links'];
-  var st = {view: 'browse'};
+  var st = {view: 'browse', uid: ''};
   URL_KEYS.forEach(function (k) { st[k] = ''; });
   Object.keys(st).forEach(function (k) { if (CFG.state && CFG.state[k]) st[k] = CFG.state[k]; });
   if (VIEWS.indexOf(st.view) < 0) st.view = 'browse';
@@ -95,9 +97,11 @@
     return u.toString();
   }
   function refLink(uid, rel, label, cat, alias) {
-    var href = cat ? crefUrl(cat, alias, uid, rel) : '?uid=' + uid + (rel ? '&file=' + encodeURIComponent(rel) : '');
-    return h('a', {href: href, class: 'cbr-cref', title: 'open ' + (rel ? rel + ' of ' : '') + (alias || 'this artifact')}, label);
+    return h('a', {href: crefUrl(cat, alias, uid, rel), class: 'cbr-cref',
+                   title: 'open ' + (rel ? rel + ' of ' : '') + (alias || 'this artifact')}, label);
   }
+  // how this page names an artifact in its address: <category UID>::<artifact UID>
+  function crefOf(catUid, uid) { return catUid ? catUid.toLowerCase() + '::' + uid : uid; }
   // A text block coloured by its kind (js/hl.js, when its name says one) with the cRefs inside as links; a plain
   // text keeps the cRef links alone
   function codePre(text, name) {
@@ -179,7 +183,7 @@
         if (st[k]) u.searchParams.set(k, st[k]); else u.searchParams.delete(k);
       });
       if (st.view !== 'search') u.searchParams.set('view', st.view); else u.searchParams.delete('view');
-      u.searchParams.delete('cref');           // an outside cRef was resolved by the server into uid and file
+      u.searchParams.delete('uid');            // an older link's bare UID: the cRef names the artifact now
       history.replaceState(null, '', u.toString());
     } catch (e) { /* old browser: the state stays in the page */ }
     $('cbr-json').href = st.view === 'graph' ? apiUrl('graph') + '&' + qs(graphParams())
@@ -628,10 +632,11 @@
     if (!uid) return;
     st.uid = uid;
     st.file = file || '';
-    syncUrl();
     var my = ++detailToken;
     call('artifact', {uid: uid}, 'reading the artifact').then(function (d) {
       if (my !== detailToken) return;
+      st.cref = crefOf(d.row.cat_uid, d.row.uid);   // the address names it once its category is known
+      syncUrl();
       subtitle({index: d.index});
       var box = $('cbr-detail');
       box.innerHTML = '';
@@ -669,7 +674,7 @@
         d.row.tags.forEach(function (t) { tg.appendChild(chip(t)); });
         box.appendChild(tg);
       }
-      box.appendChild(focusBar(d.row.uid));
+      box.appendChild(focusBar(crefOf(d.row.cat_uid, d.row.uid)));
       linkList(box, 'Connects to', d.connections, function (c) { return c.cref; });
       linkList(box, 'Uses', d.uses, function (c) { return c.ref; });
       linkList(box, 'AI uses (reads the memory and skills of)', d.ai_uses, function (c) { return c.cref; });
@@ -704,8 +709,7 @@
   function closeDetail() {
     detailToken++;
     $('cbr-detail').hidden = true;
-    st.uid = '';
-    st.file = '';
+    st.uid = st.cref = st.file = '';
     syncUrl();
   }
   // Open the folder on this machine (a browser on the server's own machine only): file manager, shell, Far
@@ -740,14 +744,15 @@
     });
     return sel;
   }
-  function focusBar(uid) {
+  function focusBar(ref) {
     var sel = depthSelect(st.depth);
     var b = h('button', {type: 'button', class: 'cbr-btn cbr-primary'}, 'Focus the graph here');
-    b.addEventListener('click', function () { focusOn(uid, sel.value); });
+    b.addEventListener('click', function () { focusOn(ref, sel.value); });
     return h('div', {class: 'cbr-d-graph'}, b, h('label', {}, 'depth ', sel));
   }
-  function focusOn(uid, depth) {
-    st.focus = uid;
+  // ref: <category UID>::<artifact UID> (the address carries it as focus=)
+  function focusOn(ref, depth) {
+    st.focus = ref;
     st.depth = depth && String(depth) !== '2' ? String(depth) : '';
     closeDetail();
     setView('graph');
@@ -869,7 +874,7 @@
         else if (n.kind === 'category' && n.uid) openDetail(n.uid);
       },
       onFocus: function (n) {
-        if (n.kind === 'artifact') focusOn(n.id, st.depth);
+        if (n.kind === 'artifact') focusOn(crefOf(n.cat_uid, n.id), st.depth);
         else if (n.kind === 'category') {         // a category: the graph of that category alone
           st.cats = n.cat;
           st.focus = '';

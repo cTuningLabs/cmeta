@@ -2,6 +2,17 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.37.11.1)
+- **The pages name an artifact by its cRef, never by a bare UID.** An artifact's UID is unique only with its
+  category's, so the browse page's address now says `?cref=<category UID>::<artifact UID>` (with `&file=<path>` for an
+  open file) for the open artifact, and `focus=<category UID>::<artifact UID>` for a focused graph, instead of
+  `?uid=<UID>` and `focus=<UID>`; the cref page's Browser, Graph and depth links do the same, and the graph's artifact
+  nodes carry their category's UID. The server resolves the two-UID form (`_resolve_cref`, the graph focus), and a
+  category named by its UID must be the artifact's own (`log,<another UID>::<alias>,<UID>` names nothing); a category
+  named by its alias alone still lets the UID decide, so older references to a renamed category keep working. Older
+  links still open: `?uid=` and `focus=<UID>` are read as before, and the page rewrites its address to the cRef.
+  Test: `test_an_artifact_is_named_by_its_cref_never_by_a_bare_uid` (fails on the old code).
+
 ## 0.37.11
 - **A moved cache entry keeps its tool.** After `cx cache move` (or with a repository synced or mounted elsewhere) an
   entry's recorded `tool_path` (or `git_path`) still named the folder it was saved in, so the cache category called

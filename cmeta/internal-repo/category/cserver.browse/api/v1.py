@@ -39,6 +39,11 @@ Query syntax (one box; everything must hold):
     cx cserver.browse query "sla tag:report after:2026-09-01"      the same in a terminal (--as_json for JSON)
     ?native_action=search&q=...                                    the JSON the page renders (GET or POST)
 
+The page keeps its state in its address. An open artifact and a focus are named there by cRef, never by a bare
+UID (an artifact's UID is unique only with its category's): ?cref=<category UID>::<artifact UID>&file=<path> and
+focus=<category UID>::<artifact UID>. Any cRef form opens an artifact from outside (cref=tool::git, a whole
+{{{<cRef>}}}/<path>); the ?uid= and focus=<UID> of older links still open.
+
 The graph (?native_action=graph, the Graph tab) draws the results of the query, or - with focus=<artifact> and
 depth=N - everything within N connections of one artifact (the query words are then not applied; the
 repository and category pickers still are, as a scope):
@@ -646,6 +651,14 @@ def _read_desc(path):
         data = {'_value': data}
     _desc_cache[f] = (st.st_mtime, data)
     return data, fn, st.st_size
+
+
+def _category_fits(it, cat_alias, cat_uid):
+    """Whether a catalogue item is of the category a cRef names. An artifact's UID is unique only with its
+    category's: a category named by its UID (<category UID>::<artifact UID>, or alias,UID) must be the item's own; a
+    category named by its alias alone does not stop a UID that is there (a renamed category keeps old references)."""
+    want = (cat_uid or (cat_alias if UID_RE.match(cat_alias or '') else '')).strip().lower()
+    return not want or it['cat_uid'].lower() == want
 
 
 def _cref_uid(cref):
@@ -1339,8 +1352,10 @@ class Category(InitCategory):
 
     def _resolve_cref(self, text):
         """(UID, relative path, notice) for an artifact named from outside: `cref=<category>::<alias>,<UID>[/<path>]`,
-        with or without the category's UID, the artifact's UID or the category, or as {{{<cRef>}}}/<path> - the UID
-        decides when it is there (a renamed artifact keeps it), else the category and the alias."""
+        with or without the category's UID, the artifact's UID or the category, as the two UIDs alone
+        (`cref=<category UID>::<artifact UID>`, what this page writes in its own address), or as {{{<cRef>}}}/<path> -
+        the UID decides when it is there (a renamed artifact keeps it) and its category fits, else the category and
+        the alias."""
         s = str(text or '').strip()
         m = re.match(r'^\{\{\{(.+?)\}\}\}(/.*)?$', s)
         if m:
@@ -1358,10 +1373,14 @@ class Category(InitCategory):
             a, u = art_part.rsplit(',', 1)
             if UID_RE.match(u.strip()):
                 alias, uid = a.strip(), u.strip().lower()
-        if uid and self._item(uid) is not None:
+        elif cat_part and UID_RE.match(alias):        # <category UID>::<artifact UID>
+            uid = alias.lower()
+        it = self._item(uid) if uid else None
+        if it is not None and _category_fits(it, cat_alias, cat_uid):
             return uid, rel, ''
         by_key = self._catalog()['by_key']
-        for key in (cat_uid.strip().lower(), cat_alias.strip().lower()):
+        # a category's UID, when the cRef carries one, decides alone (its alias beside it is a label)
+        for key in ((cat_uid.strip().lower(),) if cat_uid.strip() else (cat_alias.strip().lower(),)):
             u = by_key.get((key, alias.lower())) if key else None
             if u and self._item(u) is not None:
                 return u, rel, ''
@@ -1444,11 +1463,11 @@ class Category(InitCategory):
 
     @staticmethod
     def _find_one(ref, scope):
-        """The UID of the artifact a focus names - a UID, alias,UID, a cRef, or an alias (the first one in the
-        scope) - or '' when the scope has no such artifact."""
+        """The UID of the artifact a focus names - a cRef (<category UID>::<artifact UID>, what the pages write), a
+        UID, alias,UID, or an alias (the first one in the scope) - or '' when the scope has no such artifact."""
         cat, cat_uid, alias, uid = _parse_cref(ref)
         if uid:
-            return uid if uid in scope else ''
+            return uid if uid in scope and _category_fits(scope[uid], cat, cat_uid) else ''
         a = alias.lower()
         for u, it in scope.items():
             if it['alias_l'] == a and (not (cat or cat_uid) or _name_matches(it['cat'], it['cat_uid'],
@@ -1585,8 +1604,8 @@ class Category(InitCategory):
                     links.append({'s': '__cmeta__', 't': '__cat__' + cuid, 'k': 'core'})
         for u in picked:
             it = by_uid[u]
-            n = {'id': u, 'kind': 'artifact', 'label': it['alias'], 'cat': it['cat'], 'repo': it['repo'],
-                 'deg': ddeg[u]}
+            n = {'id': u, 'kind': 'artifact', 'label': it['alias'], 'cat': it['cat'], 'cat_uid': it['cat_uid'].lower(),
+                 'repo': it['repo'], 'deg': ddeg[u]}
             if it['name'] and it['name'] != it['alias']:
                 n['name'] = it['name']
             if focus and u in layer:
@@ -1832,10 +1851,12 @@ class Category(InitCategory):
             version = getattr(self.cm, '__version__', '')
             state = {k: str(query.get(k) or '') for k in STATE_KEYS}
             notice = ''
-            if str(query.get('cref') or '').strip():   # an artifact (and a file of it) named from outside by its cRef
+            # the open artifact (and a file of it) named by its cRef - from outside, or the page's own address
+            # (?cref=<category UID>::<artifact UID>&file=<path>); ?uid= alone is what older links say
+            if str(query.get('cref') or '').strip():
                 uid, rel, notice = self._resolve_cref(query.get('cref'))
                 if uid:
-                    state['uid'], state['file'] = uid, rel
+                    state['uid'], state['file'] = uid, rel or state['file']
             if not any(state.values()):                # a bare /browse: what this server opens with
                 for k, key in DEFAULT_KEYS:
                     v = cfg.get(key)
