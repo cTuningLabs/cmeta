@@ -17,6 +17,12 @@ All notable changes to cMeta are documented here, newest first.
   only `python3` exists and then started the server with the kept key). Every restart, and every reload of
   `--reload`, signs every browser out. Without the parameter nothing changes: the server makes a random key at its
   first start and keeps it beside its config. Test: `test_cserver_session_secret.py`.
+- **`cx app run` calls the run script by an explicit path** (`call .\_run.bat`, `. ./_run.sh`). A cmd.exe that does
+  not look in the current folder (`NoDefaultCurrentDirectoryInExePath` set, as in hardened setups and some agent
+  shells) answered "'_run.bat' is not recognized" and no app started. An app with `skip_chdir` gets its script's
+  absolute path as it is: on Linux and macOS it was turned into `.//<absolute path>`, a path inside the current
+  folder. Test: `test_app_run_script_path.py` (the first fails on the old code on Windows; the second's case
+  failed with 0.37.12 on Linux).
 
 ## 0.37.12
 - **The pages name an artifact by its cRef, never by a bare UID.** An artifact's UID is unique only with its
