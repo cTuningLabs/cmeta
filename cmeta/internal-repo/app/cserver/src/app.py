@@ -75,8 +75,13 @@ def _session_secret():
     on Linux and macOS (a folder of the user's own on Windows) and shared by every worker and every start, so a
     restart or an upgrade of the server keeps every browser signed in (until 2026-10-26 the key was random per
     start, and every restart asked for the password again); else, without that folder, random per start.
+
+    `--param.session_secret=random` asks for a new key at each start and keeps nothing (a test or a throwaway
+    server): every restart - and every reload of `--reload` - signs every browser out.
     """
     given = os.environ.get('CSERVER_SESSION_SECRET', '').strip()
+    if given.lower() == 'random':
+        return secrets.token_urlsafe(32)
     if given:
         return given
     try:

@@ -292,6 +292,7 @@ cx cserver.browse query "_desc:mlperf has:_desc.connections"   # words and _desc
 # Serve it to your own devices, behind one shared password
 cx config set cserver --meta.password="a passphrase of your own"
 cx app run cserver --param.host=0.0.0.0 --param.port=8004
+cx app run cserver --param.host=tailscale --param.port=8004     # through Tailscale alone (its address, asked at each start)
 ```
 
 ---

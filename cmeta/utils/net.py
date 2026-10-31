@@ -17,6 +17,17 @@ from .common import _error
 # (total). It is written before the first byte of a download and removed when the file is complete.
 RESUME_RECORD_SUFFIX = '.resume'
 
+# tailscale_ipv4(): where Tailscale's installers put its command line when it is not on PATH (the macOS app keeps it
+# inside the bundle unless "Install CLI" was clicked), and the range of the addresses it gives its devices
+TAILSCALE_CLI_PLACES = {
+    # %ProgramW6432%: the 64-bit folder also for a 32-bit Python, whose %ProgramFiles% is the (x86) one
+    'win32': [r'%ProgramFiles%\Tailscale\tailscale.exe', r'%ProgramW6432%\Tailscale\tailscale.exe',
+              r'%ProgramFiles(x86)%\Tailscale\tailscale.exe'],
+    'darwin': ['/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale'],
+    'linux': ['/usr/bin/tailscale', '/usr/sbin/tailscale', '/usr/local/bin/tailscale', '/snap/bin/tailscale'],
+}
+TAILSCALE_IPV4_RANGE = '100.64.0.0/10'
+
 ##################################################################################################
 def _resume_validator(
     record: dict,  # The resume record of a partly downloaded file.
@@ -502,3 +513,65 @@ async def unify_request(
         query = query_params
 
     return {'return':0, 'query': query}
+
+##################################################################################################
+def tailscale_ipv4(
+    timeout = 10,  # Seconds the Tailscale command may take.
+):
+    """
+        This machine's Tailscale IPv4 address, as Tailscale itself gives it (`tailscale ip -4`): the address a
+        server listens on to be reached through the tailnet alone (`cx app run cserver --param.host=tailscale`).
+
+        The command is looked for on PATH, then where Tailscale's installers put it (TAILSCALE_CLI_PLACES). Only an
+        address of Tailscale's range (100.64.0.0/10) is taken. Tailscale missing, stopped or logged out is an error,
+        never another address: a server that should listen on the tailnet alone must not end up on a LAN.
+
+        Args:
+            timeout: Seconds the Tailscale command may take.
+        Returns:
+            dict: {'return': 0, 'ip': '100.x.y.z', 'cli': <the command used>} or {'return': 1, 'error': ...}.
+    """
+
+    # imported here: "from .net import *" in the package would export a module-level "sys" over cmeta.utils.sys
+    import ipaddress
+    import shutil
+    import subprocess
+    import sys
+
+    cli = shutil.which('tailscale') or ''
+    if not cli:
+        places = TAILSCALE_CLI_PLACES.get('linux' if sys.platform.startswith('linux') else sys.platform, [])
+        cli = next((p for p in (os.path.expandvars(x) for x in places) if os.path.isfile(p)), '')
+    if not cli:
+        return _error('Tailscale is not installed here (no "tailscale" command on PATH or where its installers put it)')
+
+    try:
+        p = subprocess.run([cli, 'ip', '-4'], stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return _error(f'"{cli} ip -4" did not answer within {timeout} s')
+    except OSError as e:
+        return _error(f'"{cli} ip -4" could not run: {e}')
+
+    out = p.stdout.decode('utf-8', 'replace')
+    for line in out.splitlines():
+        try:
+            ip = ipaddress.ip_address(line.strip())
+        except ValueError:
+            continue
+        if ip.version == 4 and ip in ipaddress.ip_network(TAILSCALE_IPV4_RANGE):
+            return {'return': 0, 'ip': str(ip), 'cli': cli}
+
+    said = ' '.join((p.stderr.decode('utf-8', 'replace') + ' ' + out).split())
+    return _error(f'Tailscale gave no address of its own ({said or "no answer"}) - is it running and logged in?')
+
+##################################################################################################
+if __name__ == '__main__':
+    # A launcher's question (the cserver app's _run.bat / _run.sh with --param.host=tailscale): the address alone on
+    # stdout; else the reason on stderr and exit code 1
+    import sys
+    if sys.argv[1:] != ['tailscale_ipv4']:
+        sys.exit('usage: python -m cmeta.utils.net tailscale_ipv4')
+    r = tailscale_ipv4()
+    if r['return'] > 0:
+        sys.exit('cMeta notice: ' + r['error'] + '!')
+    print(r['ip'])

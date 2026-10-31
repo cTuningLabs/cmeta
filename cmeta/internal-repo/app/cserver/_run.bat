@@ -39,4 +39,15 @@ if errorlevel 1 (
   %PYTHON_PREFIX% "%CSERVER_PYTHON%" -m pip install -r requirements.txt
 )
 
+rem --param.host=tailscale: listen on this machine's Tailscale address alone, asked of Tailscale at each start (no
+rem address in a script). Tailscale missing or stopped stops the start with its reason - never another address.
+rem One-line ifs and no labels: this file has LF line endings, with which cmd can miss a label. -W: the package
+rem imports the module that -m runs, and Python's RuntimeWarning about it says nothing here.
+set "CSERVER_ON_TAILSCALE="
+if /i "%CSERVER_HOST%"=="tailscale" set "CSERVER_ON_TAILSCALE=1"
+if defined CSERVER_ON_TAILSCALE set "CSERVER_HOST="
+if defined CSERVER_ON_TAILSCALE for /f "usebackq delims=" %%a in (`%PYTHON_PREFIX% "%CSERVER_PYTHON%" -W ignore::RuntimeWarning -m cmeta.utils.net tailscale_ipv4`) do set "CSERVER_HOST=%%a"
+if defined CSERVER_ON_TAILSCALE if not defined CSERVER_HOST exit /b 1
+if defined CSERVER_ON_TAILSCALE echo cMeta info: cserver listens on the Tailscale address %CSERVER_HOST%
+
 %PYTHON_PREFIX% "%CSERVER_PYTHON%" -m uvicorn src.app:app --host %CSERVER_HOST% --port %CSERVER_PORT% %CSERVER_FLAGS%

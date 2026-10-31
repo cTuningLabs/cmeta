@@ -2,6 +2,22 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.37.12.1)
+- **`cx app run cserver --param.host=tailscale`**: the server listens on this machine's Tailscale address alone, asked
+  of Tailscale at each start (`tailscale ip -4`: the command on PATH, else where Tailscale's installers put it on
+  Windows, macOS and Linux), so no address is written in a script and no LAN or public network reaches the port.
+  Tailscale missing, stopped or logged out stops the start with its reason; only an address of Tailscale's range is
+  taken, never another one. The lookup is `cmeta.utils.net.tailscale_ipv4()`, and `python -m cmeta.utils.net
+  tailscale_ipv4` is the launchers' question (`_run.bat`, `_run.sh`). `_run.bat` has no labels: it is stored with LF
+  line endings, with which cmd can miss one. Tests: `test_utils_net_tailscale.py`, including a guard that keeps
+  `cmeta.utils.sys` the engine's module (a module-level `import sys` in net.py replaced it through the package's
+  star import, and every call through CMetaAsync failed).
+- **`cx app run cserver --param.session_secret=random`**: a new cookie key at each start, kept nowhere - for a test or
+  a throwaway server, instead of a key made by hand on the command line (`$(python -c ...)`, which also failed where
+  only `python3` exists and then started the server with the kept key). Every restart, and every reload of
+  `--reload`, signs every browser out. Without the parameter nothing changes: the server makes a random key at its
+  first start and keeps it beside its config. Test: `test_cserver_session_secret.py`.
+
 ## 0.37.12
 - **The pages name an artifact by its cRef, never by a bare UID.** An artifact's UID is unique only with its
   category's, so the browse page's address now says `?cref=<category UID>::<artifact UID>` (with `&file=<path>` for an

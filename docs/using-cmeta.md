@@ -1047,6 +1047,20 @@ cx config set cserver --meta.password="a passphrase of your own"
 cx config unset cserver --meta.password          # open again
 ```
 
+**Your own devices only, through Tailscale.** `--param.host=tailscale` makes the
+server listen on this machine's Tailscale address alone, which it asks Tailscale
+for at each start (`tailscale ip -4`, found on PATH or where Tailscale's
+installers put it), so no address is written in a script and no LAN or public
+network reaches the port. Tailscale missing, stopped or logged out stops the
+start with its reason - the server never falls back to another address. Every
+device of the tailnet can still reach it, so keep the password on, and open it
+by the machine's Tailscale name (`http://<machine>:8004/`), on that machine too:
+`127.0.0.1` is not served then.
+
+```bash
+cx app run cserver --param.host=tailscale --param.port=8004
+```
+
 **Restart the server after changing any of these keys.** The app reads its
 config once, at startup, so a password set while it is running does not take
 effect and the pages stay open until it is restarted — check it yourself before
@@ -1123,7 +1137,7 @@ config:
 
 | Environment variable | Default | What it does |
 |---|---|---|
-| `CSERVER_SESSION_SECRET` | the file `session-secret` of the config artifact | The key that signs the session cookie. Left unset, the server makes one at its first start and keeps it in the folder of its config artifact (owner-only), so restarts and upgrades keep every browser signed in; set it to pin your own, or when several servers must share one. |
+| `CSERVER_SESSION_SECRET` | the file `session-secret` of the config artifact | The key that signs the session cookie. Left unset, the server makes one at its first start and keeps it in the folder of its config artifact (owner-only), so restarts and upgrades keep every browser signed in; set it to pin your own, or when several servers must share one. `random` makes a new key at each start and keeps nothing (a test or a throwaway server): every restart, and every reload of `--reload`, signs every browser out. |
 | `CSERVER_SESSION_MAX_AGE` | `604800` (a week) | How long a password login keeps a browser signed in, in seconds, with the tick "Keep me signed in" of the login page (ticked by default; unticked, 12 hours). |
 
 What this is and is not. It is a door with a lock: one shared secret, no
