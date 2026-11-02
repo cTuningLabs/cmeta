@@ -19,6 +19,10 @@ All notable changes to cMeta are documented here, newest first.
   same rule - what run-ai's `--context` and the pages use. A `_desc.yaml` written by hand keeps its comments,
   order and quoting: the new `ai_uses` items are appended to its block as text (the file is rewritten as YAML
   only when other keys change or a `_desc.json` is converted). Tests: `test_integration_ai_uses_templates.py`.
+- **The memory note of a server's console is one line**: with `print_host_info` (the cserver's
+  `CSERVER_CM_PRINT_HOST_INFO=1`) every call printed a ruler and four lines (total, free, the process, the time); it
+  is now one stamped line, `2026-11-02 12:40:01 memory: 0.04 GB used, 11.00 GB free of 33.84 GB (0.000 s)`
+  (`utils.sys.get_min_host_info(short=True)`; the result's new `line`; the block and `string` stay for the others).
 - **`--match.<key>=*` matches any value**: the key must exist, whatever it holds -
   `cx utils find_by_cid "*::*" --match.template.ai_uses.alias=*` lists every artifact that declares an AI
   context, `cx <category> find --match.<key>=*` those of a category with the key (`utils.common.value_matches`;

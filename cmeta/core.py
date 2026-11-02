@@ -408,7 +408,8 @@ class CMeta:
         self_time_start = time.perf_counter()
 
         if self.print_host_info:
-            utils.sys.get_min_host_info(only_memory=True, con=True, line=80)
+            # one stamped line per call (a server's console: CSERVER_CM_PRINT_HOST_INFO), not a block
+            utils.sys.get_min_host_info(only_memory=True, con=True, short=True)
 
         # Manual override of global self.debug and self.fail_on_error
         self_fail_on_error = self.fail_on_error
