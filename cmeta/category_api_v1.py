@@ -8,6 +8,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 
 import logging
 import os
+import re
 import shutil
 import copy
 from pathlib import Path
@@ -118,6 +119,223 @@ def apply_artifact_defaults(
             cmeta['generator'] = generator
 
     return cmeta
+
+
+###################################################################################################
+# The AI context of an artifact: its `ai_uses` list in the sidecar _desc.yaml (what run-ai reads), chosen
+# among the artifacts that declare themselves a template for that purpose in their own meta:
+#
+#   template:
+#     ai_uses:
+#       alias: fgg                              # the short name typed after -ai
+#       title: FGG personal projects context
+#       sort: 1000
+#
+# `cx <category> add <artifact> -ai` lists them (sorted by sort, then title) and asks which; `-ai=cmeta,fgg`
+# takes them by that alias without a question, else by an artifact alias in any category, else as cat::alias
+# - several artifacts for one name is an error that names them. What is written is the full cRef
+# (<category alias>,<UID>::<alias>,<UID>), as run-ai reads it, so the context survives renames and machines.
+# The same on `update` (appended, no duplicates). A generic `desc` dict is merged into _desc.yaml the same way
+# (--desc.<key>=<value>, --desc=@file.yaml); a _desc.json found there is converted to YAML, never both.
+# The declaration lives in the meta because the index keeps every meta: the list is one query, no file walk.
+DESC_FILENAME_BASE = '_desc'
+TEMPLATE_KEY = 'template'
+AI_USES_KEY = 'ai_uses'
+
+
+def _cref_of(parts):
+    """The full cRef of an indexed artifact from its cmeta_ref_parts: <category alias>,<UID>::<alias>,<UID>."""
+    parts = parts or {}
+    cat = parts.get('category_alias') or ''
+    if parts.get('category_uid'):
+        cat = f"{cat},{parts['category_uid']}" if cat else parts['category_uid']
+    art = parts.get('artifact_alias') or ''
+    if parts.get('artifact_uid'):
+        art = f"{art},{parts['artifact_uid']}" if art else parts['artifact_uid']
+    return f'{cat}::{art}'
+
+
+def template_entries(artifacts, purpose = AI_USES_KEY):
+    """
+        The template declarations for a purpose among found artifacts.
+        Args:
+            artifacts (list): Artifacts as the find commands return them (with cmeta and cmeta_ref_parts).
+            purpose (str): The key under `template` (ai_uses).
+        Returns:
+            list: [{'alias', 'title', 'sort', 'cref', 'path'}], sorted by sort, then title, then cref.
+    """
+    out = []
+    for a in artifacts or []:
+        cmeta = a.get('cmeta') if isinstance(a, dict) else None
+        decl = (cmeta or {}).get(TEMPLATE_KEY)
+        decl = decl.get(purpose) if isinstance(decl, dict) else None
+        if not isinstance(decl, dict):
+            continue
+        try:
+            sort = float(decl.get('sort', 0) or 0)
+        except (TypeError, ValueError):
+            sort = 0.0
+        out.append({'alias': str(decl.get('alias') or '').strip(), 'title': str(decl.get('title') or '').strip(),
+                    'sort': sort, 'cref': _cref_of(a.get('cmeta_ref_parts')), 'path': a.get('path')})
+    out.sort(key = lambda e: (e['sort'], e['title'].lower(), e['cref']))
+    return out
+
+
+def split_context_names(text):
+    """
+        The names of an ai_uses request: aliases separated by commas (cmeta,fgg); a cRef keeps its commas
+        (fgg.project,<UID>::cMeta,<UID>), so a list that holds cRefs is separated by ";" instead, as run-ai's
+        --context is. A list already split is returned as it is.
+    """
+    if isinstance(text, (list, tuple)):
+        return [str(n).strip() for n in text if str(n).strip()]
+    text = str(text or '')
+    parts = [p.strip() for p in text.split(';')] if ';' in text else [text.strip()]
+    out = []
+    for p in parts:
+        if '::' in p:
+            out.append(p)
+        else:
+            out += [x.strip() for x in p.split(',') if x.strip()]
+    return [o for o in out if o]
+
+
+def find_all(cm, cid, match = None):
+    """
+        Every indexed artifact of every category that a CID with wildcards names ("*::*": all; "*::name": an
+        alias anywhere): the index search of utils find_by_cid - every record keeps the artifact's meta, so no
+        file is read. Returns {'return', 'artifacts': [...]}, an empty list when nothing matches.
+    """
+    ii = {'category': 'utils', 'command': 'find_by_cid', 'arg1': cid, 'con': False}
+    if match:
+        ii['match'] = match
+    r = cm.access(ii)
+    if r['return'] == 16:            # nothing found: an empty list, not an error
+        return {'return':0, 'artifacts':[]}
+    if r['return']>0: return r
+    return {'return':0, 'artifacts': r.get('artifacts') or []}
+
+
+def ai_context_entries(cm, purpose = AI_USES_KEY):
+    """The declared templates for a purpose, sorted (template_entries), from one index query."""
+    r = find_all(cm, '*::*')
+    if r['return']>0: return r
+    return {'return':0, 'entries': template_entries(r['artifacts'], purpose)}
+
+
+def resolve_ai_context(cm, names, entries):
+    """
+        The full cRefs of the names (split_context_names): a template's alias first, then an artifact alias in
+        any category, then a cRef (cat::alias or cat,UID::alias,UID); more than one artifact for a name is an
+        error that names them all, so the person picks one by its cRef. Returns {'return', 'crefs': [...]}.
+    """
+    names = split_context_names(names)
+    crefs = []
+    for name in names or []:
+        if '::' in name:
+            r = find_all(cm, name)
+            if r['return']>0: return r
+            found = r['artifacts']
+            what = f'the cRef "{name}"'
+        else:
+            hits = [e for e in entries if e['alias'] == name]
+            if len(hits) == 1:
+                crefs.append(hits[0]['cref'])
+                continue
+            if len(hits) > 1:
+                return {'return':1, 'error': f'the AI context "{name}" is declared by several artifacts: ' +
+                        ', '.join(e['cref'] for e in hits) + ' - name one of them by its cRef'}
+            r = find_all(cm, '*::' + name)
+            if r['return']>0: return r
+            found = r['artifacts']
+            what = f'the name "{name}"'
+        if len(found) == 0:
+            return {'return':1, 'error': f'no artifact for {what} (no AI context template with that alias, no artifact with that alias in any category)'}
+        if len(found) > 1:
+            return {'return':1, 'error': f'{what} matches several artifacts: ' +
+                    ', '.join(_cref_of(a.get('cmeta_ref_parts')) for a in found) + ' - name one of them by its cRef'}
+        crefs.append(_cref_of(found[0].get('cmeta_ref_parts')))
+    return {'return':0, 'crefs':crefs}
+
+
+def _cref_key(value):
+    """The cRef string of an ai_uses entry (a string, or {cref, note}) for comparisons."""
+    if isinstance(value, dict):
+        value = value.get('cref')
+    return str(value or '').strip()
+
+
+def merge_desc(data, desc = None, crefs = None):
+    """
+        A _desc dict with `desc` merged in (dicts deep, lists appended without duplicates) and `crefs`
+        appended to its ai_uses list without duplicates (an entry already there, as a string or {cref, note},
+        is kept as it is). Returns (the new dict, changed).
+    """
+    data = copy.deepcopy(data) if isinstance(data, dict) else {}
+    before = copy.deepcopy(data)
+    if isinstance(desc, dict) and desc:
+        data = utils.common.deep_merge(data, copy.deepcopy(desc), append_lists = True)
+    if crefs:
+        uses = data.get(AI_USES_KEY)
+        uses = list(uses) if isinstance(uses, list) else ([uses] if uses else [])
+        have = {_cref_key(u) for u in uses}
+        for c in crefs:
+            if _cref_key(c) and _cref_key(c) not in have:
+                uses.append(c)
+                have.add(_cref_key(c))
+        data[AI_USES_KEY] = uses
+    return data, data != before
+
+
+def append_ai_uses_text(text, crefs):
+    """
+        The text of a _desc.yaml with `crefs` appended as items of its top-level ai_uses list, everything
+        else - the comments, the order, the quoting of a file written by hand - kept as it is: the items go
+        after the last item of the block (or its continuation lines), at the block's indentation; a file
+        without the key gets the block at its end. Returns the new text, or None when the key holds an
+        inline value ("ai_uses: [a, b]", a scalar): then the caller rewrites the file as YAML.
+    """
+    import yaml
+    lines = text.splitlines(True)
+    key = None
+    for i, line in enumerate(lines):
+        bare = line.rstrip('\r\n')
+        if re.match(r'ai_uses\s*:\s*(#.*)?$', bare):
+            key = i
+            break
+        if re.match(r'ai_uses\s*:', bare):
+            return None
+    items = ''.join(yaml.safe_dump([c], default_flow_style = False, allow_unicode = True, width = 10000) for c in crefs)
+    if key is None:
+        new = text
+        if new and not new.endswith('\n'):
+            new += '\n'
+        if new and not new.endswith('\n\n'):
+            new += '\n'
+        return new + 'ai_uses:\n' + items
+    indent = None
+    end = key + 1
+    j = key + 1
+    while j < len(lines):
+        bare = lines[j].rstrip('\r\n')
+        stripped = bare.strip()
+        if stripped == '' or stripped.startswith('#'):
+            j += 1
+            continue
+        lead = len(bare) - len(bare.lstrip(' '))
+        if indent is None:
+            if not stripped.startswith('- '):
+                break
+            indent = lead
+        if (lead == indent and stripped.startswith('- ')) or lead > indent:
+            end = j + 1
+        else:
+            break
+        j += 1
+    pad = ' ' * (indent or 0)
+    if not lines[end - 1].endswith('\n'):
+        lines[end - 1] += '\n'
+    return ''.join(lines[:end]) + ''.join(pad + l + '\n' for l in items.splitlines()) + ''.join(lines[end:])
 
 
 class Category(InitCategory):
@@ -463,6 +681,9 @@ class Category(InitCategory):
         match: dict = None,  # Value for match.
         match_empty_version: bool = False,  # Value for match empty version.
         all_tags: str = None,  # Value for all tags.
+        desc: dict = None,  # Keys merged into the artifact's _desc.yaml (--desc.<key>=<value>, --desc=@file).
+        ai_uses = None,  # AI context to add: template aliases, artifact aliases or cRefs; True = ask.
+        ai = None,  # The short form of ai_uses (-ai, -ai=cmeta,fgg).
     ):
         """
             Update artifact(s).
@@ -541,6 +762,13 @@ class Category(InitCategory):
         ignore_root_keys = ['artifact']
         if not update_category:
             ignore_root_keys.append('category')
+
+        # The AI context to add: resolved (or asked) once, before any artifact is touched
+        ai_crefs = []
+        if artifacts and (ai_uses is not None or ai is not None):
+            r = self._ai_context_crefs(ctx, ai_uses if ai_uses is not None else ai)
+            if r['return']>0: return r
+            ai_crefs = r['crefs']
 
         for artifact in artifacts:
             updated = False
@@ -648,6 +876,13 @@ class Category(InitCategory):
                        index_lock.release()
 
                    if r['return']>0: return r
+
+            # The AI context and the other _desc keys (the sidecar, not the meta: the index is untouched)
+            if desc or ai_crefs:
+                r = self._write_desc(artifact_path, desc, ai_crefs, con)
+                if r['return']>0: return r
+                if r.get('changed'):
+                    updated = True
 
             # Provide info
             if updated:
@@ -959,6 +1194,9 @@ class Category(InitCategory):
         path: str = None,  # Use this path for artifact (useful for virtual artifacts such as repo).
         index: bool = False, # If true and path exists but not index, just add to index
                              # Useful when AI agents create cMeta entries while bypassing cMeta
+        desc: dict = None,  # Keys merged into the artifact's _desc.yaml (--desc.<key>=<value>, --desc=@file).
+        ai_uses = None,  # AI context: template aliases, artifact aliases or cRefs (comma-separated); True = ask.
+        ai = None,  # The short form of ai_uses (-ai, -ai=cmeta,fgg).
     ):
         """
             Create and index an artifact.
@@ -1108,6 +1346,14 @@ class Category(InitCategory):
         # The meta file of an artifact that is indexed as it is (made or copied by hand)
         existing_meta_file = None
 
+        # The AI context asked for is resolved (or asked) before anything is made, so that a wrong name
+        # or an ambiguity makes no artifact
+        ai_crefs = []
+        if not virtual and (ai_uses is not None or ai is not None):
+            r = self._ai_context_crefs(ctx, ai_uses if ai_uses is not None else ai)
+            if r['return']>0: return r
+            ai_crefs = r['crefs']
+
         # The folder, the meta and the record of a new artifact are made under the index lock: a full
         # reindex running meanwhile never sees a half-made artifact, two creates of one artifact at once
         # end with one artifact (the second finds the folder of the first), and a create whose record
@@ -1239,12 +1485,179 @@ class Category(InitCategory):
             if index_lock is not None:
                 index_lock.release()
 
+        # The AI context and the other _desc keys of the new artifact (its folder exists now)
+        if not virtual and (desc or ai_crefs):
+            r = self._write_desc(artifact_path, desc, ai_crefs, con)
+            if r['return']>0: return r
+
         # Print artifact path
         if con:
             x = 'Virtual a' if virtual else 'A'
             print (f'{x}rtifact was created in "{artifact_path}"')
 
         return {'return':0, 'path':artifact_path, 'meta':cmeta}
+
+    ############################################################
+    def _find_all(
+        self,
+        cid: str,  # A CID with wildcards ("*::*": every artifact of every category; "*::name": an alias anywhere).
+        match: dict = None,  # Meta keys the artifacts must match (nested dicts).
+    ):
+        """
+            Every indexed artifact of every category that a CID with wildcards names (the index search
+            of utils find_by_cid: every record keeps the artifact's meta, so no file is read).
+            Returns:
+                dict: {'return', 'artifacts': [...]} - an empty list when nothing matches.
+        """
+        return find_all(self.cm, cid, match)
+
+    ############################################################
+    def _ai_context_entries(
+        self,
+        purpose: str = AI_USES_KEY,  # The key under `template` in the meta.
+    ):
+        """The declared templates for a purpose, sorted (template_entries), from one index query."""
+        return ai_context_entries(self.cm, purpose)
+
+    ############################################################
+    def _resolve_ai_context(
+        self,
+        names,  # Aliases separated by commas, cRefs separated by ";" (split_context_names), or a list.
+        entries: list,  # The declared templates (_ai_context_entries).
+    ):
+        """
+            The full cRefs of the names: a template's alias first, then an artifact alias in any category,
+            then a cRef (cat::alias or cat,UID::alias,UID); more than one artifact for a name is an error that
+            names them all, so the person picks one by its cRef.
+            Returns:
+                dict: {'return', 'crefs': [...]}
+        """
+        return resolve_ai_context(self.cm, names, entries)
+
+    ############################################################
+    def _ask_ai_context(
+        self,
+        entries: list,  # The declared templates (_ai_context_entries).
+    ):
+        """
+            The numbered list of the AI contexts and the question which ones to add; numbers or aliases,
+            comma-separated, Enter for none. A run without a terminal gets the error of utils.common.ask.
+            Returns:
+                dict: {'return', 'crefs': [...]}
+        """
+        if not entries:
+            print ('No AI context template is declared (template: ai_uses: {alias, title, sort} in an artifact\'s meta).')
+            return {'return':0, 'crefs':[]}
+        width = max(len(e['alias']) for e in entries)
+        print ('')
+        print ('AI contexts (ai_uses):')
+        for i, e in enumerate(entries, 1):
+            print (f'  {i}) {e["alias"].ljust(width)}  {e["title"]}')
+        r = utils.common.ask('Which ones (numbers or aliases, comma-separated; Enter for none)? ',
+                             how = '-ai=<aliases> names them without a question; -q asks nothing', optional = True)
+        if r['return']>0: return r
+        answer = (r.get('answer') or '').strip()
+        if answer == '':
+            return {'return':0, 'crefs':[]}
+        names = []
+        for word in split_context_names(answer):
+            if word.isdigit():
+                n = int(word)
+                if not 1 <= n <= len(entries):
+                    return {'return':1, 'error': f'{n} is not in the list (1..{len(entries)})'}
+                names.append(entries[n - 1]['alias'])
+            elif word:
+                names.append(word)
+        return self._resolve_ai_context(names, entries)
+
+    ############################################################
+    def _ai_context_crefs(
+        self,
+        ctx: dict,  # cMeta context.
+        ai,  # The ai_uses request: True (ask), a comma-separated string or a list, or None / False (nothing).
+    ):
+        """
+            The full cRefs of the AI contexts a create or an update asked for - the names resolved
+            (_resolve_ai_context), or the numbered list asked when `ai` is True; a quiet run asks nothing
+            and adds nothing. Called before anything is made or changed, so that a wrong name or an
+            ambiguity stops the command without a side effect. Returns {'return', 'crefs'}.
+        """
+        if ai is None or ai is False:
+            return {'return':0, 'crefs':[]}
+        r = self._ai_context_entries()
+        if r['return']>0: return r
+        entries = r['entries']
+        if ai is True:
+            if ctx.get('control', {}).get('quiet', False):
+                return {'return':0, 'crefs':[]}
+            return self._ask_ai_context(entries)
+        return self._resolve_ai_context(ai, entries)
+
+    ############################################################
+    def _write_desc(
+        self,
+        artifact_path: str,  # The artifact's folder (it exists).
+        desc: dict,  # Keys to merge into _desc.yaml, or None.
+        crefs: list,  # The full cRefs to append to its ai_uses (_ai_context_crefs), or [].
+        con: bool,  # Whether the run prints.
+    ):
+        """
+            Writes the artifact's _desc.yaml with `desc` merged in and `crefs` appended to its ai_uses
+            (see merge_desc). A file written by hand keeps its text: cRefs alone are appended to the
+            ai_uses block as lines (append_ai_uses_text); other keys are edited in place (safe_write_file
+            preserve). A _desc.json found there is read, written as YAML and removed.
+            Returns {'return', 'changed', 'crefs', 'desc_file'}.
+        """
+        if not crefs and not (isinstance(desc, dict) and desc):
+            return {'return':0, 'changed':False, 'crefs':[], 'desc_file':None}
+        # the sidecar: YAML, else a JSON to convert, else a new YAML
+        path_yaml = os.path.join(artifact_path, DESC_FILENAME_BASE + '.yaml')
+        path_json = os.path.join(artifact_path, DESC_FILENAME_BASE + '.json')
+        data = {}
+        convert = None
+        for p in (path_yaml, path_json):
+            if os.path.isfile(p):
+                r = utils.files.safe_read_file(p, fail_on_error = self.fail_on_error, logger = self.logger)
+                if r['return']>0: return r
+                if isinstance(r.get('data'), dict):
+                    data = r['data']
+                if p == path_json:
+                    convert = p
+                break
+        new, changed = merge_desc(data, desc, crefs)
+        if changed or convert:
+            written = False
+            if changed and not convert and not (isinstance(desc, dict) and desc) and os.path.isfile(path_yaml):
+                # only cRefs appended to an existing YAML: its text stays as it is
+                had = {_cref_key(u) for u in (data.get(AI_USES_KEY) if isinstance(data.get(AI_USES_KEY), list) else [])}
+                added = [c for c in crefs if _cref_key(c) and _cref_key(c) not in had]
+                try:
+                    with open(path_yaml, 'r', encoding = 'utf-8', newline = '') as f:
+                        text = f.read()
+                    new_text = append_ai_uses_text(text, added)
+                    if new_text is not None:
+                        # written next to the file and put in place with one atomic replace, as the engine writes a meta
+                        temp_path = path_yaml + '.tmp'
+                        with open(temp_path, 'w', encoding = 'utf-8', newline = '') as f:
+                            f.write(new_text)
+                        utils.files._install_file(temp_path, path_yaml, self.logger)
+                        written = True
+                except OSError as e:
+                    return {'return':1, 'error': f'cannot write {path_yaml}: {e}'}
+            if not written:
+                r = utils.files.safe_write_file(path_yaml, data = new, fail_on_error = self.fail_on_error, logger = self.logger,
+                                                sort_keys = False, preserve = True)
+                if r['return']>0: return r
+            if convert:
+                try:
+                    os.remove(convert)
+                except OSError as e:
+                    return {'return':1, 'error': f'cannot remove the converted {convert}: {e}'}
+        if con and crefs:
+            print ('AI context (ai_uses) in ' + path_yaml + ':')
+            for c in new.get(AI_USES_KEY) or []:
+                print ('  - ' + _cref_key(c))
+        return {'return':0, 'changed':changed, 'crefs':crefs, 'desc_file':path_yaml}
 
     ############################################################
     def _undo_create(

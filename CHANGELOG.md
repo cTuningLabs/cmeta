@@ -3,6 +3,26 @@
 All notable changes to cMeta are documented here, newest first.
 
 ## DEV VERSION (0.37.12.1)
+- **The AI context of an artifact, chosen from declared templates: `cx <category> add|update <artifact> -ai[=names]`
+  and `--desc.<key>`.** An artifact declares itself a template for a purpose in its own meta -
+  `template: ai_uses: {alias: fgg, title: FGG personal projects context, sort: 30}` - and the index keeps every
+  meta, so the list is one query. `-ai` alone lists the templates (sorted by `sort`, then title) and asks which
+  (numbers or aliases, Enter for none; nothing asked with `-q`); `-ai=cmeta,fgg` takes them by their alias
+  without a question, else by an artifact alias in any category, else as a cRef (`cat::alias`,
+  `cat,UID::alias,UID`; a list that holds cRefs is separated by `;`, as run-ai's `--context`); several artifacts
+  for one name is an error that names them all, and an unknown name is an error too - both before anything
+  is made or changed (`--ai_uses=` is the long form of `-ai=`). What is written into the artifact's `_desc.yaml` (the sidecar
+  run-ai reads) is the full cRef, so the context survives renames and machines; `update` appends without
+  duplicates. `--desc.<key>=<value>` and `--desc=@file.yaml` merge any keys into `_desc.yaml` the same way (a
+  `_desc.json` found there is converted, never both). Artifacts without a declaration are untouched.
+  `cx utils ai_context` prints the declared contexts (alias, cRef, title), `--names=<names>` their cRefs by the
+  same rule - what run-ai's `--context` and the pages use. A `_desc.yaml` written by hand keeps its comments,
+  order and quoting: the new `ai_uses` items are appended to its block as text (the file is rewritten as YAML
+  only when other keys change or a `_desc.json` is converted). Tests: `test_integration_ai_uses_templates.py`.
+- **`--match.<key>=*` matches any value**: the key must exist, whatever it holds -
+  `cx utils find_by_cid "*::*" --match.template.ai_uses.alias=*` lists every artifact that declares an AI
+  context, `cx <category> find --match.<key>=*` those of a category with the key (`utils.common.value_matches`;
+  a literal `*` value still matches, nothing else changes).
 - **`cx app run cserver --param.host=tailscale`**: the server listens on this machine's Tailscale address alone, asked
   of Tailscale at each start (`tailscale ip -4`: the command on PATH, else where Tailscale's installers put it on
   Windows, macOS and Linux), so no address is written in a script and no LAN or public network reaches the port.

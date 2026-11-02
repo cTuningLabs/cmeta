@@ -297,6 +297,11 @@ cx <category> read <alias>                     # parse and print _cmeta.yaml
 cx <category> add <alias> --yaml               # create with _cmeta.yaml
 cx <category> add <repo>:<alias> --tags=t1,t2  # create in a specific repo
 cx <category> update <alias> --meta.description="..."   # merge metadata
+cx <category> add <alias> -ai                  # ask which AI contexts it uses (ai_uses in its _desc.yaml)
+cx <category> add <alias> -ai=cmeta,fgg        # by their aliases, no question; update appends the same way
+cx <category> update <alias> --desc.ck.owner=me   # merge any key into _desc.yaml (--desc=@file.yaml: a dict)
+cx utils ai_context                            # the declared AI contexts (alias, cRef, title); --names=a,b resolves names
+cx utils find_by_cid "*::*" --match.template.ai_uses.alias=*   # the same by the index search: "*" = any value (the key exists)
 cx <category> tags <alias> --add=t1,t2 --remove=t3
 cx <category> mv <old> <new>                   # move within/between repos
 cx <category> migrate <old> [<repo>:]<new>     # rename, and keep the old alias working

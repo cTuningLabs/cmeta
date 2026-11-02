@@ -313,6 +313,41 @@ class Category(InitCategory):
         return {'return':0, 'sha256':digest}
 
     ############################################################
+    def ai_context_(
+        self,
+        ctx: dict,  # cMeta context.
+        names = None,  # Template aliases (comma-separated), artifact aliases or cRefs (";"-separated) to resolve; none: the list.
+        purpose: str = 'ai_uses',  # The key under `template` in an artifact's meta.
+    ):
+        """
+            The AI contexts declared in the meta of artifacts (template: <purpose>: {alias, title, sort}),
+            sorted, from one index query - and with `names`, their full cRefs by the rule of
+            `cx <category> add <artifact> -ai=<names>` (run-ai's --context and the pages use it).
+            Returns:
+                dict: {'return', 'entries': [{'alias', 'title', 'sort', 'cref', 'path'}], 'crefs': [...] (with names)}
+        """
+        from cmeta.category_api_v1 import ai_context_entries, resolve_ai_context
+
+        con = ctx.get('control', {}).get('con', False)
+        r = ai_context_entries(self.cm, purpose)
+        if r['return']>0: return r
+        out = {'return':0, 'entries': r['entries']}
+        if names is not None and names is not True and names != '':
+            r = resolve_ai_context(self.cm, names, r['entries'])
+            if r['return']>0: return r
+            out['crefs'] = r['crefs']
+            if con:
+                for c in r['crefs']:
+                    print (c)
+        elif con:
+            if not out['entries']:
+                print ('No AI context template is declared (template: ' + purpose + ': {alias, title, sort} in an artifact\'s meta).')
+            width = max([len(e['alias']) for e in out['entries']] + [1])
+            for e in out['entries']:
+                print (f"{e['alias'].ljust(width)}  {e['cref']}  {e['title']}")
+        return out
+
+    ############################################################
     def find_by_cid_(
         self,
         ctx,  # cMeta context.
