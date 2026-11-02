@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.0.1)
+## 0.38.1
 - **`cx utils smart_find_by_cid` reads `{{{cRef}}}`, a path after the cRef, and plain paths.** The text may hold a
   cRef in braces - `{{{<category>::<artifact>}}}`, the form memories, records and docs name a place with - or a
   cRef / CID as before, either followed by `/<path>` (or `\<path>`) inside the artifact:
