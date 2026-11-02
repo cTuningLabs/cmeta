@@ -2,6 +2,22 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.38.0.1)
+- **`cx utils smart_find_by_cid` reads `{{{cRef}}}`, a path after the cRef, and plain paths.** The text may hold a
+  cRef in braces - `{{{<category>::<artifact>}}}`, the form memories, records and docs name a place with - or a
+  cRef / CID as before, either followed by `/<path>` (or `\<path>`) inside the artifact:
+  `{{{fgg.project::dapple,b20cdeb6102d4f76}}}/!AI/memory`, `cRef=fgg.project,...::dapple,b20c.../!AI`. That place
+  is printed instead of the artifact and returned as `path` / `paths` (one per artifact found; with a file search
+  the files stay the answer). The text may also hold a path to an existing file or folder (`D:\...`, `D:/...`,
+  `\\server\share\...`, `~/...`, and `/...` outside Windows), printed as it is (`artifacts` empty, filters not
+  applied). A path in prose may hold spaces and be followed by words, brackets or a full stop: the longest part
+  that exists is taken. The order is braces, then a path, then the CID extraction as before - a text with no
+  braces, no existing path and nothing after its CID gets exactly the old answer. Prose after `<alias>,<UID>` no
+  longer becomes part of the artifact's name (`cRef ...::dapple,<UID> is the project` was "not found"). A sub-path
+  or path that does not exist is "not found" (16) and named; `--far` opens such a place quoted. For the Far editor
+  plugins (Ctrl+1 opens the place in a new Far, LeftCtrl+Shift+1 in the same one). Tests:
+  `test_integration_categories.py` (`asset_with_folders`, 8 tests).
+
 ## 0.38.0
 - **The AI context of an artifact, chosen from declared templates: `cx <category> add|update <artifact> -ai[=names]`
   and `--desc.<key>`.** An artifact declares itself a template for a purpose in its own meta -

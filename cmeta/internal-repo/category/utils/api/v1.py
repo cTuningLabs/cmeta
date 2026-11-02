@@ -609,6 +609,11 @@ class Category(InitCategory):
         """
             Find artifacts by wrapped CID
 
+            The text may also hold a {{{cRef}}}, a "/<path>" right after the cRef or the CID
+            ({{{cRef}}}/!AI, <category>::<alias>,<UID>/!AI/memory) or a path to an existing
+            file or folder. A path inside the artifact is printed instead of the artifact,
+            a plain path as it is.
+
             Args:
                 ctx (dict): cMeta context.
                 arg1 (str): CID that can be wrapped with some text.
@@ -638,7 +643,9 @@ class Category(InitCategory):
                 before_date (str): Keep artifacts dated on or before this, same formats.
 
             Returns:
-                dict: Operation result.
+                dict: Operation result. With a path in the text, "path" holds the place
+                      found and "paths" every one (one per artifact found); a plain path
+                      comes back with no artifacts and no filter applied.
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
@@ -651,26 +658,51 @@ class Category(InitCategory):
             if r['return'] > 0: return r
             arg1 = r['answer']
 
+        sub_path = None
+
         if web and arg1.startswith('cmeta:///?'):
             cid = arg1[10:]
 
             from urllib.parse import unquote
             cid = unquote(cid)
-        elif cid is not None:
-            cid = common._extract_category_artifact(cid) 
-        elif arg1 is not None:
-            cid = common._extract_category_artifact(arg1) 
+        elif cid is not None or arg1 is not None:
+            # A {{{cRef}}} or a CID with the /<path> after it, or a plain path
+            found = common._extract_cid_and_path(cid if cid is not None else arg1)
+
+            if found is not None and 'path' in found:
+                path = found['path']
+
+                if con:
+                    print (path)
+
+                if far:
+                    os.system(f'start "" far "{path}"')
+
+                return {'return':0, 'path':path, 'paths':[path], 'artifacts':[]}
+
+            if found is not None and found.get('missing_path') is not None:
+                return {'return':16, 'error':f'path "{found["missing_path"]}" not found'}
+
+            cid = found['cid'] if found is not None else None
+            sub_path = found['sub_path'] if found is not None else None
         else:
             return {'return':1, 'error': 'CID is not specified'}
 
         if self.cm.debug:
-            self.logger.debug(f"extracted_cid={cid}")
+            self.logger.debug(f"extracted_cid={cid} sub_path={sub_path}")
 
         if cid is None:
             return {'return':1, 'error':f'Could not extract CID from the input string (arg1)'}
 
+        # A path inside the artifact is printed instead of the artifact itself,
+        # so the artifacts are found without printing them
+        find_ctx = ctx
+        if sub_path is not None and con:
+            find_ctx = dict(ctx)
+            find_ctx['control'] = dict(ctx['control'], con = False)
+
         r = self.find_by_cid_(
-              ctx,
+              find_ctx,
               cid,
               tags = tags,
               match = match,
@@ -689,6 +721,33 @@ class Category(InitCategory):
         artifacts = r['artifacts']
 
         path = artifacts[0]['path']
+
+        if sub_path is not None:
+            # The files of a file search stay the answer; otherwise the place
+            # inside each artifact that has it
+            paths = list(r.get('files', []))
+            if len(paths) == 0:
+                for a in artifacts:
+                    p = common._longest_existing_path(sub_path, a['path'])
+                    if p is not None:
+                        paths.append(p)
+
+            if len(paths) == 0:
+                shown = sub_path.split()[0].rstrip(common.PATH_END_CHARS + '.:')
+                return {'return':16, 'error':f'"{shown}" not found in {path}'}
+
+            if con:
+                for p in paths:
+                    print (p)
+
+            path = paths[0]
+            r['path'] = path
+            r['paths'] = paths
+
+            if far:
+                os.system(f'start "" far "{path}"')
+
+            return r
 
         if far:
             os.system(f'start far {path}')
