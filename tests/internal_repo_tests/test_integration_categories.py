@@ -663,6 +663,121 @@ def test_smart_find_by_cid_forwards_smart_match(cm, tagged_assets):
     assert r['return'] == 16
 
 
+# ---------------------------------------------------------------------------
+# utils.smart_find_by_cid - {{{cRef}}}, a path after the cRef, plain paths
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def asset_with_folders(cm):
+    """One asset with a nested folder, a file in it and its cRef."""
+    cm.access({'category': 'asset', 'command': 'create', 'arg1': 'alpha',
+               'yaml': True, 'con': False})
+    r = cm.access({'category': 'asset', 'command': 'find', 'arg1': 'alpha',
+                   'con': False})
+    artifact = r['artifacts'][0]
+
+    nested = os.path.join(artifact['path'], 'docs', 'my notes')
+    os.makedirs(nested)
+    with open(os.path.join(nested, 'a.md'), 'w', encoding='utf-8') as f:
+        f.write('text\n')
+
+    cref = artifact['cmeta']['category'] + '::alpha,' + artifact['cmeta']['artifact']
+
+    return {'path': artifact['path'], 'nested': nested, 'cref': cref}
+
+
+def _smart_find(cm, text, con=False):
+    return cm.access({'category': 'utils', 'command': 'smart_find_by_cid',
+                      'arg1': text, 'con': con})
+
+
+def test_smart_find_by_cid_reads_a_cref_in_braces(cm, asset_with_folders):
+    a = asset_with_folders
+
+    r = _smart_find(cm, 'see {{{' + a['cref'] + '}}} here')
+    assert r['return'] == 0
+    assert r['artifacts'][0]['path'] == a['path']
+    assert 'path' not in r
+
+
+def test_smart_find_by_cid_follows_the_path_after_a_cref_in_braces(
+        cm, asset_with_folders):
+    a = asset_with_folders
+
+    # The folder name holds a space; the full stop and the bracket end the path
+    r = _smart_find(cm, '(see {{{' + a['cref'] + '}}}/docs/my notes/a.md).')
+    assert r['return'] == 0
+    assert r['path'] == os.path.join(a['nested'], 'a.md')
+
+    r = _smart_find(cm, '{{{asset::alpha}}}/docs, then')
+    assert r['return'] == 0
+    assert r['path'] == os.path.join(a['path'], 'docs')
+
+
+def test_smart_find_by_cid_follows_the_path_after_a_plain_cid(
+        cm, asset_with_folders):
+    a = asset_with_folders
+
+    r = _smart_find(cm, 'cRef ' + a['cref'] + '/docs/my notes is it')
+    assert r['return'] == 0
+    assert r['path'] == a['nested']
+
+    r = _smart_find(cm, 'asset::alpha\\docs')
+    assert r['return'] == 0
+    assert r['path'] == os.path.join(a['path'], 'docs')
+
+    r = _smart_find(cm, '(wrapped in text) asset:alpha/docs')
+    assert r['return'] == 0
+    assert r['path'] == os.path.join(a['path'], 'docs')
+
+
+def test_smart_find_by_cid_prints_the_path_inside_the_artifact(
+        cm, asset_with_folders, capsys):
+    a = asset_with_folders
+
+    r = _smart_find(cm, 'asset::alpha/docs', con=True)
+    assert r['return'] == 0
+    assert capsys.readouterr().out.strip() == os.path.join(a['path'], 'docs')
+
+
+def test_smart_find_by_cid_a_missing_path_after_a_cid_is_not_found(
+        cm, asset_with_folders):
+    r = _smart_find(cm, '{{{asset::alpha}}}/no-such-folder now')
+    assert r['return'] == 16
+    assert '/no-such-folder' in r['error']
+
+
+def test_smart_find_by_cid_ends_the_artifact_at_its_uid(cm,
+                                                        asset_with_folders):
+    a = asset_with_folders
+
+    # Before, the prose after the UID was read as part of the artifact name
+    r = _smart_find(cm, 'cRef ' + a['cref'] + ' is the asset')
+    assert r['return'] == 0
+    assert r['artifacts'][0]['path'] == a['path']
+
+
+def test_smart_find_by_cid_returns_a_plain_path(cm, asset_with_folders):
+    a = asset_with_folders
+
+    r = _smart_find(cm, 'Working copy: ' + a['nested'] + ' is here')
+    assert r['return'] == 0
+    assert r['path'] == a['nested']
+    assert r['artifacts'] == []
+
+    r = _smart_find(cm, '- [a](' + os.path.join(a['nested'], 'a.md') + ') - hook')
+    assert r['return'] == 0
+    assert r['path'] == os.path.join(a['nested'], 'a.md')
+
+
+def test_smart_find_by_cid_a_missing_plain_path_is_not_found(cm, tmp_path):
+    missing = os.path.join(str(tmp_path), 'no', 'such', 'folder')
+
+    r = _smart_find(cm, 'in ' + missing)
+    assert r['return'] == 16
+    assert missing in r['error']
+
+
 def test_matches_any_value_walks_nested_structures():
     # Loaded by path: the internal repo lives under a directory with a dash,
     # so it cannot be reached with a normal import statement

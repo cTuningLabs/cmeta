@@ -2,6 +2,29 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.38.1
+- **`cx utils smart_find_by_cid` reads `{{{cRef}}}`, a path after the cRef, and plain paths.** The text may hold a
+  cRef in braces - `{{{<category>::<artifact>}}}`, the form memories, records and docs name a place with - or a
+  cRef / CID as before, either followed by `/<path>` (or `\<path>`) inside the artifact:
+  `{{{fgg.project::dapple,b20cdeb6102d4f76}}}/!AI/memory`, `cRef=fgg.project,...::dapple,b20c.../!AI`. That place
+  is printed instead of the artifact and returned as `path` / `paths` (one per artifact found; with a file search
+  the files stay the answer). The text may also hold a path to an existing file or folder (`D:\...`, `D:/...`,
+  `\\server\share\...`, `~/...`, and `/...` outside Windows), printed as it is (`artifacts` empty, filters not
+  applied). A path in prose may hold spaces and be followed by words, brackets or a full stop: the longest part
+  that exists is taken. The order is braces, then a path, then the CID extraction as before - a text with no
+  braces, no existing path and nothing after its CID gets exactly the old answer. Prose after `<alias>,<UID>` no
+  longer becomes part of the artifact's name (`cRef ...::dapple,<UID> is the project` was "not found"). A sub-path
+  or path that does not exist is "not found" (16) and named; `--far` opens such a place quoted. For the Far editor
+  plugins (Ctrl+1 opens the place in a new Far, LeftCtrl+Shift+1 in the same one). Tests:
+  `test_integration_categories.py` (`asset_with_folders`, 8 tests).
+- **The memory note of a server's console: one line per worker, not one per engine call.** With
+  `CSERVER_CM_PRINT_HOST_INFO` set, every `access` call - the nested ones too, in every worker of the pool - printed
+  its line, so one page request filled the console with dozens. Now only a top-level call prints, and of those the
+  first of the process, then one when a minute passed or the process memory moved by more than a twentieth (or
+  32 MB); the line names the pid (`... 0.03 GB used by pid 48996, ...`), so the workers of a pool can be told apart.
+  The variable takes `1`/`yes`/`true` (a minute), a number of seconds, or `all`/`every`/`0` (every top-level call);
+  the Python API's `print_host_info` the same values. Tests: `test_utils_sys_host_info_line.py`.
+
 ## 0.38.0
 - **The AI context of an artifact, chosen from declared templates: `cx <category> add|update <artifact> -ai[=names]`
   and `--desc.<key>`.** An artifact declares itself a template for a purpose in its own meta -

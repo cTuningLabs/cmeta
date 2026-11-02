@@ -497,6 +497,132 @@ def _extract_category_artifact(
 
     return None
 
+
+# Where a path written in prose may end: before a space or a closing mark. A folder name can hold spaces too,
+# so every such place is tried and the file system decides (_longest_existing_path)
+PATH_END_CHARS = ' \t)]}>"\'`,;'
+
+###################################################################################################
+def _longest_existing_path(
+    text: str,  # Text that starts with a path and may go on with prose.
+    base: str = None,  # Folder the path is relative to (an artifact); None for an absolute path.
+):
+    """
+    _longest_existing_path function.
+
+    Returns the longest beginning of the text that names an existing file or folder:
+    "/!AI/memory, then" with an artifact as base gives <artifact>/!AI/memory, and
+    "D:\\a b\\c now" gives "D:\\a b\\c" when that folder exists.
+
+    Args:
+        text (str): Text that starts with a path and may go on with prose.
+        base (str): Folder the path is relative to (an artifact); None for an absolute path.
+
+    Returns:
+        str: The normalized path, or None when no beginning of the text exists.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    cuts = [len(text)] + [i for i in range(len(text) - 1, 0, -1) if text[i] in PATH_END_CHARS]
+
+    for cut in cuts:
+        # A full stop or a comma right after a path ends the sentence, not the name
+        candidate = text[:cut].rstrip('.,;:')
+
+        if base is not None:
+            path = os.path.join(base, candidate.lstrip('/\\'))
+        elif candidate.startswith('~'):
+            path = os.path.expanduser(candidate)
+        else:
+            path = candidate
+
+        if path != '' and os.path.exists(path):
+            return os.path.normpath(path)
+
+    return None
+
+
+###################################################################################################
+def _extract_cid_and_path(
+    s: str,  # Text holding a CID, a {{{cRef}}} or a path, possibly wrapped in prose.
+):
+    """
+    _extract_cid_and_path function.
+
+    Finds what a line of text points to, for smart_find_by_cid. The first that applies wins:
+
+    1. A cRef in braces, {{{<category>::<artifact>}}} - how memories, records and docs write a
+       place - and the "/<path>" that may follow it.
+    2. A path to an existing file or folder: D:\\..., D:/..., \\\\server\\share\\..., ~/...,
+       and /... outside Windows (where "/" alone would be the current drive).
+    3. The CID found by _extract_category_artifact, as before, with the "/<path>" or
+       "\\<path>" written right after its artifact. Prose after "<alias>,<UID>" is not part
+       of the artifact: the UID ends it.
+
+    Args:
+        s (str): Text holding a CID, a {{{cRef}}} or a path, possibly wrapped in prose.
+
+    Returns:
+        dict: {'cid', 'sub_path'} for 1 and 3 (sub_path: the text from the "/" after the
+              artifact on, prose included, or None), {'path'} for 2,
+              {'missing_path'} when a path was written but does not exist and no CID was
+              found either, or None when the text points to nothing.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    import re
+
+    def _sub_path(after):
+        return after if after[:1] in ('/', '\\') else None
+
+    # 1) {{{cRef}}}/path - the braces say exactly where the cRef starts and ends
+    for m in re.finditer(r'\{\{\{([^{}]+?)\}\}\}', s):
+        cid = m.group(1).strip()
+        if '::' in cid:
+            return {'cid': cid, 'sub_path': _sub_path(s[m.end():])}
+
+    # 2) A path, where a path can start: not inside a word
+    starts = r'(?<![\w])[A-Za-z]:[\\/]|(?<![\w\\])\\\\[^\\/\s]+[\\/]|(?<![^\s(\[<"\'`=])~[\\/]'
+    if os.name != 'nt':
+        starts += r'|(?<![^\s(\[<"\'`=])/(?=[^\s/])'
+
+    missing_path = None
+
+    for m in re.finditer(starts, s):
+        path = _longest_existing_path(s[m.start():])
+        if path is not None:
+            return {'path': path}
+
+        if missing_path is None:
+            missing_path = s[m.start():].split()[0].rstrip(PATH_END_CHARS + '.:')
+
+    # 3) A CID as before
+    cid = _extract_category_artifact(s)
+    if cid is None:
+        return {'missing_path': missing_path} if missing_path is not None else None
+
+    head, sep, artifact = cid.rpartition('::')
+    sub_path = None
+
+    m = re.search(r'[\\/]', artifact)
+    if m:
+        # The first pattern keeps the rest of the line, the path after the artifact with it
+        sub_path = artifact[m.start():]
+        artifact = artifact[:m.start()]
+    elif artifact != '':
+        # The other patterns stop before a "/" - look for it after the artifact in the text
+        m = re.search(re.escape(artifact) + r'(?=[\\/])', s)
+        if m:
+            sub_path = s[m.end():]
+
+    m = re.match(r'(.*?,[0-9a-fA-F]{16})(?![0-9a-zA-Z])', artifact)
+    if m:
+        artifact = m.group(1)
+
+    return {'cid': head + sep + artifact.strip(), 'sub_path': sub_path}
+
 ############################################################
 def select_artifact_(
     self,
