@@ -14,9 +14,15 @@ Functions
 
 .. autofunction:: cmeta.utils.net.download
 
+.. autofunction:: cmeta.utils.net.tailscale_ipv4
+
 .. autofunction:: cmeta.utils.net.unify_request
 
 Constants
 ---------
 
 .. autodata:: cmeta.utils.net.RESUME_RECORD_SUFFIX
+
+.. autodata:: cmeta.utils.net.TAILSCALE_CLI_PLACES
+
+.. autodata:: cmeta.utils.net.TAILSCALE_IPV4_RANGE

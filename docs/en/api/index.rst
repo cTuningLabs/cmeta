@@ -1,5 +1,5 @@
 API Reference (v0.38.0)
-========================
+=======================
 
 This section contains the complete API reference for cMeta v0.38.0.
 
