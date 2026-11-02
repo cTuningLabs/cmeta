@@ -1695,7 +1695,7 @@ def get_min_host_info(
         x += f"{space}Time to obtain system info: {nice_self_time}\n"
 
     # the same as one stamped line, for a server's console (2026-11-02): the process, the free and the total memory
-    one = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} memory: {nice_memory_used} used, "
+    one = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} memory: {nice_memory_used} used by pid {os.getpid()}, "
            f"{nice_free_memory} free of {nice_total_memory} ({self_time:.3f} s)")
 
     if con:

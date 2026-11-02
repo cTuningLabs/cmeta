@@ -61,7 +61,18 @@ cpu_count = os.cpu_count()
 max_workers = int (cpu_count * 0.8 + 0.5)
 
 cm_debug = True if os.environ.get('CSERVER_CM_DEBUG', '').lower() in ['1', 'yes', 'true'] else False
-cm_print_host_info = True if os.environ.get('CSERVER_CM_PRINT_HOST_INFO', '').lower() in ['1', 'yes', 'true'] else False
+# the memory note of the console: 1/yes/true = a stamped line per worker at most once a minute (or when its memory
+# moves), a number = that interval in seconds, all/every/0 = one line per top-level engine call
+_phi = os.environ.get('CSERVER_CM_PRINT_HOST_INFO', '').strip().lower()
+if _phi in ['1', 'yes', 'true']:
+    cm_print_host_info = True
+elif _phi in ['all', 'every', '0']:
+    cm_print_host_info = 0
+else:
+    try:
+        cm_print_host_info = float(_phi) if _phi else False
+    except ValueError:
+        cm_print_host_info = False
 
 cm = CMetaAsync(max_workers = max_workers, debug = cm_debug, print_host_info = cm_print_host_info)
 

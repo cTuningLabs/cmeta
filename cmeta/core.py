@@ -39,7 +39,7 @@ class CMeta:
         pause_if_error: Optional[bool] = None,  # If True, pause before exiting after errors.
         package_allow_install: Optional[bool] = True,  # If True, allow automatic Python package installation.
         package_timeout: Optional[float] = None,  # Default timeout for package installation and checks, in seconds.
-        print_host_info: Optional[bool] = False,  # If True, print host system information during access calls.
+        print_host_info: Optional[bool] = False,  # A stamped memory line on the console for top-level access calls: True = at most one a minute per process (or when its memory moves), a number = that interval in seconds, 0 = every top-level call.
     ):
 
         """
@@ -399,6 +399,28 @@ class CMeta:
             self.repos.pop_hidden_repos(saved)
 
     ###################################################################################################
+    def _note_host_memory(self):
+        """
+            One stamped memory line on the console for a top-level access call of this process (print_host_info):
+            the first call, then a call after the interval passed or the memory of the process moved by more than
+            a twentieth (or 32 MB). The interval: 60 s when print_host_info is True, a number = that many seconds,
+            0 = every top-level call. Each process of a server's pool keeps its own last line (the pid is in it).
+        """
+        every = self.print_host_info
+        try:
+            interval = 60.0 if every is True else float(every)
+        except (TypeError, ValueError):
+            interval = 60.0
+        r = utils.sys.get_min_host_info(only_memory=True, short=True)
+        if r['return']>0: return
+        now = time.monotonic()
+        used = r.get('memory_used') or 0
+        last = getattr(self, '_host_memory_last', None)
+        if last is None or interval <= 0 or now - last[0] >= interval or abs(used - last[1]) > max(last[1] * 0.05, 32 * 1024 * 1024):
+            print (r['line'])
+            self._host_memory_last = (now, used)
+
+    ###################################################################################################
     def _access(
         self,
         request: Dict[str, Any],  # Dictionary containing the request data
@@ -406,10 +428,6 @@ class CMeta:
         """The body of access(): the scope of the call (hide_repos) is set and restored around it."""
 
         self_time_start = time.perf_counter()
-
-        if self.print_host_info:
-            # one stamped line per call (a server's console: CSERVER_CM_PRINT_HOST_INFO), not a block
-            utils.sys.get_min_host_info(only_memory=True, con=True, short=True)
 
         # Manual override of global self.debug and self.fail_on_error
         self_fail_on_error = self.fail_on_error
@@ -470,6 +488,11 @@ class CMeta:
 
         self.logger.debug(f'ACCESS nested call: {nested_call}')
         ctx['nested_call'] = nested_call
+
+        # The memory note of a server's console (CSERVER_CM_PRINT_HOST_INFO): top-level calls only, and of those
+        # the first of this process, then one when the interval passed or the process memory moved
+        if self.print_host_info is not False and self.print_host_info is not None and nested_call == 0:   # 0 = every top-level call
+            self._note_host_memory()
 
         # Check and extract control params
         r = utils.check_params(params, control_params_desc, fail_on_error=self_fail_on_error)

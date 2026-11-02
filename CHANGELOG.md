@@ -17,6 +17,13 @@ All notable changes to cMeta are documented here, newest first.
   or path that does not exist is "not found" (16) and named; `--far` opens such a place quoted. For the Far editor
   plugins (Ctrl+1 opens the place in a new Far, LeftCtrl+Shift+1 in the same one). Tests:
   `test_integration_categories.py` (`asset_with_folders`, 8 tests).
+- **The memory note of a server's console: one line per worker, not one per engine call.** With
+  `CSERVER_CM_PRINT_HOST_INFO` set, every `access` call - the nested ones too, in every worker of the pool - printed
+  its line, so one page request filled the console with dozens. Now only a top-level call prints, and of those the
+  first of the process, then one when a minute passed or the process memory moved by more than a twentieth (or
+  32 MB); the line names the pid (`... 0.03 GB used by pid 48996, ...`), so the workers of a pool can be told apart.
+  The variable takes `1`/`yes`/`true` (a minute), a number of seconds, or `all`/`every`/`0` (every top-level call);
+  the Python API's `print_host_info` the same values. Tests: `test_utils_sys_host_info_line.py`.
 
 ## 0.38.0
 - **The AI context of an artifact, chosen from declared templates: `cx <category> add|update <artifact> -ai[=names]`
