@@ -207,10 +207,13 @@ class Category(InitCategory):
 
             path_to_run_script = run_script
 
-        if os.name == 'nt':
-            path_to_run_script += '.bat'
-        else:
-            path_to_run_script = './' + path_to_run_script + '.sh'
+        path_to_run_script += '.bat' if os.name == 'nt' else '.sh'
+
+        # A relative script by an explicit path (.\_run.bat, ./_run.sh): cmd.exe with NoDefaultCurrentDirectoryInExePath
+        # set (hardened setups, agent shells) does not look in the current folder for "_run.bat" ("is not recognized",
+        # 2026-10-31). An absolute one (skip_chdir) stays as it is - it used to get a "./" in front on Linux and macOS.
+        if not os.path.isabs(path_to_run_script):
+            path_to_run_script = os.path.join('.', path_to_run_script)
 
         path_to_run_script2 = self.cm.utils.files.quote_path(path_to_run_script)
 

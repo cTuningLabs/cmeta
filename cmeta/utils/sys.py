@@ -1609,6 +1609,7 @@ def get_min_host_info(
     line: int = 0,  # Prefix line index used for structured console output.
     self_time: bool = False,  # If True, include self-timing information in console output.
     space = '',  # Optional indentation prefix for console output formatting.
+    short: bool = False,  # If True, the console gets one stamped line (the 'line' of the result) instead of the block.
 ):
     """
         Get minimal host system information including CPU and memory.
@@ -1693,14 +1694,19 @@ def get_min_host_info(
     if self_time:
         x += f"{space}Time to obtain system info: {nice_self_time}\n"
 
+    # the same as one stamped line, for a server's console (2026-11-02): the process, the free and the total memory
+    one = (f"{time.strftime('%Y-%m-%d %H:%M:%S')} memory: {nice_memory_used} used, "
+           f"{nice_free_memory} free of {nice_total_memory} ({self_time:.3f} s)")
+
     if con:
-        print (x)
+        print (one if short else x)
 
     result.update({
       'nice_total_memory': nice_total_memory,
       'nice_free_memory': nice_free_memory,
       'nice_memory_used': nice_memory_used,
       'string': x,
+      'line': one,
       'self_time': self_time,
       'nice_self_time': nice_self_time
     })

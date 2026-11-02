@@ -48,6 +48,14 @@ if ! ${PYTHON_PREFIX} "${CSERVER_PYTHON}" -c "import uvicorn, fastapi" >/dev/nul
     fi
 fi
 
+# --param.host=tailscale: listen on this machine's Tailscale address alone, asked of Tailscale at each start (no
+# address in a script). Tailscale missing or stopped stops the start with its reason - never another address.
+# -W: the package imports the module that -m runs, and Python's RuntimeWarning about it says nothing here.
+if [ "${CSERVER_HOST}" = "tailscale" ]; then
+    CSERVER_HOST=$(${PYTHON_PREFIX} "${CSERVER_PYTHON}" -W ignore::RuntimeWarning -m cmeta.utils.net tailscale_ipv4) || exit 1
+    echo "cMeta info: cserver listens on the Tailscale address ${CSERVER_HOST}"
+fi
+
 # CSERVER_FLAGS comes from default_env in _cmeta.yaml, so the flags stay
 # configurable rather than baked in - the way _run.bat has always done it.
 # This script used to hardcode "--reload", so the two halves of the same app

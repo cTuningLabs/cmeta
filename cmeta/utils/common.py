@@ -975,6 +975,10 @@ def value_matches(
             Exception: Propagated runtime errors, if any.
     """
 
+    # "*" → any value the key holds (the key exists: --match.template.ai_uses.alias=* lists the declared templates)
+    if isinstance(query_value, str) and query_value == '*':
+        return True
+
     # Dict → recursive match
     if isinstance(query_value, dict):
         if not isinstance(data_value, dict):
