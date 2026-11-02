@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.37.12.1)
+## 0.38.0
 - **The AI context of an artifact, chosen from declared templates: `cx <category> add|update <artifact> -ai[=names]`
   and `--desc.<key>`.** An artifact declares itself a template for a purpose in its own meta -
   `template: ai_uses: {alias: fgg, title: FGG personal projects context, sort: 30}` - and the index keeps every
