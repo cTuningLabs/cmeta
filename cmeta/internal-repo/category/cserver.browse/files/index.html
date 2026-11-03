@@ -24,7 +24,7 @@
   <form id="cbr-form" class="cbr-bar" autocomplete="off">
     <div class="cbr-row1">
       <input id="cbr-q" type="search" spellcheck="false"
-             placeholder="Search names, tags, meta and descriptions  -  e.g.  citadel   or   sla tag:report after:2026-09-01      ( / to focus )">
+             placeholder="Search names, tags, meta and descriptions  -  e.g.  benchmark   or   gpu tag:report after:2026-09-01      ( / to focus )">
       <button type="submit" class="cbr-go">Search</button>
     </div>
     <div class="cbr-row2">
@@ -86,9 +86,10 @@
             <th data-sort="alias">Artifact</th>
             <th data-sort="cat">Category</th>
             <th data-sort="repo">Repository</th>
-            <th>Tags</th>
+            <th class="tags">Tags</th>
             <th data-sort="created">Created</th>
-            <th data-sort="updated">Updated</th>
+            <th data-sort="updated" class="updated">Updated</th>
+            <th class="acts"><label class="cbr-col-toggle" title="Show the tags of the artifacts"><input type="checkbox" data-col="tags">tags</label><label class="cbr-col-toggle" title="Show when the artifacts were updated"><input type="checkbox" data-col="updated">updated</label></th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -139,7 +140,7 @@
   <div id="cbr-busy" class="cbr-busy" hidden><div class="spin"></div><span class="what">loading</span></div>
 
   <footer class="cbr-foot">
-    <span>cMeta v%%VERSION%%</span>
+    <span>Powered by <a href="https://cTuning.ai/project/cmeta" target="_blank" rel="noopener" title="The cMeta project on cTuning.ai">cMeta v%%VERSION%%</a></span>
     <span>The same query in a terminal: <code id="cbr-cli">cx cserver.browse query ""</code>
       <button type="button" class="cbr-copy" data-copy-from="cbr-cli" title="Copy">copy</button></span>
   </footer>

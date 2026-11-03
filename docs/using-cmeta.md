@@ -299,6 +299,13 @@ cx <category> add <repo>:<alias> --tags=t1,t2  # create in a specific repo
 cx <category> update <alias> --meta.description="..."   # merge metadata
 cx <category> add <alias> -ai                  # ask which AI contexts it uses (ai_uses in its _desc.yaml)
 cx <category> add <alias> -ai=cmeta,fgg        # by their aliases, no question; update appends the same way
+cx <category> update <alias> -ai               # what it uses first ("-1": chosen = removed), then what it may add
+cx <category> update <alias> -ai=-fgg          # "-" in front removes
+cx <category> update <alias> --connect=<name>  # connect both ways: each _desc.yaml names the other (full cRefs)
+cx <category> update <alias> --ct=<name>       # --connect-to: this artifact only
+cx <category> update <alias> --connect=-<name> # disconnect both ways (--ct=-<name>: this side only)
+cx <category> update <alias> --connect="<cRef>;<cRef>"   # several at once: ";" between cRefs
+cx <category> update <alias> --connect         # ask: its connections ("-N" disconnects), then names to add
 cx <category> update <alias> --desc.ck.owner=me   # merge any key into _desc.yaml (--desc=@file.yaml: a dict)
 cx utils ai_context                            # the declared AI contexts (alias, cRef, title); --names=a,b resolves names
 cx utils find_by_cid "*::*" --match.template.ai_uses.alias=*   # the same by the index search: "*" = any value (the key exists)
@@ -310,6 +317,14 @@ cx <category> rm <alias>                       # delete (blocked if permanent: t
 
 Prefer YAML sidecars (`--yaml`) — they match the shipped artifacts and are
 easy to read/edit by hand.
+
+**Connections and the AI context are lists in `_desc.yaml`.** `-ai`, `--connect` and
+`--connect-to` (`--ct`) take aliases, `category::alias` or full cRefs (`{{{cRef}}}` too) and
+always write the full cRef; an entry is the same artifact by its UID, so a name given
+twice, or an entry written before a rename, is never doubled. A name with `-` in front
+removes - also one whose artifact is gone. A hand-written `_desc.yaml` keeps its text: only
+the lines of the items that change are touched. A single value given with
+`--desc.<key>=` for a list is appended to it, never put in its place.
 
 **Hand-written YAML stays as written.** `update`, `tags`, `mv`/copy with a new UID and
 the other commands that rewrite an existing `_cmeta.yaml` edit only the top-level keys
@@ -1302,6 +1317,34 @@ A company's own view: a bare `/browse` (a URL without a query) opens with what t
 cx config set cserver --meta.browse_title="Acme knowledge"
 cx config set cserver --meta.browse_default_repos="acme@*" --meta.browse_default_view=graph
 cx config set cserver --meta.browse_default_cats=report,person --meta.browse_default_query="after:2026"
+```
+
+The repository and category pickers hold what is ticked: every one by default, a name
+with `-` in front left out (`repos=-fgg-arc` in the address), `-*` none, `*` all; the
+picker has **all**, **none** and **only the shown**. Repositories you never want in a view
+until you tick them - an archive - are unticked whenever an address names none:
+
+```bash
+cx config set cserver --meta.browse_untick_repos=fgg-arc
+```
+
+A category lists its artifacts by name unless it declares another order: its own meta
+(`browse_sort: -alias` - the engine's `work` and `note` do: their names start with the
+date, so from the end means the latest first; `created,updated` would be by creation,
+then by update; a `-` in front of a key turns it around), or the server's config, which
+goes first:
+
+```bash
+cx config set cserver --meta.browse_category_sort="work,note:-alias;report:created,updated"
+```
+
+A browser on the server's own machine sees the files of an artifact and, on every row, the
+buttons that open its folder in the file manager, a shell or Far. "Its own machine" is
+a loopback address, or the machine's own address when the page is opened by its LAN or
+Tailscale name - that name listed in the config:
+
+```bash
+cx config set cserver --meta.local_hosts=my-laptop        # comma-separated names
 ```
 
 On a shared server:

@@ -76,7 +76,7 @@ else:
 
 cm = CMetaAsync(max_workers = max_workers, debug = cm_debug, print_host_info = cm_print_host_info)
 
-# the engine's version for every page (the tooltip of the footer's "Powered by cMeta", templates/base.html)
+# the engine's version for every page (the footer's "Powered by cMeta v<version>", templates/base.html)
 templates.env.globals['cmeta_version'] = cm.__version__
 
 
@@ -416,8 +416,30 @@ def _is_local(ip):
         return False
 
 
+def _own_connection(request):
+    """True when the connection came from this machine through one of its own addresses: its peer address is the
+    address it arrived on (a browser on this machine that opens the page by the machine's LAN or Tailscale name -
+    a connection from elsewhere cannot carry this machine's address as its own over TCP)."""
+    peer = _peer_ip(request)
+    server = (getattr(request, 'scope', None) or {}).get('server') or ('',)
+    try:
+        return bool(peer) and ipaddress.ip_address(peer) == ipaddress.ip_address(str(server[0] or ''))
+    except ValueError:
+        return False
+
+
+def _local_hosts():
+    """The names this server is reached by from its own machine besides localhost: local_hosts of the cserver config
+    ("fgg-thinkpad-p14s-gen-7,laptop.tail1234.ts.net"), written by its owner - a page under another name (DNS
+    rebinding) never counts."""
+    v = cfg.get('local_hosts')
+    items = v if isinstance(v, (list, tuple)) else str(v or '').split(',')
+    return {str(x).strip().lower() for x in items if str(x).strip()}
+
+
 def _host_local(request):
-    """True when the Host header names this machine: localhost, *.localhost or a loopback address.
+    """True when the Host header names this machine: localhost, *.localhost, a loopback address, a name of
+    local_hosts in the cserver config, or the address the connection arrived on.
 
     A page that a browser on this machine loads from another name that resolves to 127.0.0.1 (DNS rebinding)
     reaches the server from loopback too; its Host header still carries that other name.
@@ -427,7 +449,9 @@ def _host_local(request):
         name = host[1:].split(']', 1)[0]
     else:
         name = host.rsplit(':', 1)[0] if host.count(':') == 1 else host
-    return name == 'localhost' or name.endswith('.localhost') or _is_local(name)
+    server_ip = str(((getattr(request, 'scope', None) or {}).get('server') or ('',))[0] or '').lower()
+    return (name == 'localhost' or name.endswith('.localhost') or _is_local(name)
+            or name in _local_hosts() or (bool(name) and name == server_ip))
 
 
 def _same_origin(request):
@@ -916,14 +940,16 @@ async def _serve_page(
 
     cmeta_params['query'] = query
 
-    # Whether the browser runs on this machine: the real peer address, no proxy header, and a Host header that
-    # names this machine (a loopback peer alone could be a page reached by DNS rebinding). A page may then offer
-    # more than to the network - cserver.browse shows the files of an artifact and opens its folder.
+    # Whether the browser runs on this machine: the real peer address (loopback, or this machine's own address the
+    # connection arrived on - the page opened by the machine's LAN or Tailscale name), no proxy header, and a Host
+    # header that names this machine (a loopback peer alone could be a page reached by DNS rebinding; local_hosts of
+    # the config adds names). A page may then offer more than to the network - cserver.browse shows the files of an
+    # artifact and opens its folder. (The password gate keeps its own loopback exemption.)
     # same_origin: no browser said the request came from a page of another site - for actions with side effects.
     # password_gate: this server asks browsers for its password (the gate runs before any route), so a request that
     # reached the page passed it, or was exempt as local or by an api key - a page with a secret of its own may trust it.
-    cmeta_params['misc'] = {'client_local': (_is_local(_peer_ip(request)) and not _via_proxy(request)
-                                             and _host_local(request)),
+    cmeta_params['misc'] = {'client_local': ((_is_local(_peer_ip(request)) or _own_connection(request))
+                                             and not _via_proxy(request) and _host_local(request)),
                             'same_origin': _same_origin(request),
                             'password_gate': _gate_on()}
 

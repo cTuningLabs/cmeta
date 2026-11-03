@@ -56,6 +56,17 @@ def test_home_is_the_projects_page_with_the_welcome_under_it(server):
     assert '/projects/js/projects.js' in r.text                   # its assets and AJAX stay under /projects
 
 
+def test_every_page_ends_with_powered_by_cmeta_and_its_version(server):
+    """The line at the end of every page of the server (2026-11-03): "Powered by cMeta v<version>", a link to the
+    cMeta project on cTuning.ai (the browse page says it in its own footer and hides this one)."""
+    _, client = server
+    for page in ('/', '/projects', '/browse'):
+        r = client.get(page)
+        assert r.status_code == 200, page
+        assert ('<footer class="cmeta-footer">Powered by <a href="https://cTuning.ai/project/cmeta"' in r.text
+                and '>cMeta v' + __version__ + '</a></footer>' in r.text), page
+
+
 def test_home_json_is_unchanged(server):
     _, client = server
     r = client.get('/?out=json')
@@ -109,6 +120,19 @@ def test_the_host_must_name_this_machine_and_the_page_must_be_ours(server):
     assert app_module._same_origin(_req(host='localhost:8004', origin='http://localhost:8004'))
     assert not app_module._same_origin(_req(host='localhost:8004', origin='http://other.example'))
 
+    # this machine by its LAN or Tailscale name (2026-11-03): local_hosts of the config, or the address the
+    # connection arrived on; the peer then is that same address (no connection from elsewhere carries it)
+    app_module.cfg['local_hosts'] = 'my-laptop, laptop.tail.example'
+    assert app_module._host_local(_req(host='my-laptop:8004')) and app_module._host_local(_req(host='laptop.tail.example'))
+    assert not app_module._host_local(_req(host='other-laptop:8004'))
+    own = SimpleNamespace(headers={'host': '100.64.0.5:8004'}, client=SimpleNamespace(host='100.64.0.5'),
+                          scope={'server': ('100.64.0.5', 8004)})
+    assert app_module._host_local(own) and app_module._own_connection(own)
+    other = SimpleNamespace(headers={'host': '100.64.0.5:8004'}, client=SimpleNamespace(host='100.64.0.9'),
+                            scope={'server': ('100.64.0.5', 8004)})
+    assert not app_module._own_connection(other)
+    app_module.cfg.pop('local_hosts')
+
 
 def test_open_a_folder_through_the_app(server):
     app_module, _ = server
@@ -129,4 +153,13 @@ def test_open_a_folder_through_the_app(server):
     with TestClient(app_module.app) as remote:                             # 'testclient': not this machine
         app_module.cfg.clear()
         j = remote.post('/browse?native_action=open', json=body, headers={'Sec-Fetch-Site': 'same-origin'}).json()
+        assert 'server\'s own machine' in j['error']
+    # the page opened on this machine by its own address (a Tailscale or LAN name resolves to it): local too
+    with TestClient(app_module.app, base_url='http://100.64.0.5:8004', client=('100.64.0.5', 50000)) as own:
+        app_module.cfg.clear()
+        j = own.post('/browse?native_action=open', json=body, headers={'Sec-Fetch-Site': 'same-origin'}).json()
+        assert j.get('dry') or 'desktop' in j.get('error', '') or 'found' in j.get('error', ''), j
+    with TestClient(app_module.app, base_url='http://100.64.0.5:8004', client=('100.64.0.9', 50000)) as peer:
+        app_module.cfg.clear()                                             # another machine of the tailnet
+        j = peer.post('/browse?native_action=open', json=body, headers={'Sec-Fetch-Site': 'same-origin'}).json()
         assert 'server\'s own machine' in j['error']

@@ -82,6 +82,16 @@ These keys of the cserver config apply (cx config set cserver --meta.<key>=<valu
     browse_default_repos        the query, the repository and category pickers (comma-separated) and the tab
     browse_default_cats         (search, browse or graph) - a company's own view of a shared workspace
     browse_default_view
+    browse_untick_repos       repositories unticked in the picker whenever an address names none (comma-separated
+                              aliases or patterns, "fgg-arc"): an archive left out of every view until ticked
+    browse_category_sort      the order of a category's artifacts when nothing else is asked: "work,note:-alias;
+                              report:created,updated" (categories, a colon, the sort keys - "-" turns a key
+                              around; ";" between such pairs) or a dict; it goes before the category's own meta
+                              (browse_sort), the default is by name
+
+The pickers of repositories and categories hold what is ticked: names (none = all), a name with "-" in front left
+out ("-fgg-arc": all but fgg-arc, "-*": none at all), "*" = all. A sort may be several keys, "created,updated": by
+created, then by updated; "-alias": by name from the end (dated names: the latest first).
 """
 
 import base64
@@ -273,6 +283,58 @@ def _list(value):
     return [v.strip() for v in str(value).split(',') if v.strip()]
 
 
+def _picked(alias, uid, wants):
+    """What a picker holds (2026-11-03): the names ticked (none = all, "*" = all), a name with "-" in front left out
+    ("-fgg-arc": all but fgg-arc; "-*": none at all) - True when the repository or category passes."""
+    keep = [w for w in wants if not w.startswith('-')]
+    drop = [w[1:] for w in wants if w.startswith('-') and len(w) > 1]
+    if keep and not any(_name_matches(alias, uid, w) for w in keep):
+        return False
+    return not any(_name_matches(alias, uid, w) for w in drop)
+
+
+# The sort keys of a list (_sort), several in one sort: "created,updated" = by created, then by updated; a "-" in
+# front of a key turns it around ("-alias": names from the end - dated names, the newest first)
+SORT_KEYS = ('relevance', 'alias', 'cat', 'repo', 'created', 'updated', 'uid')
+SORT_UP = ('alias', 'cat', 'repo', 'uid')            # the keys that go up by default (names); the dates go down
+
+
+def _sort_keys(value):
+    """A sort as one key or several, comma-separated -> the known keys in order, each with its "-" if it has one."""
+    out = []
+    for x in _list(value):
+        k = x.strip().lower()
+        if k.lstrip('-') in SORT_KEYS:
+            out.append(k if not k.startswith('--') else k[1:])
+    return out
+
+
+def _key_desc(key):
+    """Whether a sort key goes down: "-" in front, else by its kind (dates down, names up)."""
+    return key.startswith('-') or key not in SORT_UP
+
+
+def _category_sorts(value, prefix=''):
+    """browse_category_sort of the cserver config -> {category alias (lower case): [sort keys]}: a text
+    "work,note,fgg.task: created,updated; other: alias" (categories, a colon, the keys; ";" between pairs) or a dict
+    (category: keys; a dotted alias set from the command line comes as nested dicts: fgg -> task -> keys)."""
+    out = {}
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if isinstance(v, dict):
+                out.update(_category_sorts(v, prefix + str(k) + '.'))
+            elif _sort_keys(v):
+                out[(prefix + str(k)).strip().lower()] = _sort_keys(v)
+        return out
+    for part in str(value or '').split(';'):
+        if ':' in part:
+            cats, keys = part.split(':', 1)
+            for c in _list(cats):
+                if _sort_keys(keys):
+                    out[c.lower()] = _sort_keys(keys)
+    return out
+
+
 def _int(value, default, low=1, high=None):
     try:
         v = int(value)
@@ -462,9 +524,9 @@ def _item_matches(it, pq, ui_repos, ui_cats, after, before, texts=None):
     """True when the catalog item holds everything the parsed query and the pickers ask for. texts: the text of
     every _desc by UID, (text, lower-cased, where its link lists start) - None when the _desc files have not been
     read (then words search the meta alone, and nothing passes a _desc qualifier)."""
-    if ui_repos and not any(_name_matches(it['repo'], it['repo_uid'], w) for w in ui_repos):
+    if ui_repos and not _picked(it['repo'], it['repo_uid'], ui_repos):
         return False
-    if ui_cats and not any(_name_matches(it['cat'], it['cat_uid'], w) for w in ui_cats):
+    if ui_cats and not _picked(it['cat'], it['cat_uid'], ui_cats):
         return False
     if pq['repos'] and not any(_name_matches(it['repo'], it['repo_uid'], w) for w in pq['repos']):
         return False
@@ -580,18 +642,26 @@ def _row(it, words=None, texts=None):
 
 
 def _sort(items, sort, desc, words):
-    if sort == 'relevance' and words:
+    """The items in the order of one sort key or several ("created,updated": by created, then by updated; "-alias":
+    names from the end): `desc` for the first key (what a reader clicked), each other key by its own direction."""
+    order = _sort_keys(sort) or ['updated']
+    if order[0].lstrip('-') == 'relevance' and words:
         return sorted(items, key=lambda it: (_score(it, words), it['updated_full'] or it['created_full']),
                       reverse=True)
     keys = {
         'alias': lambda it: it['alias_l'],
         'cat': lambda it: (it['cat'].lower(), it['alias_l']),
         'repo': lambda it: (it['repo'].lower(), it['cat'].lower(), it['alias_l']),
-        'created': lambda it: it['created_full'] or '',
+        'created': lambda it: (it['created_full'] or '', it['updated_full'] or ''),
         'updated': lambda it: it['updated_full'] or it['created_full'] or '',
         'uid': lambda it: it['uid'],
     }
-    return sorted(items, key=keys.get(sort, keys['updated']), reverse=desc)
+    out = list(items)
+    for n in range(len(order) - 1, -1, -1):              # the last key first: a stable sort keeps its order in ties
+        k = order[n].lstrip('-')
+        if k in keys:
+            out.sort(key=keys[k], reverse=desc if n == 0 else _key_desc(order[n]))
+    return out
 
 
 def _facets(items):
@@ -1233,6 +1303,26 @@ class Category(InitCategory):
         return _conn['text'] if _conn['ready'] else None
 
     # ------------------------------------------------------------ actions
+    def _category_sort(self, items, cats):
+        """The order the categories asked for declare (2026-11-03): the server's browse_category_sort, else the
+        category's own meta (browse_sort: "created,updated") - when every category asked for declares the same one;
+        '' when one declares none, they differ, or a pattern or "-name" leaves it open which categories they are."""
+        names = [c.strip() for c in cats or [] if c and c.strip()]
+        if not names or any(c.startswith('-') or _wild(c) for c in names):
+            return ''
+        conf = _category_sorts(self._cserver_config().get('browse_category_sort'))
+        metas = {}
+        for it in items:
+            if it['cat'] == 'category':
+                metas[it['alias_l']] = metas[it['uid'].lower()] = it['meta']
+        found = set()
+        for name in names:
+            key = name.split(',')[0].strip().lower() if ',' in name else name.lower()
+            meta = metas.get(key) or metas.get(name.split(',')[-1].strip().lower()) or {}
+            keys = conf.get(key) or _sort_keys(meta.get('browse_sort'))
+            found.add(','.join(keys))
+        return found.pop() if len(found) == 1 else ''
+
     def _search(self, params, items=None):
         """The query, the pickers and the dates -> one page of rows, the total, the facets and the timing. Words
         and _desc qualifiers read the text of the _desc files too (the first search of a process waits for it)."""
@@ -1252,14 +1342,22 @@ class Category(InitCategory):
         found = [it for it in (wide if wide is not None else items)
                  if _item_matches(it, pq, [], ui_cats, '', '', texts)] if ui_cats else \
             [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before, texts)]
-        # a bare query lists by name (a reader browsing a category expects its artifacts in order), words by relevance
-        sort = str(params.get('sort') or ('relevance' if pq['words'] else ('alias' if not (ui_cats or after or before) or ui_cats else 'updated')))
-        desc = str(params.get('dir') or ('asc' if sort in ('alias', 'cat', 'repo', 'uid') else 'desc')) == 'desc'
+        # a bare query lists by name (a reader browsing a category expects its artifacts in order), words by
+        # relevance; a category may declare its own order (work items: the newest first) - the server's
+        # browse_category_sort, else the category's meta (browse_sort)
+        sort = str(params.get('sort') or '')
+        if not sort and not pq['words']:
+            sort = self._category_sort(items, ui_cats + pq['cats'])
+        if not sort:
+            sort = 'relevance' if pq['words'] else ('alias' if not (ui_cats or after or before) or ui_cats else 'updated')
+        spec = _sort_keys(sort) or ['updated']
+        first = spec[0].lstrip('-')
+        desc = str(params.get('dir') or ('desc' if _key_desc(spec[0]) else 'asc')) == 'desc'
         found = _sort(found, sort, desc, pq['words'])
         limit = _int(params.get('limit'), PAGE_DEFAULT, 1, LIMIT_MAX)
         offset = _int(params.get('offset'), 0, 0)
         page = found[offset:offset + limit]
-        out = {'total': len(found), 'offset': offset, 'limit': limit, 'sort': sort,
+        out = {'total': len(found), 'offset': offset, 'limit': limit, 'sort': first, 'sort_keys': _sort_keys(sort),
                'dir': 'desc' if desc else 'asc', 'rows': [_row(it, pq['words'], texts) for it in page],
                'of': len(items), 'ms': int((time.monotonic() - t0) * 1000), 'catalog': self._catalog_info(),
                'descs': {'asked': asked, 'searched': texts is not None, 'count': len(texts or {})}}
@@ -1499,8 +1597,8 @@ class Category(InitCategory):
         vis = self._visible()
         ui_repos, ui_cats = _list(params.get('repos')), _list(params.get('cats'))
         scope = {it['uid']: it for it in vis
-                 if (not ui_repos or any(_name_matches(it['repo'], it['repo_uid'], w) for w in ui_repos))
-                 and (not ui_cats or any(_name_matches(it['cat'], it['cat_uid'], w) for w in ui_cats))}
+                 if (not ui_repos or _picked(it['repo'], it['repo_uid'], ui_repos))
+                 and (not ui_cats or _picked(it['cat'], it['cat_uid'], ui_cats))}
         show_cats = _flag(params.get('categories'), True)
         show_core = show_cats and _flag(params.get('core'), False)
         show_iso = _flag(params.get('isolated'), False)
@@ -1862,6 +1960,10 @@ class Category(InitCategory):
                     v = cfg.get(key)
                     if v:
                         state[k] = ','.join(str(x) for x in v) if isinstance(v, (list, tuple)) else str(v).strip()
+            # the repositories unticked by default: whenever the address names none ("repos=*" asks for all of them)
+            untick = _list(cfg.get('browse_untick_repos'))
+            if untick and 'repos' not in (query or {}):
+                state['repos'] = ','.join(_list(state['repos']) + ['-' + x for x in untick])
             title = str(cfg.get('browse_title') or '').strip() or PAGE_TITLE
             open_on = self._open_on(misc, cfg)
             config = {'api_url': urls.get('url', '?'), 'url_server': urls.get('url_server') or '/',
@@ -1873,6 +1975,8 @@ class Category(InitCategory):
                       # knowledge-graph page a host offers besides this page's own Graph tab
                       'cref_url': str((misc or {}).get('cref_url') or ((urls.get('url_server') or '/') + 'cref/')),
                       'graph_url': str((misc or {}).get('graph_url') or ''),
+                      # what the pickers go back to (Clear) and leave out of the address: the unticked repositories
+                      'untick': {'repos': untick},
                       'state': state, 'notice': notice}
             with open(os.path.join(path_to_files, 'index.html'), encoding='utf-8') as f:
                 body = f.read()

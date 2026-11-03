@@ -1715,7 +1715,10 @@ class Category(InitCategory):
 
         if con:
             print (f'Path to {category_alias}s: {path}')
-        
+            # what -ai, --connect and --ct did to the _desc.yaml files (the create above ran without printing)
+            for line in r.get('desc_changes') or []:
+                print (line)
+
         cmd = config_cmeta.get(key)
 
         if cmd is not None and cmd != '':

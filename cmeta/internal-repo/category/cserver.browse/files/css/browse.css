@@ -154,6 +154,7 @@
 .cbr-intro-repos { margin-top: 8px; }
 .cbr-cat-desc { color: var(--cbr-fg); }
 .cbr-chip.on { background: var(--cbr-accent-soft); color: var(--cbr-accent); font-weight: 600; }
+.cbr-chip.off { opacity: .55; text-decoration: line-through; }    /* unticked in the picker (left out) */
 .cbr-chip .n { color: var(--cbr-muted); font-size: 11px; }
 .cbr-fstrip { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; font-size: 13px; }
 .cbr-facet { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
@@ -173,6 +174,23 @@
 .cbr-table td.when { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--cbr-muted); }
 .cbr-table td .nm { display: block; color: var(--cbr-muted); font-size: 12px; }
 #cbr .cbr-table td.alias { font-weight: 600; color: var(--cbr-accent); overflow-wrap: anywhere; min-width: 160px; }
+
+/* the list stays compact: the tags and updated columns only when asked for (the boxes of its header), and the open buttons
+   of a row at its end (a browser on the server's own machine) */
+.cbr-table.no-tags th.tags, .cbr-table.no-tags td.tags, .cbr-table.no-updated th.updated, .cbr-table.no-updated td.updated { display: none; }
+.cbr-table th.acts, .cbr-table td.acts { text-align: right; white-space: nowrap; width: 1%; }
+.cbr-col-toggle { font-weight: normal; font-size: 12px; cursor: pointer; user-select: none; }
+.cbr-col-toggle + .cbr-col-toggle { margin-left: 10px; }
+.cbr-col-toggle input { vertical-align: -2px; margin: 0 4px 0 0; cursor: pointer; }
+.cbr-row-open { display: inline-flex; gap: 4px; margin-left: 10px; vertical-align: 1px; }
+.cbr-mini { font: inherit; font-size: 11.5px; line-height: 1.5; padding: 0 7px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--cbr-line); background: var(--cbr-card); color: var(--cbr-fg); }
+.cbr-mini:hover { border-color: var(--cbr-accent); color: var(--cbr-accent); }
+.cbr-toast { position: fixed; right: 18px; bottom: 18px; max-width: 440px; padding: 9px 14px; border-radius: 8px;
+  background: var(--cbr-fg); color: var(--cbr-bg); font-size: 13px; box-shadow: 0 6px 24px rgba(0, 0, 0, .18);
+  opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none; z-index: 60; }
+.cbr-toast.show { opacity: .96; transform: none; }
+.cbr-toast.bad { background: #b42318; color: #fff; }
 #cbr .cbr-table td .nm { font-weight: 400; }
 .cbr-table td.repo { white-space: nowrap; }
 
@@ -320,6 +338,10 @@
   display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
 .cbr-foot code { background: var(--cbr-code); border: 1px solid var(--cbr-line); border-radius: 6px; padding: 1px 6px;
   overflow-wrap: anywhere; }
+
+/* this footer says "Powered by cMeta v<version>": the line the engine's cserver puts under every page
+   (templates/base.html) would say it twice; a host without that line (the cPlatform) has nothing to hide */
+.cmeta-footer { display: none; }
 
 @media (max-width: 860px) {
   #cbr-view-browse:not([hidden]) { grid-template-columns: minmax(0, 1fr); }

@@ -16,8 +16,8 @@
      {{ page_extra_style|safe }}
   {% endblock %}
 
-  <!-- The line at the end of every page of the server (2026-11-03): "Powered by cMeta", muted, readable on a light
-       and a dark page alike -->
+  <!-- The line at the end of every page of the server (2026-11-03): "Powered by cMeta v<version>", muted, readable
+       on a light and a dark page alike; a page with a footer of its own that says it (/browse) hides this one -->
   <style>
     .cmeta-footer{clear:both;margin:28px 0 0;padding:14px 16px 18px;text-align:center;color:#8a909c;
       font:12.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -86,7 +86,7 @@
  {% block content %}
  {% endblock %}
 
- <footer class="cmeta-footer">Powered by <a href="https://cTuning.ai/project/cmeta" target="_blank" rel="noopener" title="cMeta{% if cmeta_version %} v{{ cmeta_version }}{% endif %}: the project on cTuning.ai">cMeta</a></footer>
+ <footer class="cmeta-footer">Powered by <a href="https://cTuning.ai/project/cmeta" target="_blank" rel="noopener" title="The cMeta project on cTuning.ai">cMeta{% if cmeta_version %} v{{ cmeta_version }}{% endif %}</a></footer>
 
  </body>
 </html>
