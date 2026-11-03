@@ -57,7 +57,9 @@
       <tr><td><code>_desc.connections:fursin</code></td><td>a value at that key of the <code>_desc</code> contains it (dotted keys, any item of a list)</td></tr>
       <tr><td><code>has:_desc</code> <code>-has:_desc.ai_uses</code></td><td>has a <code>_desc</code> / its <code>_desc</code> has not this key</td></tr>
       <tr><td><code>uid:14b2</code></td><td>the UID starts with it</td></tr>
-      <tr><td><code>task::setup*</code></td><td>a cRef: category::artifact</td></tr>
+      <tr><td><code>task::setup*</code></td><td>a cRef: category::artifact (<code>task::setup,a2f9b61079ce4333</code> and the full cRef work too)</td></tr>
+      <tr><td><code>twine,76b8b4f2a1864b10</code></td><td>a cName: the alias and the UID of an artifact, both must hold;
+        <code>&#123;&#123;&#123;tool::git&#125;&#125;&#125;/README.md</code> pasted from a text counts as the cRef in it</td></tr>
       <tr><td><code>* ?</code></td><td>patterns: <code>repo:ctuninglabs@*</code>, <code>tag:sla*</code></td></tr>
       <tr><td>Browse</td><td>the categories on the left, with how many artifacts of each the query keeps; a category opens to its
         artifacts; the words, the repositories and the dates prune them</td></tr>
@@ -67,6 +69,7 @@
   </div>
 
   <div id="cbr-status" class="cbr-status" aria-live="polite"></div>
+  <div id="cbr-notices" class="cbr-notices" aria-live="polite"></div>
   <div id="cbr-error" class="cbr-error" hidden></div>
 
   <section id="cbr-view-browse" class="cbr-view" hidden>

@@ -11,6 +11,7 @@ import os
 import sys
 
 import pytest
+import yaml
 
 from cmeta import CMeta
 
@@ -124,6 +125,14 @@ def test_meta_keys_has_and_crefs(cm):
     assert aliases(search(cm, q='has:owner')) == ['gpu-costs']
     assert 'gpu-costs' not in aliases(search(cm, q='-has:owner cat:log', limit=50))
     assert aliases(search(cm, q='log::gpu-costs')) == ['gpu-costs']
+    # the other spellings of a reference (2026-11-03): a pattern, the UID after ::, a cName, a {{{cRef}}} with a path
+    uid = search(cm, q='log::gpu-costs')['rows'][0]['uid']
+    assert aliases(search(cm, q='log::gpu*')) == ['gpu-costs']
+    assert aliases(search(cm, q='log::gpu-costs,' + uid)) == ['gpu-costs']
+    assert aliases(search(cm, q='gpu-costs,' + uid)) == ['gpu-costs']
+    assert search(cm, q='sla-report,' + uid)['total'] == 0               # a cName: the alias and the UID must both hold
+    assert aliases(search(cm, q='{{{log::gpu-costs}}}')) == ['gpu-costs']
+    assert aliases(search(cm, q='{{{log::gpu-costs}}}/README.md')) == ['gpu-costs']
 
 
 def test_dates_from_the_query_and_from_the_pickers(cm):
@@ -303,6 +312,135 @@ def test_file_browser_is_local_and_guarded(cm, tmp_path):
     assert web(cm, native_action='file', uid=uid, rel='files/data.csv')['json']['text'] == 'a,b'
 
 
+def test_editing_from_the_page(cm):
+    """A text file, a _cmeta and a _desc saved from the page (2026-11-03): who may, the fingerprint, the checks."""
+    uid, path = make(cm, 'editable', tags=['one'])
+    with open(os.path.join(path, 'README.md'), 'wb') as f:
+        f.write(b'# hello\r\nline\r\n')
+
+    def save(misc, rel, text, stamp):
+        return web(cm, misc, native_action='save', uid=uid, rel=rel, text=text, stamp=stamp)['json']
+
+    def dump(rel, data):
+        return json.dumps(data, indent=1) if rel.endswith('.json') else yaml.safe_dump(data, sort_keys=False)
+
+    # a browser elsewhere may not save; a page of another site neither; the local page may
+    assert 'error' in save(None, 'README.md', 'x', '')
+    assert 'page of this server' in save(LOCAL, 'README.md', 'x', '')['error']
+    j = web(cm, BOTH, native_action='file', uid=uid, rel='README.md')['json']
+    assert j['editable'] and j['stamp']
+    assert 'changed since' in save(BOTH, 'README.md', '# hi\n', 'stale')['error']
+    out = save(BOTH, 'README.md', '# hi\nmore\n', j['stamp'])
+    assert out['saved'] == 'README.md' and out['stamp'] != j['stamp'] and not out['warnings'], out
+    with open(os.path.join(path, 'README.md'), 'rb') as f:
+        assert f.read() == b'# hi\r\nmore\r\n'                       # the file's own line endings kept
+    readme_stamp = out['stamp']
+
+    # the meta: a new tag is in the index at once; the identity stays; the text must parse
+    files = web(cm, BOTH, native_action='files', uid=uid)['json']
+    assert files['edit'] and files['can_add'] == ['_desc.yaml']       # README.md exists, no _desc yet
+    meta_rel = [f['rel'] for f in files['files'] if f['rel'].lower().startswith('_cmeta.')][0]
+    j = web(cm, BOTH, native_action='file', uid=uid, rel=meta_rel)['json']
+    meta = json.loads(j['text']) if meta_rel.endswith('.json') else yaml.safe_load(j['text'])
+    changed = dict(meta, tags=['two'])
+    out = save(BOTH, meta_rel, dump(meta_rel, changed), j['stamp'])
+    assert out['saved'] == meta_rel and out['reindexed'] and not out['warnings'], out
+    assert aliases(search(cm, q='tag:two')) == ['editable'] and search(cm, q='tag:one')['total'] == 0
+    stamp = out['stamp']
+    for bad, why in ((dict(changed, artifact='ffffffffffffffff'), 'UID'), (dict(changed, category='other'), 'category'),
+                     (dict(changed, tags='two'), 'tags')):
+        assert why in save(BOTH, meta_rel, dump(meta_rel, bad), stamp)['error'], why
+    assert 'not valid' in save(BOTH, meta_rel, '{ or: [', stamp)['error']
+
+    # a _desc.yaml made from the page: its connection shows in the detail; a second one is refused; bad YAML says the line
+    out = save(BOTH, '_desc.yaml', 'connections:\n  - log::sla-report\n', '')
+    assert out['created'] and not out['warnings'], out
+    d = web(cm, BOTH, native_action='artifact', uid=uid)['json']
+    assert [x['alias'] for x in d['connections']] == ['sla-report'] and d['connections'][0]['found']
+    assert d['edit'] and d['meta_file'] == meta_rel and d['desc_file'] == '_desc.yaml'   # the edit buttons of the detail
+    assert web(cm, native_action='artifact', uid=uid)['json']['edit'] is False             # not for a browser elsewhere
+    assert 'already' in save(BOTH, '_desc.yaml', 'x: 1\n', '')['error']
+    err = save(BOTH, '_desc.yaml', 'a: 1\nb: [\n', out['stamp'])['error']
+    assert 'not valid YAML' in err and 'at line' in err, err              # the parser names the line
+    out = save(BOTH, '_desc.yaml', 'connections:\n  - log::no-such-one\n', out['stamp'])
+    assert out['warnings'] and 'no-such-one' in out['warnings'][0]
+
+    # never a key-like file, a dot-file, a path outside, a binary name, a second _cmeta
+    for rel in ('id_ed25519', '.env', '../x.txt', 'data.bin', 'files/.git/x.txt', '_cmeta.yaml', '_cmeta.json'):
+        assert 'error' in save(BOTH, rel, 'x', ''), rel
+
+    # new files with a text name anywhere inside (the folders on the way), a folder, a deletion with its guards
+    def act(action, rel, misc=BOTH):
+        return web(cm, misc, native_action=action, uid=uid, rel=rel)['json']
+    assert save(BOTH, 'notes/plan.md', '# plan\n', '')['created'] and os.path.isfile(os.path.join(path, 'notes', 'plan.md'))
+    assert save(BOTH, 'LICENSE', 'text without an extension\n', '')['created']
+    assert act('mkdir', 'data')['made'] == 'data' and os.path.isdir(os.path.join(path, 'data'))
+    assert 'exists already' in act('mkdir', 'data')['error']
+    assert 'error' in act('mkdir', 'data', LOCAL) and 'error' in act('mkdir', '.hidden') and 'error' in act('mkdir', 'secrets')
+    listing = web(cm, BOTH, native_action='files', uid=uid)['json']
+    assert 'data' in listing['dirs'] and 'notes' in listing['dirs'] and 'notes/plan.md' in [f['rel'] for f in listing['files']]
+    assert save(BOTH, 'data/a.txt', 'a\n', '')['created']
+    assert 'not empty' in act('delete', 'data')['error']
+    assert act('delete', 'data/a.txt') == {'deleted': 'data/a.txt', 'kind': 'file'}
+    assert act('delete', 'data') == {'deleted': 'data', 'kind': 'folder'} and not os.path.exists(os.path.join(path, 'data'))
+    for rel in (meta_rel, '_desc.yaml'):
+        assert 'not deleted here' in act('delete', rel)['error'], rel
+    assert 'error' in act('delete', 'LICENSE', LOCAL)                    # a page of another site
+    assert 'no such' in act('delete', 'nope.txt')['error']
+    assert 'error' in act('delete', 'id_ed25519')                        # a name the page never shows
+    assert act('delete', 'LICENSE')['kind'] == 'file' and act('delete', 'notes/plan.md')['kind'] == 'file'
+    assert act('delete', 'notes')['kind'] == 'folder'
+
+    # browse_edit: no turns it off for the local browser too
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'meta': {'browse_edit': 'no'}, 'con': False})
+    assert r['return'] == 0, r
+    assert 'off here' in save(BOTH, 'README.md', 'x\n', readme_stamp)['error']
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'meta': {'browse_edit': ''}, 'con': False})
+    assert r['return'] == 0, r
+
+    # a signed-in reader elsewhere writes only in the repositories of the grant the host passes - or anywhere as an admin
+    def grant(repos):
+        return {'same_origin': True, 'browse_edit': repos}
+    assert 'may not write' in save(grant(['other*']), 'README.md', 'y\n', readme_stamp)['error']
+    out = save(grant(['loc*']), 'README.md', 'y\n', readme_stamp)
+    assert out['saved'] == 'README.md', out
+    assert save(grant(True), 'README.md', 'z\n', out['stamp'])['saved'] == 'README.md'
+    assert 'error' in save({'same_origin': True}, 'README.md', 'w\n', '')      # no grant, not local: refused
+
+
+def test_creating_from_the_page(cm):
+    """A new artifact from the page (2026-11-03): who may, the checks, the category's own naming, the index."""
+    def create(misc, **q):
+        return web(cm, misc, native_action='create', **q)['json']
+
+    assert 'error' in create(None, cat='log', repo='local', alias='made-here')             # a browser elsewhere
+    assert 'page of this server' in create(LOCAL, cat='log', repo='local', alias='made-here')['error']
+    for bad in ('', 'a/b', 'a:b', '.hidden', 'x,y'):
+        assert 'error' in create(BOTH, cat='log', repo='local', alias=bad), bad
+    assert 'no category' in create(BOTH, cat='no-such-category', repo='local', alias='x')['error']
+    assert 'error' in create(BOTH, cat='log', repo='no-such-repo', alias='x')
+    assert page_config(web(cm, BOTH))['edit'] is True and page_config(web(cm))['edit'] is False
+
+    out = create(BOTH, cat='log', repo='local', alias='made-here', tags='one, two')
+    assert out['created'] == 'made-here' and out['cat'] == 'log' and out['repo'] == 'local' and len(out['uid']) == 16, out
+    assert out['cref'] == 'log,%s::made-here,%s' % (out['cat_uid'], out['uid'])
+    assert aliases(search(cm, q='tag:two')) == ['made-here']                       # in the index at once
+    assert 'error' in create(BOTH, cat='log', repo='local', alias='made-here')       # not twice
+    assert web(cm, BOTH, native_action='artifact', uid=out['uid'])['json']['can_create'] is True
+
+    # a dated category names it its way: the day in front
+    out = create(BOTH, cat='work', repo='local', alias='my task')
+    assert out['created'].endswith('.my task') and out['created'][:8].isdigit(), out
+
+    # a signed-in reader writes only in the repositories of the grant; browse_edit: no turns it off for everyone
+    assert 'may not write' in create({'same_origin': True, 'browse_edit': ['other*']}, cat='log', repo='local', alias='x')['error']
+    assert create({'same_origin': True, 'browse_edit': ['loc*']}, cat='log', repo='local', alias='granted')['created'] == 'granted'
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'meta': {'browse_edit': 'no'}, 'con': False})
+    assert r['return'] == 0, r
+    assert 'off here' in create(BOTH, cat='log', repo='local', alias='y')['error']
+    assert web(cm, BOTH, native_action='artifact', uid=out['uid'])['json']['can_create'] is False
+
+
 def test_a_new_artifact_shows_without_a_restart(cm):
     assert search(cm, q='brand-new')['total'] == 0
     make(cm, 'brand-new')
@@ -313,12 +451,24 @@ def test_secret_categories_are_hidden_unless_the_config_says_none(cm):
     r = cm.access({'category': 'category', 'command': 'add', 'arg1': 'local:my.crypt', 'con': False})
     assert r['return'] == 0, r
     make(cm, 'a-key-bundle', category='my.crypt')
-    assert search(cm, q='a-key-bundle')['total'] == 0
+    out = search(cm, q='a-key-bundle')
+    assert out['total'] == 0
+    # the result says that this server hides some categories, without naming them (2026-11-03) ...
+    assert len(out['notices']) == 1 and 'hides the categories of keys and secrets' in out['notices'][0]
+    assert 'my.crypt' not in out['notices'][0]
+    # ... and names the one the query itself names
+    for q in ('cat:my.crypt a-key-bundle', 'my.crypt::a-key-bundle', 'my.cr*::*'):
+        out = search(cm, q=q)
+        assert out['total'] == 0 and out['notices'] == ['my.crypt: a category this server hides (browse_hide_categories) - '
+                                                         'its artifacts are not listed and their files never shown.'], q
+    assert 'notices' not in search(cm, q='sla', cats='log')           # a result with rows gets no general word
 
     r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver',
                    'meta': {'browse_hide_categories': 'none'}, 'con': False})
     assert r['return'] == 0, r
-    assert aliases(search(cm, q='a-key-bundle')) == ['a-key-bundle']
+    out = search(cm, q='a-key-bundle')
+    assert aliases(out) == ['a-key-bundle'] and 'notices' not in out
+    assert 'notices' not in search(cm, q='no-such-artifact')         # nothing hidden: nothing to say
 
 
 def test_hide_repos_applies(cm):

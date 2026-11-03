@@ -33,8 +33,12 @@ Query syntax (one box; everything must hold):
     _desc:<text>           the _desc contains it (keys and values, the link lists too); -_desc:<text> does not
     _desc.<key>:<value>    a value at that key of the _desc contains it (dotted keys; any item of a list)
     has:_desc              the artifact has a _desc; has:_desc.<key> its _desc has the key
-    <cat>::<artifact>      a cRef: that category, and the artifact's alias or UID
+    <cat>::<artifact>      a cRef: that category, and the artifact's alias or UID (<alias>,<UID> after :: too)
+    <alias>,<UID>          a cName: that artifact (the alias and the UID must both hold)
+    {{{<cRef>}}}[/<path>]  the cRef inside the braces (a path after them is left aside)
     Values with * or ? are fnmatch patterns: repo:ctuninglabs@*, tag:sla*.
+    A query that names a category this server hides (browse_hide_categories) says so in its notices, and so
+    does an empty result on a server that hides some.
 
     cx cserver.browse query "sla tag:report after:2026-09-01"      the same in a terminal (--as_json for JSON)
     ?native_action=search&q=...                                    the JSON the page renders (GET or POST)
@@ -67,12 +71,29 @@ manager, a shell or Far Manager on that machine (?native_action=open&uid=...&wha
 folder of an artifact the page shows, never a path from the request, and only for a request a page of this
 server sent (the engine cserver checks Sec-Fetch-Site / Origin), so another web site cannot start programs.
 
+A text file can be edited and saved from the page (?native_action=save: uid, rel, text, stamp) by a viewer the
+server lets write: a browser on the server's own machine by default, browse_edit yes / no for everyone / no one,
+or - on a host that signs its readers in - what the host says of each per request (misc.browse_edit: True = all
+they see, a list = those repositories; an admin, or a person's write grant on a repository). The editor gets
+each file with a fingerprint and hands it back: a file changed meanwhile (a sync, an agent, another person) is
+not overwritten. YAML and JSON must parse; a _cmeta keeps the artifact's identity (UID, alias, category) and is
+reindexed on save; a _desc re-enters the connection index; the file's own line endings and BOM are kept. A new
+text file can be made anywhere inside the artifact (its folders on the way), a folder too (?native_action=mkdir),
+and a file or an empty folder deleted (?native_action=delete) - never the _cmeta or the _desc; the guards of
+reading apply to all of it (never a key-like file, a dot-file, a path outside the folder, an artifact of a
+category of keys or secrets). A new artifact is made from the page too (?native_action=create: cat, repo, alias,
+tags) by the category's own "add" - a dated category puts the day in front of the name - for a viewer who may
+write to that repository; the page then opens it. Every save, folder, deletion and creation is one line of the
+server's log.
+
 These keys of the cserver config apply (cx config set cserver --meta.<key>=<value>):
     hide_repos                repositories left out (aliases or fnmatch patterns) - the same key as /projects
     browse_hide_categories    categories left out; by default anything matching *crypt*, *secret* or
                               *credential*, so that key bundles never show; "none" shows every category
     browse_files              yes = the file browser for everyone; no = for no one; default: a browser on the
                               server's own machine only (the real peer address, no proxy header, a loopback Host)
+    browse_edit               yes = the editor for everyone the host lets in; no = for no one; default: a browser on
+                              the server's own machine, or what the host grants a signed-in reader per request
     browse_open               no = no Open folder / Shell / Far buttons; default: a browser on the server's machine
     browse_far                Far Manager (or far2l) to run, when it is not found on PATH or in its usual folder
     browse_terminal           the terminal for "Shell" (default: COMSPEC on Windows, Terminal on macOS, the first
@@ -97,6 +118,7 @@ created, then by updated; "-alias": by name from the end (dated names: the lates
 import base64
 import datetime
 import fnmatch
+import hashlib
 import html
 import itertools
 import json
@@ -111,6 +133,8 @@ import time
 import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+
+import yaml
 
 from cmeta.category import InitCategory
 
@@ -131,6 +155,8 @@ UID_RE = re.compile(r'^[0-9a-fA-F]{16}$')
 KEY_RE = re.compile(r'^[A-Za-z_][\w.\-]*$')
 TOKEN_RE = re.compile(r'-?[^\s"]*"[^"]*"|\S+')
 USES_RE = re.compile(r'^(.+),([0-9a-fA-F]{16})$')      # a `uses:` value: <alias>,<UID>
+BRACES_RE = re.compile(r'^\{\{\{(.+?)\}\}\}(?:/.*)?$')   # {{{<cRef>}}} as written in a text, a path after it or not
+EDIT_NEW = ('_desc.yaml', 'README.md')               # the files the editor may create at the top of an artifact without one
 
 # The file browser: what it never shows - folders named like a key store, files that look like key material
 SECRET_DIR_RE = re.compile(r'crypt|secret|credential', re.I)
@@ -471,6 +497,10 @@ def parse_query(q):
         neg = tok.startswith('-') and len(tok) > 1
         t = tok[1:] if neg else tok
 
+        m = BRACES_RE.match(t)                             # {{{<cRef>}}}/<path> as pasted from a text: the cRef
+        if m:
+            t = m.group(1)
+
         if '::' in t and not t.startswith('"'):            # a cRef: category::artifact
             cat, art = t.split('::', 1)
             if cat:
@@ -481,6 +511,12 @@ def parse_query(q):
                     out['uids'].append(art[-1].strip().lower())
                 else:
                     out['aliases'].append(art[0].strip().lower())
+            continue
+
+        m = USES_RE.match(t)                               # a cName: <alias>,<UID> - both must hold
+        if m and ':' not in t and not t.startswith('"'):
+            out['aliases'].append(m.group(1).strip().lower())
+            out['uids'].append(m.group(2).lower())
             continue
 
         key, sep, value = t.partition(':')
@@ -1054,6 +1090,60 @@ def _file_kind(name):
     return 'binary' if ext in BINARY_MIME else 'other'
 
 
+# ---------------------------------------------------------------------- the editor
+def _text_name(name):
+    """A file the editor may create, by its name: a text extension, no extension, a meta file, a README."""
+    ext = os.path.splitext(name)[1].lower()
+    return ext == '' or ext in TEXT_EXT or name in META_FILES or name.upper().startswith('README')
+
+
+def _fingerprint(raw):
+    """What the editor gets with a file's text and hands back with its edit: a file changed meanwhile is not
+    overwritten."""
+    return hashlib.sha256(raw).hexdigest()[:24]
+
+
+def _yaml_error(e):
+    mark = getattr(e, 'problem_mark', None)
+    where = ' at line %d' % (mark.line + 1) if mark is not None else ''
+    return '%s%s' % (getattr(e, 'problem', None) or str(e).split('\n')[0], where)
+
+
+def _check_edit(name, text, it):
+    """The checks of a saved file, by its name: YAML and JSON must parse, a _cmeta and a _desc must be mappings,
+    and a _cmeta keeps the artifact's identity - its UID, its alias (a rename is a move) and its category - with
+    tags as a list of words. Returns ('', the parsed data or None) or (why not, None)."""
+    low = name.lower()
+    ext = os.path.splitext(low)[1]
+    data = None
+    if ext in ('.yaml', '.yml'):
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            return 'not valid YAML: %s' % _yaml_error(e), None
+    elif ext == '.json':
+        try:
+            data = json.loads(text)
+        except ValueError as e:
+            return 'not valid JSON: %s' % e, None
+    if low in META_FILES and not (data is None and low.startswith('_desc.')) and not isinstance(data, dict):
+        return '%s must be a mapping (key: value lines)' % name, None
+    if low.startswith('_cmeta.'):
+        a = str(data.get('artifact') or '')
+        if a.split(',')[-1].strip().lower() != it['uid']:
+            return 'artifact must keep the UID %s: it is the identity of the artifact' % it['uid'], None
+        if ',' in a and a.split(',', 1)[0].strip() != it['alias']:
+            return 'the alias must stay %s: a rename is a move (cx %s move)' % (it['alias'], it['cat']), None
+        c = str(data.get('category') or '')
+        c = c.split(',')[-1].strip().lower() if ',' in c else c.strip().lower()
+        if c not in (it['cat_uid'].lower(), it['cat'].lower()):
+            return 'category must stay %s,%s' % (it['cat'], it['cat_uid']), None
+        tags = data.get('tags')
+        if tags is not None and not (isinstance(tags, list) and all(isinstance(t, str) for t in tags)):
+            return 'tags must be a list of words', None
+    return '', data
+
+
 # ---------------------------------------------------------------------- open a folder on this machine
 def _find_far(cfg):
     """Far Manager (far2l on macOS and Linux): browse_far in the config, CMETA_FAR, PATH, its usual folders on
@@ -1249,13 +1339,7 @@ class Category(InitCategory):
         cat = self._catalog()
         cfg = self._cserver_config() if cfg is None else cfg
         hide_repos = _patterns(cfg.get('hide_repos'))
-        raw = cfg.get('browse_hide_categories')
-        if raw is None or str(raw).strip() == '':
-            hide_cats = SECRET_CATEGORIES                  # the default: key bundles never show
-        elif str(raw).strip().lower() in ('none', 'off', 'no'):
-            hide_cats = []
-        else:
-            hide_cats = _patterns(raw)
+        hide_cats = self._hidden_categories(cfg)
         repos = self.cm.repos
         scoped = bool(getattr(repos, 'hidden_repos', ()))
         if not hide_repos and not hide_cats and not scoped:
@@ -1264,6 +1348,35 @@ class Category(InitCategory):
                 if not (hide_repos and it['repo'] and _matches_any(it['repo'], hide_repos))
                 and not (hide_cats and _matches_any(it['cat'], hide_cats))
                 and not (scoped and it['repo_uid'] and repos.repo_hidden(None, alias=it['repo'], uid=it['repo_uid']))]
+
+    def _hidden_categories(self, cfg):
+        """The category patterns browse_hide_categories leaves out: unset = the categories of keys and secrets
+        (SECRET_CATEGORIES), none = nothing, else its own list."""
+        raw = cfg.get('browse_hide_categories')
+        if raw is None or str(raw).strip() == '':
+            return list(SECRET_CATEGORIES)                 # the default: key bundles never show
+        if str(raw).strip().lower() in ('none', 'off', 'no'):
+            return []
+        return _patterns(raw)
+
+    def _hidden_notices(self, pq, found, cfg):
+        """What a reader should know about the categories this server hides: the ones the query names (cat:, a
+        cRef) are said by name; an empty result on a server that hides some gets a general word. The hidden
+        categories are never listed by name otherwise, and nothing says whether the query would match in them."""
+        hide = self._hidden_categories(cfg)
+        if not hide:
+            return []
+        hidden = [it for it in self._catalog()['items'] if _matches_any(it['cat'], hide)]
+        if not hidden:
+            return []
+        named = sorted({it['cat'] for it in hidden if any(_name_matches(it['cat'], it['cat_uid'], w) for w in pq['cats'])})
+        if named:
+            return ['%s: a category this server hides (browse_hide_categories) - its artifacts are not listed and '
+                    'their files never shown.' % ', '.join(named)]
+        if not found:
+            return ['Nothing matches among what this server shows; it hides the categories of keys and secrets '
+                    '(browse_hide_categories).']
+        return []
 
     # ------------------------------------------------------------ the connection index and its cache
     def _cache_dir(self):
@@ -1328,7 +1441,8 @@ class Category(InitCategory):
         and _desc qualifiers read the text of the _desc files too (the first search of a process waits for it)."""
         t0 = time.monotonic()
         params = params or {}
-        items = self._visible() if items is None else items
+        cfg = self._cserver_config()
+        items = self._visible(cfg) if items is None else items
         pq = parse_query(params.get('q', ''))
         asked = bool(pq['words'] or pq['not_words'] or pq['desc'] or pq['desc_has'])
         texts = self._desc_texts() if asked else None
@@ -1365,6 +1479,9 @@ class Category(InitCategory):
             out['facets'] = _facets(found)
             toc = Counter(it['cat'] for it in (wide if wide is not None else found))
             out['toc'] = sorted(toc.items(), key=lambda x: x[0].lower())
+        notices = self._hidden_notices(pq, found, cfg)
+        if notices:
+            out['notices'] = notices
         out['_found'] = found
         return out
 
@@ -1547,6 +1664,10 @@ class Category(InitCategory):
                'desc_file': desc_file, 'connections': links, 'uses': uses, 'ai_uses': ai_uses, 'incoming': incoming,
                'incoming_total': n_in, 'index': _conn_status(),
                'files': bool(files_on) and not SECRET_DIR_RE.search(it['cat']),
+               # the editor: whether this viewer may save files here, and the name of the _cmeta file to edit
+               'edit': bool(files_on) and self._edit_refused(it, misc, self._cserver_config()) == '',
+               'can_create': self._edit_on(misc, self._cserver_config()) is not False,    # "+ Similar" on its page
+               'meta_file': next((n for n in ('_cmeta.yaml', '_cmeta.json') if os.path.isfile(os.path.join(it['path'], n))), ''),
                'cref': '%s,%s::%s' % (it['cat'], it['cat_uid'], ref),
                'migrated_to_uid': mig_uid if mig_uid in shown else '',
                'origin': self._origin(it, misc), 'category': cat_def,
@@ -1770,9 +1891,11 @@ class Category(InitCategory):
         if not os.path.isdir(root):
             return {'error': 'the folder of this artifact is missing'}
         limit = _int(limit, FILES_DEFAULT, 5, 2000)
-        rels, more = [], False
+        rels, dirs, more = [], [], False
         for dp, dns, fns in os.walk(root):
             dns[:] = sorted(d for d in dns if not _secret_dir(d))
+            for d in dns:                        # the folders too (empty ones as well): the tree, and "delete"
+                dirs.append(os.path.relpath(os.path.join(dp, d), root).replace(os.sep, '/'))
             for fn in sorted(fns):
                 if not _secret_file(fn):
                     rels.append(os.path.relpath(os.path.join(dp, fn), root).replace(os.sep, '/'))
@@ -1795,7 +1918,7 @@ class Category(InitCategory):
                 continue
             files.append({'rel': rel, 'size': st.st_size, 'kind': _file_kind(rel.rsplit('/', 1)[-1]),
                           'mtime': time.strftime('%Y-%m-%d %H:%M', time.localtime(st.st_mtime))})
-        return {'uid': it['uid'], 'total': len(rels), 'more': more, 'limit': limit, 'files': files}
+        return {'uid': it['uid'], 'total': len(rels), 'more': more, 'limit': limit, 'files': files, 'dirs': dirs[:limit]}
 
     def _file(self, uid, rel):
         """One file of an artifact folder: text inline (the first 512 KB), a PDF or an image as base64."""
@@ -1833,9 +1956,14 @@ class Category(InitCategory):
                     'note': 'a binary file (%s); not shown' % (ext or 'no extension')}
         try:
             text = raw.decode('utf-8')
+            utf8 = True
         except UnicodeDecodeError:
             text = raw.decode('latin-1')
-        return {'rel': rel, 'kind': 'text', 'size': size, 'truncated': truncated, 'text': text}
+            utf8 = False
+        out = {'rel': rel, 'kind': 'text', 'size': size, 'truncated': truncated, 'text': text}
+        if utf8 and not truncated:
+            out['stamp'] = _fingerprint(raw)           # for the editor: the file as it was read, whole
+        return out
 
     @staticmethod
     def _client_local(misc):
@@ -1888,6 +2016,261 @@ class Category(InitCategory):
             _launch(argv, path)
         return {'opened': what, 'path': path, 'cmd': argv, 'dry': bool(dry)}
 
+    # ------------------------------------------------------------ the editor
+    def _edit_on(self, misc, cfg):
+        """Who may save: the cserver config decides (browse_edit yes / no); without a word from it, a host that
+        signs its readers in says per request what each may write (misc.browse_edit: True = everything they see,
+        a list = those repositories - aliases, UIDs or patterns: an admin, a write grant); else a browser on the
+        server's own machine only. True, False, or the list of repository patterns."""
+        v = str(cfg.get('browse_edit') or '').strip().lower()
+        if v in ('no', 'off', 'false', '0', 'none'):
+            return False
+        if v in ('yes', 'on', 'true', '1', 'all'):
+            return True
+        grant = (misc or {}).get('browse_edit')
+        if grant is True:
+            return True
+        if grant:
+            return _patterns(grant)
+        return self._client_local(misc)
+
+    def _edit_refused(self, it, misc, cfg):
+        """'' when this viewer may save files of this artifact, else why not."""
+        on = self._edit_on(misc, cfg)
+        if on is False:
+            return ('editing is off here: it is for a browser on the server\'s own machine, or a reader the host '
+                    'lets write (browse_edit in the cserver config changes that)')
+        if on is not True and not (_matches_any(it['repo'], on) or _matches_any(it['repo_uid'], on)):
+            return 'you may not write to the repository %s' % (it['repo'] or '(registry)')
+        if SECRET_DIR_RE.search(it['cat']):
+            return 'not editable: this artifact is in a category that holds keys or secrets'
+        return ''
+
+    def _edit_fields(self, out, uid, misc, cfg):
+        """What the editor needs with a listing or a file: whether this viewer may save here, which files the
+        editor may add (none of that name yet), and for a file whether it is editable (text, whole, UTF-8)."""
+        it = self._item(uid)
+        if 'error' in out or it is None:
+            return
+        may = self._edit_refused(it, misc, cfg) == ''
+        out['edit'] = may
+        if 'files' in out:
+            have = {f['rel'].lower() for f in out['files']}
+            has_desc = '_desc.yaml' in have or '_desc.json' in have
+            out['can_add'] = [x for x in EDIT_NEW if may and x.lower() not in have and not (x == '_desc.yaml' and has_desc)]
+        if 'stamp' in out:
+            out['editable'] = may
+
+    def _target(self, uid, rel, misc, cfg, folder=False):
+        """What save, mkdir and delete share: the request came from a page of this server, the artifact is shown
+        here, the viewer may write to it, and rel is a path inside its folder that the page would show (no key-like
+        file, no secret or dot folder). {'it', 'root', 'full', 'parts', 'rel'}, or {'error': why}."""
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        it = self._item(uid)
+        if it is None:
+            return {'error': 'artifact %s is not in the index of this server' % uid}
+        why = self._edit_refused(it, misc, cfg)
+        if why:
+            return {'error': why}
+        rel = str(rel or '').replace('\\', '/').strip().strip('/')
+        parts = rel.split('/')
+        if not rel or ':' in rel or any(p in ('', '.', '..') for p in parts):
+            return {'error': 'rel must be a path inside the folder of the artifact'}
+        if any(_secret_dir(p) for p in parts[:-1]) or (_secret_dir(parts[-1]) if folder else _secret_file(parts[-1])):
+            return {'error': 'refused: a name the page never shows (a key, a secret, a dot-file or dot-folder)'}
+        root = os.path.realpath(it['path'])
+        full = os.path.realpath(os.path.join(root, *parts))
+        if not os.path.normcase(full).startswith(os.path.normcase(root.rstrip('\\/') + os.sep)):
+            return {'error': 'rel must be a path inside the folder of the artifact'}
+        return {'it': it, 'root': root, 'full': full, 'parts': parts, 'rel': rel}
+
+    def _who(self, misc):
+        return str((misc or {}).get('user') or ('the local browser' if self._client_local(misc) else 'a signed-in reader'))
+
+    def _mkdir(self, uid, rel, misc, cfg):
+        """A new folder inside an artifact the page shows (the folders on the way too), for a viewer who may write."""
+        t = self._target(uid, rel, misc, cfg, folder=True)
+        if 'error' in t:
+            return t
+        if os.path.exists(t['full']):
+            return {'error': '%s exists already' % t['rel']}
+        os.makedirs(t['full'])
+        print('cMeta info: cserver.browse: %s made the folder %s of %s::%s' % (self._who(misc), t['rel'], t['it']['cat'], t['it']['alias']))
+        return {'made': t['rel']}
+
+    def _delete(self, uid, rel, misc, cfg):
+        """Delete a file, or an empty folder, of an artifact the page shows - never its _cmeta or _desc - for a
+        viewer who may write (the page asks the person first)."""
+        t = self._target(uid, rel, misc, cfg)
+        if 'error' in t:
+            return t
+        low = t['parts'][-1].lower()
+        if low.startswith('_cmeta.') or low.startswith('_desc.'):
+            return {'error': 'the _cmeta and the _desc of an artifact are not deleted here'}
+        full = t['full']
+        if os.path.isdir(full):
+            if os.listdir(full):
+                return {'error': '%s is not empty: delete what is in it first' % t['rel']}
+            os.rmdir(full)
+            kind = 'folder'
+        elif os.path.isfile(full):
+            os.remove(full)
+            kind = 'file'
+        else:
+            return {'error': 'no such file or folder in this artifact'}
+        print('cMeta info: cserver.browse: %s deleted the %s %s of %s::%s' % (self._who(misc), kind, t['rel'], t['it']['cat'], t['it']['alias']))
+        return {'deleted': t['rel'], 'kind': kind}
+
+    def _create(self, cat, repo, alias, tags, misc, cfg):
+        """A new artifact from the page: a category the page shows, a repository this viewer may write to, a name
+        and tags - made by the category's own "add" (a dated category names it its way), indexed, and answered
+        with its cRef so that the page can open it. One line of the server's log."""
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        on = self._edit_on(misc, cfg)
+        if on is False:
+            return {'error': 'creating artifacts is off here (browse_edit in the cserver config, or the host\'s grant)'}
+        alias = str(alias or '').strip()
+        if not alias or alias.startswith('.') or any(c in alias for c in '/\\:*?"<>|,'):
+            return {'error': 'a name is needed, without / \\ : * ? " < > | or a comma, and not starting with a dot'}
+        repo = str(repo or '').strip()
+        if not repo or repo == '(registry)':
+            return {'error': 'name the repository the artifact goes to'}
+        if on is not True and not _matches_any(repo, on):
+            return {'error': 'you may not write to the repository %s' % repo}
+
+        def exact(r, name):
+            name = str(name or '').strip().lower()
+            for a in (r.get('artifacts') or []) if r.get('return', 1) == 0 else []:
+                p = a['cmeta_ref_parts']
+                if name in (str(p.get('artifact_alias') or '').lower(), str(p.get('artifact_uid') or '').lower()):
+                    return p
+            return None
+
+        rp = exact(self.cm.access({'category': 'repo', 'command': 'find', 'arg1': repo, 'con': False}), repo)
+        if rp is None:
+            return {'error': 'no repository %s on this server' % repo}
+        repo_alias, repo_uid = str(rp.get('artifact_alias') or repo), str(rp.get('artifact_uid') or '')
+        repos = self.cm.repos
+        if _matches_any(repo_alias, _patterns(cfg.get('hide_repos'))) or \
+                (getattr(repos, 'hidden_repos', ()) and repos.repo_hidden(None, alias=repo_alias, uid=repo_uid)):
+            return {'error': 'the repository %s is not one this page shows' % repo_alias}
+        cp = exact(self.cm.access({'category': 'category', 'command': 'find', 'arg1': str(cat or '').strip(), 'con': False}), cat)
+        if cp is None:
+            return {'error': 'no category %s on this server' % cat}
+        cat_alias, cat_uid = str(cp.get('artifact_alias') or ''), str(cp.get('artifact_uid') or '')
+        if _matches_any(cat_alias, self._hidden_categories(cfg)):
+            return {'error': '%s: a category this server hides' % cat_alias}
+        tags = [str(t).strip() for t in (tags.split(',') if isinstance(tags, str) else (tags or [])) if str(t).strip()]
+
+        r = self.cm.access({'category': '%s,%s' % (cat_alias, cat_uid), 'command': 'add', 'arg1': '%s:%s' % (repo_alias, alias),
+                            'tags': ','.join(tags), 'yaml': True, 'con': False})
+        if r.get('return', 1) > 0:
+            return {'error': r.get('error') or 'the category did not create it'}
+        # the base create answers with path and meta; a dated category creates through "get" and answers with the artifact
+        a = r.get('artifact') if isinstance(r.get('artifact'), dict) else {}
+        path = str(r.get('path') or a.get('path') or '')
+        uid = str((a.get('cmeta_ref_parts') or {}).get('artifact_uid') or (r.get('meta') or a.get('cmeta') or {}).get('artifact') or '')
+        uid = uid.split(',')[-1].strip().lower()
+        final = os.path.basename(path.rstrip('\\/')) if path else alias
+        self._catalog(force=True)
+        print('cMeta info: cserver.browse: %s created %s::%s in %s' % (self._who(misc), cat_alias, final, repo_alias))
+        return {'created': final, 'uid': uid, 'cat': cat_alias, 'cat_uid': cat_uid, 'repo': repo_alias,
+                'cref': '%s,%s::%s,%s' % (cat_alias, cat_uid, final, uid)}
+
+    def _save(self, uid, rel, text, stamp, misc, cfg):
+        """Write a text file of an artifact the page shows with the editor's text, checked by the file's name,
+        when the viewer may (browse_edit, the host's grant), the request came from a page of this server, and
+        the file is as the editor loaded it (its fingerprint). A _cmeta keeps the artifact's identity and the
+        artifact is reindexed; a _desc re-enters the connection index, with a warning for a reference that
+        resolves to nothing. The file's own line endings and BOM are kept; a new file (a text name, anywhere
+        inside, its folders made on the way) starts from nothing. One line of the server's log says who saved
+        what."""
+        t = self._target(uid, rel, misc, cfg)
+        if 'error' in t:
+            return t
+        it, root, full, parts, rel = t['it'], t['root'], t['full'], t['parts'], t['rel']
+        name = parts[-1]
+        low = name.lower()
+        ext = os.path.splitext(low)[1]
+        exists = os.path.isfile(full)
+        if not exists:
+            if os.path.isdir(full):
+                return {'error': '%s is a folder' % rel}
+            if low.startswith('_cmeta.') or low == '_desc.json':
+                return {'error': 'a _cmeta is made with "cx <category> add"; a new description is _desc.yaml'}
+            if low == '_desc.yaml' and os.path.isfile(os.path.join(root, '_desc.json')):
+                return {'error': 'this artifact has a _desc.json already: edit that one'}
+            if not _text_name(name):
+                return {'error': 'a new file needs a text name (.md, .txt, .yaml, .json, ..., or no extension)'}
+            raw = b''
+        else:
+            if os.path.getsize(full) > TEXT_CAP:
+                return {'error': 'over %d KB: edit it on the machine itself' % (TEXT_CAP // 1024)}
+            with open(full, 'rb') as f:
+                raw = f.read()
+            if ext in BINARY_MIME or (b'\x00' in raw[:4096] and ext not in TEXT_EXT):
+                return {'error': 'not a text file'}
+            try:
+                raw.decode('utf-8')
+            except UnicodeDecodeError:
+                return {'error': 'not UTF-8 text: edit it on the machine itself'}
+            if not str(stamp or ''):
+                return {'error': '%s exists already: open it and edit that one' % rel}
+            if str(stamp or '') != _fingerprint(raw):
+                return {'error': 'not saved: the file changed since the editor loaded it (another program, a sync, '
+                                 'an agent) - reload it and edit again'}
+        text = str(text if text is not None else '')
+        if text.startswith('﻿'):
+            text = text[1:]
+        if len(text.encode('utf-8')) > TEXT_CAP:
+            return {'error': 'over %d KB: edit it on the machine itself' % (TEXT_CAP // 1024)}
+        err, data = _check_edit(name, text, it)
+        if err:
+            return {'error': 'not saved: ' + err}
+
+        body = text.replace('\r\n', '\n').replace('\r', '\n')
+        if b'\r\n' in raw:
+            body = body.replace('\n', '\r\n')
+        out_bytes = (b'\xef\xbb\xbf' if raw.startswith(b'\xef\xbb\xbf') else b'') + body.encode('utf-8')
+        if not exists:
+            os.makedirs(os.path.dirname(full), exist_ok=True)     # the folders on the way (inside the artifact, checked)
+        tmp = full + '.cbr-edit'
+        with open(tmp, 'wb') as f:
+            f.write(out_bytes)
+        if exists:
+            try:
+                shutil.copymode(full, tmp)
+            except OSError:
+                pass
+        os.replace(tmp, full)
+
+        out = {'saved': rel, 'size': len(out_bytes), 'stamp': _fingerprint(out_bytes), 'created': not exists, 'warnings': []}
+        print('cMeta info: cserver.browse: %s saved %s of %s::%s (%d -> %d bytes)'
+              % (self._who(misc), rel, it['cat'], it['alias'], len(raw), len(out_bytes)))
+        low = name.lower()
+        if low.startswith('_cmeta.'):
+            r = self.cm.access({'category': '%s,%s' % (it['cat'], it['cat_uid']), 'command': 'reindex', 'arg1': it['uid'], 'con': False})
+            out['reindexed'] = r.get('return', 1) == 0
+            if not out['reindexed']:
+                out['warnings'].append('saved, but the index was not refreshed: %s' % r.get('error', ''))
+            self._catalog(force=True)
+        elif low.startswith('_desc.'):
+            cat = self._catalog()
+            desc = data if isinstance(data, dict) else {}
+            for cref in _connections(desc, it['meta']):
+                if not _resolve(_parse_cref(cref), cat['by_uid'], cat['by_key']):
+                    out['warnings'].append('connections: %s is not an artifact this server knows' % cref)
+            for ref in _ai_uses_refs(desc):
+                if not _resolve(ref, cat['by_uid'], cat['by_key']):
+                    out['warnings'].append('ai_uses: %s,%s::%s,%s is not an artifact this server knows' % ref)
+            for c, a, u in _uses_refs(desc):
+                if u not in cat['by_uid']:
+                    out['warnings'].append('uses: %s,%s is not an artifact this server knows' % (a, u))
+            self._conn_start(force=True)               # the connection index re-reads what changed
+        return out
+
     # ------------------------------------------------------------ web
     def web_(self, ctx, urls, query={}, misc={}):
         """Render the page (command web) or answer ?native_action=... with JSON."""
@@ -1923,13 +2306,25 @@ class Category(InitCategory):
                 elif na == 'graph':
                     out = self._graph(query)
                 elif na in ('files', 'file'):
-                    if not self._files_on(misc, self._cserver_config()):
+                    cfg = self._cserver_config()
+                    if not self._files_on(misc, cfg):
                         out = {'error': 'the file browser is off here: it is for a browser on the server\'s own '
                                         'machine (browse_files in the cserver config changes that)'}
                     elif na == 'files':
                         out = self._files(query.get('uid'), query.get('limit'))
+                        self._edit_fields(out, query.get('uid'), misc, cfg)
                     else:
                         out = self._file(query.get('uid'), query.get('rel'))
+                        self._edit_fields(out, query.get('uid'), misc, cfg)
+                elif na == 'save':
+                    out = self._save(query.get('uid'), query.get('rel'), query.get('text'), query.get('stamp'),
+                                     misc, self._cserver_config())
+                elif na in ('mkdir', 'delete'):
+                    out = (self._mkdir if na == 'mkdir' else self._delete)(query.get('uid'), query.get('rel'), misc,
+                                                                            self._cserver_config())
+                elif na == 'create':
+                    out = self._create(query.get('cat'), query.get('repo'), query.get('alias'), query.get('tags'),
+                                       misc, self._cserver_config())
                 elif na == 'open':
                     out = self._open(query.get('uid'), query.get('what'), misc, self._cserver_config(),
                                      dry=_flag(query.get('dry'), False))
@@ -1969,6 +2364,8 @@ class Category(InitCategory):
             config = {'api_url': urls.get('url', '?'), 'url_server': urls.get('url_server') or '/',
                       'dark_mode': bool(dark), 'version': version, 'local': local, 'title': title,
                       'files': self._files_on(misc, cfg),
+                      # who may write here: True, False, or the repositories (patterns) of the viewer's grant
+                      'edit': self._edit_on(misc, cfg),
                       'open': _open_buttons(cfg) if open_on else {},
                       'graph': {'max_nodes': GRAPH_DEFAULT, 'max': GRAPH_MAX, 'depth_max': DEPTH_MAX},
                       # where the page of one artifact is served (a host's /cref/, else this server's), and the
