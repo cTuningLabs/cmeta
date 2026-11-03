@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.2.1)
+## 0.38.3
 - **`--connect` and `--connect-to` (`--ct`) on `add`, `update` (and `get`).** `--connect=<names>` writes the full
   cRef of each artifact named into this artifact's `connections` and this artifact's cRef into theirs (the graph
   draws an edge declared on either side, so both say it); `--ct=<names>` writes this side only. Names are aliases,
