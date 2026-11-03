@@ -363,6 +363,7 @@
     $('cbr-list').innerHTML = '';
     root.querySelector('[data-pager="search"]').innerHTML = '';
     $('cbr-status').textContent = '';
+    notices([]);
     var box = $('cbr-search-hint');
     box.innerHTML = '';
     box.hidden = false;
@@ -392,8 +393,16 @@
   function render() {
     if (!last) return;
     statusLine(last);
+    notices(last.notices);
     if (st.view === 'search') renderList();
     else if (st.view === 'browse') renderBrowse();
+  }
+  // what the server adds to a result: a category the query names is hidden here, an empty result on a server that hides some
+  function notices(list) {
+    var box = $('cbr-notices');
+    if (!box) return;
+    box.innerHTML = '';
+    (list || []).forEach(function (t) { box.appendChild(h('div', {}, t)); });
   }
 
   /* ------------------------------------------------------------------ Search view */
@@ -587,12 +596,67 @@
       var x = h('button', {type: 'button', class: 'cbr-link'}, 'all categories');
       x.addEventListener('click', function () { pickCategory(''); });
       line.appendChild(x);
+      if (CFG.edit) {                            // a viewer who may write: a new artifact of this category
+        line.appendChild(document.createTextNode(' · '));
+        var nb = h('button', {type: 'button', class: 'cbr-mini', title: 'A new artifact of this category: its name, its tags, its repository'}, '+ new ' + sel);
+        nb.addEventListener('click', function () { newArtifactForm(head, sel, {repo: lastRepo(), tags: ''}); });
+        line.appendChild(nb);
+      }
       head.appendChild(line);
     } else {
       head.appendChild(h('h2', {}, 'Matching "' + words + '"'));
       head.appendChild(h('p', {class: 'cbr-muted'}, num(last ? last.total : 0) + ' artifacts across the categories on the left - pick one to narrow.'));
     }
     box.appendChild(head);
+  }
+  // A new artifact (2026-11-03): one small form - the name, the tags, the repository - made by the category's own
+  // "add" on the server (a dated category puts the day in front), then its page opens. The repositories offered are
+  // the ones this viewer may write to (CFG.edit: everything, or the patterns of the host's grant).
+  function globMatch(s, p) {
+    return new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$').test(s);
+  }
+  function writableRepos() {
+    var all = (options && options.repos ? options.repos : []).map(function (x) { return x[0]; }).filter(function (r) { return r !== '(registry)'; });
+    if (CFG.edit === true) return all;
+    var pats = Array.isArray(CFG.edit) ? CFG.edit : [];
+    return all.filter(function (r) { return pats.some(function (p) { return globMatch(r.toLowerCase(), String(p).toLowerCase()); }); });
+  }
+  function lastRepo() { try { return localStorage.getItem('cbr-new-repo') || ''; } catch (e) { return ''; } }
+  function newArtifactForm(anchor, cat, preset) {
+    var old = root.querySelector('.cbr-newform');
+    if (old) { old.remove(); return; }
+    var f = h('form', {class: 'cbr-newform'});
+    var name = h('input', {type: 'text', required: 'required', autocomplete: 'off', placeholder: 'the name (a dated category puts the day in front)'});
+    var tags = h('input', {type: 'text', autocomplete: 'off', placeholder: 'tags, comma-separated'});
+    tags.value = preset.tags || '';
+    var repo = h('select', {});
+    var repos = writableRepos();
+    repos.forEach(function (r) {
+      var o = h('option', {value: r}, r);
+      if (r === preset.repo) o.selected = true;
+      repo.appendChild(o);
+    });
+    var msg = h('span', {class: 'cbr-emsg'});
+    var ok = h('button', {type: 'submit', class: 'cbr-btn'}, 'Create');
+    var no = h('button', {type: 'button', class: 'cbr-copy'}, 'cancel');
+    no.addEventListener('click', function () { f.remove(); });
+    f.appendChild(h('div', {class: 'cbr-newform-title'}, 'New ' + cat));
+    f.appendChild(h('label', {}, 'Name', name));
+    f.appendChild(h('label', {}, 'Tags', tags));
+    f.appendChild(h('label', {}, 'Repository', repo));
+    f.appendChild(h('div', {class: 'cbr-newform-acts'}, ok, no, msg));
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (!repos.length) { msg.textContent = 'no repository you may write to is shown here'; return; }
+      msg.textContent = '';
+      ok.disabled = true;
+      call('create', {cat: cat, repo: repo.value, alias: name.value.trim(), tags: tags.value}, 'creating ' + name.value.trim()).then(function (r) {
+        try { localStorage.setItem('cbr-new-repo', r.repo); } catch (x) {}
+        window.location.href = crefUrl(r.cat, r.created, r.uid);
+      }).catch(function (err) { ok.disabled = false; msg.textContent = err.message; });
+    });
+    anchor.appendChild(f);
+    name.focus();
   }
   function renderBrowse() {
     renderToc();
@@ -748,9 +812,14 @@
       (d.commands || []).forEach(function (c) { box.appendChild(cmdLine(c)); });
       box.appendChild(h('h3', {}, 'Meta (_cmeta)'));
       box.appendChild(codePre(JSON.stringify(d.meta, null, 2), '_cmeta.json'));
+      var canEdit = d.edit && d.files;             // the editor saves through the file browser
+      if (canEdit && d.meta_file) box.appendChild(editRow(d.row.uid, d.meta_file, fbox, fbtn, false));
       if (d.desc) {
         box.appendChild(h('h3', {}, 'Description (' + d.desc_file + ')'));
         box.appendChild(codePre(JSON.stringify(d.desc, null, 2), '_desc.json'));
+        if (canEdit && d.desc_file) box.appendChild(editRow(d.row.uid, d.desc_file, fbox, fbtn, false));
+      } else if (canEdit) {
+        box.appendChild(editRow(d.row.uid, '_desc.yaml', fbox, fbtn, true));
       }
       box.hidden = false;
       box.scrollTop = 0;
@@ -862,7 +931,41 @@
 
   /* ------------------------------------------------------------------ the files of one artifact */
   var blobUrl = null;
-  function listFiles(uid, box, btn, want) {
+  // An edit button under a viewer of the detail (the meta, the description): the editor opens on that file in
+  // the files box (listed first when needed); a new _desc.yaml starts from the template
+  function editRow(uid, rel, fbox, fbtn, isNew) {
+    var b = h('button', {type: 'button', class: 'cbr-mini', title: (isNew ? 'Create ' : 'Edit ') + rel + ' here'},
+              (isNew ? '+ ' : 'edit ') + rel);
+    b.addEventListener('click', function () { openEditor(uid, rel, fbox, fbtn, isNew); });
+    return h('p', {class: 'cbr-edit-row'}, b);
+  }
+  function openEditor(uid, rel, fbox, fbtn, isNew) {
+    var go = function () {
+      var view = fbox.querySelector('.cbr-fview');
+      if (!view) return;
+      if (isNew) editFile(uid, {rel: rel, text: '', stamp: ''}, view);
+      else openFile(uid, rel, view, true);
+      view.scrollIntoView({block: 'nearest'});
+    };
+    if (fbox.getAttribute('data-loaded')) { fbox.hidden = false; fbtn.textContent = 'Hide the files'; go(); }
+    else listFiles(uid, fbox, fbtn, null, go);
+  }
+  // delete a file or an empty folder: the person is asked first; the list is read again after
+  function delButton(uid, rel, what, box, btn) {
+    var x = h('button', {type: 'button', class: 'cbr-mini cbr-del', title: 'Delete this ' + what}, '×');
+    x.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!window.confirm('Delete the ' + what + ' ' + rel + '? This cannot be undone here.')) return;
+      call('delete', {uid: uid, rel: rel}, 'deleting ' + rel).then(function (r) { toast('deleted ' + r.deleted); reloadFiles(uid, box, btn); })
+        .catch(function (err) { toast(err.message, true); });
+    });
+    return x;
+  }
+  function reloadFiles(uid, box, btn, want) {
+    box.removeAttribute('data-loaded');
+    listFiles(uid, box, btn, want);
+  }
+  function listFiles(uid, box, btn, want, after) {
     if (box.getAttribute('data-loaded')) {
       box.hidden = !box.hidden;
       btn.textContent = box.hidden ? 'List the files' : 'Hide the files';
@@ -877,6 +980,23 @@
         ' file' + (j.total === 1 ? '' : 's') + ' - the meta first; click one to read it'));
       var ul = h('ul', {class: 'cbr-flist'});
       var view = h('div', {class: 'cbr-fview'});
+      if (j.edit) {                              // a new text file (made when saved), a new folder
+        var tb = h('p', {class: 'cbr-edit-row'});
+        var nf = h('button', {type: 'button', class: 'cbr-mini', title: 'A new text file in this artifact: the editor opens, the file is made when you save'}, '+ file');
+        nf.addEventListener('click', function () {
+          var n = window.prompt('The name of the new file - a path inside the artifact, a text name (notes.md, files/plan.txt):', '');
+          if (n && n.trim()) editFile(uid, {rel: n.trim(), text: '', stamp: ''}, view);
+        });
+        var nd = h('button', {type: 'button', class: 'cbr-mini', title: 'A new folder in this artifact'}, '+ folder');
+        nd.addEventListener('click', function () {
+          var n = window.prompt('The name of the new folder - a path inside the artifact:', '');
+          if (n && n.trim()) call('mkdir', {uid: uid, rel: n.trim()}, 'making ' + n).then(function (r) { toast('made ' + r.made); reloadFiles(uid, box, btn); })
+            .catch(function (e) { toast(e.message, true); });
+        });
+        tb.appendChild(nf);
+        tb.appendChild(nd);
+        box.appendChild(tb);
+      }
       j.files.forEach(function (f) {
         var li = h('li', {title: f.mtime}, h('span', {class: 'nm'}, f.rel), h('span', {class: 'n'}, fmtSize(f.size)));
         li.addEventListener('click', function () {
@@ -886,22 +1006,43 @@
           syncUrl();
           openFile(uid, f.rel, view);
         });
+        if (j.edit && !/^_(cmeta|desc)\./i.test(f.rel)) li.appendChild(delButton(uid, f.rel, 'file', box, btn));
         if (want && f.rel === want) li.classList.add('on');
         ul.appendChild(li);
       });
+      // the empty folders (no file, no folder inside): shown so that they can be deleted
+      (j.dirs || []).forEach(function (d) {
+        var under = function (x) { return x.indexOf(d + '/') === 0; };
+        if (j.files.some(function (f) { return under(f.rel); }) || j.dirs.some(under)) return;
+        var li = h('li', {class: 'dir'}, h('span', {class: 'nm'}, d + '/'), h('span', {class: 'n'}, 'empty'));
+        if (j.edit) li.appendChild(delButton(uid, d, 'folder', box, btn));
+        ul.appendChild(li);
+      });
       box.appendChild(ul);
+      (j.can_add || []).forEach(function (name) {   // a file the editor may create here (none of that name yet)
+        var add = h('button', {type: 'button', class: 'cbr-mini', title: 'Create ' + name + ' in this artifact'}, '+ ' + name);
+        add.addEventListener('click', function () { editFile(uid, {rel: name, text: '', stamp: ''}, view); });
+        box.appendChild(add);
+      });
       box.appendChild(view);
       if (want) openFile(uid, want, view);     // a link or the URL named the file: open it (also one past the list)
+      if (after) after();
     }).catch(function (e) { box.hidden = false; box.textContent = e.message; });
   }
-  function openFile(uid, rel, view) {
+  function openFile(uid, rel, view, edit) {
     call('file', {uid: uid, rel: rel}, 'reading ' + rel).then(function (j) {
       view.innerHTML = '';
       if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
       var close = h('button', {type: 'button', class: 'cbr-copy'}, 'close');
       close.addEventListener('click', function () { view.innerHTML = ''; st.file = ''; syncUrl(); });
-      view.appendChild(h('div', {class: 'cbr-fhead'}, h('b', {}, j.rel), ' · ' + fmtSize(j.size) +
-        (j.truncated ? ' · the first 512 KB' : '') + ' ', close));
+      var head = h('div', {class: 'cbr-fhead'}, h('b', {}, j.rel), ' · ' + fmtSize(j.size) +
+        (j.truncated ? ' · the first 512 KB' : '') + ' ', close);
+      if (j.kind === 'text' && j.editable) {     // the server says this viewer may save it here
+        var edit = h('button', {type: 'button', class: 'cbr-copy', title: 'Edit this file here (Ctrl+S saves)'}, 'edit');
+        edit.addEventListener('click', function () { editFile(uid, j, view); });
+        head.insertBefore(edit, close);
+      }
+      view.appendChild(head);
       if (j.kind === 'text') {
         view.appendChild(codePre(j.text, j.rel));
       } else if (j.kind === 'binary' && j.b64) {
@@ -914,7 +1055,46 @@
       } else {
         view.appendChild(h('p', {class: 'cbr-muted'}, j.note || 'not shown'));
       }
+      if (edit && j.kind === 'text' && j.editable) editFile(uid, j, view);   // asked to edit it at once
     }).catch(function (e) { view.textContent = e.message; });
+  }
+  // The editor (2026-11-03): a plain text box for a text file this viewer may save - a browser on the server's
+  // own machine, or a reader the host lets write here. The server checks YAML and JSON, keeps the identity of a
+  // _cmeta (and reindexes it), and refuses a file changed meanwhile (the fingerprint it gave with the text).
+  var DESC_TEMPLATE = '# What this artifact declares: links to other artifacts (connections), what it runs (uses),\n' +
+                      '# whose memory its AI sessions read (ai_uses), and any facts of its own.\nconnections: []\n';
+  function editFile(uid, j, view) {
+    view.innerHTML = '';
+    var ta = h('textarea', {class: 'cbr-editor', spellcheck: 'false', wrap: 'off'});
+    ta.value = j.text || (j.rel === '_desc.yaml' && !j.stamp ? DESC_TEMPLATE : '');
+    ta.rows = Math.max(8, Math.min(40, (ta.value.match(/\n/g) || []).length + 2));
+    var msg = h('span', {class: 'cbr-emsg'});
+    var save = h('button', {type: 'button', class: 'cbr-btn'}, 'Save');
+    var cancel = h('button', {type: 'button', class: 'cbr-copy'}, 'cancel');
+    function doSave() {
+      msg.textContent = '';
+      save.disabled = true;
+      call('save', {uid: uid, rel: j.rel, text: ta.value, stamp: j.stamp || ''}, 'saving ' + j.rel).then(function (r) {
+        toast('saved ' + r.saved + (r.reindexed ? ' - the artifact is reindexed' : ''));
+        (r.warnings || []).forEach(function (w) { toast(w, true); });
+        if (/^_(cmeta|desc)\./i.test(j.rel)) openDetail(uid);      // the meta and the description on the page follow
+        else openFile(uid, j.rel, view);
+      }).catch(function (e) { save.disabled = false; msg.textContent = e.message; });
+    }
+    save.addEventListener('click', doSave);
+    cancel.addEventListener('click', function () { if (j.stamp) openFile(uid, j.rel, view); else view.innerHTML = ''; });
+    ta.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); doSave(); }
+      else if (e.key === 'Tab') {                // two spaces, as YAML wants
+        e.preventDefault();
+        var s = ta.selectionStart, t = ta.selectionEnd;
+        ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(t);
+        ta.selectionStart = ta.selectionEnd = s + 2;
+      }
+    });
+    view.appendChild(h('div', {class: 'cbr-fhead'}, h('b', {}, (j.stamp ? 'editing ' : 'new file ') + j.rel), save, cancel, msg));
+    view.appendChild(ta);
+    ta.focus();
   }
 
   /* ------------------------------------------------------------------ Graph view */

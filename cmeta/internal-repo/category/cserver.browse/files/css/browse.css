@@ -321,6 +321,25 @@
 .cbr-flist .n { margin-left: auto; color: var(--cbr-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cbr-fhead { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; color: var(--cbr-muted); overflow-wrap: anywhere; }
 .cbr-fhead b { color: var(--cbr-fg); }
+
+/* The editor of a text file (2026-11-03): a plain box the viewer may save when the server allows */
+.cbr-editor { width: 100%; box-sizing: border-box; min-height: 160px; margin-top: 4px; padding: 8px; resize: vertical;
+  font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--cbr-code); color: var(--cbr-fg);
+  border: 1px solid var(--cbr-line); border-radius: 6px; tab-size: 2; white-space: pre; overflow: auto; }
+.cbr-emsg { color: #b42318; font-size: 12.5px; }
+.cbr-edit-row { margin: 4px 0 8px; }
+.cbr-del { color: #b42318; margin-left: 6px; }
+.cbr-flist li.dir { cursor: default; }
+.cbr-flist li.dir .nm { color: var(--cbr-muted); }
+
+/* A new artifact (2026-11-03): one small form under the category's title */
+.cbr-newform { margin: 8px 0 12px; padding: 10px 12px; max-width: 560px; display: grid; gap: 6px;
+  border: 1px solid var(--cbr-line); border-radius: 8px; background: var(--cbr-card); }
+.cbr-newform-title { font-weight: 600; }
+.cbr-newform label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 13px; }
+.cbr-newform input, .cbr-newform select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--cbr-line);
+  border-radius: 6px; background: var(--cbr-bg); color: var(--cbr-fg); }
+.cbr-newform-acts { display: flex; gap: 8px; align-items: center; }
 .cbr-fview img { display: block; max-width: 100%; margin-top: 6px; border: 1px solid var(--cbr-line); border-radius: 6px; }
 .cbr-fview iframe { display: block; width: 100%; height: 520px; margin-top: 6px; border: 1px solid var(--cbr-line);
   border-radius: 6px; background: #fff; }

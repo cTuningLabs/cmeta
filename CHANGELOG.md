@@ -2,6 +2,32 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.38.4
+- **`/browse`: a cName and a `{{{cRef}}}` in the query, and a word about hidden categories.** `<alias>,<UID>` finds
+  that artifact (both must hold); `{{{<cRef>}}}` pasted from a text, with or without a path after it, counts as the
+  cRef (`<cat>::<alias>`, `<cat>::<alias>,<UID>`, the full cRef and `<cat>::*pattern*` worked already). A query that
+  names a category the server hides (`browse_hide_categories`; by default the categories of keys and secrets) says
+  so in a notice instead of a bare "nothing matches", and so does an empty result on a server that hides some - the
+  hidden categories are not listed by name, and nothing tells whether the query would match in them. The syntax
+  help of the page lists the forms.
+- **`/browse` and `/cref/`: text files, `_cmeta` and `_desc` edited from the page.** A text file of an artifact (Markdown,
+  YAML, JSON, plain text) gets an Edit button, on the browse page and on the reader page of one artifact, for a viewer
+  the server lets write: a browser on the server's own machine by
+  default, `browse_edit` yes / no for everyone / no one, or - on a host that signs its readers in - what the host
+  grants each per request (`misc.browse_edit`: everything they see, or a list of repositories: an admin, a write
+  grant). YAML and JSON must parse (the error names the line); a `_cmeta` keeps the artifact's identity (UID, alias,
+  category) and is reindexed on save; a `_desc` re-enters the connection index with a warning for a reference the
+  server does not know; a file changed meanwhile (a sync, an agent) is refused by its fingerprint; the file's own
+  line endings and BOM are kept. A new text file can be made anywhere inside the artifact (its folders on the way), a
+  folder too, and a file or an empty folder deleted after a confirmation - never the `_cmeta` or the `_desc`. The
+  guards of reading apply to all of it, and every save, folder and deletion is one line of the server's log.
+- **`/browse` and `/cref/`: a new artifact from the page.** With one category open, "+ new <category>" shows one small
+  form - the name, the tags, the repository - and the reader page of an artifact offers "+ Similar" (the same
+  category and repository, its tags prefilled). The category's own `add` makes it (`work`, `note` and the other
+  dated categories put the day in front of the name), it is indexed at once and its page opens. For the viewers who
+  may write (`browse_edit`, the host's grant - the repository must be one of theirs); the categories a server hides
+  are refused.
+
 ## 0.38.3
 - **`--connect` and `--connect-to` (`--ct`) on `add`, `update` (and `get`).** `--connect=<names>` writes the full
   cRef of each artifact named into this artifact's `connections` and this artifact's cRef into theirs (the graph

@@ -21,7 +21,9 @@ artifacts are referenced, and a reader sees what is referenced.
 The reference is resolved and the artifact read through cserver.browse (one catalogue, the same rules: the scope of
 the request, hidden repositories, key and secret categories, the file browser only where it is allowed); the text
 is read here under the same guards. The files and the open buttons are asked of cserver.browse from the page itself
-(misc.browse_url says where it is served), so the rules are applied once, there.
+(misc.browse_url says where it is served), so the rules are applied once, there. A text file can be edited and
+saved from this page as from /browse (since 2026-11-03: the edit button in the file's head, "+ _desc.yaml" and
+"+ README.md" after the tree) - cserver.browse's save, with its rules, its checks and its fingerprint.
 
 The view is extended, never rewritten - `cref_view` in the category's _cmeta.yaml, or in an artifact's _desc:
     text:   a file, or a list of candidates (the first that exists wins); {ck.<key>} placeholders read the _desc
@@ -391,7 +393,8 @@ class Category(InitCategory):
                  '<a href="%s" title="Every artifact of this repository">%s</a></span><span class="cxr-actions">'
                  '<a href="%s" title="This artifact in the knowledge browser">Browser</a> &middot; '
                  '<a href="%s" title="This artifact and its connections, drawn">Graph</a>%s'
-                 ' &middot; <button type="button" class="cxr-copy" data-copy="%s">Copy cRef</button></span></div>'
+                 ' &middot; <button type="button" class="cxr-copy" data-copy="%s">Copy cRef</button>'
+                 ' <button type="button" class="cxr-copy" id="cxr-new" hidden title="A new artifact of this category, in this repository, with these tags">+ Similar</button></span></div>'
                  % (browse_link(view='browse', cats=cat), _esc(cat),
                     browse_link(view='browse', repos=row.get('repo') or ''), _esc(row.get('repo') or '(registry)'),
                     browse_link(cref=node), browse_link(view='graph', focus=node),
@@ -457,11 +460,24 @@ class Category(InitCategory):
             if 'commands' not in hide and a.get('commands'):
                 T.append('<details><summary>Commands</summary><p class="cxr-muted">The same artifact from a terminal with cMeta installed.</p>%s</details>'
                          % ''.join('<div class="cxr-cmd"><code>%s</code><button type="button" class="cxr-copy sm" data-copy="%s">copy</button></div>' % (_esc(c), _esc(c)) for c in a['commands']))
+            # the editor (2026-11-03): an edit button at the end of each viewer when this viewer may save here
+            can_edit = bool(a.get('edit')) and bool(a.get('files')) and 'files' not in hide
+
+            def edit_row(name, new=False):
+                if not can_edit or not name:
+                    return ''
+                return ('<p class="cxr-edit-row"><button type="button" class="cxr-copy sm cxr-edit" data-rel="%s" data-new="%s">%s</button>%s</p>'
+                        % (_esc(name), '1' if new else '0', ('+ ' if new else 'edit ') + _esc(name),
+                           ' <span class="cxr-n">no _desc yet: the facts and the connections of this artifact</span>' if new else ''))
+
             if 'cmeta' not in hide:
-                T.append('<details><summary>See _cmeta <span class="cxr-n">who made it, when, the tags</span></summary><pre class="cxr-pre cxr-refs" data-name="_cmeta.json">%s</pre></details>' % _esc(json.dumps(meta, indent=2, ensure_ascii=False, default=str)))
+                T.append('<details><summary>See _cmeta <span class="cxr-n">who made it, when, the tags</span></summary><pre class="cxr-pre cxr-refs" data-name="_cmeta.json">%s</pre>%s</details>'
+                         % (_esc(json.dumps(meta, indent=2, ensure_ascii=False, default=str)), edit_row(a.get('meta_file'))))
             if 'desc' not in hide and desc:
-                T.append('<details><summary>See _desc <span class="cxr-n">the facts and the connections (%s)</span></summary><pre class="cxr-pre cxr-refs" data-name="_desc.json">%s</pre></details>'
-                         % (_esc(a.get('desc_file') or ''), _esc(json.dumps(desc, indent=2, ensure_ascii=False, default=str))))
+                T.append('<details><summary>See _desc <span class="cxr-n">the facts and the connections (%s)</span></summary><pre class="cxr-pre cxr-refs" data-name="_desc.json">%s</pre>%s</details>'
+                         % (_esc(a.get('desc_file') or ''), _esc(json.dumps(desc, indent=2, ensure_ascii=False, default=str)), edit_row(a.get('desc_file'))))
+            elif 'desc' not in hide and can_edit:
+                T.append(edit_row('_desc.yaml', new=True))
             if 'files' not in hide and a.get('files'):
                 T.append('<details id="cxr-files" data-uid="%s"><summary>Files <span class="cxr-n">the artifact\'s folder</span></summary>'
                          '<div class="cxr-files-body"><p class="cxr-muted">Loading the files...</p></div></details>' % _esc(uid))
@@ -508,7 +524,10 @@ class Category(InitCategory):
 
         config = {'browse_url': browse_url, 'cref_url': self._cref_url, 'uid': uid, 'cref': short,
                   'open': bool(misc.get('client_local')) and tech, 'focus_url': browse_url + ('&' if '?' in browse_url else '?') + 'view=graph&focus=' + _q(node, ':'),
-                  'files': bool(a.get('files')) and tech and 'files' not in hide, 'file': rel if rel and not shown else ''}
+                  'files': bool(a.get('files')) and tech and 'files' not in hide, 'file': rel if rel and not shown else '',
+                  # "+ Similar": a new artifact of this category, in this repository, with these tags (a viewer who may write)
+                  'create': bool(a.get('can_create')) and tech,
+                  'new': {'cat': cat, 'repo': row.get('repo') or '', 'tags': list(row.get('tags') or [])}}
         return self._page(dark, title, '\n'.join(H), config=config, extra_head=page_head)
 
     def _facts_of_desc(self, desc, tech):
@@ -588,6 +607,14 @@ CSS = """
 .cxr-fview{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}.cxr-fhead{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;margin-bottom:4px;overflow-wrap:anywhere}
 .cxr-fview img{max-width:100%;border:1px solid var(--line);border-radius:6px}.cxr-fview iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:6px;background:#fff}
 .cxr-fview .cxr-text{border-top:0;padding-top:0}
+.cxr-editor{width:100%;box-sizing:border-box;min-height:160px;margin-top:4px;padding:8px;resize:vertical;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--soft);color:var(--fg);border:1px solid var(--line);border-radius:6px;tab-size:2;white-space:pre;overflow:auto}
+.cxr-emsg{color:#b42318;font-size:12.5px}
+.cxr-edit-row{margin:6px 0 0}
+.cxr-del{color:#b42318;margin-left:6px}
+.cxr-newform{margin:10px 0;padding:10px 12px;max-width:560px;display:grid;gap:6px;border:1px solid var(--line);border-radius:8px;background:var(--soft)}
+.cxr-newform-title{font-weight:600}.cxr-newform label{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:8px;font-size:13px}
+.cxr-newform input,.cxr-newform select{font:inherit;font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--fg)}
+.cxr-dark .cxr-newform input,.cxr-dark .cxr-newform select{background:#1f242e}.cxr-newform-acts{display:flex;gap:8px;align-items:center}
 .hl-c{color:#6a737d;font-style:italic}.hl-s{color:#0a7a3f}.hl-k{color:#1f4fbf;font-weight:600}.hl-v{color:#b35c00}.hl-n{color:#9a2a7a}.hl-h{color:#1f4fbf;font-weight:700}.hl-d{color:#7a3ab8}.hl-p{color:#6a737d}.hl-t{color:#1f4fbf}.hl-r{color:var(--accent);text-decoration:underline dotted}
 .cxr-dark .hl-c{color:#8b949e}.cxr-dark .hl-s{color:#7ee787}.cxr-dark .hl-k{color:#79c0ff}.cxr-dark .hl-v{color:#ffa657}.cxr-dark .hl-n{color:#d2a8ff}.cxr-dark .hl-h{color:#79c0ff}.cxr-dark .hl-d{color:#d2a8ff}.cxr-dark .hl-t{color:#79c0ff}
 @media (max-width:860px){.cxr{padding:8px 12px 40px}.cxr-title{font-size:22px}.cxr-cols{grid-template-columns:minmax(0,1fr)}.cxr-side{position:static}.cxr-links{columns:1}}
@@ -618,32 +645,87 @@ JS = """<script>
     var bt=h('button','cxr-btn',w[1]);bt.type='button';bt.title=w[2];bt.addEventListener('click',function(){msg.className='msg';msg.textContent='opening...';
       api('open',{uid:C.uid,what:w[0]}).then(function(){msg.textContent=w[1]+' opened on this machine';}).catch(function(e){msg.className='msg bad';msg.textContent=e.message;});});
     ob.appendChild(bt);});ob.appendChild(msg);}
+  // "+ Similar" (2026-11-03): a new artifact of this category - its name, its tags (these ones), its repository (this one first) -
+  // made by the category's own "add" on the server (a dated category puts the day in front), then its page opens
+  var nb=document.getElementById('cxr-new');
+  if(nb&&C.create&&C.new){nb.hidden=false;nb.addEventListener('click',function(){var old=document.getElementById('cxr-newform');if(old){old.remove();return;}
+    var f=document.createElement('form');f.id='cxr-newform';f.className='cxr-newform';
+    function field(label,el){var l=h('label');l.appendChild(h('span',null,label));l.appendChild(el);f.appendChild(l);}
+    var nm=document.createElement('input');nm.type='text';nm.required=true;nm.autocomplete='off';nm.placeholder='the name (a dated category puts the day in front)';
+    var tg=document.createElement('input');tg.type='text';tg.autocomplete='off';tg.value=(C.new.tags||[]).join(', ');tg.placeholder='tags, comma-separated';
+    var rp=document.createElement('select');if(C.new.repo){var o=document.createElement('option');o.value=C.new.repo;o.textContent=C.new.repo;rp.appendChild(o);}
+    api('options',{}).then(function(j){(j.repos||[]).forEach(function(x){if(x[0]===C.new.repo||x[0]==='(registry)')return;var o2=document.createElement('option');o2.value=x[0];o2.textContent=x[0];rp.appendChild(o2);});}).catch(function(){});
+    var msg=h('span','cxr-emsg'),ok=h('button','cxr-btn cxr-primary','Create'),no=h('button','cxr-copy sm','cancel');ok.type='submit';no.type='button';no.addEventListener('click',function(){f.remove();});
+    f.appendChild(h('div','cxr-newform-title','New '+C.new.cat));field('Name',nm);field('Tags',tg);field('Repository',rp);
+    var acts=h('div','cxr-newform-acts');acts.appendChild(ok);acts.appendChild(no);acts.appendChild(msg);f.appendChild(acts);
+    f.addEventListener('submit',function(e){e.preventDefault();msg.textContent='';ok.disabled=true;
+      api('create',{cat:C.new.cat,repo:rp.value,alias:nm.value.trim(),tags:tg.value}).then(function(r){location.href=(C.cref_url||'/cref/')+encodeURI(r.cref);}).catch(function(er){ok.disabled=false;msg.textContent=er.message;});});
+    var top=document.querySelector('.cxr-top');if(top&&top.parentNode){top.parentNode.insertBefore(f,top.nextSibling);}else{document.body.appendChild(f);}nm.focus();});}
   // the files: a tree of the folder, loaded when the section opens (or at once when the address names a file)
   var fd=document.getElementById('cxr-files');
-  if(fd&&C.files){var loaded=false,body=fd.querySelector('.cxr-files-body'),view=null,blob=null;
+  if(fd&&C.files){var loaded=false,body=fd.querySelector('.cxr-files-body'),view=null,blob=null,pendingEdit=null;
     function why(name,depth){if(depth===0&&name==='ck')return 'the dated records: one folder per day (YYYYMMDD) the facts were observed - nothing is overwritten';
       if(depth===1&&/^\\d{8}$/.test(name))return 'the facts observed on '+name.slice(0,4)+'-'+name.slice(4,6)+'-'+name.slice(6);
       if(depth===0&&name==='files')return 'the files the artifact serves (a page: its scripts and styles)';return '';}
-    function openFile(rel,li){api('file',{uid:C.uid,rel:rel}).then(function(j){if(!view){view=h('div','cxr-fview');body.appendChild(view);}view.innerHTML='';if(blob){URL.revokeObjectURL(blob);blob=null;}
+    function openFile(rel,li,edit){api('file',{uid:C.uid,rel:rel}).then(function(j){if(!view){view=h('div','cxr-fview');body.appendChild(view);}view.innerHTML='';if(blob){URL.revokeObjectURL(blob);blob=null;}
+      if(edit&&j.kind==='text'&&j.editable){editFile(j,li);return;}
       fd.querySelectorAll('.file.on').forEach(function(x){x.classList.remove('on');});if(li)li.classList.add('on');
       var head=h('div','cxr-fhead');head.appendChild(h('b',null,j.rel));head.appendChild(document.createTextNode(' \\u00b7 '+size(j.size)+(j.truncated?' \\u00b7 the first 512 KB':'')));
       var cl=h('button','cxr-copy sm','close');cl.type='button';cl.addEventListener('click',function(){view.innerHTML='';});head.appendChild(cl);
-      var ln=h('a','cxr-copy sm','link');ln.href=(C.cref_url||'/cref/')+encodeURI(C.cref)+'/'+j.rel.split('/').map(encodeURIComponent).join('/');ln.title='The address of this file';head.appendChild(ln);view.appendChild(head);
+      var ln=h('a','cxr-copy sm','link');ln.href=(C.cref_url||'/cref/')+encodeURI(C.cref)+'/'+j.rel.split('/').map(encodeURIComponent).join('/');ln.title='The address of this file';head.appendChild(ln);
+      if(j.kind==='text'&&j.editable){var ed=h('button','cxr-copy sm','edit');ed.type='button';ed.title='Edit this file here (Ctrl+S saves)';ed.addEventListener('click',function(){editFile(j,li);});head.appendChild(ed);}
+      view.appendChild(head);
       if(j.kind==='text'){var pre=h('pre','cxr-pre cxr-refs');if(window.cmetaHL){pre.innerHTML=cmetaHL(j.text,j.rel,{cref_url:C.cref_url||'/cref/'});}else{pre.textContent=j.text;}view.appendChild(pre);}
       else if(j.kind==='binary'&&j.b64){var bin=atob(j.b64),arr=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);blob=URL.createObjectURL(new Blob([arr],{type:j.mime}));
         var a=h('a',null,'open in a new tab');a.href=blob;a.target='_blank';a.rel='noopener';view.appendChild(a);
         if(j.mime.indexOf('image/')===0){var im=document.createElement('img');im.src=blob;im.alt=j.rel;view.appendChild(im);}else if(j.mime==='application/pdf'){var fr=document.createElement('iframe');fr.src=blob;fr.title=j.rel;view.appendChild(fr);}}
       else{view.appendChild(h('p','cxr-muted',j.note||'not shown'));}
       view.scrollIntoView({block:'nearest'});}).catch(function(e){if(!view){view=h('div','cxr-fview');body.appendChild(view);}view.textContent=e.message;});}
-    function load(){if(loaded)return;loaded=true;api('files',{uid:C.uid,limit:2000}).then(function(j){body.innerHTML='';
+    // the editor (2026-11-03), as on /browse: the server says which files this viewer may save (cserver.browse's save,
+    // its checks and its fingerprint); a saved _cmeta reloads the page, whose meta is rendered on the server
+    function editFile(j,li){if(!view){view=h('div','cxr-fview');body.appendChild(view);}view.innerHTML='';
+      var ta=h('textarea','cxr-editor');ta.spellcheck=false;ta.wrap='off';
+      ta.value=j.text||(j.rel==='_desc.yaml'&&!j.stamp?'# What this artifact declares: links to other artifacts (connections), what it runs (uses),\\n# whose memory its AI sessions read (ai_uses), and any facts of its own.\\nconnections: []\\n':'');
+      ta.rows=Math.max(8,Math.min(40,(ta.value.match(/\\n/g)||[]).length+2));
+      var msg=h('span','cxr-emsg'),sv=h('button','cxr-btn','Save'),cn=h('button','cxr-copy sm','cancel');sv.type='button';cn.type='button';
+      function doSave(){msg.textContent='';sv.disabled=true;api('save',{uid:C.uid,rel:j.rel,text:ta.value,stamp:j.stamp||''}).then(function(r){
+        (r.warnings||[]).forEach(function(w){body.insertBefore(h('p','cxr-notice',w),view);});
+        if(/^_(cmeta|desc)\\./i.test(j.rel)){location.reload();}else{openFile(j.rel,li);}}).catch(function(e){sv.disabled=false;msg.textContent=e.message;});}
+      sv.addEventListener('click',doSave);cn.addEventListener('click',function(){if(j.stamp)openFile(j.rel,li);else view.innerHTML='';});
+      ta.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();doSave();}
+        else if(e.key==='Tab'){e.preventDefault();var s=ta.selectionStart,t=ta.selectionEnd;ta.value=ta.value.slice(0,s)+'  '+ta.value.slice(t);ta.selectionStart=ta.selectionEnd=s+2;}});
+      var head=h('div','cxr-fhead');head.appendChild(h('b',null,(j.stamp?'editing ':'new file ')+j.rel));head.appendChild(sv);head.appendChild(cn);head.appendChild(msg);
+      view.appendChild(head);view.appendChild(ta);ta.focus();view.scrollIntoView({block:'nearest'});}
+    function reload(){loaded=false;load();}
+    // delete a file or an empty folder: the person is asked first; the tree is read again after
+    function del(rel,what){var x=h('button','cxr-copy sm cxr-del','\\u00d7');x.type='button';x.title='Delete this '+what;
+      x.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();if(!confirm('Delete the '+what+' '+rel+'? This cannot be undone here.'))return;
+        api('delete',{uid:C.uid,rel:rel}).then(function(){reload();}).catch(function(er){alert(er.message);});});return x;}
+    function load(){if(loaded)return;loaded=true;api('files',{uid:C.uid,limit:2000}).then(function(j){body.innerHTML='';view=null;
       body.appendChild(h('p','cxr-muted',j.files.length+' of '+j.total+(j.more?'+':'')+' file'+(j.total===1?'':'s')+' - the meta first; click a file to read it here'));
-      var root={dirs:{},files:[]};j.files.forEach(function(f){var parts=f.rel.split('/'),cur=root;for(var i=0;i<parts.length-1;i++){cur=cur.dirs[parts[i]]||(cur.dirs[parts[i]]={dirs:{},files:[]});}cur.files.push(f);});
-      function draw(node,depth,ul){Object.keys(node.dirs).sort().forEach(function(d){var li=h('li','dir'+(depth>=1&&!/^\\d{8}$/.test(d)?' closed':''));var nm=h('span','nm',d+'/');nm.addEventListener('click',function(){li.classList.toggle('closed');});li.appendChild(nm);
-          var w=why(d,depth);if(w)li.appendChild(h('span','why',w));var sub=h('ul');draw(node.dirs[d],depth+1,sub);li.appendChild(sub);ul.appendChild(li);});
-        node.files.forEach(function(f){var li=h('li','file');var a=h('a',null,f.rel.split('/').pop());a.href='#';a.addEventListener('click',function(e){e.preventDefault();openFile(f.rel,li);});li.appendChild(a);li.appendChild(h('span','sz',size(f.size)));if(f.rel===C.file)setTimeout(function(){openFile(f.rel,li);},0);ul.appendChild(li);});}
-      var tree=h('ul','cxr-tree');draw(root,0,tree);body.appendChild(tree);
+      if(j.edit){var tb=h('p','cxr-edit-row');var nf=h('button','cxr-copy sm','+ file');nf.type='button';nf.title='A new text file in this artifact: the editor opens, the file is made when you save';
+        nf.addEventListener('click',function(){var n=prompt('The name of the new file - a path inside the artifact, a text name (notes.md, files/plan.txt):','');if(n&&n.trim())editFile({rel:n.trim(),text:'',stamp:''},null);});
+        var nd=h('button','cxr-copy sm','+ folder');nd.type='button';nd.title='A new folder in this artifact';
+        nd.addEventListener('click',function(){var n=prompt('The name of the new folder - a path inside the artifact:','');if(n&&n.trim())api('mkdir',{uid:C.uid,rel:n.trim()}).then(function(){reload();}).catch(function(e){alert(e.message);});});
+        tb.appendChild(nf);tb.appendChild(nd);body.appendChild(tb);}
+      var root={dirs:{},files:[]};function node(path){var cur=root;path.split('/').forEach(function(p){cur=cur.dirs[p]||(cur.dirs[p]={dirs:{},files:[]});});return cur;}
+      (j.dirs||[]).forEach(function(d){node(d);});
+      j.files.forEach(function(f){var parts=f.rel.split('/');var cur=parts.length>1?node(parts.slice(0,-1).join('/')):root;cur.files.push(f);});
+      function draw(node,depth,ul,prefix){Object.keys(node.dirs).sort().forEach(function(d){var child=node.dirs[d],rel=prefix+d;var li=h('li','dir'+(depth>=1&&!/^\\d{8}$/.test(d)?' closed':''));var nm=h('span','nm',d+'/');nm.addEventListener('click',function(){li.classList.toggle('closed');});li.appendChild(nm);
+          var w=why(d,depth);if(w)li.appendChild(h('span','why',w));if(j.edit&&!Object.keys(child.dirs).length&&!child.files.length)li.appendChild(del(rel,'folder'));
+          var sub=h('ul');draw(child,depth+1,sub,rel+'/');li.appendChild(sub);ul.appendChild(li);});
+        node.files.forEach(function(f){var li=h('li','file');li.setAttribute('data-rel',f.rel);var a=h('a',null,f.rel.split('/').pop());a.href='#';a.addEventListener('click',function(e){e.preventDefault();openFile(f.rel,li);});li.appendChild(a);li.appendChild(h('span','sz',size(f.size)));
+          if(j.edit&&!/^_(cmeta|desc)\\./i.test(f.rel))li.appendChild(del(f.rel,'file'));if(f.rel===C.file)setTimeout(function(){openFile(f.rel,li);},0);ul.appendChild(li);});}
+      var tree=h('ul','cxr-tree');draw(root,0,tree,'');body.appendChild(tree);
+      (j.can_add||[]).forEach(function(n){var ad=h('button','cxr-copy sm','+ '+n);ad.type='button';ad.title='Create '+n+' in this artifact';ad.addEventListener('click',function(){editFile({rel:n,text:'',stamp:''},null);});body.appendChild(ad);});
+      if(pendingEdit){var g=pendingEdit;pendingEdit=null;g();}
       if(C.file&&!j.files.some(function(f){return f.rel===C.file;}))openFile(C.file,null);
     }).catch(function(e){body.innerHTML='';body.appendChild(h('p','cxr-notice',e.message));});}
+    // the edit buttons under the viewers (See _cmeta, See _desc, + _desc.yaml): the editor on that file, in the files section
+    function openEditor(rel,isNew){fd.open=true;var go=function(){var li=null;fd.querySelectorAll('li.file').forEach(function(x){if(x.getAttribute('data-rel')===rel)li=x;});
+        if(isNew){editFile({rel:rel,text:'',stamp:''},null);}else{openFile(rel,li,true);}};
+      if(loaded){go();}else{pendingEdit=go;load();}}
+    document.querySelectorAll('.cxr-edit').forEach(function(x){x.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();openEditor(x.getAttribute('data-rel'),x.getAttribute('data-new')==='1');});});
     fd.addEventListener('toggle',function(){if(fd.open)load();});
     if(C.file){fd.open=true;load();}}
 })();
