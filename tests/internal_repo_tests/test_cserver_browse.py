@@ -106,6 +106,8 @@ def test_the_page_renders(cm):
     assert 'js/graph.js?v=' in r['html_meta']['page_extra_style']
     assert '"files": false' in html                      # not a browser on the server's machine
     assert '"files": true' in web(cm, misc=LOCAL)['html_meta']['html']
+    # its footer says "Powered by cMeta v<version>" (and hides the same line of the engine's cserver, 2026-11-03)
+    assert 'Powered by <a href="https://cTuning.ai/project/cmeta"' in html and '>cMeta v' + cm.__version__ + '</a>' in html
 
 
 def test_words_tags_and_negation(cm):

@@ -321,6 +321,10 @@
 .cbr-foot code { background: var(--cbr-code); border: 1px solid var(--cbr-line); border-radius: 6px; padding: 1px 6px;
   overflow-wrap: anywhere; }
 
+/* this footer says "Powered by cMeta v<version>": the line the engine's cserver puts under every page
+   (templates/base.html) would say it twice; a host without that line (the cPlatform) has nothing to hide */
+.cmeta-footer { display: none; }
+
 @media (max-width: 860px) {
   #cbr-view-browse:not([hidden]) { grid-template-columns: minmax(0, 1fr); }
   .cbr-toc { position: static; max-height: 40vh; }

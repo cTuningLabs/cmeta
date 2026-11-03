@@ -56,6 +56,17 @@ def test_home_is_the_projects_page_with_the_welcome_under_it(server):
     assert '/projects/js/projects.js' in r.text                   # its assets and AJAX stay under /projects
 
 
+def test_every_page_ends_with_powered_by_cmeta_and_its_version(server):
+    """The line at the end of every page of the server (2026-11-03): "Powered by cMeta v<version>", a link to the
+    cMeta project on cTuning.ai (the browse page says it in its own footer and hides this one)."""
+    _, client = server
+    for page in ('/', '/projects', '/browse'):
+        r = client.get(page)
+        assert r.status_code == 200, page
+        assert ('<footer class="cmeta-footer">Powered by <a href="https://cTuning.ai/project/cmeta"' in r.text
+                and '>cMeta v' + __version__ + '</a></footer>' in r.text), page
+
+
 def test_home_json_is_unchanged(server):
     _, client = server
     r = client.get('/?out=json')

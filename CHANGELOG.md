@@ -2,6 +2,11 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.38.2.1)
+- **The footer shows the version: "Powered by cMeta v<version>"** on every page of the cserver (the version was only
+  in the tooltip); the browse page says it in its own footer, beside the query for a terminal (it said "cMeta
+  v<version>"), and hides the server's line, so a page has one.
+
 ## 0.38.2
 - **Every page of the cserver ends with "Powered by cMeta"**, a link to the cMeta project on cTuning.ai (the engine's
   version in its tooltip), from the server's own `templates/base.html`: the pages had nothing at their end.
