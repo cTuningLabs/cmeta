@@ -492,3 +492,74 @@ def test_an_artifact_is_named_by_its_cref_never_by_a_bare_uid(cm):
     html = r['html_meta']['html']
     assert 'browse?cref=%s"' % node in html and 'focus=%s"' % node in html
     assert 'uid=' + uid not in html and 'focus=' + uid not in html
+
+
+def test_the_pickers_tick_all_but_what_they_leave_out(cm):
+    """What a picker holds (2026-11-03): names (none or "*" = all), "-name" left out, "-*" none at all."""
+    assert search(cm, cats='log', repos='*')['total'] == 4
+    assert search(cm, cats='log', repos='local')['total'] == 4
+    assert search(cm, cats='log', repos='-local')['total'] == 0
+    assert search(cm, cats='log', repos='-other')['total'] == 4
+    assert search(cm, cats='log', repos='-*')['total'] == 0
+    assert all(r['cat'] != 'log' for r in search(cm, q='sla', cats='-log')['rows'])
+    assert arts(graph(cm, cats='log', repos='-local')) == []
+
+
+def set_config(cm, **meta):
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'con': False, 'meta': meta})
+    assert r['return'] == 0, r
+
+
+def test_unticked_repositories_apply_whenever_the_address_names_none(cm):
+    set_config(cm, browse_untick_repos='fgg-arc,old-*')
+    for query in ({}, {'cats': 'log', 'sort': 'created'}, {'view': 'graph'}):
+        c = page_config(web(cm, **query))
+        assert c['state']['repos'] == '-fgg-arc,-old-*' and c['untick'] == {'repos': ['fgg-arc', 'old-*']}, query
+    assert page_config(web(cm, repos='*'))['state']['repos'] == '*'                # the address asks for all
+    assert page_config(web(cm, repos='local'))['state']['repos'] == 'local'
+    # a bare page with the server's own repositories: those, then the ones left out
+    set_config(cm, browse_default_repos='local')
+    assert page_config(web(cm))['state']['repos'] == 'local,-fgg-arc,-old-*'
+
+
+def test_a_category_declares_its_order_and_the_server_may_change_it(cm):
+    r = cm.access({'category': 'category', 'command': 'add', 'arg1': 'local:my.items', 'con': False,
+                   'meta': {'browse_sort': 'created,updated'}})
+    assert r['return'] == 0, r
+    for alias, created in (('b-mid', '2026-05-01T10:00:00+00:00'), ('a-new', '2026-10-01T10:00:00+00:00'),
+                           ('c-old', '2025-01-01T10:00:00+00:00')):
+        make(cm, alias, created=created, category='my.items')
+    out = search(cm, cats='my.items')
+    assert aliases(out) == ['a-new', 'b-mid', 'c-old'] and out['sort'] == 'created' and out['sort_keys'] == ['created', 'updated']
+    assert aliases(search(cm, cats='my.items', sort='alias', dir='asc')) == ['a-new', 'b-mid', 'c-old']
+    assert aliases(search(cm, cats='my.items', sort='created', dir='asc')) == ['c-old', 'b-mid', 'a-new']
+    assert search(cm, cats='log')['sort'] == 'alias'                              # a category without one: by name
+    assert search(cm, cats='my.items,log')['sort'] == 'alias'                     # two that differ: the default
+    set_config(cm, browse_category_sort='my.items: alias; fgg.task, work: created,updated')
+    out = search(cm, cats='my.items')
+    assert out['sort'] == 'alias' and aliases(out) == ['a-new', 'b-mid', 'c-old']
+    # dated names (work items: 20261103.something): "-alias" lists them from the end, the latest date first
+    r = cm.access({'category': 'category', 'command': 'add', 'arg1': 'local:my.dated', 'con': False,
+                   'meta': {'browse_sort': '-alias'}})
+    assert r['return'] == 0, r
+    for alias in ('20261020.b', '20261103.a', '20250101.c'):
+        make(cm, alias, category='my.dated')
+    out = search(cm, cats='my.dated')
+    assert aliases(out) == ['20261103.a', '20261020.b', '20250101.c'] and (out['sort'], out['dir']) == ('alias', 'desc')
+    assert aliases(search(cm, cats='my.dated', sort='alias', dir='asc')) == ['20250101.c', '20261020.b', '20261103.a']
+
+
+def test_category_sorts_of_the_config():
+    import importlib.util
+    import cmeta as cmeta_module
+    spec = importlib.util.spec_from_file_location('browse_v1_sorts', os.path.join(
+        os.path.dirname(os.path.abspath(cmeta_module.__file__)), 'internal-repo', 'category', 'cserver.browse', 'api', 'v1.py'))
+    v1 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(v1)
+    assert v1._category_sorts('work,note,fgg.task: created,updated; log: alias') == {
+        'work': ['created', 'updated'], 'note': ['created', 'updated'], 'fgg.task': ['created', 'updated'], 'log': ['alias']}
+    # set from the command line, a dotted category comes as nested dicts
+    assert v1._category_sorts({'work': 'created', 'fgg': {'task': 'created,updated'}, 'x': 'nonsense'}) == {
+        'work': ['created'], 'fgg.task': ['created', 'updated']}
+    assert v1._picked('fgg-arc', 'u1', ['-fgg-arc']) is False and v1._picked('local', 'u2', ['-fgg-arc']) is True
+    assert v1._picked('local', 'u2', ['-*']) is False and v1._picked('local', 'u2', ['*']) is True

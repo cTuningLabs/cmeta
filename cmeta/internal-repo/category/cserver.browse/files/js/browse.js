@@ -180,7 +180,13 @@
     try {
       var u = new URL(window.location.href);
       URL_KEYS.forEach(function (k) {
-        if (st[k]) u.searchParams.set(k, st[k]); else u.searchParams.delete(k);
+        var v = st[k];
+        if (DEFAULT_PICK.hasOwnProperty(k)) {
+          // a picker at the server's default stays out of the address; "all" goes in as "*" when that default
+          // leaves some out, so that a reload keeps it
+          if (v === DEFAULT_PICK[k]) v = ''; else if (!v && DEFAULT_PICK[k]) v = '*';
+        }
+        if (v) u.searchParams.set(k, v); else u.searchParams.delete(k);
       });
       if (st.view !== 'search') u.searchParams.set('view', st.view); else u.searchParams.delete('view');
       u.searchParams.delete('uid');            // an older link's bare UID: the cRef names the artifact now
@@ -231,16 +237,51 @@
   }
 
   /* ------------------------------------------------------------------ the pickers */
+  // A picker holds what is ticked: names (none = all, "*" = all), a name with "-" in front left out ("-fgg-arc":
+  // all but fgg-arc; "-*": none at all), as the server reads it. The server's unticked repositories (Clear goes back
+  // to them, the address leaves them out) come in CFG.untick.
+  var DEFAULT_PICK = {repos: ((CFG.untick && CFG.untick.repos) || []).map(function (x) { return '-' + x; }).join(','), cats: ''};
   function picked(kind) { return (st[kind] || '').split(',').filter(Boolean); }
+  function pickParts(kind) {
+    var keep = [], drop = [];
+    picked(kind).forEach(function (x) {
+      if (x.charAt(0) === '-') { if (x.length > 1) drop.push(x.slice(1)); } else if (x !== '*') keep.push(x);
+    });
+    return {keep: keep, drop: drop};
+  }
+  function nameIs(name, want) {
+    // an alias, alias,UID, the part after "@", or a pattern - as the server matches them
+    var n = String(name || '').toLowerCase(), w = String(want || '').toLowerCase();
+    if (w.indexOf(',') >= 0) w = w.split(',').pop().trim();
+    if (/[*?[]/.test(w)) return new RegExp('^' + escRe(w).replace(/\\\*/g, '.*').replace(/\\\?/g, '.') + '$').test(n);
+    return n === w || (n.indexOf('@') >= 0 && n.split('@')[1] === w);
+  }
+  function isTicked(kind, name) {
+    var p = pickParts(kind);
+    if (p.keep.length && !p.keep.some(function (w) { return nameIs(name, w); })) return false;
+    return !p.drop.some(function (w) { return nameIs(name, w); });
+  }
+  function encodePick(kind, on) {
+    // the shortest value for the names ticked: all ('') , none ('-*'), the few left out, or the few kept
+    var all = ((options && options[kind]) || []).map(function (x) { return x[0]; });
+    var yes = all.filter(function (n) { return on[n]; }), no = all.filter(function (n) { return !on[n]; });
+    if (!no.length) return '';
+    if (!yes.length) return '-*';
+    return no.length <= yes.length ? no.map(function (n) { return '-' + n; }).join(',') : yes.join(',');
+  }
   function pickerLabel(kind) {
     var wrap = root.querySelector('.cbr-pick[data-kind="' + kind + '"]');
     var btn = wrap.querySelector('.cbr-pick-btn');
-    var s = picked(kind);
+    var p = pickParts(kind);
     var what = kind === 'repos' ? 'Repositories' : 'Categories';
-    var shown = s.length === 0 ? 'all' : (s.length === 1 ? s[0] : s.length + ' selected');
+    var none = p.drop.indexOf('*') >= 0;
+    var shown = none ? 'none' : p.keep.length ? (p.keep.length === 1 ? p.keep[0] : p.keep.length + ' selected') +
+                                             (p.drop.length ? ' - ' + p.drop.length : '')
+              : p.drop.length ? 'all but ' + (p.drop.length === 1 ? p.drop[0] : p.drop.length) : 'all';
     btn.innerHTML = what + ': <b>' + esc(shown) + '</b> &#9662;';
-    btn.classList.toggle('set', s.length > 0);
-    btn.title = s.length ? s.join('\n') : 'All ' + what.toLowerCase();
+    btn.classList.toggle('set', shown !== 'all');
+    btn.title = none ? 'None ticked' : (p.keep.length ? p.keep.join('\n') : 'All ' + what.toLowerCase()) +
+                (p.drop.length ? '\nleft out:\n' + p.drop.join('\n') : '');
   }
   var pickTimer = null;
   function scheduleRun() { clearTimeout(pickTimer); pickTimer = setTimeout(run, 450); }
@@ -251,8 +292,9 @@
     var list = (options && options[kind]) || [];
     pop.innerHTML = '';
     var filter = h('input', {type: 'search', placeholder: 'filter ' + list.length + (kind === 'repos' ? ' repositories' : ' categories')});
-    var allBtn = h('button', {type: 'button', class: 'cbr-link', title: 'No filter: every one'}, 'all');
-    var shownBtn = h('button', {type: 'button', class: 'cbr-link', title: 'Tick every one the filter shows'}, 'tick the shown');
+    var allBtn = h('button', {type: 'button', class: 'cbr-link', title: 'Tick every one'}, 'all');
+    var noneBtn = h('button', {type: 'button', class: 'cbr-link', title: 'Untick every one (then tick the ones you want)'}, 'none');
+    var shownBtn = h('button', {type: 'button', class: 'cbr-link', title: 'Tick only the ones the filter shows'}, 'only the shown');
     var box = h('div', {class: 'cbr-pick-list'});
     function visible() {
       var f = filter.value.toLowerCase();
@@ -260,15 +302,14 @@
     }
     function render() {
       box.innerHTML = '';
-      var sel = {};
-      picked(kind).forEach(function (x) { sel[x] = 1; });
       visible().forEach(function (x) {
         var cb = h('input', {type: 'checkbox'});
-        cb.checked = !!sel[x[0]];
+        cb.checked = isTicked(kind, x[0]);
         cb.addEventListener('change', function () {
-          var s = picked(kind).filter(function (v) { return v !== x[0]; });
-          if (cb.checked) s.push(x[0]);
-          st[kind] = s.join(',');
+          var on = {};
+          list.forEach(function (y) { on[y[0]] = isTicked(kind, y[0]); });
+          on[x[0]] = cb.checked;
+          st[kind] = encodePick(kind, on);
           pickerLabel(kind);
           scheduleRun();
         });
@@ -278,12 +319,15 @@
     filter.addEventListener('input', render);
     filter.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); shownBtn.click(); } });
     allBtn.addEventListener('click', function () { st[kind] = ''; pickerLabel(kind); render(); scheduleRun(); });
+    noneBtn.addEventListener('click', function () { st[kind] = '-*'; pickerLabel(kind); render(); scheduleRun(); });
     shownBtn.addEventListener('click', function () {
-      st[kind] = visible().map(function (x) { return x[0]; }).join(',');
+      var on = {};
+      visible().forEach(function (x) { on[x[0]] = true; });
+      st[kind] = encodePick(kind, on);
       pickerLabel(kind); render(); scheduleRun();
     });
     pop.appendChild(filter);
-    pop.appendChild(h('div', {class: 'cbr-pick-acts'}, allBtn, shownBtn));
+    pop.appendChild(h('div', {class: 'cbr-pick-acts'}, allBtn, noneBtn, shownBtn));
     pop.appendChild(box);
     render();
     btn.onclick = function () {
@@ -369,7 +413,7 @@
       if (r.name && r.name !== r.alias) li.appendChild(h('span', {class: 'cbr-r-name', html: hl(r.name)}));
       if (r.migrated_to) li.appendChild(h('span', {class: 'cbr-badge', title: 'migrated to ' + r.migrated_to}, 'migrated'));
       var when = r.updated ? 'updated ' + r.updated : (r.created ? 'created ' + r.created : '');
-      li.appendChild(h('div', {class: 'cbr-r-meta'}, [r.cat, r.repo || '(registry)', when].filter(Boolean).join(' · ')));
+      li.appendChild(h('div', {class: 'cbr-r-meta'}, [r.cat, r.repo || '(registry)', when].filter(Boolean).join(' · '), rowOpen(r.uid)));
       if (r.snippet) li.appendChild(h('div', {class: 'cbr-r-snip', html: hl(r.snippet)}));
       if (r.tags && r.tags.length) {
         var tg = h('div');
@@ -379,7 +423,10 @@
       ol.appendChild(li);
     });
     if (!last.rows.length) {
-      ol.appendChild(h('li', {class: 'cbr-muted'}, 'Nothing matches. Try fewer words, or clear the pickers and the dates.'));
+      var unticked = ['repos', 'cats'].filter(function (k) { return pickParts(k).drop.indexOf('*') >= 0; });
+      ol.appendChild(h('li', {class: 'cbr-muted'}, unticked.length
+        ? 'No ' + (unticked[0] === 'repos' ? 'repository' : 'category') + ' is ticked - tick some in its picker.'
+        : 'Nothing matches. Try fewer words, or clear the pickers and the dates.'));
     }
     pager('search');
   }
@@ -506,10 +553,12 @@
       if (o.repos && o.repos.length) {
         var rp = h('div', {class: 'cbr-intro-repos'}, h('span', {class: 'cbr-muted'}, 'Repositories: '));
         o.repos.forEach(function (x) {
-          var c = h('button', {type: 'button', class: 'cbr-chip' + (picked('repos').indexOf(x[0]) >= 0 ? ' on' : ''), title: num(x[1]) + ' artifacts - click to keep this repository alone, again for all'},
+          var alone = picked('repos').length === 1 && picked('repos')[0] === x[0];
+          var c = h('button', {type: 'button', class: 'cbr-chip' + (alone ? ' on' : (isTicked('repos', x[0]) ? '' : ' off')),
+                               title: num(x[1]) + ' artifacts - click to keep this repository alone, again for the usual ones'},
                     x[0] + ' (' + num(x[1]) + ')');
           c.addEventListener('click', function () {
-            st.repos = picked('repos').length === 1 && picked('repos')[0] === x[0] ? '' : x[0];
+            st.repos = alone ? DEFAULT_PICK.repos : x[0];
             pickerLabel('repos'); if (options) buildPicker('repos'); run();
           });
           rp.appendChild(c);
@@ -556,17 +605,18 @@
     $('cbr-facets').hidden = !showTable;
     if (!showTable) return;
     $('cbr-table').classList.toggle('one-cat', !!st.cats);
+    COLS.forEach(function (c) { $('cbr-table').classList.toggle('no-' + c, !colOn(c)); });
     last.rows.forEach(function (r) {
       var a = h('td', {class: 'alias', html: hl(r.alias) + (r.name && r.name !== r.alias ? '<span class="nm">' + hl(r.name) + '</span>' : '') +
                        (r.migrated_to ? '<span class="cbr-badge">migrated</span>' : '')});
-      var tags = h('td', {});
+      var tags = h('td', {class: 'tags'});
       (r.tags || []).slice(0, 6).forEach(function (t) { tags.appendChild(chip(t)); });
       var tr = h('tr', {}, a, h('td', {class: 'cat'}, r.cat), h('td', {class: 'repo'}, r.repo || '(registry)'), tags,
-                 h('td', {class: 'when'}, r.created), h('td', {class: 'when'}, r.updated));
+                 h('td', {class: 'when'}, r.created), h('td', {class: 'when updated'}, r.updated), h('td', {class: 'acts'}, rowOpen(r.uid)));
       tr.addEventListener('click', function () { window.location.href = crefUrl(r.cat, r.alias, r.uid); });
       tb.appendChild(tr);
     });
-    if (!last.rows.length) tb.appendChild(h('tr', {}, h('td', {colspan: '6', class: 'cbr-muted'}, 'Nothing matches.')));
+    if (!last.rows.length) tb.appendChild(h('tr', {}, h('td', {colspan: '7', class: 'cbr-muted'}, 'Nothing matches.')));
     $('cbr-table').querySelectorAll('th[data-sort]').forEach(function (th) {
       var on = th.getAttribute('data-sort') === last.sort;
       th.classList.toggle('sorted', on);
@@ -716,6 +766,36 @@
   var OPEN = [['folder', 'Open folder', 'Open this folder in the file manager'],
               ['shell', 'Shell', 'A terminal in this folder'],
               ['far', 'Far', 'Far Manager in this folder']];
+  // The same buttons on every row of a list (2026-11-03): short, after the artifact; a row's click opens the
+  // artifact, a button's does not. What happened shows in a notice that fades.
+  function rowOpen(uid) {
+    var box = h('span', {class: 'cbr-row-open'});
+    OPEN.forEach(function (w) {
+      if (!CFG.open || !CFG.open[w[0]]) return;
+      var b = h('button', {type: 'button', class: 'cbr-mini', title: w[2]}, w[0] === 'folder' ? 'Folder' : w[1]);
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        call('open', {uid: uid, what: w[0]}, null)
+          .then(function () { toast((w[0] === 'folder' ? 'The folder' : w[1]) + ' opened on this machine'); })
+          .catch(function (err) { toast(err.message, true); });
+      });
+      box.appendChild(b);
+    });
+    return box;
+  }
+  // The tags and updated columns of the Browse list: off by default, so that the list stays compact; the boxes of its
+  // header turn them on, and the browser remembers them
+  var COLS = ['tags', 'updated'];
+  function colOn(col) { try { return localStorage.getItem('cbr-browse-' + col) === '1'; } catch (e) { return false; } }
+  var toastTimer = null;
+  function toast(text, bad) {
+    var t = $('cbr-toast');
+    if (!t) { t = h('div', {id: 'cbr-toast', class: 'cbr-toast', role: 'status', 'aria-live': 'polite'}); root.appendChild(t); }
+    t.textContent = text;
+    t.className = 'cbr-toast show' + (bad ? ' bad' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.className = 'cbr-toast' + (bad ? ' bad' : ''); }, bad ? 6000 : 2500);
+  }
   function openBar(uid) {
     var bar = h('div', {class: 'cbr-d-open'});
     var msg = h('span', {class: 'msg', 'aria-live': 'polite'});
@@ -1075,8 +1155,18 @@
     ['after', 'before'].forEach(function (k) {
       $('cbr-' + k).addEventListener('change', function () { st[k] = $('cbr-' + k).value; st.focus = ''; run(); });
     });
+    root.querySelectorAll('.cbr-col-toggle input[data-col]').forEach(function (box) {
+      var col = box.getAttribute('data-col');
+      box.checked = colOn(col);
+      box.addEventListener('click', function (e) { e.stopPropagation(); });
+      box.addEventListener('change', function () {
+        try { localStorage.setItem('cbr-browse-' + col, box.checked ? '1' : '0'); } catch (e) { /* ignore */ }
+        $('cbr-table').classList.toggle('no-' + col, !box.checked);
+      });
+    });
     $('cbr-clear').addEventListener('click', function () {
       st.q = st.repos = st.cats = st.after = st.before = st.sort = st.dir = st.focus = st.depth = '';
+      st.repos = DEFAULT_PICK.repos; st.cats = DEFAULT_PICK.cats;      // the pickers as the server opens them
       $('cbr-q').value = ''; $('cbr-after').value = ''; $('cbr-before').value = '';
       pickerLabel('repos'); pickerLabel('cats');
       if (options) { buildPicker('repos'); buildPicker('cats'); }

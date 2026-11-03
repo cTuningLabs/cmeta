@@ -138,9 +138,17 @@ def apply_artifact_defaults(
 # The same on `update` (appended, no duplicates). A generic `desc` dict is merged into _desc.yaml the same way
 # (--desc.<key>=<value>, --desc=@file.yaml); a _desc.json found there is converted to YAML, never both.
 # The declaration lives in the meta because the index keeps every meta: the list is one query, no file walk.
+#
+# The connections of an artifact (2026-11-03): `--connect=<names>` on add / update writes the full cRef of each
+# artifact named into this artifact's `connections` and this artifact's cRef into theirs (the graph draws an
+# edge declared on either side, so both say it); `--connect-to=<names>` (`--ct`) writes this side only. A name
+# with "-" in front removes (`--connect=-<name>` from both sides, `--ct=-<name>` and `-ai=-<name>` from this
+# one); a name no artifact has any more is removed by what the entries say. Entries are compared by the
+# artifact's UID, so an entry written before a rename is neither duplicated nor left behind.
 DESC_FILENAME_BASE = '_desc'
 TEMPLATE_KEY = 'template'
 AI_USES_KEY = 'ai_uses'
+CONNECTIONS_KEY = 'connections'
 
 
 def _cref_of(parts):
@@ -223,24 +231,26 @@ def ai_context_entries(cm, purpose = AI_USES_KEY):
     return {'return':0, 'entries': template_entries(r['artifacts'], purpose)}
 
 
-def resolve_ai_context(cm, names, entries):
+def resolve_artifacts(cm, names, entries = None, missing_ok = False):
     """
-        The full cRefs of the names (split_context_names): a template's alias first, then an artifact alias in
-        any category, then a cRef (cat::alias or cat,UID::alias,UID); more than one artifact for a name is an
-        error that names them all, so the person picks one by its cRef. Returns {'return', 'crefs': [...]}.
+        The artifacts the names name (split_context_names): a template's alias first when `entries` (the declared
+        templates of a purpose) are given, then an artifact alias in any category, then a cRef (cat::alias or
+        cat,UID::alias,UID); more than one artifact for a name is an error that names them all, so the person
+        picks one by its cRef. A name nothing matches is an error, or, with `missing_ok` (a name to remove: its
+        artifact may be gone), comes back without a cRef.
+        Returns {'return', 'artifacts': [{'name', 'cref', 'path'}]}.
     """
-    names = split_context_names(names)
-    crefs = []
-    for name in names or []:
+    out = []
+    for name in split_context_names(names) or []:
         if '::' in name:
             r = find_all(cm, name)
             if r['return']>0: return r
             found = r['artifacts']
             what = f'the cRef "{name}"'
         else:
-            hits = [e for e in entries if e['alias'] == name]
+            hits = [e for e in entries or [] if e['alias'] == name]
             if len(hits) == 1:
-                crefs.append(hits[0]['cref'])
+                out.append({'name': name, 'cref': hits[0]['cref'], 'path': hits[0].get('path')})
                 continue
             if len(hits) > 1:
                 return {'return':1, 'error': f'the AI context "{name}" is declared by several artifacts: ' +
@@ -250,12 +260,28 @@ def resolve_ai_context(cm, names, entries):
             found = r['artifacts']
             what = f'the name "{name}"'
         if len(found) == 0:
-            return {'return':1, 'error': f'no artifact for {what} (no AI context template with that alias, no artifact with that alias in any category)'}
+            if missing_ok:
+                out.append({'name': name, 'cref': None, 'path': None})
+                continue
+            why = 'no AI context template with that alias, no artifact with that alias in any category' if entries is not None \
+                  else 'no artifact with that alias in any category'
+            return {'return':1, 'error': f'no artifact for {what} ({why})'}
         if len(found) > 1:
             return {'return':1, 'error': f'{what} matches several artifacts: ' +
                     ', '.join(_cref_of(a.get('cmeta_ref_parts')) for a in found) + ' - name one of them by its cRef'}
-        crefs.append(_cref_of(found[0].get('cmeta_ref_parts')))
-    return {'return':0, 'crefs':crefs}
+        out.append({'name': name, 'cref': _cref_of(found[0].get('cmeta_ref_parts')), 'path': found[0].get('path')})
+    return {'return':0, 'artifacts':out}
+
+
+def resolve_ai_context(cm, names, entries):
+    """
+        The full cRefs of the names (split_context_names): a template's alias first, then an artifact alias in
+        any category, then a cRef (cat::alias or cat,UID::alias,UID); more than one artifact for a name is an
+        error that names them all, so the person picks one by its cRef. Returns {'return', 'crefs': [...]}.
+    """
+    r = resolve_artifacts(cm, names, entries or [])
+    if r['return']>0: return r
+    return {'return':0, 'crefs': [a['cref'] for a in r['artifacts']]}
 
 
 def _cref_key(value):
@@ -265,57 +291,154 @@ def _cref_key(value):
     return str(value or '').strip()
 
 
-def merge_desc(data, desc = None, crefs = None):
+def _cref_split(value):
     """
-        A _desc dict with `desc` merged in (dicts deep, lists appended without duplicates) and `crefs`
-        appended to its ai_uses list without duplicates (an entry already there, as a string or {cref, note},
-        is kept as it is). Returns (the new dict, changed).
+        The four parts of a cRef, an entry or a name: (category alias, category UID, artifact alias, artifact UID),
+        '' where it has none - "cat,UID::alias,UID", "cat::alias", "alias", a bare UID.
+    """
+    text = _cref_key(value)
+    cat, art = text.split('::', 1) if '::' in text else ('', text)
+
+    def two(part):
+        part = part.strip()
+        if ',' in part:
+            alias, uid = part.rsplit(',', 1)
+            if utils.names.is_valid_cmeta_uid(uid.strip()):
+                return alias.strip(), uid.strip()
+        if utils.names.is_valid_cmeta_uid(part):
+            return '', part
+        return part, ''
+
+    return two(cat) + two(art)
+
+
+def cref_matches(entry, name):
+    """
+        Whether an entry of ai_uses or connections (a cRef string, or {cref, note}) is the artifact a name names:
+        by the artifact's UID when both carry one (an entry written before a rename keeps the old alias), else
+        by every part the name gives (a cRef, cat::alias, an alias, a UID; aliases without case).
+    """
+    ec, ecu, ea, eau = _cref_split(entry)
+    nc, ncu, na, nau = _cref_split(name)
+    if eau and nau:
+        return eau == nau and not (ecu and ncu and ecu != ncu)
+    given = [(n, e, True) for n, e in ((nc, ec), (na, ea)) if n] + [(n, e, False) for n, e in ((ncu, ecu), (nau, eau)) if n]
+    if not given:
+        return False
+    return all((n.lower() == e.lower()) if fold else (n == e) for n, e, fold in given)
+
+
+def split_changes(names):
+    """
+        A request of --connect, --connect-to (--ct) or -ai split into the names to add and the names to remove: a
+        name with "-" in front is removed; the rest is split as split_context_names splits it (aliases by commas,
+        cRefs by ";"), and a {{{cRef}}} (a path after it too) is the cRef. Returns (add, remove).
+    """
+    add, remove = [], []
+    for name in split_context_names(names):
+        drop = name.startswith('-')
+        if drop:
+            name = name[1:].strip()
+        if name.startswith('{{{') and '}}}' in name:
+            name = name[3:name.index('}}}')].strip()
+        if name:
+            (remove if drop else add).append(name)
+    return add, remove
+
+
+def _lists_kept(data, desc, top = True):
+    """
+        `desc` with a single value made a one-item list where `data` holds a list (dicts followed) and for
+        ai_uses and connections, which are lists even when new, so that the merge appends it:
+        --desc.connections=<cRef> put one string in the place of the whole list (2026-11-03).
+    """
+    if not isinstance(desc, dict) or not isinstance(data, dict):
+        return desc
+    out = {}
+    for k, v in desc.items():
+        old = data.get(k)
+        single = v is not None and not isinstance(v, (list, dict))
+        if single and (isinstance(old, list) or (top and k in (AI_USES_KEY, CONNECTIONS_KEY))):
+            out[k] = [v]
+        elif isinstance(old, dict) and isinstance(v, dict):
+            out[k] = _lists_kept(old, v, False)
+        else:
+            out[k] = v
+    return out
+
+
+def merge_desc(data, desc = None, crefs = None, lists = None):
+    """
+        A _desc dict with `desc` merged in (dicts deep, lists appended without duplicates; a single value given
+        for a list is appended to it, never put in its place), `crefs` appended to its ai_uses list, and the
+        `lists` changes made - {key: (entries to append, names to remove)}: a name removes every entry of its
+        artifact, an entry whose artifact is there already is not appended again (cref_matches: an entry kept as
+        a string or {cref, note} stays as it is), and a list left empty goes with its key.
+        Returns (the new dict, changed).
     """
     data = copy.deepcopy(data) if isinstance(data, dict) else {}
     before = copy.deepcopy(data)
     if isinstance(desc, dict) and desc:
-        data = utils.common.deep_merge(data, copy.deepcopy(desc), append_lists = True)
+        data = utils.common.deep_merge(data, _lists_kept(data, copy.deepcopy(desc)), append_lists = True)
+    changes = dict(lists or {})
     if crefs:
-        uses = data.get(AI_USES_KEY)
-        uses = list(uses) if isinstance(uses, list) else ([uses] if uses else [])
-        have = {_cref_key(u) for u in uses}
-        for c in crefs:
-            if _cref_key(c) and _cref_key(c) not in have:
-                uses.append(c)
-                have.add(_cref_key(c))
-        data[AI_USES_KEY] = uses
+        add, drop = changes.get(AI_USES_KEY) or ((), ())
+        changes[AI_USES_KEY] = (list(add) + list(crefs), drop)
+    for key, (add, drop) in changes.items():
+        if not add and not drop:
+            continue
+        value = data.get(key)
+        old = list(value) if isinstance(value, list) else ([value] if value else [])
+        items = [i for i in old if not any(cref_matches(i, d) for d in drop or [])]
+        for a in add or []:
+            if _cref_key(a) and not any(cref_matches(i, a) for i in items):
+                items.append(a)
+        if items == old and (value is None or isinstance(value, list)):
+            continue                    # nothing to do (a single value is still made a list)
+        if items:
+            data[key] = items
+        else:
+            data.pop(key, None)
     return data, data != before
 
 
-def append_ai_uses_text(text, crefs):
+def edit_list_text(text, key, add = (), drop = None):
     """
-        The text of a _desc.yaml with `crefs` appended as items of its top-level ai_uses list, everything
-        else - the comments, the order, the quoting of a file written by hand - kept as it is: the items go
-        after the last item of the block (or its continuation lines), at the block's indentation; a file
-        without the key gets the block at its end. Returns the new text, or None when the key holds an
-        inline value ("ai_uses: [a, b]", a scalar): then the caller rewrites the file as YAML.
+        The text of a _desc.yaml with `add` appended as items of its top-level `key` list and the items for which
+        `drop` (a function of an item's value) is true removed, everything else - the comments, the order, the
+        quoting of a file written by hand - kept as it is: new items go after the last item of the block (or its
+        continuation lines) at the block's indentation, a file without the key gets the block at its end, a
+        removed item takes its own lines (its continuation lines, a comment on its line), and a list left empty
+        takes its key and its block. Returns the new text, or None when the key holds an inline value
+        ("key: [a, b]", a scalar) or an item cannot be read: then the caller rewrites the key as YAML.
     """
     import yaml
     lines = text.splitlines(True)
-    key = None
+    head = None
     for i, line in enumerate(lines):
         bare = line.rstrip('\r\n')
-        if re.match(r'ai_uses\s*:\s*(#.*)?$', bare):
-            key = i
+        if re.match(re.escape(key) + r'\s*:\s*(#.*)?$', bare):
+            head = i
             break
-        if re.match(r'ai_uses\s*:', bare):
+        if re.match(re.escape(key) + r'\s*:', bare):
             return None
-    items = ''.join(yaml.safe_dump([c], default_flow_style = False, allow_unicode = True, width = 10000) for c in crefs)
-    if key is None:
+    nl = '\r\n' if '\r\n' in text else '\n'              # new lines end as the file's lines end
+    added = ''.join(yaml.safe_dump([a], default_flow_style = False, allow_unicode = True, width = 10000) for a in add or [])
+    if head is None:
+        if not added:
+            return text
         new = text
         if new and not new.endswith('\n'):
-            new += '\n'
-        if new and not new.endswith('\n\n'):
-            new += '\n'
-        return new + 'ai_uses:\n' + items
+            new += nl
+        if new and not new.endswith('\n' + nl):
+            new += nl
+        return new + key + ':' + nl + ''.join('  ' + l + nl for l in added.splitlines())   # lists indented, as the engine writes them
+
+    # the block: its items (a "- " line at the block's indentation and the lines indented deeper after it), with
+    # the comments and blank lines between them
     indent = None
-    end = key + 1
-    j = key + 1
+    items = []
+    j = head + 1
     while j < len(lines):
         bare = lines[j].rstrip('\r\n')
         stripped = bare.strip()
@@ -323,19 +446,63 @@ def append_ai_uses_text(text, crefs):
             j += 1
             continue
         lead = len(bare) - len(bare.lstrip(' '))
+        dash = stripped == '-' or stripped.startswith('- ')
         if indent is None:
-            if not stripped.startswith('- '):
+            if not dash:
                 break
             indent = lead
-        if (lead == indent and stripped.startswith('- ')) or lead > indent:
-            end = j + 1
+        if lead == indent and dash:
+            items.append([j, j + 1])
+        elif lead > indent and items:
+            items[-1][1] = j + 1
         else:
             break
         j += 1
-    pad = ' ' * (indent or 0)
-    if not lines[end - 1].endswith('\n'):
-        lines[end - 1] += '\n'
-    return ''.join(lines[:end]) + ''.join(pad + l + '\n' for l in items.splitlines()) + ''.join(lines[end:])
+    end = items[-1][1] if items else head + 1
+
+    # the value of each item, read on its own lines
+    gone = set()
+    for n, (s, e) in enumerate(items):
+        chunk = ''.join(l[indent:] if l[:indent].strip() == '' else l for l in lines[s:e])
+        try:
+            value = yaml.safe_load(chunk)
+        except yaml.YAMLError:
+            return None
+        if not isinstance(value, list) or len(value) != 1:
+            return None
+        if drop and drop(value[0]):
+            gone.add(n)
+    if not gone and not added:
+        return text
+
+    kept = [it for n, it in enumerate(items) if n not in gone]
+    if not kept and not added:
+        # the list is empty now: its key goes with the block, the lines after the block stay - without two blank
+        # lines in a row where it was, or a blank line at the top of the file
+        before, rest = lines[:head], lines[end:]
+        while before and rest and before[-1].strip() == '' and rest[0].strip() == '':
+            rest = rest[1:]
+        out = before + rest
+        while out and out[0].strip() == '':
+            out = out[1:]
+        return ''.join(out)
+    removed = {k for n in gone for k in range(items[n][0], items[n][1])}
+    after = kept[-1][1] if kept else head + 1            # the new items go after the last item kept
+    pad = ' ' * (indent if indent is not None else 0)
+    out = [l for k, l in enumerate(lines[:after]) if k not in removed]
+    if out and not out[-1].endswith('\n'):
+        out[-1] += nl
+    out += [pad + l + nl for l in added.splitlines()]
+    out += [l for k, l in enumerate(lines[after:], after) if k not in removed]
+    return ''.join(out)
+
+
+def append_ai_uses_text(text, crefs):
+    """
+        The text of a _desc.yaml with `crefs` appended as items of its top-level ai_uses list, everything
+        else kept as it is (edit_list_text). Returns the new text, or None when the key holds an inline value.
+    """
+    return edit_list_text(text, AI_USES_KEY, crefs)
 
 
 class Category(InitCategory):
@@ -682,8 +849,11 @@ class Category(InitCategory):
         match_empty_version: bool = False,  # Value for match empty version.
         all_tags: str = None,  # Value for all tags.
         desc: dict = None,  # Keys merged into the artifact's _desc.yaml (--desc.<key>=<value>, --desc=@file).
-        ai_uses = None,  # AI context to add: template aliases, artifact aliases or cRefs; True = ask.
-        ai = None,  # The short form of ai_uses (-ai, -ai=cmeta,fgg).
+        ai_uses = None,  # AI context to add: template aliases, artifact aliases or cRefs ("-name" removes); True = ask.
+        ai = None,  # The short form of ai_uses (-ai, -ai=cmeta,fgg, -ai=-fgg).
+        connect = None,  # Connect both ways: names or cRefs (";" between cRefs, "-name" disconnects); True = ask.
+        connect_to = None,  # Connect this artifact to them (its own _desc only): the same forms.
+        ct = None,  # The short form of connect_to (--ct=<cRef>).
     ):
         """
             Update artifact(s).
@@ -705,6 +875,12 @@ class Category(InitCategory):
                 match (dict | None): Match artifact metadata before updating.
                 match_empty_version (bool): Match artifacts with an empty version value.
                 all_tags (str | None): Require all supplied tags when selecting artifacts.
+                desc (dict | None): Keys merged into the artifact's _desc.yaml.
+                ai_uses, ai: The AI context to add (template aliases, artifact aliases, cRefs; "-name" removes);
+                    True asks.
+                connect: Artifacts to connect both ways - their cRefs go into this artifact's `connections`
+                    and its cRef into theirs ("-name" removes both); True asks.
+                connect_to, ct: Artifacts to connect this one to, in its own _desc.yaml only ("-name" removes).
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -712,6 +888,7 @@ class Category(InitCategory):
                     - **error** (str): Error message if `return > 0`.
                     - **artifacts** (list): All matched artifacts.
                     - **updated_artifacts** (list): Updated artifacts.
+                    - **desc_changes** (list): What the _desc.yaml changes added (+) and removed (-), as lines.
 
             Raises:
                 Exception: Propagated runtime errors, if any.
@@ -763,12 +940,20 @@ class Category(InitCategory):
         if not update_category:
             ignore_root_keys.append('category')
 
-        # The AI context to add: resolved (or asked) once, before any artifact is touched
-        ai_crefs = []
-        if artifacts and (ai_uses is not None or ai is not None):
-            r = self._ai_context_crefs(ctx, ai_uses if ai_uses is not None else ai)
-            if r['return']>0: return r
-            ai_crefs = r['crefs']
+        # The AI context and the connections: resolved (or asked) once, before any artifact is touched
+        plan = None
+        if connect_to is None:
+            connect_to = ct
+        if artifacts and (ai_uses is not None or ai is not None or connect is not None or connect_to is not None):
+            # a question about one artifact shows what it has (chosen: removed); about several, what may be added
+            current, title = None, ''
+            if len(artifacts) == 1:
+                current = self._read_desc(artifacts[0]['path'])
+                parts = artifacts[0].get('cmeta_ref_parts') or {}
+                title = (parts.get('category_alias') or '') + '::' + (parts.get('artifact_alias') or parts.get('artifact_uid') or '')
+            plan = self._desc_plan(ctx, ai_uses if ai_uses is not None else ai, connect, connect_to, current, title)
+            if plan['return']>0: return plan
+        desc_changes = []
 
         for artifact in artifacts:
             updated = False
@@ -877,10 +1062,12 @@ class Category(InitCategory):
 
                    if r['return']>0: return r
 
-            # The AI context and the other _desc keys (the sidecar, not the meta: the index is untouched)
-            if desc or ai_crefs:
-                r = self._write_desc(artifact_path, desc, ai_crefs, con)
+            # The AI context, the connections and the other _desc keys (the sidecar, not the meta: the index
+            # is untouched)
+            if desc or (plan and (plan['lists'] or plan['others'])):
+                r = self._apply_desc(artifact_path, _cref_of(artifact.get('cmeta_ref_parts')), desc, plan, con)
                 if r['return']>0: return r
+                desc_changes += r.get('lines') or []
                 if r.get('changed'):
                     updated = True
 
@@ -896,7 +1083,7 @@ class Category(InitCategory):
 
                 print (x + ' in ' + artifact_path)
 
-        return {'return':0, 'artifacts': artifacts, 'updated_artifacts': updated_artifacts}
+        return {'return':0, 'artifacts': artifacts, 'updated_artifacts': updated_artifacts, 'desc_changes': desc_changes}
 
     ############################################################
     def list_(
@@ -1197,6 +1384,9 @@ class Category(InitCategory):
         desc: dict = None,  # Keys merged into the artifact's _desc.yaml (--desc.<key>=<value>, --desc=@file).
         ai_uses = None,  # AI context: template aliases, artifact aliases or cRefs (comma-separated); True = ask.
         ai = None,  # The short form of ai_uses (-ai, -ai=cmeta,fgg).
+        connect = None,  # Connect both ways: names or cRefs (";" between cRefs); True = ask.
+        connect_to = None,  # Connect the new artifact to them (its own _desc only): the same forms.
+        ct = None,  # The short form of connect_to (--ct=<cRef>).
     ):
         """
             Create and index an artifact.
@@ -1210,6 +1400,11 @@ class Category(InitCategory):
                 virtual (bool): Virtual artifact created only in index (such as repo).
                 path (str | None): Use this path for artifact (useful for virtual artifacts such as repo).
                 index (bool): Index an artifact that already exists at `path` without creating it.
+                desc (dict | None): Keys merged into the artifact's _desc.yaml.
+                ai_uses, ai: The AI context (template aliases, artifact aliases, cRefs); True asks.
+                connect: Artifacts to connect both ways - their cRefs go into the new artifact's `connections`
+                    and its cRef into theirs; True asks.
+                connect_to, ct: Artifacts to connect the new one to, in its own _desc.yaml only.
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -1346,13 +1541,15 @@ class Category(InitCategory):
         # The meta file of an artifact that is indexed as it is (made or copied by hand)
         existing_meta_file = None
 
-        # The AI context asked for is resolved (or asked) before anything is made, so that a wrong name
-        # or an ambiguity makes no artifact
-        ai_crefs = []
-        if not virtual and (ai_uses is not None or ai is not None):
-            r = self._ai_context_crefs(ctx, ai_uses if ai_uses is not None else ai)
-            if r['return']>0: return r
-            ai_crefs = r['crefs']
+        # The AI context and the connections asked for are resolved (or asked) before anything is made, so
+        # that a wrong name or an ambiguity makes no artifact
+        plan = None
+        if connect_to is None:
+            connect_to = ct
+        if not virtual and (ai_uses is not None or ai is not None or connect is not None or connect_to is not None):
+            plan = self._desc_plan(ctx, ai_uses if ai_uses is not None else ai, connect, connect_to, {},
+                                   f'{category_alias}::{artifact_alias or artifact_uid}')
+            if plan['return']>0: return plan
 
         # The folder, the meta and the record of a new artifact are made under the index lock: a full
         # reindex running meanwhile never sees a half-made artifact, two creates of one artifact at once
@@ -1485,17 +1682,21 @@ class Category(InitCategory):
             if index_lock is not None:
                 index_lock.release()
 
-        # The AI context and the other _desc keys of the new artifact (its folder exists now)
-        if not virtual and (desc or ai_crefs):
-            r = self._write_desc(artifact_path, desc, ai_crefs, con)
+        # The AI context, the connections and the other _desc keys of the new artifact (its folder exists now)
+        desc_changes = []
+        if not virtual and (desc or (plan and (plan['lists'] or plan['others']))):
+            this = _cref_of({'category_alias': category_alias, 'category_uid': category_uid,
+                             'artifact_alias': artifact_alias, 'artifact_uid': artifact_uid})
+            r = self._apply_desc(artifact_path, this, desc, plan, con)
             if r['return']>0: return r
+            desc_changes = r.get('lines') or []
 
         # Print artifact path
         if con:
             x = 'Virtual a' if virtual else 'A'
             print (f'{x}rtifact was created in "{artifact_path}"')
 
-        return {'return':0, 'path':artifact_path, 'meta':cmeta}
+        return {'return':0, 'path':artifact_path, 'meta':cmeta, 'desc_changes':desc_changes}
 
     ############################################################
     def _find_all(
@@ -1535,46 +1736,118 @@ class Category(InitCategory):
         return resolve_ai_context(self.cm, names, entries)
 
     ############################################################
+    @staticmethod
+    def _choose(
+        heading: str,  # The first line: what is chosen, and for which artifact.
+        rows: list,  # [{'cref', 'name', 'title', 'used'}]: what the artifact has ('used') and what it may add.
+        hint: str,  # The line under the table: how to choose, with an example of this list.
+        how: str,  # What makes the question unnecessary (named in the error of a run without a terminal).
+        name_header: str = 'name',  # The header of the names' column.
+    ):
+        """
+            A list to choose from, as a table: what the artifact has first, numbered "-N" (chosen: removed), then
+            what it may add, numbered "N" (chosen: added), and the question. The answer holds numbers, names or
+            cRefs, comma-separated (";" between cRefs); a name with "-" in front is removed; Enter changes
+            nothing. Plain text, so that it reads the same in any terminal, through a pipe and in any code page.
+            Returns {'return', 'add': [cRefs], 'drop': [cRefs], 'names': [what was typed besides numbers]}.
+        """
+        rows = sorted(rows, key = lambda x: not x['used'])           # what it has first, in its order
+        print ('')
+        print (heading)
+        if rows:
+            labels = [('-' if x['used'] else '') + str(n) for n, x in enumerate(rows, 1)]
+            titled = any(x['title'] for x in rows)
+            mixed = any(x['used'] for x in rows) and not all(x['used'] for x in rows)
+            wn = max(2, max(len(s) for s in labels))
+            wa = max(len(name_header), max(len(x['name']) for x in rows))
+            wt = min(60, max([5] + [len(x['title']) for x in rows]))
+            print ('')
+            print (('  ' + '#'.rjust(wn) + '  ' + name_header.ljust(wa) + ('  title' if titled else '')).rstrip())
+            print ('  ' + '-' * wn + '  ' + '-' * wa + ('  ' + '-' * wt if titled else ''))
+            for label, x in zip(labels, rows):
+                title = x['title'] if len(x['title']) <= 60 else x['title'][:57] + '...'
+                line = '  ' + label.rjust(wn) + '  ' + x['name'].ljust(wa) + ('  ' + title.ljust(wt) if titled else '')
+                print ((line + ('  (in use)' if mixed and x['used'] else '')).rstrip())
+        print ('')
+        print ('  ' + hint)
+        r = utils.common.ask('Your choice (Enter: no change): ', how = how, optional = True)
+        if r['return']>0: return r
+        add, drop, names = [], [], []
+        for word in split_context_names((r.get('answer') or '').strip()):
+            m = re.fullmatch(r'(-?)(\d+)', word)
+            if not m:
+                names.append(word)
+                continue
+            n = int(m.group(2))
+            if not 1 <= n <= len(rows):
+                return {'return':1, 'error': f'{word} is not in the list' + (f' (1..{len(rows)})' if rows else ' (it is empty)')}
+            x = rows[n - 1]
+            if x['used']:
+                drop.append(x['cref'])
+            elif m.group(1):
+                return {'return':1, 'error': f'{word}: {x["name"]} is not in use ({n} adds it)'}
+            else:
+                add.append(x['cref'])
+        return {'return':0, 'add':add, 'drop':drop, 'names':names}
+
+    ############################################################
+    @staticmethod
+    def _choice_rows(
+        current: list,  # What the artifact has (ai_uses or connections), or None when several artifacts are asked about.
+        entries: list = None,  # What it may add: the declared templates (_ai_context_entries), or None.
+    ):
+        """The rows of _choose: what the artifact has (a template's alias and title where it is one), then the templates it lacks."""
+        rows = []
+        for c in current or []:
+            e = next((e for e in entries or [] if cref_matches(e['cref'], c)), None)
+            ca, _, aa, au = _cref_split(c)
+            name = e['alias'] if e else ((ca + '::' if ca else '') + (aa or au or _cref_key(c)))
+            rows.append({'cref': _cref_key(c), 'name': name, 'title': e['title'] if e else '', 'used': True})
+        for e in entries or []:
+            if not any(cref_matches(c, e['cref']) for c in current or []):
+                rows.append({'cref': e['cref'], 'name': e['alias'], 'title': e['title'], 'used': False})
+        return rows
+
+    ############################################################
     def _ask_ai_context(
         self,
         entries: list,  # The declared templates (_ai_context_entries).
+        current: list = None,  # The ai_uses of the artifact asked about, or None (several, or a new one).
+        title: str = '',  # The artifact asked about (category::alias), or ''.
     ):
         """
-            The numbered list of the AI contexts and the question which ones to add; numbers or aliases,
-            comma-separated, Enter for none. A run without a terminal gets the error of utils.common.ask.
+            The AI contexts to choose from (_choose): what the artifact uses ("-N": removed when chosen), then the
+            declared templates it does not use ("N": added); numbers, aliases or cRefs ("-alias" removes), Enter
+            for no change. A run without a terminal gets the error of utils.common.ask.
             Returns:
-                dict: {'return', 'crefs': [...]}
+                dict: {'return', 'crefs': [to add], 'drop': [cRefs or names to remove]}
         """
-        if not entries:
+        if not entries and not current:
             print ('No AI context template is declared (template: ai_uses: {alias, title, sort} in an artifact\'s meta).')
-            return {'return':0, 'crefs':[]}
-        width = max(len(e['alias']) for e in entries)
-        print ('')
-        print ('AI contexts (ai_uses):')
-        for i, e in enumerate(entries, 1):
-            print (f'  {i}) {e["alias"].ljust(width)}  {e["title"]}')
-        r = utils.common.ask('Which ones (numbers or aliases, comma-separated; Enter for none)? ',
-                             how = '-ai=<aliases> names them without a question; -q asks nothing', optional = True)
+            return {'return':0, 'crefs':[], 'drop':[]}
+        rows = self._choice_rows(current, entries)
+        used = [x for x in rows if x['used']]
+        free = [x for x in rows if not x['used']]
+        example = '; '.join(([f'-{rows.index(used[0]) + 1} removes {used[0]["name"]}'] if used else []) +
+                            ([f'{rows.index(free[0]) + 1} adds {free[0]["name"]}'] if free else []))
+        r = self._choose('AI context (ai_uses) of ' + (title or 'the artifact') + ':', rows,
+                         (example + ' - ' if example else '') + 'numbers, aliases or cRefs, comma-separated ("-alias" removes)',
+                         '-ai=<aliases> names them without a question ("-ai=-<alias>" removes); -q asks nothing')
         if r['return']>0: return r
-        answer = (r.get('answer') or '').strip()
-        if answer == '':
-            return {'return':0, 'crefs':[]}
-        names = []
-        for word in split_context_names(answer):
-            if word.isdigit():
-                n = int(word)
-                if not 1 <= n <= len(entries):
-                    return {'return':1, 'error': f'{n} is not in the list (1..{len(entries)})'}
-                names.append(entries[n - 1]['alias'])
-            elif word:
-                names.append(word)
-        return self._resolve_ai_context(names, entries)
+        add_names, drop_names = split_changes(r['names'])
+        rr = self._resolve_ai_context(add_names, entries)
+        if rr['return']>0: return rr
+        rd = resolve_artifacts(self.cm, drop_names, entries, missing_ok = True)
+        if rd['return']>0: return rd
+        return {'return':0, 'crefs': r['add'] + rr['crefs'], 'drop': r['drop'] + [a['cref'] or a['name'] for a in rd['artifacts']]}
 
     ############################################################
     def _ai_context_crefs(
         self,
         ctx: dict,  # cMeta context.
         ai,  # The ai_uses request: True (ask), a comma-separated string or a list, or None / False (nothing).
+        current: list = None,  # The ai_uses of the artifact asked about (the question shows them), or None.
+        title: str = '',  # The artifact asked about (category::alias), or ''.
     ):
         """
             The full cRefs of the AI contexts a create or an update asked for - the names resolved
@@ -1590,8 +1863,125 @@ class Category(InitCategory):
         if ai is True:
             if ctx.get('control', {}).get('quiet', False):
                 return {'return':0, 'crefs':[]}
-            return self._ask_ai_context(entries)
+            return self._ask_ai_context(entries, current, title)
         return self._resolve_ai_context(ai, entries)
+
+    ############################################################
+    def _desc_plan(
+        self,
+        ctx: dict,  # cMeta context.
+        ai = None,  # The ai_uses request: names ("-name" removes), True = ask (_ai_context_crefs).
+        connect = None,  # Artifacts to connect both ways: names or cRefs ("-name" disconnects); True = ask.
+        connect_to = None,  # Artifacts to connect this one to, in its own _desc only: the same forms.
+        current: dict = None,  # The _desc of the one artifact asked about (a question shows what it has), or None.
+        title: str = '',  # That artifact (category::alias), or ''.
+    ):
+        """
+            The changes of the lists in _desc.yaml that a create or an update asked for, resolved before anything
+            is made or changed, so that a wrong name or an ambiguity stops the command without a side effect: the
+            AI context (ai_uses), the connections of this artifact, and those of the artifacts --connect names
+            (the other side). A name to add must name one artifact; a name to remove may name one that is gone
+            (its entries are then found by what they say). A quiet run asks nothing.
+            Returns {'return', 'lists': {key: (add, drop)}, 'others': [{'op', 'cref', 'path'}], 'asked'}.
+        """
+        quiet = ctx.get('control', {}).get('quiet', False)
+        plan = {'return':0, 'lists':{}, 'others':[], 'asked':False}
+
+        def listed(key):
+            # what the artifact has under a key - None when several artifacts are asked about
+            if current is None:
+                return None
+            value = current.get(key)
+            return list(value) if isinstance(value, list) else ([value] if value else [])
+
+        if ai is not None and ai is not False:
+            if ai is True:
+                r = self._ai_context_crefs(ctx, True, listed(AI_USES_KEY), title)
+                if r['return']>0: return r
+                plan['lists'][AI_USES_KEY] = (r['crefs'], r.get('drop') or [])
+                plan['asked'] = not quiet
+            else:
+                add, drop = split_changes(ai)
+                r = self._ai_context_entries()
+                if r['return']>0: return r
+                entries = r['entries']
+                r = resolve_artifacts(self.cm, add, entries)
+                if r['return']>0: return r
+                adds = [a['cref'] for a in r['artifacts']]
+                r = resolve_artifacts(self.cm, drop, entries, missing_ok = True)
+                if r['return']>0: return r
+                plan['lists'][AI_USES_KEY] = (adds, [a['cref'] or a['name'] for a in r['artifacts']])
+
+        adds, drops = [], []
+        for value, both in ((connect, True), (connect_to, False)):
+            if value is None or value is False:
+                continue
+            chosen = []
+            if value is True:
+                if quiet:
+                    continue
+                flag = '--connect' if both else '--ct'
+                rows = self._choice_rows(listed(CONNECTIONS_KEY))
+                way = 'both ways' if both else 'this side only'
+                hint = (f'-1 disconnects {rows[0]["name"]}; ' if rows else '') + \
+                       'to connect, type aliases or cRefs (";" between cRefs, "-alias" disconnects)'
+                r = self._choose(f'Connections of {title or "the artifact"} ({way}):' + ('' if rows or current is None else ' none yet'),
+                                 rows, hint, f'{flag}=<names> names them without a question ("{flag}=-<name>" removes); -q asks nothing',
+                                 name_header = 'connected to')
+                if r['return']>0: return r
+                chosen = r['drop']
+                value = r['names']
+                plan['asked'] = True
+            add, drop = split_changes(value)
+            drop = list(chosen) + drop
+            r = resolve_artifacts(self.cm, add)
+            if r['return']>0: return r
+            for a in r['artifacts']:
+                adds.append(a['cref'])
+                if both:
+                    plan['others'].append({'op': '+', 'cref': a['cref'], 'path': a['path']})
+            r = resolve_artifacts(self.cm, drop, missing_ok = True)
+            if r['return']>0: return r
+            for a in r['artifacts']:
+                drops.append(a['cref'] or a['name'])
+                if both and a['cref'] and a['path']:
+                    plan['others'].append({'op': '-', 'cref': a['cref'], 'path': a['path']})
+        if adds or drops:
+            plan['lists'][CONNECTIONS_KEY] = (adds, drops)
+        return plan
+
+    ############################################################
+    def _apply_desc(
+        self,
+        artifact_path: str,  # The artifact's folder.
+        cref: str,  # Its full cRef (what the other side of a connection gets).
+        desc: dict,  # Keys to merge into its _desc.yaml, or None.
+        plan: dict,  # The changes of the lists (_desc_plan), or None.
+        con: bool,  # Whether the run prints what changed.
+    ):
+        """
+            Writes the artifact's _desc.yaml (_edit_desc) and, for --connect, this artifact's cRef into the
+            _desc.yaml of each artifact named (or out of it); an artifact is never connected to itself.
+            Returns {'return', 'changed', 'lines'}.
+        """
+        plan = plan or {}
+        lists = {}
+        for key, (add, drop) in (plan.get('lists') or {}).items():
+            if key == CONNECTIONS_KEY and cref:
+                add = [a for a in add if not cref_matches(a, cref)]
+            lists[key] = (add, drop)
+        r = self._edit_desc(artifact_path, desc, lists, con)
+        if r['return']>0: return r
+        changed, lines = r.get('changed', False), list(r.get('lines') or [])
+        for other in plan.get('others') or []:
+            if not cref or not other.get('path') or cref_matches(other['cref'], cref):
+                continue
+            change = ([cref], []) if other['op'] == '+' else ([], [cref])
+            r = self._edit_desc(other['path'], None, {CONNECTIONS_KEY: change}, con)
+            if r['return']>0:
+                return {'return':1, 'error': f'{artifact_path} was changed, but not the other side {other["cref"]}: {r.get("error")}'}
+            lines += r.get('lines') or []
+        return {'return':0, 'changed':changed, 'lines':lines}
 
     ############################################################
     def _write_desc(
@@ -1603,13 +1993,32 @@ class Category(InitCategory):
     ):
         """
             Writes the artifact's _desc.yaml with `desc` merged in and `crefs` appended to its ai_uses
-            (see merge_desc). A file written by hand keeps its text: cRefs alone are appended to the
-            ai_uses block as lines (append_ai_uses_text); other keys are edited in place (safe_write_file
-            preserve). A _desc.json found there is read, written as YAML and removed.
-            Returns {'return', 'changed', 'crefs', 'desc_file'}.
+            (_edit_desc). Returns {'return', 'changed', 'crefs', 'desc_file', 'lines'}.
         """
-        if not crefs and not (isinstance(desc, dict) and desc):
-            return {'return':0, 'changed':False, 'crefs':[], 'desc_file':None}
+        r = self._edit_desc(artifact_path, desc, {AI_USES_KEY: (list(crefs or []), [])}, con)
+        if r['return']>0: return r
+        r['crefs'] = list(crefs or [])
+        return r
+
+    ############################################################
+    def _edit_desc(
+        self,
+        artifact_path: str,  # The artifact's folder (it exists).
+        desc: dict,  # Keys to merge into _desc.yaml, or None.
+        lists: dict,  # {key: (entries to append, names to remove)} for ai_uses and connections (merge_desc).
+        con: bool,  # Whether the run prints what changed.
+    ):
+        """
+            Writes the artifact's _desc.yaml with `desc` merged in and the `lists` changes made (merge_desc).
+            A file written by hand keeps its text: changes of the lists alone are made on the lines of their
+            blocks (edit_list_text) and the text is read back and compared before it replaces the file; other
+            keys are edited in place (safe_write_file preserve), as is a list the lines cannot take. A
+            _desc.json found there is read, written as YAML and removed.
+            Returns {'return', 'changed', 'desc_file', 'lines'}: `lines` says what was added (+) and removed (-).
+        """
+        lists = {k: v for k, v in (lists or {}).items() if v and (v[0] or v[1])}
+        if not lists and not (isinstance(desc, dict) and desc):
+            return {'return':0, 'changed':False, 'desc_file':None, 'lines':[]}
         # the sidecar: YAML, else a JSON to convert, else a new YAML
         path_yaml = os.path.join(artifact_path, DESC_FILENAME_BASE + '.yaml')
         path_json = os.path.join(artifact_path, DESC_FILENAME_BASE + '.json')
@@ -1624,18 +2033,26 @@ class Category(InitCategory):
                 if p == path_json:
                     convert = p
                 break
-        new, changed = merge_desc(data, desc, crefs)
+        new, changed = merge_desc(data, desc, None, lists)
         if changed or convert:
             written = False
             if changed and not convert and not (isinstance(desc, dict) and desc) and os.path.isfile(path_yaml):
-                # only cRefs appended to an existing YAML: its text stays as it is
-                had = {_cref_key(u) for u in (data.get(AI_USES_KEY) if isinstance(data.get(AI_USES_KEY), list) else [])}
-                added = [c for c in crefs if _cref_key(c) and _cref_key(c) not in had]
+                # only the lists changed in an existing YAML: its text stays as it is around them
                 try:
+                    import yaml
                     with open(path_yaml, 'r', encoding = 'utf-8', newline = '') as f:
                         text = f.read()
-                    new_text = append_ai_uses_text(text, added)
-                    if new_text is not None:
+                    new_text = text
+                    for key, (add, drop) in lists.items():
+                        value = data.get(key)
+                        old = list(value) if isinstance(value, list) else ([value] if value else [])
+                        kept = [i for i in old if not any(cref_matches(i, d) for d in drop or [])]
+                        appended = (new.get(key) or [])[len(kept):]
+                        test = (lambda v, drop = drop: any(cref_matches(v, d) for d in drop)) if drop else None
+                        new_text = edit_list_text(new_text, key, appended, test)
+                        if new_text is None:
+                            break
+                    if new_text is not None and (yaml.safe_load(new_text) or {}) == new:
                         # written next to the file and put in place with one atomic replace, as the engine writes a meta
                         temp_path = path_yaml + '.tmp'
                         with open(temp_path, 'w', encoding = 'utf-8', newline = '') as f:
@@ -1644,6 +2061,8 @@ class Category(InitCategory):
                         written = True
                 except OSError as e:
                     return {'return':1, 'error': f'cannot write {path_yaml}: {e}'}
+                except Exception:
+                    written = False                     # a text that does not read back: the in-place edit below
             if not written:
                 r = utils.files.safe_write_file(path_yaml, data = new, fail_on_error = self.fail_on_error, logger = self.logger,
                                                 sort_keys = False, preserve = True)
@@ -1653,11 +2072,43 @@ class Category(InitCategory):
                     os.remove(convert)
                 except OSError as e:
                     return {'return':1, 'error': f'cannot remove the converted {convert}: {e}'}
-        if con and crefs:
-            print ('AI context (ai_uses) in ' + path_yaml + ':')
-            for c in new.get(AI_USES_KEY) or []:
-                print ('  - ' + _cref_key(c))
-        return {'return':0, 'changed':changed, 'crefs':crefs, 'desc_file':path_yaml}
+        lines = self._desc_change_lines(path_yaml, data, new)
+        if con:
+            for line in lines:
+                print (line)
+        return {'return':0, 'changed':changed, 'desc_file':path_yaml, 'lines':lines}
+
+    ############################################################
+    def _read_desc(
+        self,
+        artifact_path: str,  # The artifact's folder.
+    ):
+        """The artifact's _desc.yaml (else its _desc.json) as a dict; {} when it has none or it does not read."""
+        for ext in ('yaml', 'json'):
+            p = os.path.join(artifact_path, DESC_FILENAME_BASE + '.' + ext)
+            if os.path.isfile(p):
+                r = utils.files.safe_read_file(p, fail_on_error = False, logger = self.logger)
+                return r['data'] if r['return'] == 0 and isinstance(r.get('data'), dict) else {}
+        return {}
+
+    ############################################################
+    @staticmethod
+    def _desc_change_lines(
+        path: str,  # The _desc.yaml.
+        before: dict,  # Its content before.
+        after: dict,  # Its content after.
+    ):
+        """What a change of ai_uses and connections added (+) and removed (-), as lines to print."""
+        lines = []
+        for key, title in ((AI_USES_KEY, 'AI context (ai_uses)'), (CONNECTIONS_KEY, 'Connections')):
+            old = before.get(key) if isinstance(before.get(key), list) else ([before[key]] if before.get(key) else [])
+            new = after.get(key) if isinstance(after.get(key), list) else ([after[key]] if after.get(key) else [])
+            plus = [x for x in new if not any(cref_matches(o, x) for o in old)]
+            minus = [x for x in old if not any(cref_matches(n, x) for n in new)]
+            if plus or minus:
+                lines.append(f'{title} in {path}:')
+                lines += ['  + ' + _cref_key(x) for x in plus] + ['  - ' + _cref_key(x) for x in minus]
+        return lines
 
     ############################################################
     def _undo_create(
@@ -2514,9 +2965,18 @@ class Category(InitCategory):
         path: str = None,  # Use this path for artifact (used during creation).
         show_path: bool = False,  # Print path instead of meta
         load_files = [],  # Value for load files.
+        desc: dict = None,  # Keys merged into the artifact's _desc.yaml (as add / update).
+        ai_uses = None,  # The AI context (as add / update): names, "-name" removes; True = ask.
+        ai = None,  # The short form of ai_uses (-ai).
+        connect = None,  # Connect both ways (as add / update).
+        connect_to = None,  # Connect this artifact to them (its own _desc only).
+        ct = None,  # The short form of connect_to (--ct).
     ):
         """
-            Get artifact meta. Read if exists, create and read if doesn't exist.
+            Get artifact meta. Read if exists, create and read if doesn't exist. The _desc.yaml options of add
+            and update (desc, ai_uses / ai, connect, connect_to / ct) go to the create of a new artifact and to
+            an update of one that exists: the categories that make dated aliases add through get (2026-11-03:
+            "cx work add <name> -ai" failed with "unexpected keyword argument 'ai'").
 
             Args:
                 ctx (dict): cMeta context.
@@ -2551,28 +3011,37 @@ class Category(InitCategory):
             ctx['control']['con'] = False
 
         r = self.read_(ctx, arg1, tags=tags, skip_uids=skip_uids, load_files=load_files)
-        
-        # If artifact exists, return it
+
+        desc_options = {k: v for k, v in (('desc', desc), ('ai_uses', ai_uses), ('ai', ai), ('connect', connect),
+                                          ('connect_to', connect_to), ('ct', ct)) if v is not None}
+
+        # If artifact exists, return it (with the _desc.yaml options made on it)
         if r['return'] == 0:
             r['created'] = False
+            if desc_options:
+                ru = self.update_(ctx, arg1, skip_uids=skip_uids, **desc_options)   # (tags: to add on a create, not a filter)
+                if ru['return'] > 0:
+                    return ru
+                r['desc_changes'] = ru.get('desc_changes') or []
 
         else:
-            
+
             # If error is not "artifact not found", return the error
             if r['return'] != 16:
                 return r
-            
+
             # Artifact doesn't exist, create it
-            r = self.create_(ctx, arg1, tags=tags, meta=meta, yaml=yaml, virtual=virtual, path=path)
-            if r['return'] > 0:
-                return r
-            
+            rc = self.create_(ctx, arg1, tags=tags, meta=meta, yaml=yaml, virtual=virtual, path=path, **desc_options)
+            if rc['return'] > 0:
+                return rc
+
             # Read the newly created artifact
             r = self.read_(ctx, arg1, tags=tags, skip_uids=skip_uids, yaml=yaml, load_files=load_files)
             if r['return'] > 0:
                 return r
-            
+
             r['created'] = True
+            r['desc_changes'] = rc.get('desc_changes') or []
 
         if con and show_path:
             print (r['artifact']['path'])

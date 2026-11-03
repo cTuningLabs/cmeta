@@ -3,6 +3,41 @@
 All notable changes to cMeta are documented here, newest first.
 
 ## DEV VERSION (0.38.2.1)
+- **`--connect` and `--connect-to` (`--ct`) on `add`, `update` (and `get`).** `--connect=<names>` writes the full
+  cRef of each artifact named into this artifact's `connections` and this artifact's cRef into theirs (the graph
+  draws an edge declared on either side, so both say it); `--ct=<names>` writes this side only. Names are aliases,
+  `category::alias`, full cRefs or `{{{cRef}}}` (";" between cRefs); entries are compared by the artifact's UID, so
+  running it twice, or meeting an entry written before a rename, never doubles one. A name with "-" in front
+  removes: `--connect=-<name>` from both sides, `--ct=-<name>` from this one, `-ai=-<name>` from the AI context - also
+  a name whose artifact is gone, by what its entry says. A hand-written `_desc.yaml` keeps its text: the lines of
+  the items that change, nothing else (a list left empty takes its key); what changed is printed as `+` / `-` lines.
+- **The question of `-ai`, `--connect` and `--ct` lists what the artifact has first**, numbered `-1`, `-2`, ... -
+  chosen, it is removed - then what it may add, numbered on (chosen: added), as a plain table with a line that gives
+  an example from the list; numbers, aliases and cRefs mix in one answer, Enter changes nothing.
+- **Fixed: `cx work add <name> -ai`** (and every category that makes dated aliases through `utils
+  create_artifact_with_date`: work, fgg.task, ...) failed with "get_() got an unexpected keyword argument 'ai'":
+  `get` takes the `_desc.yaml` options of `add` and `update` now, for an artifact it creates and one it finds.
+- **/browse: the pickers hold what is ticked, and a server leaves some out by default.** Every repository and
+  category is ticked unless left out: a name with "-" in front (`repos=-fgg-arc`), `-*` none, `*` all; unticking one
+  of all keeps the rest; the picker has **all**, **none** and **only the shown**. `browse_untick_repos` in the cserver
+  config (`fgg-arc`) unticks repositories whenever an address names none - also a link with other state, not a bare
+  page only - and the address leaves that default out ("all" goes in as `repos=*`).
+- **/browse: a category declares the order of its artifacts.** `browse_sort` in a category's meta - the engine's
+  `work` and `note`: `-alias`, their names start with the date, so the latest first - or the server's
+  `browse_category_sort` ("work,note:-alias;report:created,updated"), which goes first; a sort may be several keys,
+  a `-` in front of a key turns it around, and `created` breaks its ties by `updated`.
+- **/browse: every row of a list has its Folder, Shell and Far buttons** (a browser on the server's own machine,
+  as in the detail of an artifact), and the Browse list hides its Tags column unless the "tags" box of its header
+  is ticked (the browser remembers it), so that the list stays compact.
+- **The cserver knows a browser on its own machine under another name.** A page opened by the machine's LAN or
+  Tailscale name was not "on this machine" (no files, no open buttons): a connection whose peer is the address it
+  arrived on is this machine now, and `local_hosts` in the cserver config names the Host names that count
+  ("fgg-thinkpad-p14s-gen-7"; a page under another name - DNS rebinding - never does). The password gate keeps its
+  own loopback exemption.
+- **Neutral examples**: the search box of /browse and three examples of this changelog named private work.
+- **Fixed: `--desc.<key>=<value>` for a key that holds a list put the value in the place of the whole list**
+  (`--desc.connections=<cRef>` lost every other connection); a single value is appended now, and `connections` and
+  `ai_uses` are lists even when new.
 - **The footer shows the version: "Powered by cMeta v<version>"** on every page of the cserver (the version was only
   in the tooltip); the browse page says it in its own footer, beside the query for a terminal (it said "cMeta
   v<version>"), and hides the server's line, so a page has one.
@@ -18,14 +53,14 @@ All notable changes to cMeta are documented here, newest first.
 - **`cx utils smart_find_by_cid` reads `{{{cRef}}}`, a path after the cRef, and plain paths.** The text may hold a
   cRef in braces - `{{{<category>::<artifact>}}}`, the form memories, records and docs name a place with - or a
   cRef / CID as before, either followed by `/<path>` (or `\<path>`) inside the artifact:
-  `{{{fgg.project::dapple,b20cdeb6102d4f76}}}/!AI/memory`, `cRef=fgg.project,...::dapple,b20c.../!AI`. That place
+  `{{{project::demo,0123456789abcdef}}}/!AI/memory`, `cRef=project,...::demo,0123.../!AI`. That place
   is printed instead of the artifact and returned as `path` / `paths` (one per artifact found; with a file search
   the files stay the answer). The text may also hold a path to an existing file or folder (`D:\...`, `D:/...`,
   `\\server\share\...`, `~/...`, and `/...` outside Windows), printed as it is (`artifacts` empty, filters not
   applied). A path in prose may hold spaces and be followed by words, brackets or a full stop: the longest part
   that exists is taken. The order is braces, then a path, then the CID extraction as before - a text with no
   braces, no existing path and nothing after its CID gets exactly the old answer. Prose after `<alias>,<UID>` no
-  longer becomes part of the artifact's name (`cRef ...::dapple,<UID> is the project` was "not found"). A sub-path
+  longer becomes part of the artifact's name (`cRef ...::demo,<UID> is the project` was "not found"). A sub-path
   or path that does not exist is "not found" (16) and named; `--far` opens such a place quoted. For the Far editor
   plugins (Ctrl+1 opens the place in a new Far, LeftCtrl+Shift+1 in the same one). Tests:
   `test_integration_categories.py` (`asset_with_folders`, 8 tests).
@@ -127,7 +162,7 @@ All notable changes to cMeta are documented here, newest first.
   own. `Repos.push_hidden_repos` / `pop_hidden_repos` / `repo_hidden`; the scope is per call on one CMeta object (the
   workers of CMetaAsync have one each). Tests: `tests/internal_repo_tests/test_integration_hide_repos.py`.
 - **cserver.browse opens on the categories.** The Browse tab (the first one now) lists every category on the left,
-  grouped by the first part of its name (`dapple.*`, `cserver.*` ...), each with how many of its artifacts the words,
+  grouped by the first part of its name (`cmeta.*`, `cserver.*` ...), each with how many of its artifacts the words,
   the repositories and the dates keep; a click opens the category's artifacts on the right (sorted by name, paged,
   the tags / years / repositories as chips to prune by), nothing picked shows what the server holds and how cMeta
   organises it; the Search tab waits for words. `options` answers the category index (`categories`: name, desc,
