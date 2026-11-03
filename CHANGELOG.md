@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.3.1)
+## 0.38.4
 - **`/browse`: a cName and a `{{{cRef}}}` in the query, and a word about hidden categories.** `<alias>,<UID>` finds
   that artifact (both must hold); `{{{<cRef>}}}` pasted from a text, with or without a path after it, counts as the
   cRef (`<cat>::<alias>`, `<cat>::<alias>,<UID>`, the full cRef and `<cat>::*pattern*` worked already). A query that
