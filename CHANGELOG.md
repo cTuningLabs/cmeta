@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.1.1)
+## 0.38.2
 - **Every page of the cserver ends with "Powered by cMeta"**, a link to the cMeta project on cTuning.ai (the engine's
   version in its tooltip), from the server's own `templates/base.html`: the pages had nothing at their end.
 - **AGENTS.md: the attribution of a commit or a PR made through cMeta (cxai / run-ai)** - "Orchestrated by cMeta cxai
