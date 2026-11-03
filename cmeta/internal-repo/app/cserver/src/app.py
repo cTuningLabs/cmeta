@@ -76,6 +76,9 @@ else:
 
 cm = CMetaAsync(max_workers = max_workers, debug = cm_debug, print_host_info = cm_print_host_info)
 
+# the engine's version for every page (the tooltip of the footer's "Powered by cMeta", templates/base.html)
+templates.env.globals['cmeta_version'] = cm.__version__
+
 
 def _session_secret():
     """
