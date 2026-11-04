@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.5.1)
+## 0.38.6
 - **The package description** (the PyPI summary) in the words of the repository's GitHub description: plain
   folders with metadata, linked by stable IDs, one CLI and one Python API - for collaborative & reproducible R&D,
   benchmarking and knowledge management that people, organizations and AI agents can share, extend and build upon.
