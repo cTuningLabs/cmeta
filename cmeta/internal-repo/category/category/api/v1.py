@@ -149,8 +149,12 @@ class Category(InitCategory):
             os.makedirs(api_path)
 
         api_filepath = os.path.join(api_path, 'v1.py')
+
+        # A category that comes with its API code - indexed as it is ("cx category index" of a folder a sync
+        # or a copy brought) or written before "cx category add" - keeps it; only a missing one is made from
+        # the template. Before, the call failed here although the category was made and indexed.
         if os.path.exists(api_filepath):
-            return {'return':1, 'error':f'API file "{api_filepath}" already exists'}
+            return result
 
         api_template_filepath=os.path.join(self.path, 'v1-template.py')
 

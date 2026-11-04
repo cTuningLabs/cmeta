@@ -2,6 +2,18 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.38.6.1)
+- **`cx category index` of a category folder that comes with its API code exits 0.** A category folder brought by a
+  sync or a copy (its `_cmeta.yaml` and its `api/v1.py`) was indexed under the UID of its meta, and then the call
+  failed with `API file "..." already exists` (exit 1); `cx category add` of a folder whose `api/v1.py` was written
+  first did the same after making the meta. The API code is now kept as it is; a missing one is still made from the
+  template. Tests: three in `test_integration_index_existing.py`.
+- **The `add-cserver-plugin` skill** (`.claude/skills/`): a page inside the cPlatform's shell (§4.3) paints nothing
+  past its box (a full-bleed dark background covered the shell's menu), keeps its sticky bars under the shell's top
+  bar and follows the shell's theme as it switches, with a way to check it in a copy of the shell; a line in the
+  checklist; the reference implementations are the engine's own pages (`cserver.projects`, `cserver.browse`,
+  `cserver.cref`).
+
 ## 0.38.6
 - **The package description** (the PyPI summary) in the words of the repository's GitHub description: plain
   folders with metadata, linked by stable IDs, one CLI and one Python API - for collaborative & reproducible R&D,
