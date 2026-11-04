@@ -58,7 +58,16 @@ from cmeta import catch as cmeta_catch
 
 cpu_count = os.cpu_count()
 
-max_workers = int (cpu_count * 0.8 + 0.5)
+# The worker processes that answer the requests (each keeps its own copy of the index): CSERVER_WORKERS, which
+# `cx app run cserver --param.workers=4` or a `param:` block of the cserver config sets; else 0.8 of the logical
+# processors - 13 on a 16-thread laptop, far more than one person needs, each ~0.7 GB warm on a 12,800-artifact
+# home (2026-11-04); the pool starts them as requests need them
+try:
+    max_workers = int(os.environ.get('CSERVER_WORKERS', '').strip() or 0)
+except ValueError:
+    max_workers = 0
+if max_workers < 1:
+    max_workers = int (cpu_count * 0.8 + 0.5)
 
 cm_debug = True if os.environ.get('CSERVER_CM_DEBUG', '').lower() in ['1', 'yes', 'true'] else False
 # the memory note of the console: 1/yes/true = a stamped line per worker at most once a minute (or when its memory

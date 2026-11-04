@@ -327,7 +327,11 @@ def test_the_engine_read_modify_write_cycle_under_contention(tmp_path):
         json.dump({'n': 0}, f)
     outputs = run_workers(COUNTER_WORKER, [('engine', target, '', 40)] * 6)
     for rc, out in outputs:
-        assert rc == 0 and out.startswith('OK'), out
+        # A worker that waited longer than LOCK_NOTICE_SECONDS for the lock says so on stdout - a warning by design,
+        # not a failure: with six writers Windows with Python 3.9 waits that long (2026-11-04). The cycle itself
+        # must end well: "OK <pid>" last, every count kept, no file left behind
+        lines = [line for line in out.splitlines() if line.strip() and not line.startswith('cMeta warning:')]
+        assert rc == 0 and lines and lines[-1].startswith('OK'), out
     with open(target) as f:
         assert json.load(f)['n'] == 6 * 40
     assert not os.path.exists(target + '.lock')

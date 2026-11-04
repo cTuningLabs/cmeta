@@ -727,3 +727,102 @@ def test_category_sorts_of_the_config():
         'work': ['created'], 'fgg.task': ['created', 'updated']}
     assert v1._picked('fgg-arc', 'u1', ['-fgg-arc']) is False and v1._picked('local', 'u2', ['-fgg-arc']) is True
     assert v1._picked('local', 'u2', ['-*']) is False and v1._picked('local', 'u2', ['*']) is True
+
+
+def live_browse():
+    """The cserver.browse module as this process runs it (its catalog and connection index are per process)."""
+    for m in list(sys.modules.values()):
+        f = str(getattr(m, '__file__', '') or '').replace(os.sep, '/')
+        if f.endswith('cserver.browse/api/v1.py'):
+            return m
+    raise AssertionError('cserver.browse is not loaded')
+
+
+def index_status(cm):
+    return web(cm, native_action='index')['json']
+
+
+def wait_index(cm, seconds=30):
+    """The background build of the connection index over (it goes on with every file after a partial one)."""
+    import time
+    for _ in range(int(seconds * 20)):
+        st = index_status(cm)
+        if st['ready'] and not st['building']:
+            return st
+        time.sleep(0.05)
+    raise AssertionError('the connection index is still building: %s' % st)
+
+
+def test_an_index_change_reads_only_the_categories_that_changed(cm):
+    """2026-11-04: a worker process read the whole index again after any change of it (a priority set, an artifact
+    moved, any cx write): now only the categories whose index file changed - the others keep their items."""
+    r = cm.access({'category': 'category', 'command': 'add', 'arg1': 'local:other', 'con': False})
+    assert r['return'] == 0, r
+    make(cm, 'an-other', category='other')
+    search(cm, q='sla', cats='log')                  # a first search with words makes the cache artifact (an index change)
+    web(cm, native_action='reload')
+    out = search(cm, cats='log')
+    assert out['catalog']['reread'] == -1            # a reload reads everything
+    v1 = live_browse()
+    log_items = v1._catalog['by_cat']['log']
+    other_items = v1._catalog['by_cat']['other']
+
+    make(cm, 'second-other', category='other')
+    out = search(cm, cats='log')
+    assert out['catalog']['reread'] == 1              # other alone
+    assert v1._catalog['by_cat']['log'] is log_items  # the same list, not read again
+    assert v1._catalog['by_cat']['other'] is not other_items
+    assert sorted(aliases(search(cm, cats='other'))) == ['an-other', 'second-other']
+    assert out['total'] == 4                          # log as it was
+
+    make(cm, 'fifth', category='log')
+    out = search(cm, cats='log')
+    assert out['catalog']['reread'] == 1 and out['total'] == 5
+    assert v1._catalog['by_cat']['other'] is not other_items and v1._catalog['by_cat']['log'] is not log_items
+
+    # a reload reads everything again
+    web(cm, native_action='reload')
+    assert search(cm, cats='log')['catalog']['reread'] == -1
+
+
+def test_after_an_index_change_a_word_search_looks_only_at_the_changed_categories_first(cm, monkeypatch):
+    """The _desc files of the categories read again are looked at before the answer; the rest are trusted as of
+    the last build, then every file is looked at in the background - so a _desc edited elsewhere is found as
+    before, a moment later. A reference an old _desc makes to an artifact that appears only now resolves at once."""
+    r = cm.access({'category': 'category', 'command': 'add', 'arg1': 'local:other', 'con': False})
+    assert r['return'] == 0, r
+    a, pa = make(cm, 'zoo-plan')
+    describe(pa, {'notes': 'a unicorn enclosure', 'connections': ['other::late-comer']})
+    assert aliases(search(cm, q='unicorn')) == ['zoo-plan']
+    st = wait_index(cm)
+    assert st['trusted'] == 0
+
+    # every build from now on: how many files it trusted (None: it looked at every one)
+    v1 = live_browse()
+    builds = []
+    compute = v1._conn_compute
+
+    def counting(items, by_uid, by_key, trusted=None):
+        builds.append(None if trusted is None else len(trusted))
+        return compute(items, by_uid, by_key, trusted)
+
+    monkeypatch.setattr(v1, '_conn_compute', counting)
+
+    # a new artifact in another category: its text is found at once, the log files were trusted; then the
+    # build goes on with every file in the background
+    b, pb = make(cm, 'late-comer', category='other')
+    describe(pb, {'notes': 'a late giraffe'})
+    assert aliases(search(cm, q='giraffe')) == ['late-comer']
+    wait_index(cm)
+    assert builds[0] >= 5 and builds[-1] is None, builds          # the four of the fixture + zoo-plan trusted
+    # the old _desc's reference to it resolved
+    d = web(cm, native_action='artifact', uid=a)['json']
+    assert any(c.get('uid') == b for c in d.get('connections', [])), d.get('connections')
+
+    # an edit elsewhere, then an index change in the other category: found once the background pass is over
+    describe(pa, {'notes': 'a unicorn enclosure with a Fence', 'connections': ['other::late-comer']})
+    make(cm, 'third', category='other')
+    search(cm, q='fence')                             # the answer may come before the edit is seen
+    wait_index(cm)
+    assert aliases(search(cm, q='fence')) == ['zoo-plan']
+    assert index_status(cm)['trusted'] == 0           # the last build looked at every file

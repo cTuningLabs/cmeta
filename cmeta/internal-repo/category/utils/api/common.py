@@ -544,6 +544,46 @@ def _longest_existing_path(
 
 
 ###################################################################################################
+def _missing_path(
+    text: str,  # Text that starts with a path that does not exist and may go on with prose.
+):
+    """
+    _missing_path function.
+
+    A path that was written but is not there, as it was most likely meant: its longest beginning
+    that exists (a folder name may hold spaces - "C:\\Users\\Grigori Fursin\\cmeta-tests\\..."), then
+    the part after it up to the next space or closing mark. Until 2026-11-04 the first space ended it,
+    so the error named "C:\\Users\\Grigori" for a missing folder under that profile. Without any
+    existing beginning the first word is the path, as before.
+
+    Args:
+        text (str): Text that starts with a path and may go on with prose.
+
+    Returns:
+        str: The path as written, without a closing mark or a full stop at its end.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    import re
+
+    tail = re.compile('[^' + re.escape(PATH_END_CHARS) + ']*')
+
+    # the longest beginning that is a folder, cut at a separator: the rest of the path follows it
+    for cut in range(len(text) - 1, 0, -1):
+        if text[cut] not in ('/', '\\'):
+            continue
+
+        head = text[:cut]
+        folder = os.path.expanduser(head) if head.startswith('~') else head
+
+        if head != '' and os.path.isdir(folder):
+            return (head + tail.match(text[cut:]).group(0)).rstrip(PATH_END_CHARS + '.:')
+
+    return text.split()[0].rstrip(PATH_END_CHARS + '.:')
+
+
+###################################################################################################
 def _extract_cid_and_path(
     s: str,  # Text holding a CID, a {{{cRef}}} or a path, possibly wrapped in prose.
 ):
@@ -596,7 +636,7 @@ def _extract_cid_and_path(
             return {'path': path}
 
         if missing_path is None:
-            missing_path = s[m.start():].split()[0].rstrip(PATH_END_CHARS + '.:')
+            missing_path = _missing_path(s[m.start():])
 
     # 3) A CID as before
     cid = _extract_category_artifact(s)
