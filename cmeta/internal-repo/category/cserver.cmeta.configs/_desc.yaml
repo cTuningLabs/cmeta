@@ -1,0 +1,14 @@
+# The config keys this page reads itself (and the form every artifact may use to declare its own).
+
+configs:
+  cserver:
+    keys:
+      configs_values:
+        desc: who sees the values set on this machine in /cmeta.configs - yes = everyone the server lets in, no = no
+          one; unset = a browser on the server's own machine or one past its password (never through the cPlatform)
+        type: yes/no
+        default: this machine's browser, or one past the password
+      hide_repos:
+        desc: repositories whose artifacts and config artifacts the page leaves out (aliases or fnmatch patterns,
+          comma-separated) - the same key as /projects and /browse
+        type: list

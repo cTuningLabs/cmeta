@@ -1,0 +1,105 @@
+# The keys of the config artifact "cserver" that the engine's web server reads (cx app run cserver). The server reads
+# its config once, at startup: restart it after a change. The keys of its pages (browse_*, hide_repos ...) are
+# declared by those pages.
+
+configs:
+  cserver:
+    desc: the engine's web server (cx app run cserver) - where it listens, its password or e-mail login, its API keys,
+      what its pages show; read at startup (restart the server after a change)
+    keys:
+      param.host:
+        desc: the address it listens on (the app's --param.host); 0.0.0.0 = every network of the machine, tailscale =
+          this machine's Tailscale address alone, asked of Tailscale at each start
+        default: 127.0.0.1
+        example: tailscale
+      param.port:
+        desc: the port it listens on (the app's --param.port)
+        type: number
+        default: '8004'
+      param.flags:
+        desc: the flags given to uvicorn
+        default: --reload --no-use-colors
+        example: --no-use-colors
+      param.session_secret:
+        desc: the key that signs the session cookie (CSERVER_SESSION_SECRET); random = a new one at each start; unset =
+          the file session-secret of this config artifact, made once
+        secret: true
+      password:
+        desc: one shared password asked once per browser before any page; any value turns the prompt on
+        secret: true
+      password_sha256:
+        desc: the same password as a SHA-256 digest, so the plain text is not on disk (cx utils hash_password prints
+          the line to paste); goes before password
+        secret: true
+      password_allow_local:
+        desc: yes = a request from the machine itself (a loopback address, no proxy header) is not asked; no = asked too
+        type: yes/no
+        default: 'yes'
+      password_realm:
+        desc: the heading of the prompt
+        default: cMeta server
+      password_max_attempts:
+        desc: wrong answers from one address before it is told to wait
+        type: number
+        default: '10'
+      password_lockout_min:
+        desc: how many minutes that wait lasts
+        type: number
+        default: '5'
+      password_trust_proxy:
+        desc: yes = failed attempts are counted per forwarded client (X-Forwarded-For), not per connection - only
+          behind a reverse proxy of your own
+        type: yes/no
+        default: 'no'
+      login_email:
+        desc: who receives a six-digit login code by e-mail (a comma-separated list is fine); any value turns that way
+          in on, beside the password
+        example: you@example.com
+      login_smtp_host:
+        desc: the SMTP server that sends the codes
+        example: smtp.example.com
+      login_smtp_port:
+        desc: its port - 465 is TLS from the start, any other STARTTLS
+        type: number
+        default: '587'
+      login_smtp_starttls:
+        desc: no = no STARTTLS on a port other than 465
+        type: yes/no
+        default: 'yes'
+      login_smtp_user:
+        desc: the SMTP login
+      login_smtp_password:
+        desc: the SMTP password (an app password)
+        secret: true
+      login_smtp_password_file:
+        desc: a file the SMTP password is read from instead
+        type: path
+      login_smtp_from:
+        desc: the sender of the codes
+        default: the SMTP user
+      login_smtp_timeout:
+        desc: seconds to wait for the SMTP server
+        type: number
+        default: '30'
+      login_days:
+        desc: how many days a correct code keeps a browser signed in
+        type: number
+        default: '30'
+      login_code_minutes:
+        desc: how many minutes a code is good for (one code per address per minute, five tries)
+        type: number
+        default: '10'
+      api_keys:
+        desc: keys that let a request in without the password (?api_key=..., one per device; cx utils api_key makes
+          them and prints the line to paste)
+        type: list
+        secret: true
+      default_page:
+        desc: the page "/" shows - /projects (the cards of every page), /<page> for any other cserver.<page>, none =
+          the plain welcome page
+        default: /projects
+      local_hosts:
+        desc: the names this machine's own browser opens the server by besides localhost (its LAN or Tailscale name),
+          comma-separated - a browser that opens it so counts as "on the server's machine" (files, editing, Open)
+        type: list
+        example: my-laptop

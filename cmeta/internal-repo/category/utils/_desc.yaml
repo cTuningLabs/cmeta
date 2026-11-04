@@ -1,0 +1,24 @@
+# The keys of the config artifacts the utils category reads (the dated categories' "add", the cTuning.ai API).
+
+configs:
+  default:
+    keys:
+      <category_alias>_create_repo:
+        desc: the repository a new artifact of a dated category (work, note, journal ...) goes to when its name names
+          none - the category's name with "_" for its dots (my.notes -> my_notes_create_repo)
+        example: local
+      <category_alias>_create_cmd:
+        desc: a command run once a new artifact of a dated category is made, {path} replaced by its folder (far {path}
+          opens it in Far Manager); empty = nothing is run
+        example: far {path}
+  ctuning_server:
+    desc: the cTuning.ai platform (cPlatform) this machine talks to - its API address and a personal key (both on the
+      settings page of cTuning.ai)
+    keys:
+      url:
+        desc: the API address of the cTuning.ai platform (cx utils access_ctuning_server)
+        type: url
+        default: https://cTuning.ai/api/v1
+      api_key:
+        desc: the personal API key of the cTuning.ai platform, sent as the x-api-key header
+        secret: true

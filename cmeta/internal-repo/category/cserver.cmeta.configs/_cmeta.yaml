@@ -1,0 +1,31 @@
+artifact: cc8dd8bdf9fe4132
+category: category,dd9ea50e7f76467f
+authors: Grigori Fursin
+creation_timestamp: '2026-11-04T19:03:27.757207+00:00'
+generator:
+  method: agent
+  agent: Claude Code 2.1.310
+  via: cmeta 0.38.6
+  by: Grigori Fursin
+last_api_version: 1
+base_category_default_api_versions:
+  '1': 1
+
+name: cMeta configs - every key the plugged artifacts read from the config artifacts, in one searchable page
+desc: 'The config artifacts (cx config set <name> --meta.<key>=<value>) and their keys as the artifacts plugged into
+  this machine know them - declared in a "configs" block of their _desc.yaml, read by their code (a cached scan of
+  the categories, tasks, tools, apps and programs), shown in their docs -, joined with what is set here: what each key
+  does, its type and default, who reads it, its value on this machine (secrets hidden), the keys set here that nothing
+  reads, and the command that changes each. Fewer repositories, fewer configs.'
+tags:
+- cserver
+- web
+- config
+- configs
+- settings
+
+uses_categories:
+  category: category,dd9ea50e7f76467f
+  config: config,cc6bfe174be847ed
+  cache: cache,1ebdcc1cc30c4022
+  repo: repo,f4f792ab40c7498f

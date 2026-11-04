@@ -1,0 +1,58 @@
+# The keys of the config artifact "cserver" that the page /browse reads (on every request: no restart needed).
+
+configs:
+  cserver:
+    keys:
+      hide_repos:
+        desc: repositories whose artifacts the pages leave out (aliases or fnmatch patterns, comma-separated) - the same
+          key for /projects, /browse and /cmeta.configs
+        type: list
+        example: my-private-repo
+      browse_hide_categories:
+        desc: categories /browse leaves out; unset = anything matching *crypt*, *secret* or *credential* (key bundles
+          never show), none = every category
+        type: list
+        default: '*crypt*,*secret*,*credential*'
+      browse_files:
+        desc: yes = the file browser for everyone the server lets in, no = for no one; unset = a browser on the
+          server's own machine only
+        type: yes/no
+        default: this machine's browser only
+      browse_edit:
+        desc: yes = the editor (files, _cmeta, _desc, new artifacts) for everyone the host lets in, no = for no one;
+          unset = a browser on the server's own machine, or what a host grants a signed-in reader
+        type: yes/no
+        default: this machine's browser only
+      browse_open:
+        desc: no = no Open folder / Shell / Far buttons; unset = for a browser on the server's own machine
+        type: yes/no
+      browse_far:
+        desc: the Far Manager (or far2l) to run, when it is not on PATH or in its usual folder
+        type: path
+      browse_terminal:
+        desc: the terminal of the Shell button (default - COMSPEC on Windows, Terminal on macOS, the first terminal
+          emulator found on Linux)
+        type: path
+      browse_title:
+        desc: the heading and title of the page
+        default: cMeta browse
+      browse_default_query:
+        desc: what a bare /browse opens with (an address that carries a query keeps its own)
+      browse_default_repos:
+        desc: the repositories a bare /browse ticks (comma-separated)
+        type: list
+      browse_default_cats:
+        desc: the categories a bare /browse ticks (comma-separated)
+        type: list
+      browse_default_view:
+        desc: the tab a bare /browse opens on - search, browse or graph
+        example: browse
+      browse_untick_repos:
+        desc: repositories unticked whenever an address names none - an archive left out of every view until ticked
+        type: list
+        example: my-archive
+      browse_category_sort:
+        desc: the order of a category's artifacts when nothing else is asked - "work,note:-alias;report:created,updated"
+          ("-" turns a key around, "dated" lists the names without a date first, then the newest); goes before a
+          category's own browse_sort
+        example: work,note:-alias

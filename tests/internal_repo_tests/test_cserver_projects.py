@@ -68,16 +68,20 @@ def test_the_terminal_lists_the_page_itself(cm):
     assert r['return'] == 0
     pages = [(p['alias'], p['page'], p['repo']) for p in r['pages']]
     assert ('cserver.projects', 'projects', 'internal') in pages
-    assert ('cserver.browse', 'browse', 'internal') in pages      # the other page the engine ships
+    assert ('cserver.browse', 'browse', 'internal') in pages      # the other pages the engine ships
+    assert ('cserver.cmeta.configs', 'cmeta.configs', 'internal') in pages
 
 
-def test_a_fresh_home_has_the_browse_card(cm):
+def test_a_fresh_home_has_the_engine_cards(cm):
     j = _web(cm, native_action='projects')['json']
     assert 'error' not in j
 
-    # The page leaves itself out; the engine's other page, cserver.browse, is the one card of a fresh home
-    assert [(p['alias'], p['href']) for p in j['pages']] == [('cserver.browse', URLS['url_server'] + 'browse')]
-    assert j['count'] == 1
+    # The page leaves itself out; the engine's other pages, cserver.browse and cserver.cmeta.configs, are the cards
+    # of a fresh home
+    assert [(p['alias'], p['href']) for p in j['pages']] == [
+        ('cserver.browse', URLS['url_server'] + 'browse'),
+        ('cserver.cmeta.configs', URLS['url_server'] + 'cmeta.configs')]
+    assert j['count'] == 2
     assert j['version'] == __version__
     assert j['url_server'] == URLS['url_server']
 
@@ -107,7 +111,7 @@ def test_a_page_becomes_a_card_and_a_helper_a_footnote(cm):
     assert [(p['alias'], p['repo'], p['href']) for p in j['pages'] if p['repo'] == 'local'] == \
         [('cserver.hello', 'local', URLS['url_server'] + 'hello')]
     assert [p['alias'] for p in j['others']] == ['cserver.helper']
-    assert 'local' in j['repos'] and j['count'] == 2              # with the engine's cserver.browse
+    assert 'local' in j['repos'] and j['count'] == 3              # with the engine's two pages
     assert all('path' not in p for p in j['pages'] + j['others'])   # no local paths on the page
 
 

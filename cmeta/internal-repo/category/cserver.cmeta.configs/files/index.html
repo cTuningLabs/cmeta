@@ -1,0 +1,111 @@
+<!-- Licensed under the Apache License, Version 2.0. See the COPYRIGHT and LICENSE files in the project root. -->
+<!-- cserver.cmeta.configs: the body only; the host wraps it in its own <html>/<head>. -->
+<script>var CONFIG = %%CONFIG%%;</script>
+
+<div id="ccf" class="ccf">
+  <header class="ccf-head">
+    <div class="ccf-title">
+      <h1>%%TITLE%%</h1>
+      <p class="ccf-sub">%%SUBTITLE%%</p>
+    </div>
+    <div class="ccf-tools">
+      <button id="ccf-theme" class="ccf-btn" type="button" title="Dark / light">&#9680;</button>
+      <a id="ccf-json" class="ccf-btn" href="#" target="_blank" rel="noopener" title="All of it as JSON">JSON</a>
+      <button id="ccf-refresh" class="ccf-btn" type="button" title="Look at the artifacts and the config artifacts again now">&#8635;</button>
+    </div>
+  </header>
+
+  <form id="ccf-form" class="ccf-bar" autocomplete="off">
+    <div class="ccf-row1">
+      <input id="ccf-q" type="search" spellcheck="false" aria-label="Search the keys"
+             placeholder="Search keys, what they do, who uses them, values  -  e.g.  password   or   config:task   or   art:run-ai   or   is:unread      ( / to focus )">
+      <button type="submit" class="ccf-go">Search</button>
+    </div>
+    <div class="ccf-row2">
+      <div class="ccf-views" role="group" aria-label="Which keys">
+        <button type="button" class="ccf-view" data-show="" title="Every key the plugged artifacts know, and every key set here">All <span class="n"></span></button>
+        <button type="button" class="ccf-view" data-show="set" title="The keys set on this machine">Set here <span class="n"></span></button>
+        <button type="button" class="ccf-view" data-show="unset" title="Known, not set here: the default applies">Not set <span class="n"></span></button>
+        <button type="button" class="ccf-view" data-show="unread" title="Set here, but no plugged artifact reads them: a typo, a leftover, a key of an artifact that is not plugged here">Read by none <span class="n"></span></button>
+        <button type="button" class="ccf-view" data-show="undocumented" title="Read by code that says nothing of them">Undocumented <span class="n"></span></button>
+      </div>
+      <label class="ccf-sel">Repository
+        <select id="ccf-repo"><option value="">all</option></select>
+      </label>
+      <div class="ccf-views small" role="group" aria-label="View">
+        <button type="button" class="ccf-mode" data-view="" title="By config artifact">By config</button>
+        <button type="button" class="ccf-mode" data-view="repos" title="What each repository brings: its artifacts and the configs they read">By repository</button>
+      </div>
+      <button type="button" id="ccf-howto-btn" class="ccf-link">how to change a config</button>
+      <button type="button" id="ccf-help-btn" class="ccf-link">syntax</button>
+      <span class="ccf-spacer"></span>
+      <button type="button" id="ccf-expand" class="ccf-link" title="Open or close the details of every key shown">open all</button>
+    </div>
+  </form>
+
+  <div id="ccf-howto" class="ccf-help" hidden>
+    <p>A config artifact is a named settings file of this machine: <code>data.json</code> of <code>config::&lt;name&gt;</code>,
+      in the <code>local</code> repository unless it was made elsewhere. Every command below works the same in cmd,
+      PowerShell and bash; the details of a key give the line for that key.</p>
+    <table>
+      <tr><td><code>cx config set &lt;name&gt; --meta.&lt;key&gt;=&lt;value&gt;</code></td><td>sets a key (the config is made when it is missing); several <code>--meta.</code> at once are fine</td></tr>
+      <tr><td><code>--meta.a.b=v</code></td><td>a nested key: each dot is one level (<code>test_session.max_keep_mib</code>) - a key whose own name holds a dot cannot be set so</td></tr>
+      <tr><td><code>--meta.k,=a,b</code></td><td>a list (the comma after the key); a value with commas of its own (a cRef) is one text, with <code>;</code> between its items when the reader allows it</td></tr>
+      <tr><td><code>cx config unset &lt;name&gt; --meta.&lt;key&gt;</code></td><td>removes a key - its default applies again</td></tr>
+      <tr><td><code>cx config show &lt;name&gt;</code></td><td>lists what is set, as <code>--meta.</code> lines to copy, and where its <code>data.json</code> is</td></tr>
+      <tr><td><code>cx config read &lt;name&gt;</code></td><td>the same for a program: it never makes the config (<code>get</code> does)</td></tr>
+      <tr><td>A server</td><td>reads some configs once, at its start (the cserver: <code>cx app run cserver</code>): restart it after a change; a page reads its keys on every request</td></tr>
+      <tr><td>A secret</td><td>(a password, a token, a key) is never shown here; set it on the machine itself - a value typed on the command line stays in the shell's history (<code>cx utils hash_password</code> keeps a password's digest instead)</td></tr>
+      <tr><td>Your own keys</td><td>an artifact that reads a config declares its keys in its <code>_desc.yaml</code> (<code>configs:</code> &rarr; the config &rarr; <code>keys:</code> &rarr; each key with <code>desc</code>, <code>type</code>, <code>default</code>, <code>example</code>, <code>secret</code>): they show here with what they do</td></tr>
+    </table>
+  </div>
+
+  <div id="ccf-help" class="ccf-help" hidden>
+    <table>
+      <tr><td><code>word "a phrase"</code></td><td>in the key, its config, what it does, its default, its value here or the artifacts that read it</td></tr>
+      <tr><td><code>-word</code></td><td>in none of them</td></tr>
+      <tr><td><code>config:task</code> <code>key:browse</code></td><td>the keys of one config artifact (<code>cfg:</code> too; <code>*</code> and <code>?</code> are patterns) / whose name holds it</td></tr>
+      <tr><td><code>art:run-ai</code> <code>art:task::</code></td><td>read, declared or shown by an artifact whose name (<code>category::alias</code>) holds it - or pick it in the map on the left</td></tr>
+      <tr><td><code>repo:cmeta-aops</code> <code>cat:tool</code></td><td>read, declared or shown by an artifact of that repository / category</td></tr>
+      <tr><td><code>is:set</code> <code>is:unset</code></td><td>set on this machine / not set (its default applies)</td></tr>
+      <tr><td><code>is:unread</code></td><td>set here, read by no plugged artifact</td></tr>
+      <tr><td><code>is:declared</code> <code>is:code</code> <code>is:docs</code></td><td>known from a <code>configs</code> block of a <code>_desc.yaml</code> / the code that reads it / a <code>cx config set</code> line or a table of a README</td></tr>
+      <tr><td><code>is:secret</code> <code>is:dynamic</code> <code>is:undocumented</code></td><td>a key whose value is never shown / a key with parts the code names at run time (<code>&lt;harness&gt;</code>) / a key nothing describes</td></tr>
+      <tr><td>Letters</td><td><b class="ccf-src declared">D</b> declared, <b class="ccf-src code">C</b> read by code, <b class="ccf-src docs">R</b> shown in a README or the docs</td></tr>
+    </table>
+  </div>
+
+  <div id="ccf-status" class="ccf-status" aria-live="polite"></div>
+  <div id="ccf-notices" class="ccf-notices" aria-live="polite"></div>
+  <div id="ccf-error" class="ccf-error" hidden></div>
+
+  <div class="ccf-main">
+    <!-- the map: the artifacts that use configs, the configs, a line from each artifact to each config it uses -->
+    <nav id="ccf-nav" class="ccf-nav" aria-label="The artifacts and the configs they use" data-pane="cfgs">
+      <div class="ccf-map-head">
+        <button type="button" class="ccf-tab" data-pane="arts" title="The artifacts that read, declare or show config keys - point at one: the configs it uses">Artifacts <span class="n" id="ccf-n-arts"></span></button>
+        <span class="ccf-gap"></span>
+        <button type="button" class="ccf-tab" data-pane="cfgs" title="The config artifacts - point at one: the artifacts that use it">Configs <span class="n" id="ccf-n-cfgs"></span></button>
+      </div>
+      <div id="ccf-map" class="ccf-map">
+        <div id="ccf-arts" class="ccf-pane arts"></div>
+        <div class="ccf-gutter" aria-hidden="true"></div>
+        <div id="ccf-cfgs" class="ccf-pane cfgs"></div>
+        <svg id="ccf-edges" class="ccf-edges" aria-hidden="true"></svg>
+        <div id="ccf-edge-tag" class="ccf-edge-tag" hidden></div>
+      </div>
+      <div class="ccf-map-foot">
+        <span class="ccf-legend" title="What an artifact does with a config"><i class="reads"></i>reads <i class="declares"></i>declares <i class="docs"></i>docs</span>
+        <span>point: its lines · click: only that · Esc: all</span>
+      </div>
+    </nav>
+    <main id="ccf-list" class="ccf-list"></main>
+  </div>
+
+  <div id="ccf-busy" class="ccf-busy" hidden><div class="spin"></div><span class="what">reading the artifacts</span></div>
+
+  <footer class="ccf-foot">
+    <span id="ccf-settings-line">What it reads: <code>files/configs.yaml</code> of <code>cserver.cmeta.configs</code>, and a
+      <code>configs</code> block in the <code>_desc.yaml</code> of any artifact</span>
+  </footer>
+</div>
