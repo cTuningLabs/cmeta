@@ -682,9 +682,12 @@
     });
     if (!last.rows.length) tb.appendChild(h('tr', {}, h('td', {colspan: '7', class: 'cbr-muted'}, 'Nothing matches.')));
     $('cbr-table').querySelectorAll('th[data-sort]').forEach(function (th) {
-      var on = th.getAttribute('data-sort') === last.sort;
+      var key = th.getAttribute('data-sort');
+      var dated = key === 'alias' && last.sort === 'dated';     // the Artifact column's third order
+      var on = key === last.sort || dated;
       th.classList.toggle('sorted', on);
-      th.textContent = th.getAttribute('data-label') + (on ? (last.dir === 'desc' ? ' ▾' : ' ▴') : '');
+      th.title = key === 'alias' ? 'Click: by name A to Z, Z to A, then the names without a date first and the dated ones newest first' : '';
+      th.textContent = th.getAttribute('data-label') + (dated ? ' · undated, then newest' : (on ? (last.dir === 'desc' ? ' ▾' : ' ▴') : ''));
     });
     renderFacets();
     pager('browse');
@@ -1313,6 +1316,16 @@
       if (!th.getAttribute('data-sort')) return;
       th.addEventListener('click', function () {
         var s = th.getAttribute('data-sort');
+        if (s === 'alias') {
+          // the Artifact column cycles through three orders: by name A to Z, Z to A, then "undated first, the dated
+          // ones newest first" (the order of a category that mixes routines and dated work, fgg.automation)
+          var cur = last ? last.sort : '';
+          if (cur === 'alias' && last.dir !== 'desc') { st.sort = 'alias'; st.dir = 'desc'; }
+          else if (cur === 'alias') { st.sort = 'dated'; st.dir = 'asc'; }
+          else { st.sort = 'alias'; st.dir = 'asc'; }
+          run();
+          return;
+        }
         if (last && last.sort === s) st.dir = last.dir === 'desc' ? 'asc' : 'desc';
         else { st.sort = s; st.dir = (s === 'created' || s === 'updated') ? 'desc' : 'asc'; }
         st.sort = s;
