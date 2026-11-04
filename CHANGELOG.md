@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.6.1)
+## 0.38.7
 - **A new page, `/cmeta.configs` (category `cserver.cmeta.configs`): every key the plugged artifacts read from the
   config artifacts.** By config artifact: what each key does, its type and default, which artifacts read it (links to
   the lines of their code), its value on this machine, and the `cx config set` / `unset` lines that change it; the
