@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.4.1)
+## 0.38.5
 - **`/browse`: the order "undated first, then the newest dated".** The sort key `dated` lists the names without a date
   in front first, A to Z (the routines one runs by hand: "Answer Emails", "Sync cMeta repos"), then the dated ones
   newest first (`20261007.x`, `2017xxxx.x`); `dir=desc` gives the same list from its end. The Artifact column cycles
