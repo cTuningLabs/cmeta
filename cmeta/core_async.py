@@ -14,6 +14,7 @@ from functools import partial
 from concurrent.futures import ProcessPoolExecutor
 
 from .core import CMeta
+from .utils import sys as sys_utils
 
 # This logger is ONLY the module-level fallback.
 module_logger = logging.getLogger(__name__)
@@ -44,6 +45,10 @@ def _get_cmeta(
     global _cmeta_instance, _cmeta_index
 
     if _cmeta_instance is None:
+        # A worker answers requests: at full speed when it has one, whatever Windows takes a process that waits
+        # between them for (utils.sys.prefer_speed, 2026-11-04)
+        sys_utils.prefer_speed()
+
         # Initialize CMeta normally
         cmeta = CMeta(**kwargs)
 
@@ -142,6 +147,9 @@ class CMetaAsync(CMeta):
         # `loop` is still honoured.
         self._loop = loop
         self._executor = ProcessPoolExecutor(max_workers=max_workers)
+
+        # The process that runs the event loop too: it reads every request and writes every answer
+        sys_utils.prefer_speed()
 
         # Store constructor args for CMeta workers
         self._cmeta_kwargs = kwargs

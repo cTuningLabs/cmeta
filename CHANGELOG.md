@@ -2,6 +2,38 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.38.5.1)
+- **The package description** (the PyPI summary) in the words of the repository's GitHub description: plain
+  folders with metadata, linked by stable IDs, one CLI and one Python API - for collaborative & reproducible R&D,
+  benchmarking and knowledge management that people, organizations and AI agents can share, extend and build upon.
+- **A page of the cserver answers in the same time whatever happened to the index before.** An answer sometimes
+  took 5-10 s on a laptop with 12,800 artifacts: the server's worker processes (0.8 of the logical processors, taken
+  in turn) each read the whole index again after any change of it (a priority set, an artifact moved, any `cx`
+  write), a search with words then waited for every `_desc` file to be looked at, every repository indexed again
+  (a sync, a pull, a plug) rewrote every index file, and Windows ran a worker that had waited between requests on
+  its efficiency cores. Four changes, each as it was for everything else:
+  - the incremental index (`cx repo reindex`, pull, plug, unplug, unzip, `cx host sync`) writes an index file only
+    when its records or aliases changed - 200 files were rewritten for an empty repository; the content written is
+    the same, an unchanged file keeps its time (`Repos._write_index_file`);
+  - `/browse` (and every page that searches through it) reads again only the categories whose index file changed
+    (`_catalog`, `by_cat`), looks at the `_desc` files of those categories alone before an answer that waits for the
+    connection index, then at every file in the background (`_conn_run`); a reload still reads everything; the
+    search answer's `catalog.reread` says how many categories were read again (-1: all), the index status `trusted`
+    how many files the last build took as they were;
+  - the processes of a `CMetaAsync` pool opt out of Windows' power throttling (`utils.sys.prefer_speed`:
+    SetProcessInformation with ProcessPowerThrottling, execution speed on; a worker answered ~3x slower a second
+    after its last request); nothing happens on Linux and macOS; `CMETA_POWER_THROTTLING=yes` keeps the OS policy;
+  - `cx app run cserver --param.workers=<N>` (CSERVER_WORKERS) sets the number of worker processes; the default
+    stays 0.8 of the logical processors.
+  Tests: `test_integration_index_written_when_changed.py`, two tests in `test_cserver_browse.py`,
+  `test_utils_sys_prefer_speed.py`, `test_cserver_workers.py`.
+- **`cx utils smart_find_by_cid` names a missing path whole when it lies under a folder with a space in its name**
+  (a Windows profile such as `C:\Users\First Last\...`): the error said `path "C:\Users\First" not found`. The
+  longest beginning that exists decides where the path goes on (`_missing_path`); without any existing beginning
+  the first word is the path, as before. Found by the engine's own test on a machine with such a profile.
+- Tests: the contention test of the path lock accepts the lock-wait notice a worker prints after 3 s (a warning by
+  design; six writers on Windows with Python 3.9 wait that long) and checks the end of the cycle instead.
+
 ## 0.38.5
 - **`/browse`: the order "undated first, then the newest dated".** The sort key `dated` lists the names without a date
   in front first, A to Z (the routines one runs by hand: "Answer Emails", "Sync cMeta repos"), then the dated ones

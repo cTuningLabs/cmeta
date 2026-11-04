@@ -289,6 +289,48 @@ class Repos:
         return os.path.normcase(os.path.normpath(path1)) == os.path.normcase(os.path.normpath(path2))
 
     ###################################################################################################
+    def _write_index_file(
+        self,
+        index_file,  # The index file (repo.pkl, category.pkl, <category>.pkl).
+        data,  # Its new content.
+        old = None,  # What it holds now (None: not known, or a new file - written whatever `data` is).
+        file_lock = None,  # Its lock when the caller holds it: used by the write, released by a skipped one.
+    ):
+        """
+            An index file written atomically - only when its content changed. The incremental index (a repository
+            indexed again, plugged, pulled, unplugged) rewrote EVERY index file at every run until 2026-11-04 (200
+            files for an empty repository on the author's home), and every reader - each worker process of a server
+            with its own copy of the index - loaded them all again, scanned by the antivirus at their first open.
+            A file whose records and aliases are as they were keeps its time; nothing else is different.
+        """
+        if old is not None and data == old:
+            if file_lock is not None:
+                utils.files.unlock_path(index_file, file_lock, logger=self.logger)
+            self.logger.debug(f'index file {index_file} unchanged: not written')
+            return {'return': 0, 'written': False}
+
+        # Use atomic write to avoid corrupting large index files
+        r = utils.files.safe_write_file(index_file, data, file_lock=file_lock, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+        if r['return']>0: return r
+
+        return {'return': 0, 'written': True}
+
+    def _read_index_file(
+        self,
+        index_file,  # The index file.
+    ):
+        """
+            What an index file holds, for the comparison in _write_index_file: None when there is no such file or
+            it cannot be read (it is then written).
+        """
+        if not os.path.isfile(index_file):
+            return None
+
+        r = utils.files.safe_read_file(index_file, fail_on_error=False, logger=self.logger)
+
+        return r['data'] if r['return']==0 and isinstance(r.get('data'), dict) else None
+
+    ###################################################################################################
     def _register_soft_lock(
         self,
         path,  # The registered folder of the repository.
@@ -1603,8 +1645,8 @@ class Repos:
             print('')
             print(f'  Recording repo index file: {index_repo_file}')
 
-        # Use atomic write to avoid corrupting large index files
-        r = utils.files.safe_write_file(index_repo_file, index_repos, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+        # Written only when a repository changed (an incremental run; a full rebuild writes into a new folder)
+        r = self._write_index_file(index_repo_file, index_repos, old=None if clean else self._read_index_file(index_repo_file))
         if r['return']>0: return r
 
         # A repository that asks for the soft lock is known to the path lock of this process at once (the
@@ -1790,8 +1832,8 @@ class Repos:
                 print('')
                 print(f'  Recording category index file ({len(index_categories[self.KEY_INDEX_UIDS])} categories found): {index_category_file}')
 
-            # Use atomic write to avoid corrupting large index files
-            r = utils.files.safe_write_file(index_category_file, index_categories, atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+            # Written only when a category changed (an incremental run; a full rebuild writes into a new folder)
+            r = self._write_index_file(index_category_file, index_categories, old=None if clean else self._read_index_file(index_category_file))
             if r['return']>0: return r
 
 
@@ -1925,6 +1967,7 @@ class Repos:
 
                 existing_category_index = {}
                 index_file_lock = None
+                index_before = None       # what the file holds, for a write only when something changed (None: a new file)
 
                 if clean:
                     existing_category_index = category_index
@@ -1940,6 +1983,14 @@ class Repos:
                     if len(add_repo_paths)>0 or len(delete_repo_paths)>0:
                         uids = existing_category_index.setdefault(self.KEY_INDEX_UIDS, {})
                         lowercase_aliases = existing_category_index.setdefault(self.KEY_INDEX_LOWERCASE_ALIASES, {})
+
+                        # The records and aliases as the file holds them (the records of a repository indexed again
+                        # leave and come back below: a record that came back as it was is no change, so a run that
+                        # changes nothing in a category leaves its file alone - every file was rewritten until 2026-11-04)
+                        if index_file_lock is not None or os.path.isfile(index_artifact_file):
+                            index_before = dict(existing_category_index)
+                            index_before[self.KEY_INDEX_UIDS] = dict(uids)
+                            index_before[self.KEY_INDEX_LOWERCASE_ALIASES] = {alias: list(xuids) for alias, xuids in lowercase_aliases.items()}
 
                         # The records of the repositories indexed again or removed leave: a record names its
                         # repository by UID (cmeta_ref_parts.repo_uid) and the UID decides - not the path, which
@@ -1980,11 +2031,15 @@ class Repos:
                                     if xuid not in lowercase_aliases[lowercase_alias]:
                                         lowercase_aliases[lowercase_alias].append(xuid)
 
+                    else:
+                        # nothing added or removed: a file that is there is left as it is
+                        index_before = existing_category_index if index_file_lock is not None else None
+
                     artifact_num += len(existing_category_index.get(self.KEY_INDEX_UIDS, {}))
 
-                # Atomic for a new index file too: a reader never sees it half-written
-                r = utils.files.safe_write_file(index_artifact_file, existing_category_index, file_lock=index_file_lock,
-                                                atomic=True, fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
+                # Atomic for a new index file too: a reader never sees it half-written; a file whose content did
+                # not change is not written (its lock released)
+                r = self._write_index_file(index_artifact_file, existing_category_index, old=index_before, file_lock=index_file_lock)
                 if r['return']>0: return r
 
         

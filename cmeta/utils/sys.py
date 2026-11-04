@@ -690,6 +690,42 @@ def no_window_flags():
     return getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
 
 
+############################################################
+def prefer_speed():
+    """
+        On Windows, this process out of the power throttling (EcoQoS) Windows applies to a process it takes for
+        background work: a server's worker process that waits between requests ran on the efficiency cores at a
+        low clock and answered ~3x slower than back to back (the same answer 55 ms, then 182 ms a second apart;
+        63 ms once opted out - a Core Ultra laptop on the Balanced plan, 2026-11-04). SetProcessInformation with
+        ProcessPowerThrottling: the execution-speed bit under the process's control and off - Microsoft's way for a
+        process to say it needs speed; it still sleeps when idle. Nothing happens elsewhere (Linux has no such
+        policy; macOS has QoS classes for launchd jobs), nor on a Windows without the call, nor when
+        CMETA_POWER_THROTTLING=yes asks to leave the OS policy in place.
+
+        Returns:
+            bool: True when the setting was applied.
+    """
+    if os.name != 'nt' or os.environ.get('CMETA_POWER_THROTTLING', '').strip().lower() in ('yes', 'on', 'true', '1'):
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_POWER_THROTTLING_STATE(ctypes.Structure):
+            _fields_ = [('Version', wintypes.ULONG), ('ControlMask', wintypes.ULONG), ('StateMask', wintypes.ULONG)]
+
+        # version 1; PROCESS_POWER_THROTTLING_EXECUTION_SPEED (0x1) controlled here, and off
+        state = PROCESS_POWER_THROTTLING_STATE(1, 0x1, 0)
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.SetProcessInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        kernel32.SetProcessInformation.restype = wintypes.BOOL
+        # 4 = ProcessPowerThrottling (PROCESS_INFORMATION_CLASS)
+        return bool(kernel32.SetProcessInformation(kernel32.GetCurrentProcess(), 4, ctypes.byref(state), ctypes.sizeof(state)))
+    except Exception:
+        return False
+
+
 def run(
     cmd: str,  # Command to execute.
     cmds: list = None,  # Command to execute.

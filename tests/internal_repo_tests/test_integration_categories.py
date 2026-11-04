@@ -778,6 +778,26 @@ def test_smart_find_by_cid_a_missing_plain_path_is_not_found(cm, tmp_path):
     assert missing in r['error']
 
 
+def test_smart_find_by_cid_names_a_missing_path_under_a_folder_with_a_space_whole(cm, tmp_path):
+    """A folder that exists may hold a space in its name (a Windows profile "Grigori Fursin"): a missing path
+    under it was cut at the space in the error (2026-11-04) - the existing beginning decides where it goes on."""
+    spaced = tmp_path / 'my folder'
+    spaced.mkdir()
+    missing = os.path.join(str(spaced), 'no', 'such', 'folder')
+
+    r = _smart_find(cm, 'in ' + missing + ' now, really')
+    assert r['return'] == 16
+    assert missing in r['error'] and 'now' not in r['error'], r['error']
+
+    # the folder itself exists: the path, as before
+    r = _smart_find(cm, 'in ' + str(spaced) + ' now')
+    assert r['return'] == 0 and r['path'] == str(spaced), r
+
+    # nothing of it exists: the first word, as before
+    r = _smart_find(cm, 'in ' + os.path.join(str(tmp_path), 'gone', 'x y') + ' now')
+    assert r['return'] == 16 and os.path.join(str(tmp_path), 'gone', 'x') in r['error'], r['error']
+
+
 def test_matches_any_value_walks_nested_structures():
     # Loaded by path: the internal repo lives under a directory with a dash,
     # so it cannot be reached with a normal import statement

@@ -211,19 +211,25 @@ DEFAULT_KEYS = (('q', 'browse_default_query'), ('repos', 'browse_default_repos')
                 ('cats', 'browse_default_cats'), ('view', 'browse_default_view'))
 PAGE_TITLE = 'cMeta browse'
 
-# One catalog per process: rebuilt when the index changes (its files' mtimes and count)
+# One catalog per process: when the index changes (a file's time or size), only the categories whose index file
+# changed are read again (by_cat keeps the items of every category; dirty = the categories read again since the
+# connection index was last built, None = every one: the first build, a reload)
 _lock = threading.Lock()
-_catalog = {'stamp': None, 'items': [], 'by_uid': {}, 'by_key': {}, 'built': '', 'ms': 0}
+_catalog = {'stamp': None, 'items': [], 'by_uid': {}, 'by_key': {}, 'by_cat': {}, 'built': '', 'ms': 0,
+            'reread': 0, 'dirty': None}
 _desc_cache = {}                 # path of _desc -> (mtime, data)
 
 # The connection index: what every artifact connects to (`connections`, both ways), runs (`uses`, one way) and
 # reads (`ai_uses`, one way), and the text of its _desc, read from all _desc files in a background thread; kept per
 # process, rebuilt when the catalog changes or a reload asks for it. _links_cache keeps what each _desc declared,
 # by mtime and size, so a rebuild re-reads only edits; the cache artifact keeps it across processes (_disk).
+# After a change of the index only the _desc files of the categories read again are looked at before the answer
+# (desc_of: the _desc file of every artifact as of the last build; `all` asks the next build to look at every one:
+# a reload, the routine refresh), and the build then goes on with every file in the background (2026-11-04).
 _conn_lock = threading.Lock()
 _conn = {'stamp': None, 'want': 0, 'ready': False, 'building': False, 'thread': None, 'done': 0, 'total': 0,
          'ms': 0, 'built': '', 'error': '', 'out': {}, 'uses': {}, 'inn': {}, 'adj': {}, 'links': 0, 'uses_n': 0,
-         'text': {}, 'reread': 0}
+         'text': {}, 'reread': 0, 'desc_of': {}, 'all': False, 'trusted': 0}
 _links_cache = {}                # path of _desc -> ((mtime, size), connections, uses, ai_uses, text)
 _disk = {'key': None, 'dir': '', 'loaded': '', 'files': frozenset(), 'load_ms': 0, 'saved': '', 'error': ''}
 _launchers = {}                  # what the open buttons can start here, found once per process
@@ -935,15 +941,27 @@ def _cache_save(files):
             pass
 
 
-def _conn_compute(items, by_uid, by_key):
+def _conn_compute(items, by_uid, by_key, trusted=None):
     """The connection index of the catalog items: out (connections, as declared), uses (what each runs), ai (whose
     memory each reads: `ai_uses`), inn (who connects to, uses or reads each), adj (every neighbour, either way),
-    text (the text of each _desc, lower-cased, and where its link lists start), files (every _desc read) and reread
-    (how many were read now, the rest came from the cache)."""
+    text (the text of each _desc, lower-cased, and where its link lists start), files (every _desc read), desc_of
+    (the _desc file of each artifact, '' for none), reread (how many were read now, the rest came from the cache)
+    and trusted (how many files were not looked at). `trusted`: the UIDs whose _desc file is taken as it was at
+    the last build (what _links_cache holds for the file desc_of names - no stat, no read: the artifacts of the
+    categories the index change did not touch); None: every file is looked at."""
     counter = itertools.count(1)
     fresh = []
+    known = _conn['desc_of'] if trusted else {}
+    kept = [0]
 
     def read(it):
+        if trusted and it['uid'] in trusted:
+            f = known.get(it['uid'])
+            hit = _links_cache.get(f) if f else None
+            if f == '' or hit is not None:
+                kept[0] += 1
+                _conn['done'] = next(counter)
+                return (f, hit[1], hit[2], hit[3], hit[4]) if hit is not None else ('', [], [], [], None)
         try:
             r = _links_raw(it['path'], fresh)
         except Exception:
@@ -953,10 +971,11 @@ def _conn_compute(items, by_uid, by_key):
 
     with ThreadPoolExecutor(max_workers=16) as ex:
         raw = list(ex.map(read, items))
-    out, uses, ai, inn, adj, texts, files = {}, {}, {}, {}, {}, {}, []
+    out, uses, ai, inn, adj, texts, files, desc_of = {}, {}, {}, {}, {}, {}, [], {}
     n_links = n_uses = n_ai = 0
     for it, (f, conns, us, ais, doc) in zip(items, raw):
         src = it['uid']
+        desc_of[src] = f
         if f:
             text, cut = doc or ('', 0)
             files.append(f)
@@ -989,29 +1008,40 @@ def _conn_compute(items, by_uid, by_key):
             adj.setdefault(t, set()).add(src)
             adj.setdefault(src, set()).add(t)
     return {'out': out, 'uses': uses, 'ai': ai, 'inn': inn, 'adj': adj, 'links': n_links, 'uses_n': n_uses,
-            'ai_n': n_ai, 'text': texts, 'files': files, 'reread': len(fresh)}
+            'ai_n': n_ai, 'text': texts, 'files': files, 'desc_of': desc_of, 'reread': len(fresh),
+            'trusted': kept[0]}
 
 
 def _conn_run():
     """The background build of the connection index; it runs again while the catalog changed or a reload asked
     for a newer one during the build. The first build of a process starts from the cache artifact; a build that
-    read anything new, or found files gone, writes it back."""
+    read anything new, or found files gone, writes it back. After a change of the index the build looks only at
+    the _desc files of the categories read again (the answer that waits for it comes soon), then goes on with
+    every file in the background, so a _desc edited elsewhere is found as before."""
+    every = False
     while True:
         with _lock:
             items, by_uid, by_key, stamp = (_catalog['items'], _catalog['by_uid'], _catalog['by_key'],
                                             _catalog['stamp'])
+            dirty = _catalog['dirty']
+            _catalog['dirty'] = set()
         with _conn_lock:
             want = _conn['want']
+            every = every or _conn['all'] or not _conn['ready'] or dirty is None
+            _conn['all'] = False
             _conn.update(done=0, total=len(items))
+        trusted = None if every else {it['uid'] for it in items if it['cat'] not in dirty}
         t0 = time.monotonic()
         try:
             _cache_load()
-            res, err = _conn_compute(items, by_uid, by_key), ''
+            res, err = _conn_compute(items, by_uid, by_key, trusted), ''
             if res['reread'] or frozenset(res['files']) != _disk['files']:
                 _cache_save(res['files'])
             res.pop('files')
         except Exception as e:
             res, err = None, '%s: %s' % (type(e).__name__, e)
+            with _lock:
+                _catalog['dirty'] = None             # the next build looks at every file
         with _conn_lock:
             if res is not None:
                 _conn.update(res)
@@ -1019,9 +1049,11 @@ def _conn_run():
                              ms=int((time.monotonic() - t0) * 1000),
                              built=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             _conn['error'] = err
-            if res is None or (_conn['want'] == want and _catalog['stamp'] == stamp):
+            if res is None or (_conn['want'] == want and _catalog['stamp'] == stamp and not res['trusted']):
                 _conn['building'] = False
                 return
+            # files were trusted: once more with every one, in the background (nobody waits: the index is ready)
+            every = bool(res['trusted'])
 
 
 def _conn_request(force=False):
@@ -1033,6 +1065,8 @@ def _conn_request(force=False):
             _conn['want'] += 1
         due = _conn['ready'] and time.monotonic() - _conn.get('t', 0) > REFRESH_AFTER
         if (force or due or _conn['stamp'] != _catalog['stamp']) and not _conn['building']:
+            if force or due:
+                _conn['all'] = True                  # every _desc looked at: a reload, the routine refresh
             _conn['building'] = True
             t = threading.Thread(target=_conn_run, name='cserver.browse connection index', daemon=True)
             _conn['thread'] = t
@@ -1051,7 +1085,8 @@ def _conn_status():
     return {'ready': _conn['ready'], 'building': _conn['building'], 'done': _conn['done'], 'total': _conn['total'],
             'ms': _conn['ms'], 'built': _conn['built'], 'error': _conn['error'], 'links': _conn['links'],
             'uses': _conn['uses_n'], 'ai_uses': _conn.get('ai_n', 0), 'descs': len(_conn['text']),
-            'reread': _conn['reread'], 'stale': bool(_conn['ready'] and _conn['stamp'] != _catalog['stamp']),
+            'reread': _conn['reread'], 'trusted': _conn.get('trusted', 0),
+            'stale': bool(_conn['ready'] and _conn['stamp'] != _catalog['stamp']),
             'cache': {'artifact': 'cache::' + CACHE_ALIAS if _disk['dir'] else '', 'load_ms': _disk['load_ms'],
                       'saved': _disk['saved'], 'error': _disk['error']}}
 
@@ -1265,21 +1300,25 @@ class Category(InitCategory):
 
     # ------------------------------------------------------------ the catalog
     def _index_stamp(self):
-        """Count and newest mtime of the index files: changes whenever the index does."""
+        """The index files by name, each with its time and size: changes whenever the index does, and says which
+        files changed (the catalog is then read again for those categories alone)."""
         path = getattr(self.cm.repos, 'index_path', '')
-        newest, count = 0.0, 0
+        files = {}
         try:
             with os.scandir(path) as it:
                 for e in it:
                     if e.is_file():
-                        count += 1
-                        newest = max(newest, e.stat().st_mtime)
+                        st = e.stat()
+                        files[e.name] = (st.st_mtime_ns, st.st_size)
         except OSError:
             pass
-        return (path, count, newest)
+        return (path, files)
 
     def _catalog(self, force=False):
-        """Every artifact of every indexed category, with what search needs precomputed. Cached per process."""
+        """Every artifact of every indexed category, with what search needs precomputed. Cached per process; after
+        a change of the index only the categories whose index file changed are read again - until 2026-11-04 any
+        change (a priority set, an artifact moved, any cx write) made every worker process of a server read the
+        whole index again, and a search with words wait for every _desc file to be looked at."""
         stamp = self._index_stamp()
         if not force and _catalog['stamp'] == stamp:
             return _catalog
@@ -1287,7 +1326,14 @@ class Category(InitCategory):
             if not force and _catalog['stamp'] == stamp:
                 return _catalog
             t0 = time.monotonic()
-            items, by_uid, by_key = [], {}, {}
+            # the index files that changed since this catalog was built (None: everything is read)
+            old = _catalog['stamp']
+            changed = None
+            if not force and old and old[0] == stamp[0]:
+                changed = {n for n in set(old[1]) | set(stamp[1]) if old[1].get(n) != stamp[1].get(n)}
+            ext = getattr(self.cm.repos, 'index_extension', '.pkl')
+            kept = _catalog['by_cat'] if changed is not None else {}
+            by_cat, by_uid, by_key, reread = {}, {}, {}, []
             stale = [False]
 
             def lookup(alias, uid):
@@ -1311,9 +1357,16 @@ class Category(InitCategory):
                 if (c.get('cmeta') or {}).get('no_index'):
                     skipped.append(cp.get('artifact_alias', ''))
                     continue
-                rr = lookup(cp.get('artifact_alias', ''), cp['artifact_uid'])
+                cat = cp.get('artifact_alias', '')
+                # a category whose index file is as it was keeps its items
+                if changed is not None and cat in kept and cat + ext not in changed:
+                    by_cat[cat] = kept[cat]
+                    continue
+                rr = lookup(cat, cp['artifact_uid'])
                 if rr.get('return', 1) > 0:
                     continue
+                reread.append(cat)
+                mine = []
                 for a in rr.get('artifacts', []):
                     p = a['cmeta_ref_parts']
                     meta = a.get('cmeta') or {}
@@ -1325,7 +1378,7 @@ class Category(InitCategory):
                     name = meta.get('name') if isinstance(meta.get('name'), str) else ''
                     it = {'uid': p['artifact_uid'].lower(), 'alias': alias, 'alias_l': alias.lower(),
                           'name': name, 'name_l': name.lower(),
-                          'cat': cp.get('artifact_alias', ''), 'cat_uid': cp['artifact_uid'],
+                          'cat': cat, 'cat_uid': cp['artifact_uid'],
                           'repo': p.get('repo_alias') or '', 'repo_uid': p.get('repo_uid') or '',
                           'path': a.get('path', ''), 'meta': meta, 'tags': tags,
                           'tags_l': [t.lower() for t in tags],
@@ -1334,14 +1387,20 @@ class Category(InitCategory):
                           'updated_full': updated if isinstance(updated, str) else ''}
                     it['hay'] = ' '.join([alias, it['uid'], it['cat'], it['repo'],
                                           json.dumps(meta, ensure_ascii=False, default=str)]).lower()
-                    items.append(it)
-                    by_uid[it['uid']] = it
-                    by_key[(it['cat'].lower(), it['alias_l'])] = it['uid']          # cat::alias references
-                    by_key[(it['cat_uid'].lower(), it['alias_l'])] = it['uid']
-            _catalog.update({'stamp': stamp, 'items': items, 'by_uid': by_uid, 'by_key': by_key, 'skipped': skipped,
-                             'built': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    mine.append(it)
+                by_cat[cat] = mine
+            items = [it for mine in by_cat.values() for it in mine]
+            for it in items:
+                by_uid[it['uid']] = it
+                by_key[(it['cat'].lower(), it['alias_l'])] = it['uid']          # cat::alias references
+                by_key[(it['cat_uid'].lower(), it['alias_l'])] = it['uid']
+            # the categories read again since the connection index was last built (None: every one)
+            dirty = None if changed is None or _catalog['dirty'] is None else _catalog['dirty'] | set(reread)
+            _catalog.update({'stamp': stamp, 'items': items, 'by_uid': by_uid, 'by_key': by_key, 'by_cat': by_cat,
+                             'skipped': skipped, 'built': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                              'ms': int((time.monotonic() - t0) * 1000), 'categories': len(cats),
-                             'stale_engine': stale[0]})
+                             'stale_engine': stale[0], 'reread': len(reread) if changed is not None else -1,
+                             'dirty': dirty})
             if stale[0]:
                 print('cMeta warning: cserver.browse runs on an engine core older than its page (Repos.find_in_index without scope): '
                       'restart this server so that it loads the engine it was upgraded to')
@@ -1501,8 +1560,10 @@ class Category(InitCategory):
         return out
 
     def _catalog_info(self):
+        # reread: the categories read again at the last build (-1: every one - the first build, a reload)
         return {'artifacts': len(_catalog['items']), 'built': _catalog['built'], 'ms': _catalog['ms'],
-                'categories': _catalog.get('categories', 0), 'stale_engine': bool(_catalog.get('stale_engine'))}
+                'categories': _catalog.get('categories', 0), 'stale_engine': bool(_catalog.get('stale_engine')),
+                'reread': _catalog.get('reread', -1)}
 
     def _options(self):
         """The repositories and categories for the pickers, with counts (visible items only), and the index of the
