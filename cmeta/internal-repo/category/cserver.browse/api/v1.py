@@ -108,7 +108,9 @@ These keys of the cserver config apply (cx config set cserver --meta.<key>=<valu
     browse_category_sort      the order of a category's artifacts when nothing else is asked: "work,note:-alias;
                               report:created,updated" (categories, a colon, the sort keys - "-" turns a key
                               around; ";" between such pairs) or a dict; it goes before the category's own meta
-                              (browse_sort), the default is by name
+                              (browse_sort), the default is by name. The key "dated" lists the names without a
+                              date in front first (A to Z: the routines one runs by hand), then the dated ones
+                              newest first - for a category that mixes both (fgg.automation)
 
 The pickers of repositories and categories hold what is ticked: names (none = all), a name with "-" in front left
 out ("-fgg-arc": all but fgg-arc, "-*": none at all), "*" = all. A sort may be several keys, "created,updated": by
@@ -321,8 +323,13 @@ def _picked(alias, uid, wants):
 
 # The sort keys of a list (_sort), several in one sort: "created,updated" = by created, then by updated; a "-" in
 # front of a key turns it around ("-alias": names from the end - dated names, the newest first)
-SORT_KEYS = ('relevance', 'alias', 'cat', 'repo', 'created', 'updated', 'uid')
-SORT_UP = ('alias', 'cat', 'repo', 'uid')            # the keys that go up by default (names); the dates go down
+SORT_KEYS = ('relevance', 'alias', 'dated', 'cat', 'repo', 'created', 'updated', 'uid')
+SORT_UP = ('alias', 'dated', 'cat', 'repo', 'uid')   # the keys that go up by default (names); the dates go down
+
+
+def _dated(it):
+    """A name with a date in front: a year first (20261104.x, 2017xxxx.x, 202702xx.x)."""
+    return it['alias_l'][:4].isdigit()
 
 
 def _sort_keys(value):
@@ -695,8 +702,16 @@ def _sort(items, sort, desc, words):
     out = list(items)
     for n in range(len(order) - 1, -1, -1):              # the last key first: a stable sort keeps its order in ties
         k = order[n].lstrip('-')
-        if k in keys:
-            out.sort(key=keys[k], reverse=desc if n == 0 else _key_desc(order[n]))
+        down = desc if n == 0 else _key_desc(order[n])
+        if k == 'dated':
+            # the names without a date first, A to Z (the routines run by hand), then the dated ones newest first;
+            # turned around it is the same list from its end
+            out = sorted((it for it in out if not _dated(it)), key=keys['alias']) + \
+                sorted((it for it in out if _dated(it)), key=keys['alias'], reverse=True)
+            if down:
+                out.reverse()
+        elif k in keys:
+            out.sort(key=keys[k], reverse=down)
     return out
 
 

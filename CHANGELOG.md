@@ -2,6 +2,13 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.38.5
+- **`/browse`: the order "undated first, then the newest dated".** The sort key `dated` lists the names without a date
+  in front first, A to Z (the routines one runs by hand: "Answer Emails", "Sync cMeta repos"), then the dated ones
+  newest first (`20261007.x`, `2017xxxx.x`); `dir=desc` gives the same list from its end. The Artifact column cycles
+  through A to Z, Z to A and this order; a category declares it as its own with `browse_sort: dated` (or the server
+  with `browse_category_sort`). Tests: `test_cserver_browse.py`.
+
 ## 0.38.4
 - **`/browse`: a cName and a `{{{cRef}}}` in the query, and a word about hidden categories.** `<alias>,<UID>` finds
   that artifact (both must hold); `{{{<cRef>}}}` pasted from a text, with or without a path after it, counts as the

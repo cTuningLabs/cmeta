@@ -699,6 +699,20 @@ def test_a_category_declares_its_order_and_the_server_may_change_it(cm):
     assert aliases(search(cm, cats='my.dated', sort='alias', dir='asc')) == ['20250101.c', '20261020.b', '20261103.a']
 
 
+def test_dated_order_lists_the_routines_first_then_the_newest(cm):
+    """sort=dated (2026-11-04): the names without a date first, A to Z, then the dated ones newest first; dir=desc
+    gives the same list from its end; a category may declare it as its own order."""
+    for alias in ('Answer Emails', 'Update links', '20010101.change-word', '20261007.qr-codes', '2017xxxx.fp_p'):
+        make(cm, alias, category='log')
+    names = ['Answer Emails', 'Update links', '20261007.qr-codes', '2017xxxx.fp_p', '20010101.change-word']
+    out = search(cm, cats='log', sort='dated', limit=50)
+    got = [a for a in aliases(out) if a in names]
+    assert got == names, got
+    assert out['sort'] == 'dated' and out['dir'] == 'asc'
+    got = [a for a in aliases(search(cm, cats='log', sort='dated', dir='desc', limit=50)) if a in names]
+    assert got == list(reversed(names)), got
+
+
 def test_category_sorts_of_the_config():
     import importlib.util
     import cmeta as cmeta_module
