@@ -1,0 +1,91 @@
+# The settings of the page cserver.cmeta.configs: what it scans for the config artifacts its artifacts read, and
+# which values it never shows. The keys themselves are found in the artifacts (their code, their docs and the
+# "configs" block of their _desc.yaml), never listed here.
+
+title: cMeta configs
+subtitle: 'Every key the artifacts plugged into this machine read from the config artifacts
+  (cx config set <name> --meta.<key>=<value>): declared, found in their code and docs, set here.'
+
+# The categories whose artifacts are scanned (aliases or fnmatch patterns; the index says what is plugged)
+code_categories:
+  - category
+  - task
+  - tool
+  - app
+  - program
+  - container
+  - script
+  - automation
+  - '*.automation'
+  - website
+  - host
+  - machine
+
+# The files read in each artifact: Python code is parsed, the others searched for "cx config set" lines, tables of
+# keys and (_desc only) a "configs" block
+code_files:
+  - '*.py'
+doc_files:
+  - '*.md'
+  - '_desc.yaml'
+  - '_desc.json'
+
+# How deep the folders of an artifact are entered (0: its own folder only), and the folders never entered
+max_depth: 2
+skip_dirs:
+  - .git
+  - .venv
+  - venv
+  - env
+  - node_modules
+  - __pycache__
+  - site-packages
+  - tests
+  - test
+  - build
+  - dist
+  - .claude
+  - '!AI'
+
+# The docs of each plugged repository, relative to its root: files, or folders whose doc_files are read
+repo_docs:
+  - README.md
+  - docs
+
+# Keys that reach the code another way than a call of the config category, by the dotted path the code takes them
+# from: the task engine of cmeta-aops hands every key of config::task to every task as global.init (the answer of
+# task/init), so ctx['tasks']['global']['init']['<key>'] in the code and {{global.init.<key>}} in a _desc read
+# config::task <key>
+routes:
+  global.init: task
+
+# A file larger than this is not read (bytes)
+max_file_bytes: 1000000
+
+# The keys whose values are never shown, to anyone (fnmatch patterns, on the whole dotted key and on its last part);
+# a declared key may say secret: true as well
+secret_keys:
+  - password
+  - '*_password'
+  - '*password_sha256*'
+  - '*passwd*'
+  - '*passphrase*'
+  - '*secret*'
+  - '*token*'
+  - '*api_key*'
+  - '*apikey*'
+  - '*credential*'
+  - '*private_key*'
+  - '*_key'
+  - '*_keys'
+  - key
+  - keys
+
+# One line about a config artifact when none of the artifacts that read it says what it is
+config_descs:
+  default: the shared defaults of the engine and of the categories - where new artifacts go, the git origin of short
+    repository names, the addresses of the pages
+  cserver: the engine's web server (cx app run cserver) - its address, its password or e-mail login, what its pages
+    show
+  ctuning_server: the cTuning.ai platform (cPlatform) this machine talks to - its API address and a personal key
+  task: the task engine of cmeta-aops and its tasks - the caches, the file cache, the versions, the defaults of --use

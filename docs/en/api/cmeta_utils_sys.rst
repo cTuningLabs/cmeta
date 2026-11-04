@@ -46,6 +46,8 @@ Functions
 
 .. autofunction:: cmeta.utils.sys.plus_env
 
+.. autofunction:: cmeta.utils.sys.prefer_speed
+
 .. autofunction:: cmeta.utils.sys.run
 
 .. autofunction:: cmeta.utils.sys.run_command_with_timeout_tree_kill_on_windows

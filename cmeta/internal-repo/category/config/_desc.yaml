@@ -1,0 +1,14 @@
+# The keys of the config artifacts that the engine's core reads (the core is no artifact, so the config category
+# declares them). Every artifact that reads a config may declare its keys the same way - the page /cmeta.configs
+# (category cserver.cmeta.configs) lists them all.
+
+configs:
+  default:
+    desc: the shared defaults of the engine and of its categories - the git origin of short repository names, where
+      new artifacts of a dated category go, the addresses the CLI prints
+    keys:
+      url_cserver_info:
+        desc: the address "cx <category> find <artifact> --url" prints and copies, the artifact's cRef appended to
+          it; the environment variable CMETA_SERVER_INFO_URL goes first
+        type: url
+        default: http://127.0.0.1:8004/far?hcref=

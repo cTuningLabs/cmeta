@@ -1,0 +1,12 @@
+# The keys of the config artifact "cserver" that the home page /projects reads.
+
+configs:
+  cserver:
+    keys:
+      hide_repos:
+        desc: repositories left off the cards (aliases or fnmatch patterns, comma-separated); their pages stay reachable
+          at their own addresses
+        type: list
+      default_page:
+        desc: what "/" shows (read by the server at startup) - /projects by default, none = the plain welcome page
+        default: /projects

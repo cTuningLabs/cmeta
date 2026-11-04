@@ -1,0 +1,27 @@
+# The keys of the config artifacts the repo category reads (cx repo get / pull / plug ...).
+
+configs:
+  default:
+    keys:
+      default_git:
+        desc: the git server a short repository name is cloned from - cx repo get <name> clones
+          <default_git><owner>/<name>
+        default: https://github.com/
+        example: 'git@github.com:'
+      default_git_repo:
+        desc: the owner of a short repository name - cx repo get cmeta-aops makes the repository <owner>@cmeta-aops
+        default: ctuninglabs
+        example: my-org
+      default_cmeta_repo_url:
+        desc: where a cmeta://<name> repository is downloaded from as a zip (this address, the name, a dash ...)
+        type: url
+        default: https://cTuning.ai/project/cmeta/repos/files/cmr-
+  ctuning_server:
+    keys:
+      api_key:
+        desc: the personal API key of the cTuning.ai platform, sent with the zip download of a repository from it
+        secret: true
+      skip_ssl_certificate:
+        desc: yes = such a zip download does not check the TLS certificate of the server (a test server only)
+        type: yes/no
+        default: 'no'

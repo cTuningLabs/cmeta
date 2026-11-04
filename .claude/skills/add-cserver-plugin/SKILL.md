@@ -47,7 +47,7 @@ that one artifact instead of rebuilding the whole home:
 
 ```bash
 cx category index  <repo>:cserver.<name>   # index a hand-made folder
-cx category reindex cserver.<name>         # after editing its _cmeta.* meta (nothing written)
+cx category reindex cserver.<name>         # after editing its _cmeta.* meta (nothing written; since cMeta 0.34.0)
 cx category update <repo>:cserver.<name>   # the same, but it rewrites the file too
 cx repo reindex <repo>                     # the whole repository, when several things changed in it
 ```
@@ -198,7 +198,7 @@ misspelled key (`num_nodes` vs `max_nodes`) is silently ignored by design.
 
 ---
 
-## 4. Two gotchas that only bite on one host
+## 4. Three gotchas that only bite on one host
 
 ### 4.1 Cache-bust your `files/` assets — **the** cross-host trap
 
@@ -253,6 +253,63 @@ if (darkMode) document.getElementById('<root-id>').classList.add('dark');
 Then style `#<root-id>.dark …` in your CSS (panel background, borders, control
 inputs, legend text) and flip any colors your JS sets inline — SVG strokes,
 label fills, canvas colors — since CSS can't reach those.
+
+### 4.3 Live inside the cPlatform's shell
+
+Since its layout of 2026-10-31 the cPlatform wraps a page in a shell:
+
+- a sticky top bar (`.ctp-bar`, z-index 40, `--ctp-bar-h` = 56px);
+- a sticky menu on the left (`.ctp-side`, no z-index, before the page in the DOM);
+- the theme on `html[data-ctp-theme]`.
+
+Three traps, found 2026-11-04 when a dark page cut the shell's menu:
+
+- **Paint nothing past the page's box.** A dark page may fill the window on
+  the internal cserver with `box-shadow: 0 0 0 100vmax` and
+  `clip-path: inset(0 -100vmax)`. In the shell that band paints over the menu:
+  the clip-path makes a stacking context, painted after the menu in tree order.
+  `elementFromPoint` still finds the menu, because shadows are not hit-tested,
+  so check this with screenshot pixels.
+- **Put sticky bars under the shell's bar.** Use `top: var(--ctp-bar-h, 0px)`.
+  Add the same offset to `scroll-margin-top` and to any fixed spinner at the top.
+- **Follow the shell's theme.** The browser's own choice
+  (`localStorage ctp-theme`) wins over the account's theme, and it switches
+  without a reload, so `misc.theme` can disagree with the shell. The shell's
+  `body.ctp` background is `!important`, so the page cannot colour the window.
+
+So tell the page it is hosted, and branch on that:
+
+```python
+'hosted': bool(misc.get('ctuning_server')),        # into CONFIG
+```
+
+```js
+if (CONFIG.hosted) {                                // and hide the page's own theme switch
+  root.classList.add('hosted');
+  const html = document.documentElement;
+  const follow = () => { const t = html.getAttribute('data-ctp-theme');
+                         root.classList.toggle('dark', t ? t === 'dark' : CONFIG.dark_mode === true); };
+  follow();
+  new MutationObserver(follow).observe(html, {attributes: true, attributeFilter: ['data-ctp-theme']});
+}
+```
+
+```css
+#root.dark:not(.hosted) { box-shadow: 0 0 0 100vmax var(--bg); clip-path: inset(0 -100vmax); }   /* engine only */
+#root.hosted { --top: var(--ctp-bar-h, 0px); --bg: var(--ctp-bg, #fff); }                       /* the shell's */
+.bar { position: sticky; top: var(--top, 0px); }
+```
+
+To check it without deploying, render the page's `web_` with the cPlatform's
+`misc` (`{'ctuning_server': True, 'theme': 'dark'}`) into a copy of the shell:
+
+- the platform's `ctp-layout.css` and `<html data-ctp-theme="dark">`;
+- `<body class="ctp">` with a `header.ctp-bar`;
+- an `aside.ctp-side` with enough links to fill the window;
+- a tall spacer after the page, so it can scroll.
+
+In a headless browser, compare a pixel of the menu below the page's top edge
+with one at the menu's top, before and after a scroll.
 
 ---
 
@@ -322,18 +379,26 @@ Then in a browser, on **both** hosts:
 - [ ] Changing an input + Reload re-fetches and updates the URL.
 - [ ] The loaded asset URLs carry a `?v=` stamp matching your latest edit.
 - [ ] cPlatform in dark theme is legible (panel, labels, controls, node strokes).
+- [ ] cPlatform: the shell's menu stays whole once the page scrolls, sticky bars
+      stop under its top bar, and its theme switch turns the page too (§4.3).
 - [ ] All links/assets came from `urls` — nothing hardcoded.
 
 ---
 
 ## 7. Reference implementations
 
-- `gfursin@cmeta-personal/category/cserver.cmeta.connections` — D3 force graph;
-  the full pattern: `NATIVE_ACTION_PARAMS` forwarding, `data-action` controls,
-  `_asset()` cache-busting, dark-theme handling.
-- `…/cserver.lumai.graph` — Plotly dashboard reading `files/input-*.json`; the
-  template to copy for a chart.
-- `…/cserver.habits` — read/write example (`native_action` persisting meta.json).
+The pages the engine ships, in `cmeta/internal-repo/category/`:
+
+- `cserver.projects` — the home page `/`: every `cserver.*` category as a card,
+  found in the index. The smallest complete page to copy: `web_` with one JSON
+  action (`?native_action=projects`), `_asset()` cache-busting, the dark theme
+  (`?dark=1` here, `misc['theme']` on the cPlatform).
+- `cserver.browse` — search, browse and graph of every plugged repository: a
+  dozen JSON actions in one `web_` (`search`, `graph`, `options`, `open`,
+  `save`, `create`, ...), the state of the page kept in its address.
+- `cserver.cref` — the page of one artifact named by its cRef
+  (`/cref/<category>::<alias>,<UID>[/<relative path>]`): a page whose address
+  carries a path.
 
 Related skills: `add-plugin` (category scaffolding + `api/v1.py` conventions),
 `use-cmeta-cli`, `use-cmeta-python`.

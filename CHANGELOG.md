@@ -2,6 +2,47 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.38.7
+- **A new page, `/cmeta.configs` (category `cserver.cmeta.configs`): every key the plugged artifacts read from the
+  config artifacts.** By config artifact: what each key does, its type and default, which artifacts read it (links to
+  the lines of their code), its value on this machine, and the `cx config set` / `unset` lines that change it; the
+  keys set here that no plugged artifact reads (a typo, a leftover, a key of an artifact not plugged here) under each
+  config; a search (`config:`, `key:`, `repo:`, `cat:`, `is:set|unset|unread|secret|declared|code|docs|dynamic|
+  undocumented`), a view by repository, the dark theme and the cPlatform's shell. Nothing is listed that no plugged
+  artifact knows - a machine with fewer repositories shows fewer configs. A key is known from a new `configs` block in
+  an artifact's `_desc.yaml` (the config, then its keys with `desc`, `type`, `default`, `example`, `secret`), from its
+  Python code (parsed: a call of the config category and what the code takes from the answer - through variables,
+  attributes, module globals, the file's helper functions, loops over keys it spells out and helper modules imported
+  from next to it; the task engine's `global.init` route of cmeta-aops through the page's `files/configs.yaml`), and
+  from its docs (`cx config set ... # what it does` lines, Markdown tables of keys). The values of secret-like keys are
+  never sent; the values set here only to a browser on the server's own machine or one past its password
+  (`configs_values` in the `cserver` config says otherwise), never through the cPlatform; `hide_repos` applies. The
+  scan is kept per file in `cache::cserver--cmeta-configs` (local repository): about 10 s for ~1,800 files once, then
+  0.1-0.3 s. In a terminal: `cx cserver.cmeta.configs list ["<query>"]` and `scan [--force]`. The engine's own keys
+  are declared in the `_desc.yaml` of `config`, `repo`, `utils`, `cserver.browse`, `cserver.projects` and the
+  `cserver` app. Tests: `test_cserver_configs.py` (10); the counts of the home page's tests follow the second page.
+  **Both ways:** a map on the left lists the artifacts that use configs (by category) beside the configs, a line from
+  each artifact to each config it uses (solid: its code reads it, dashed: it declares its keys, dotted: its docs show
+  them); pointing at an artifact or a config lights its lines and their ends with what goes between them (how many keys
+  read, declared, shown; every key) and fades the rest; a click keeps it and shows only that - the artifact with the
+  configs it uses on top of the cards, the config with who uses it, or one artifact's keys of one config (`?art=` and
+  `?cfg=` in the address; Esc or the card's x let go); every artifact named in a card picks it the same way, a long list
+  of users is folded; one list at a time on a narrower window. The JSON carries `uses` (each artifact, its configs and
+  keys), the search `art:`, and `cx cserver.cmeta.configs artifacts ["<query>"]` prints each artifact with the configs
+  it uses. A host may name the only repositories shown in its call (`only_repos`, never from the address): a
+  cPlatform project pointer with `"only_repos": "internal,ctuninglabs@cmeta-aops"` in `cmeta_params_for_html` shows
+  the engine's and cMeta AOps' keys on a public site.
+- **`cx category index` of a category folder that comes with its API code exits 0.** A category folder brought by a
+  sync or a copy (its `_cmeta.yaml` and its `api/v1.py`) was indexed under the UID of its meta, and then the call
+  failed with `API file "..." already exists` (exit 1); `cx category add` of a folder whose `api/v1.py` was written
+  first did the same after making the meta. The API code is now kept as it is; a missing one is still made from the
+  template. Tests: three in `test_integration_index_existing.py`.
+- **The `add-cserver-plugin` skill** (`.claude/skills/`): a page inside the cPlatform's shell (§4.3) paints nothing
+  past its box (a full-bleed dark background covered the shell's menu), keeps its sticky bars under the shell's top
+  bar and follows the shell's theme as it switches, with a way to check it in a copy of the shell; a line in the
+  checklist; the reference implementations are the engine's own pages (`cserver.projects`, `cserver.browse`,
+  `cserver.cref`).
+
 ## 0.38.6
 - **The package description** (the PyPI summary) in the words of the repository's GitHub description: plain
   folders with metadata, linked by stable IDs, one CLI and one Python API - for collaborative & reproducible R&D,
