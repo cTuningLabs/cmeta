@@ -15,6 +15,8 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 import json
 import os
 import shutil
+import subprocess
+import sys
 
 import pytest
 
@@ -88,6 +90,81 @@ def test_an_incremental_index_moves_the_records_to_this_engine(engines):
     r = access(CMeta(home=home), category='category', command='find', arg1='repo')
     assert r['return'] == 0 and under(os.path.normcase(r['artifacts'][0]['path']), b)
     assert os.path.normcase(os.path.normpath(str(b))) in registered(home)
+
+
+def upgraded_in_place(internal_repo):
+    """The release after, in the same folder (pip or uv upgraded the engine in place): another version, a new app."""
+    meta = internal_repo / '_cmr.yaml'
+    meta.write_text(meta.read_text(encoding='utf-8').replace("version: '", "version: '9", 1), encoding='utf-8')
+    (internal_repo / 'app' / 'cserver-next').mkdir()
+    (internal_repo / 'app' / 'cserver-next' / '_cmeta.yaml').write_text(
+        'artifact: 0123456789abcdef\ncategory: app,554a9a2199104713\n', encoding='utf-8')
+
+
+def cx(*words, timeout=300):
+    """The command line of the engine in this process's environment (the home and the internal repository of the
+    fixture), as a user runs it: its exit code and its output."""
+    env = dict(os.environ)
+    env['PYTHONIOENCODING'] = 'utf-8'
+    p = subprocess.run([sys.executable, '-m', 'cmeta'] + list(words), capture_output=True, stdin=subprocess.DEVNULL,
+                       env=env, timeout=timeout)
+    return p.returncode, p.stdout.decode('utf-8', 'replace'), p.stderr.decode('utf-8', 'replace')
+
+
+def test_an_engine_upgraded_in_place_indexes_its_repository_again(engines):
+    home, a, b, monkeypatch = engines
+    upgraded_in_place(a)
+
+    r = access(CMeta(home=home), category='app', command='find', arg1='cserver-next')
+    assert r['return'] == 0, r.get('error')                       # before: not found until "cx repo reindex internal"
+    assert under(os.path.normcase(r['artifacts'][0]['path']), a)
+
+    # once: the next start reads nothing again
+    app_index = os.path.join(home, 'index', 'app.pkl')
+    before = os.stat(app_index).st_mtime_ns
+    assert under(cserver_path(home), a)
+    assert os.stat(app_index).st_mtime_ns == before
+
+
+def test_the_first_command_after_an_upgrade_in_place_keeps_its_output_usable(engines):
+    """The one command that indexes again says so with an info line on stdout, as the first run of a new home does -
+    and everything a script reads stays where it was: the exit code, the answer, the JSON of -j, nothing on stderr."""
+    home, a, b, monkeypatch = engines
+    upgraded_in_place(a)
+
+    code, out, err = cx('app', 'find', 'cserver-next', '-j')
+    assert code == 0, out + err
+    assert 'cMeta info:' in out and 'indexing it again' in out
+    assert 'cMeta notice' not in err
+    j = json.loads(out.split('-' * 60, 1)[1])                   # the JSON of -j follows its line of dashes, as always
+    assert j['return'] == 0 and under(os.path.normcase(j['artifacts'][0]['path']), a)
+
+    # --version too: the start-up heals the home before the version is printed, once
+    code, out, err = cx('--version')
+    assert code == 0 and 'cMeta version' in out and 'indexing it again' not in out
+
+
+def test_many_commands_starting_at_once_after_an_upgrade_in_place(engines):
+    """Several processes meet the stale index at the same moment (a script, a server's workers): each one answers,
+    none breaks the index - the index lock lets them in one after the other - and afterwards the home is at rest."""
+    home, a, b, monkeypatch = engines
+    upgraded_in_place(a)
+    env = dict(os.environ)
+    env['PYTHONIOENCODING'] = 'utf-8'
+    cmd = [sys.executable, '-m', 'cmeta', 'app', 'find', 'cserver-next']
+
+    procs = [subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+             for _ in range(8)]
+    outs = [p.communicate(timeout=600)[0].decode('utf-8', 'replace') for p in procs]
+    # (the index of the repositories was written before the files of the categories: a process that read it fresh
+    # read an old app index - "not found" on 3 of 5 Linux hosts of the round of 2026-11-05 - written last since)
+    failed = [(p.returncode, o) for p, o in zip(procs, outs) if p.returncode != 0 or 'cserver-next' not in o]
+    assert not failed, failed
+
+    code, out, err = cx('app', 'find', 'cserver-next', '-j')
+    assert code == 0 and 'indexing it again' not in out, out + err
+    j = json.loads(out.split('-' * 60, 1)[1])
+    assert len(j['artifacts']) == 1 and under(os.path.normcase(j['artifacts'][0]['path']), a)
 
 
 def test_the_same_engine_does_not_index_again_at_start(engines):

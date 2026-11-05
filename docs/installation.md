@@ -174,8 +174,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force --with pip "cmeta[server]==0.38.7"
-pip install "cmeta==0.38.7"
+uv tool install --force --with pip "cmeta[server]==0.38.8"
+pip install "cmeta==0.38.8"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other
@@ -336,7 +336,7 @@ checks for detected tools, and choosing a default Git transport:
 
 ```bash
 cx config set task --meta.file_cache=/path/to/large/cache
-cx config set task --meta.check_versions
+cx config set task --meta.tool.check_versions
 cx config set default --meta.default_git=git@github.com:
 ```
 

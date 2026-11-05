@@ -1034,7 +1034,7 @@ Notes:
 cx config set default --meta.default_git_repo=my-org --meta.default_git=git@github.com:
 
 # Move the big file / build cache off the system drive:
-cx config set task --meta.file_cache=D:\cmeta-file-cache --meta.check_versions
+cx config set task --meta.file_cache=D:\cmeta-file-cache --meta.tool.check_versions
 
 # Store credentials for the cTuning zip mirror once:
 cx config set ctuning_server --meta.api_key=$CTUNING_API_KEY --meta.skip_ssl_certificate-

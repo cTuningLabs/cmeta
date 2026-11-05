@@ -32,7 +32,8 @@ gh workflow run test-core.yml --repo cTuningLabs/cmeta --ref dev
 gh run list --repo cTuningLabs/cmeta --workflow test-core.yml --limit 1   # then: gh run watch <id> --repo cTuningLabs/cmeta
 ```
 
-The CI workflow runs only on request; it covers Linux, Windows and macOS with Python 3.9, 3.14 and 3.15.
+The CI workflow runs only on request; it covers Linux, Windows and macOS with Python 3.9, 3.14 and 3.15. The
+release tests of step 3 are skipped here: they need the bumped version.
 
 ## 2. Bump the version
 
@@ -69,6 +70,22 @@ uvx twine check dist/*    # PASSED for both
 Run twine with `uvx`, in its own environment, not with `uv run twine`. `uv run` first syncs `.venv` with
 `uv.lock`. The lock pins an older `packaging` than recent twine needs, and twine then fails with
 `ImportError: cannot import name 'errors' from 'packaging'`.
+
+Then the release tests with that wheel - the suite of step 1 skips them: an older cMeta from PyPI indexes a
+home, the wheel is installed over it the way users upgrade (`pip` into a venv, `uv tool install --force`), and
+its first command must find what the new engine brings, with no reindex by hand. They need the network and
+`uv`, and take a few minutes:
+
+```bash
+CMETA_RELEASE_TESTS=1 CMETA_RELEASE_WHEEL=dist/cmeta-X.Y.Z-py3-none-any.whl python -m pytest tests/release_tests -q -rs
+```
+
+(On Windows cmd, `set` the two variables first.) A release is checked against the installations people really
+have, not only against a fresh home: 0.38.7 shipped a new built-in page that every upgraded installation
+reported as "not found" until `cx repo reindex internal`, because the unit tests only ever ran the new engine
+in a fresh home. The engine tells an upgrade by the version, so the tests need the bumped wheel: the case of the
+release before is the one that matters. Run them on at least two operating systems (`cx task run test-on-hosts`
+of cMeta AOps runs them on the fleet).
 
 ## 4. PR `dev` → `main`
 

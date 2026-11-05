@@ -130,7 +130,8 @@ def test_a_failed_reindex_keeps_the_previous_index(cm, tmp_path, monkeypatch):
     state = {'fail': True, 'tmp': [], 'tmp_files': []}
 
     def find_artifacts(*args, **kwargs):
-        # Called once per category while the artifacts are indexed, after repo.pkl and category.pkl were recorded
+        # Called once per category while the artifacts are indexed, after category.pkl was recorded (repo.pkl, the
+        # index of the repositories, is written last since 0.38.8: a reader that finds it fresh finds the rest fresh)
         if not state['fail']:
             return original(*args, **kwargs)
         state['tmp'] = [p for p in tmp_path.iterdir() if p.name.startswith('index.tmp-')]
@@ -144,7 +145,7 @@ def test_a_failed_reindex_keeps_the_previous_index(cm, tmp_path, monkeypatch):
 
     # The new index was being built in a temporary folder next to the index ...
     assert [p.name for p in state['tmp']] == [f'index.tmp-{os.getpid()}']
-    assert state['tmp_files'] == ['category.pkl', 'repo.pkl']
+    assert state['tmp_files'] == ['category.pkl']
 
     # ... the previous index is untouched and usable, and the temporary folder is gone
     assert index_files(tmp_path) == before

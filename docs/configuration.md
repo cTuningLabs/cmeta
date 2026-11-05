@@ -34,7 +34,7 @@ Configs are ordinary artifacts, so the usual commands work too: `cx config ls`,
 cx config set default --meta.default_git_repo=my-org --meta.default_git=git@github.com:
 
 # Move the large file / build cache off the system drive, and enable version checks:
-cx config set task --meta.file_cache=D:\cmeta-file-cache --meta.check_versions
+cx config set task --meta.file_cache=D:\cmeta-file-cache --meta.tool.check_versions
 
 # Configure access to the cTuning.ai platform (see cplatform.md):
 cx config set ctuning_server --meta.url={your API Access URL}
