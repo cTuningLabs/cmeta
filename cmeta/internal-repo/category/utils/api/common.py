@@ -367,13 +367,18 @@ def _date_from_name(
     """
     _date_from_name function.
 
-    Reads the date an artifact name starts with, if it starts with one.
+    Reads the date an artifact name starts with, if it starts with one: the
+    engine's one rule for dated aliases (cmeta.utils.names.date_in_alias, the
+    rule of -dt and of the dated categories' warning since 0.38.9).
 
-    Recognises "YYYY", "YYYYMM", "YYYYMMDD" and "YYYYMMDD-HHMM" as well as
-    "YYYY-MM-DD", each followed by a separator (".", "-", "_", " ") or by the
-    end of the name - so "20251206.far manager", "202512.some note",
-    "20250814 - cTuning Labs" and "2026-05-03 notes" are all understood. The
-    value is validated, so "20261301.something" is not read as a date.
+    Recognises "YYYY", "YYYYMM", "YYYYMMDD", "YYYYMMDD-HHMM" and
+    "YYYYMMDD-HHMMSS" as well as "YYYY-MM-DD", each followed by a separator
+    (".", "-", "_", " ") or by the end of the name - so "20251206.far manager",
+    "202512.some note", "20250814 - cTuning Labs" and "2026-05-03 notes" are all
+    understood - and a date whose unknown part is written with x ("202604xx.tax"
+    is April 2026, "198xxxxx" the eighties); a range starts with its first date
+    ("2020-2022.photos"). The value is validated, so "20261301.something" is not
+    read as a date.
 
     Args:
         name (str): Artifact directory name.
@@ -384,32 +389,11 @@ def _date_from_name(
     Raises:
         Exception: Propagated runtime errors, if any.
     """
-    import re
+    from cmeta.utils.names import date_in_alias
 
-    tail = r'(?:[.\-_ ]|$)'
+    found = date_in_alias(name)
 
-    patterns = [
-        (r'^(\d{4})(\d{2})(\d{2})[.\-_](\d{2})(\d{2})' + tail, '%Y%m%d%H%M'),
-        (r'^(\d{4})-(\d{2})-(\d{2})' + tail,                   '%Y%m%d'),
-        (r'^(\d{4})(\d{2})(\d{2})' + tail,                     '%Y%m%d'),
-        (r'^(\d{4})(\d{2})' + tail,                            '%Y%m'),
-        (r'^(\d{4})' + tail,                                   '%Y'),
-    ]
-
-    import datetime
-
-    for pattern, date_format in patterns:
-        match = re.match(pattern, name)
-        if not match:
-            continue
-
-        try:
-            return datetime.datetime.strptime(''.join(match.groups()), date_format)
-        except Exception:
-            # Looked like a date but is not a real one - try a shorter reading
-            continue
-
-    return None
+    return found['date'] if found is not None else None
 
 
 ###################################################################################################

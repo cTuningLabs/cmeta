@@ -80,30 +80,3 @@ class Category(InitCategory):
         print (json.dumps(params, indent=2))
 
         return {'return':0}
-
-    ############################################################
-    def create(
-        self,
-        params,  # Input parameters dictionary.
-    ):
-        """
-            Create work artifact
-
-            @base.create_
-
-            Args:
-                params: Input parameters dictionary.
-            Returns:
-                dict: Operation result.
-            Raises:
-                Exception: Propagated runtime errors, if any.
-        """
-        self.logger.debug("RUNNING work api v1 create")
-
-        p = self._prepare_input_from_params(params, base = False)
-
-        p['from_category'] = p['category']
-        p['category'] = self.cmeta['uses_categories']['utils']
-        p['command'] = 'create_artifact_with_date'
-
-        return self.cm.access(p)

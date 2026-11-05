@@ -1,16 +1,8 @@
-# The keys of the config artifacts the utils category reads (the dated categories' "add", the cTuning.ai API).
+# The keys of the config artifacts the utils category reads (the cTuning.ai API). The key <category_alias>_create_repo
+# of the default config, read here by the dated categories' "add" until 0.38.8, is read by every create of the engine's
+# core since 0.38.9 and declared by the config category; <category_alias>_create_cmd is no longer read.
 
 configs:
-  default:
-    keys:
-      <category_alias>_create_repo:
-        desc: the repository a new artifact of a dated category (work, note, journal ...) goes to when its name names
-          none - the category's name with "_" for its dots (my.notes -> my_notes_create_repo)
-        example: local
-      <category_alias>_create_cmd:
-        desc: a command run once a new artifact of a dated category is made, {path} replaced by its folder (far {path}
-          opens it in Far Manager); empty = nothing is run
-        example: far {path}
   ctuning_server:
     desc: the cTuning.ai platform (cPlatform) this machine talks to - its API address and a personal key (both on the
       settings page of cTuning.ai)

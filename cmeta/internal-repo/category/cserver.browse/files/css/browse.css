@@ -339,6 +339,8 @@
 .cbr-newform label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 13px; }
 .cbr-newform input, .cbr-newform select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--cbr-line);
   border-radius: 6px; background: var(--cbr-bg); color: var(--cbr-fg); }
+.cbr-newform label.cbr-newform-dt { grid-template-columns: auto 1fr; }          /* the tick: today's date in front */
+.cbr-newform-dt input { width: auto; padding: 0; border: 0; justify-self: start; }
 .cbr-newform-acts { display: flex; gap: 8px; align-items: center; }
 .cbr-fview img { display: block; max-width: 100%; margin-top: 6px; border: 1px solid var(--cbr-line); border-radius: 6px; }
 .cbr-fview iframe { display: block; width: 100%; height: 520px; margin-top: 6px; border: 1px solid var(--cbr-line);

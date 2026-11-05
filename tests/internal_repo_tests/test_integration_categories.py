@@ -1216,8 +1216,13 @@ def test_parse_date_value_rejects_nonsense(text):
     ('20250814 - cTuning Labs',               (2025, 8, 14)),
     ('2026-05-03 notes',                      (2026, 5, 3)),
     ('20260503-1430.meeting',                 (2026, 5, 3)),
+    ('20260503-143000.session',               (2026, 5, 3)),
     ('2026.notes',                            (2026, 1, 1)),
     ('2026',                                  (2026, 1, 1)),
+    # the unknown part written with x, a range by its first date (the engine's one rule, names.date_in_alias)
+    ('202604xx.prepare the tax declaration',  (2026, 4, 1)),
+    ('198xxxxx.very young',                   (1980, 1, 1)),
+    ('2020-2022.photos',                      (2020, 1, 1)),
 ])
 def test_date_from_name_reads_the_naming_conventions(name, expected):
     parsed = _utils_common_module()._date_from_name(name)
@@ -1229,6 +1234,7 @@ def test_date_from_name_reads_the_naming_conventions(name, expected):
     'no-date-here',
     'cmeta-sub-dirs-202608-v3',   # a date, but not at the start
     '2026x',                      # not followed by a separator
+    '2026beta.x',                 # letters, not the x of an unknown part
     '20261301.bad month',         # not a real date
 ])
 def test_date_from_name_ignores_names_without_a_leading_date(name):

@@ -20,6 +20,28 @@ All notable changes to cMeta are documented here, newest first.
   an app names with `config_name` in its meta (`config::<config_name>`, read by `cx app run` before every run): `env`
   and `param` for the app's run script (the command line's `--env` / `--param` win) and `vars`, which `cx app run`
   reads but does not use.
+- **The date in front of an alias is asked for, not added: `-dt`.** `cx work add <name>` made `20261105.<name>`
+  whenever the name did not start with eight digits (`202604xx.tax` became `20261105.202604xx.tax`), `cx work get
+  <name>` made `<name>` in `local`, and the two answered differently - the same for `note`, `journal`,
+  `experiment`, `research` and every category whose `create` called `utils create_artifact_with_date`. Now `add`,
+  `get` and `set` of every category take `-dt` (today's date in front: `20261105.<name>`; `--dt=20261001` a given
+  date; the date alone names an artifact given no name) and add nothing to a name that starts with a date: a year,
+  a month, a day, a day with a time, dashes or not, the unknown part written with x (`2026xxxx`, `202604xx`,
+  `198xxxxx`), a range by its first date (`2020-2022`) - one rule, `cmeta.utils.names.date_in_alias`, also behind
+  `after_date` / `before_date` of `cx utils find_by_cid` and the dated order of `/browse`. A category whose meta
+  says `dated_aliases: true` (the engine's five above) warns about a new alias without a date (`cMeta warning: ...`
+  on stdout, `warnings` in the answer, nothing under `-q`) and keeps the alias as given; their own `create` is gone.
+  `get <name> -dt` reads `20261105.<name>` or makes it, the same name whether it exists or not.
+  `<category>_create_repo` of the `default` config (`work_create_repo: fgg`) is read by every create, so `add` and
+  `get` make an artifact in the same repository; `<category>_create_cmd` is no longer read (it ran a command on the
+  new folder). `utils create_artifact_with_date` stays for the categories of older repositories whose `create`
+  calls it: the base `get` with `-dt`, the same answer as before. The "+ new" form of `/browse` has the tick
+  "today's date in front of the name (-dt)", on by default for a category that names its artifacts by their date
+  (`dated` in the page's `options`), and its answer carries the engine's `warnings`. Docs: `common-commands.md`,
+  `using-cmeta.md`, the README's table of meta keys. Tests: `test_utils_names_dates.py` (the rule, 34 forms),
+  `test_integration_dated_aliases.py` (add, get and set with `-dt`, the warning and `-q`, a given date, the
+  repository of the config, the options of `_desc.yaml`, an older category's `create`, the shipped categories),
+  the page's create and dated order in `test_cserver_browse.py`.
 
 ## 0.38.8
 - **An engine upgraded in place indexes its internal repository again at the next start.** `pip install -U cmeta` or

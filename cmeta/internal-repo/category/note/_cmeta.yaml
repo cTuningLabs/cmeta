@@ -8,7 +8,6 @@ copyright: 2025-2026 Grigori Fursin and cTuning Labs. See the cMeta COPYRIGHT an
 creation_timestamp: '2026-06-11T09:28:51.999916+00:00'
 last_api_version: 1
 permanent: true
-uses_categories:
-  utils: utils,234ce5e3262e4d52
 browse_sort: -alias
 last_update_timestamp: '2026-11-03T14:25:50.201998+00:00'
+dated_aliases: true

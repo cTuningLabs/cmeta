@@ -107,16 +107,23 @@ def test_ai_removes_with_a_dash(cm):
     assert desc_of(w['path']) == {}
 
 
-def test_categories_that_add_through_get_take_the_options(cm):
-    # work makes a dated alias and adds through "get": "-ai" failed with "unexpected keyword argument 'ai'"
+def test_get_takes_the_options_too(cm):
+    # work made a dated alias and added through "get" until 0.38.8: "-ai" failed with "unexpected keyword argument
+    # 'ai'"; since 0.38.9 add is the base create with -dt, and get keeps the options for the artifact it makes
     add(cm, 'ctx', meta={'template': {'ai_uses': {'alias': 'ctx', 'title': 'C'}}})
     other = add(cm, 'other')
     r = cm.access({'category': 'work', 'command': 'add', 'arg1': 'improve fgg dashboard', 'con': False,
-                   'ai': 'ctx', 'connect': 'other'})
+                   'ai': 'ctx', 'connect': 'other', 'dt': True})
     assert r['return'] == 0, r
+    path = r['path']
+    assert len(desc_of(path)['ai_uses']) == 1 and uids(path) == [other['meta']['artifact']]
+    assert uids(other['path']) == [r['meta']['artifact']]
+    assert r['desc_changes']
+    r = cm.access({'category': 'work', 'command': 'get', 'arg1': 'a second item', 'con': False,
+                   'ai': 'ctx', 'ct': 'other', 'dt': True})
+    assert r['return'] == 0 and r['created'] is True, r
     path = r['artifact']['path']
     assert len(desc_of(path)['ai_uses']) == 1 and uids(path) == [other['meta']['artifact']]
-    assert uids(other['path']) == [r['artifact']['cmeta']['artifact']]
     assert r['desc_changes']
 
 

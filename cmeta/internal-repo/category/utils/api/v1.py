@@ -1630,7 +1630,13 @@ class Category(InitCategory):
         params,  # Input parameters dictionary.
     ):
         """
-            Create artifact with date
+            Create an artifact with the date in front of its alias: the create that the dated categories
+            (work, note, journal, experiment, research and others) called until 0.38.8, kept for the categories
+            of repositories written then, whose `create` still calls it with `from_category`. Since 0.38.9 it is
+            the base `get` of that category with `dt` (the alias dated by _alias_with_date: today's date in front
+            of an alias that starts with none, the date alone for no alias, nothing added to a dated alias), and
+            answers as before (the artifact read, `created`). The key `<category>_create_repo` of the default
+            config is read by every create now; `<category>_create_cmd` is no longer read.
 
             @base.create_
 
@@ -1650,83 +1656,25 @@ class Category(InitCategory):
 
         con = params['ctx']['control'].get('con', False)
 
-        from datetime import datetime
-        yyyymmdd = datetime.now().strftime("%Y%m%d")
-
         p = self._prepare_input_from_params(params, base = True)
-
-        # Check config if need to do something with a path, i.e. open it with some application
-        r = self.cm.access({'category': self.cmeta['uses_categories']['config'],
-                            'command': 'get',
-                            'arg1': self.cm.cfg['default_config_name']})
-        if r['return'] > 0: return r
-
-        config_cmeta = r['config_cmeta']
-
-        key = f'{category_alias}'.replace('.','_') + '_create_cmd'
-        key2 = f'{category_alias}'.replace('.','_') + '_create_repo'
-
-        # Parse cMeta obj
-        arg1 = p.get('arg1')
-
-        r = self.cm.utils.names.parse_cmeta_obj(arg1)
-        if r['return'] > 0: return r
-
-        arg1_obj_parts = r['obj_parts']
-
-        alias = arg1_obj_parts.get('alias')
-        
-        if alias is None:
-            if con:
-                # Nobody to answer: no name, as when Enter is pressed (the date alone names the artifact)
-                alias = self.cm.utils.common.ask(f'Enter {category_alias} name: ', optional=True)['answer']
-                alias = alias.strip()
-
-        if alias is None or alias == '':
-            alias = yyyymmdd
-        else:
-            if not (len(alias) >= 8 and alias[:8].isdigit()):
-                alias = yyyymmdd + '.' + alias
-
-        arg1_obj_parts['alias'] = alias
-
-        # Check target repo
-        repo_alias = arg1_obj_parts.get('repo_alias')
-        if repo_alias is None:
-            repo_alias = config_cmeta.get(key2)
-            if repo_alias is not None and repo_alias != '':
-                arg1_obj_parts['repo_alias'] = repo_alias
-
-        # Restore cMeta obj
-        r = self.cm.utils.names.restore_cmeta_obj(arg1_obj_parts)
-        if r['return'] > 0: return r
 
         p['category'] = from_category
         p['command'] = 'get'
-        p['arg1'] = r['obj']
         p['con'] = False
         del(p['from_category'])
+
+        if p.get('dt') in (None, False, ''):
+            p['dt'] = True
 
         # Create artifact
         r = self.cm.access(p)
         if r['return'] > 0: return r
 
-        path = r['artifact']['path']
-
         if con:
-            print (f'Path to {category_alias}s: {path}')
+            print (f'Path to {category_alias}s: {r["artifact"]["path"]}')
             # what -ai, --connect and --ct did to the _desc.yaml files (the create above ran without printing)
             for line in r.get('desc_changes') or []:
                 print (line)
-
-        cmd = config_cmeta.get(key)
-
-        if cmd is not None and cmd != '':
-            cmd = cmd.replace('{path}', path)
-            if con:
-                print (f'Executing: {cmd}')
-            
-            os.system(cmd)
 
         return r
 
