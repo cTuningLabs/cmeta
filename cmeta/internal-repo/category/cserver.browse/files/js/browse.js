@@ -609,9 +609,10 @@
     }
     box.appendChild(head);
   }
-  // A new artifact (2026-11-03): one small form - the name, the tags, the repository - made by the category's own
-  // "add" on the server (a dated category puts the day in front), then its page opens. The repositories offered are
-  // the ones this viewer may write to (CFG.edit: everything, or the patterns of the host's grant).
+  // A new artifact (2026-11-03): one small form - the name, the tags, the repository, a tick for today's date in
+  // front of the name (-dt; on by default for a category that names its artifacts by their date, 2026-11-05) - made
+  // by the category's own "add" on the server, then its page opens. The repositories offered are the ones this
+  // viewer may write to (CFG.edit: everything, or the patterns of the host's grant).
   function globMatch(s, p) {
     return new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$').test(s);
   }
@@ -626,9 +627,12 @@
     var old = root.querySelector('.cbr-newform');
     if (old) { old.remove(); return; }
     var f = h('form', {class: 'cbr-newform'});
-    var name = h('input', {type: 'text', required: 'required', autocomplete: 'off', placeholder: 'the name (a dated category puts the day in front)'});
+    var name = h('input', {type: 'text', required: 'required', autocomplete: 'off', placeholder: 'the name'});
     var tags = h('input', {type: 'text', autocomplete: 'off', placeholder: 'tags, comma-separated'});
     tags.value = preset.tags || '';
+    var dated = ((options && options.categories) || []).some(function (c) { return c.alias === cat && c.dated; });
+    var dt = h('input', {type: 'checkbox'});
+    dt.checked = dated;
     var repo = h('select', {});
     var repos = writableRepos();
     repos.forEach(function (r) {
@@ -644,13 +648,14 @@
     f.appendChild(h('label', {}, 'Name', name));
     f.appendChild(h('label', {}, 'Tags', tags));
     f.appendChild(h('label', {}, 'Repository', repo));
+    f.appendChild(h('label', {class: 'cbr-newform-dt'}, dt, ' today\'s date in front of the name (-dt)'));
     f.appendChild(h('div', {class: 'cbr-newform-acts'}, ok, no, msg));
     f.addEventListener('submit', function (e) {
       e.preventDefault();
       if (!repos.length) { msg.textContent = 'no repository you may write to is shown here'; return; }
       msg.textContent = '';
       ok.disabled = true;
-      call('create', {cat: cat, repo: repo.value, alias: name.value.trim(), tags: tags.value}, 'creating ' + name.value.trim()).then(function (r) {
+      call('create', {cat: cat, repo: repo.value, alias: name.value.trim(), tags: tags.value, dt: dt.checked ? 1 : 0}, 'creating ' + name.value.trim()).then(function (r) {
         try { localStorage.setItem('cbr-new-repo', r.repo); } catch (x) {}
         window.location.href = crefUrl(r.cat, r.created, r.uid);
       }).catch(function (err) { ok.disabled = false; msg.textContent = err.message; });

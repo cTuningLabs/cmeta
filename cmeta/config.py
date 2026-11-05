@@ -57,6 +57,7 @@ cfg = {
         },
 
         "category_repo_uid": "f4f792ab40c7498f",
+        "category_config_uid": "cc6bfe174be847ed",
 
         "default_git": "https://github.com/",
         "default_git_repo": "ctuninglabs",

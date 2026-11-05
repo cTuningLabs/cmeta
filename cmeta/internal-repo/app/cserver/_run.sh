@@ -56,6 +56,10 @@ if [ "${CSERVER_HOST}" = "tailscale" ]; then
     echo "cMeta info: cserver listens on the Tailscale address ${CSERVER_HOST}"
 fi
 
+# A port another server listens on already - another session's, a forgotten one - stops the start, the process named
+# (Linux and macOS refuse the second server anyway, with a bare "address already in use"; Windows does not).
+${PYTHON_PREFIX} "${CSERVER_PYTHON}" -W ignore::RuntimeWarning -m cmeta.utils.net port_free "${CSERVER_HOST}" "${CSERVER_PORT}" || exit 1
+
 # CSERVER_FLAGS comes from default_env in _cmeta.yaml, so the flags stay
 # configurable rather than baked in - the way _run.bat has always done it.
 # This script used to hardcode "--reload", so the two halves of the same app

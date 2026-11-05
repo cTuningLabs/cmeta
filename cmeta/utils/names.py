@@ -515,3 +515,66 @@ def get_sort_key_cmeta_obj_alias_or_uid(
         or cmeta_ref_parts.get("artifact_alias")
         or cmeta_ref_parts.get("artifact_uid")
     )
+
+# The forms of a date at the start of an alias (date_in_alias), the most precise first; each is followed by a
+# separator or the end of the alias (_ALIAS_DATE_END)
+_ALIAS_DATE_FORMS = (
+    (r'(\d{4})(\d{2})(\d{2})[.\-_](\d{2})(\d{2})(\d{2})', '%Y%m%d%H%M%S'),   # 20261105-143000
+    (r'(\d{4})(\d{2})(\d{2})[.\-_](\d{2})(\d{2})',        '%Y%m%d%H%M'),     # 20261105-1430
+    (r'(\d{4})-(\d{2})-(\d{2})',                           '%Y%m%d'),         # 2026-11-05
+    (r'(\d{4})(\d{2})(\d{2})',                             '%Y%m%d'),         # 20261105
+    (r'(\d{4})(\d{2})',                                    '%Y%m'),           # 202611
+    (r'(\d{4})',                                           '%Y'),             # 2026
+)
+
+# The unknown part of a date written with x, eight characters, the digits first: a month, a year, a decade, a century
+_ALIAS_DATE_WITH_X = r'(\d{6}x{2}|\d{4}x{4}|\d{3}x{5}|\d{2}x{6})'
+
+_ALIAS_DATE_END = r'(?=[.\-_ ]|$)'
+
+def date_in_alias(
+    alias,  # The alias (or any text) that may start with a date.
+) -> Optional[dict]:
+    """
+        The date an alias starts with, as the dated categories name their artifacts (20261105.a note).
+
+        Read, each followed by ".", "-", "_", a space or the end of the alias: a day (20261105, 2026-11-05),
+        a day with a time (20261105-1430, 20261105-143000), a month (202611), a year (2026), and a date whose
+        unknown part is written with x (2026xxxx, 202604xx, 198xxxxx: eight characters, the digits first).
+        A range starts with its first date (2020-2022, 20260101-20260131). What follows the date is not read,
+        and digits that make no date (20261301) are not one.
+
+        Args:
+            alias (str): The alias (or any text) that may start with a date.
+
+        Returns:
+            dict or None: {'text': the date as written, 'date': datetime - the start of the period (2026 is
+                2026-01-01 00:00, 202604xx is 2026-04-01)}, or None when the alias starts with no date.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    import re
+    from datetime import datetime
+
+    text = str(alias or '').strip()
+
+    for pattern, date_format in _ALIAS_DATE_FORMS:
+        match = re.match(pattern + _ALIAS_DATE_END, text)
+        if match:
+            try:
+                return {'text': match.group(0), 'date': datetime.strptime(''.join(match.groups()), date_format)}
+            except ValueError:
+                continue    # looked like a date but is not a real one - try a shorter reading
+
+    match = re.match(_ALIAS_DATE_WITH_X + _ALIAS_DATE_END, text, re.IGNORECASE)
+    if match:
+        # the digits give the start of what is known (198xxxxx: 1980-01-01)
+        digits = match.group(0).lower().rstrip('x')
+        known = digits[:4].ljust(4, '0') + (digits[4:6] or '01') + '01'
+        try:
+            return {'text': match.group(0), 'date': datetime.strptime(known, '%Y%m%d')}
+        except ValueError:
+            pass
+
+    return None

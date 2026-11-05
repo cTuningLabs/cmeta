@@ -139,6 +139,7 @@ from concurrent.futures import ThreadPoolExecutor
 import yaml
 
 from cmeta.category import InitCategory
+from cmeta.utils import names
 
 CATEGORY_UID = 'dd9ea50e7f76467f'
 SECRET_CATEGORIES = ['*crypt*', '*secret*', '*credential*']
@@ -334,8 +335,9 @@ SORT_UP = ('alias', 'dated', 'cat', 'repo', 'uid')   # the keys that go up by de
 
 
 def _dated(it):
-    """A name with a date in front: a year first (20261104.x, 2017xxxx.x, 202702xx.x)."""
-    return it['alias_l'][:4].isdigit()
+    """A name with a date in front (20261104.x, 2017xxxx.x, 202702xx.x, 2020-2022.x): the engine's rule for dated
+    aliases (names.date_in_alias, the rule of -dt)."""
+    return names.date_in_alias(it['alias']) is not None
 
 
 def _sort_keys(value):
@@ -1585,7 +1587,8 @@ class Category(InitCategory):
             categories.append({'alias': cat, 'uid': (m['uid'] if m else ''), 'n': n,
                                'repos': sorted(per_repo[cat].items(), key=lambda x: -x[1]),
                                'name': str(meta.get('name') or ''), 'desc': str(meta.get('desc') or ''),
-                               'defined_in': (m['repo'] if m else ''), 'no_index': bool(meta.get('no_index'))})
+                               'defined_in': (m['repo'] if m else ''), 'no_index': bool(meta.get('no_index')),
+                               'dated': bool(meta.get('dated_aliases'))})      # names its artifacts by their date
         return {'repos': sorted(repos.items(), key=lambda x: x[0].lower()),
                 'cats': sorted(cats.items(), key=lambda x: x[0].lower()), 'categories': categories,
                 'total': len(items), 'catalog': self._catalog_info()}
@@ -2198,10 +2201,12 @@ class Category(InitCategory):
         print('cMeta info: cserver.browse: %s deleted the %s %s of %s::%s' % (self._who(misc), kind, t['rel'], t['it']['cat'], t['it']['alias']))
         return {'deleted': t['rel'], 'kind': kind}
 
-    def _create(self, cat, repo, alias, tags, misc, cfg):
+    def _create(self, cat, repo, alias, tags, misc, cfg, dt=None):
         """A new artifact from the page: a category the page shows, a repository this viewer may write to, a name
-        and tags - made by the category's own "add" (a dated category names it its way), indexed, and answered
-        with its cRef so that the page can open it. One line of the server's log."""
+        and tags - made by the category's own "add" (`dt`: today's date in front of the name, the form's tick, on by
+        default for a category that names its artifacts by their date), indexed, and answered with its cRef so that
+        the page can open it, and with the engine's warnings (a dated category given a name without its date). One
+        line of the server's log."""
         if not (misc or {}).get('same_origin'):
             return {'error': 'refused: the request did not come from a page of this server'}
         on = self._edit_on(misc, cfg)
@@ -2240,20 +2245,27 @@ class Category(InitCategory):
             return {'error': '%s: a category this server hides' % cat_alias}
         tags = [str(t).strip() for t in (tags.split(',') if isinstance(tags, str) else (tags or [])) if str(t).strip()]
 
-        r = self.cm.access({'category': '%s,%s' % (cat_alias, cat_uid), 'command': 'add', 'arg1': '%s:%s' % (repo_alias, alias),
-                            'tags': ','.join(tags), 'yaml': True, 'con': False})
+        ii = {'category': '%s,%s' % (cat_alias, cat_uid), 'command': 'add', 'arg1': '%s:%s' % (repo_alias, alias),
+              'tags': ','.join(tags), 'yaml': True, 'con': False}
+        if _flag(dt, False):
+            ii['dt'] = True                                    # only when asked: a category's own create may not take it
+        r = self.cm.access(ii)
         if r.get('return', 1) > 0:
             return {'error': r.get('error') or 'the category did not create it'}
-        # the base create answers with path and meta; a dated category creates through "get" and answers with the artifact
+        # the base create answers with path, meta and warnings (a dated category: a name without its date); a category
+        # of an older repository creates through utils create_artifact_with_date and answers with the artifact
         a = r.get('artifact') if isinstance(r.get('artifact'), dict) else {}
         path = str(r.get('path') or a.get('path') or '')
         uid = str((a.get('cmeta_ref_parts') or {}).get('artifact_uid') or (r.get('meta') or a.get('cmeta') or {}).get('artifact') or '')
         uid = uid.split(',')[-1].strip().lower()
         final = os.path.basename(path.rstrip('\\/')) if path else alias
+        warnings = [str(w) for w in (r.get('warnings') or [])]
         self._catalog(force=True)
         print('cMeta info: cserver.browse: %s created %s::%s in %s' % (self._who(misc), cat_alias, final, repo_alias))
+        for w in warnings:
+            print(w)
         return {'created': final, 'uid': uid, 'cat': cat_alias, 'cat_uid': cat_uid, 'repo': repo_alias,
-                'cref': '%s,%s::%s,%s' % (cat_alias, cat_uid, final, uid)}
+                'cref': '%s,%s::%s,%s' % (cat_alias, cat_uid, final, uid), 'warnings': warnings}
 
     def _save(self, uid, rel, text, stamp, misc, cfg):
         """Write a text file of an artifact the page shows with the editor's text, checked by the file's name,
@@ -2400,7 +2412,7 @@ class Category(InitCategory):
                                                                             self._cserver_config())
                 elif na == 'create':
                     out = self._create(query.get('cat'), query.get('repo'), query.get('alias'), query.get('tags'),
-                                       misc, self._cserver_config())
+                                       misc, self._cserver_config(), dt=query.get('dt'))
                 elif na == 'open':
                     out = self._open(query.get('uid'), query.get('what'), misc, self._cserver_config(),
                                      dry=_flag(query.get('dry'), False))

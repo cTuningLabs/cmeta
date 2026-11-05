@@ -2,6 +2,47 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.38.9
+- **`cx app run cserver` refuses a port another server listens on, and names it.** On Windows a second server that
+  sets SO_REUSEADDR - uvicorn does, with `--reload` (the cserver's default) or `--workers` - bound a port another one
+  listened on, and the two shared its connections unseen (two cservers started on one port - by two AI sessions at
+  once, the second on another cMeta home); Linux and macOS refused it with a bare "address already in use".
+  Both run scripts of the cserver app now ask `python -m cmeta.utils.net port_free <host> <port>` before uvicorn
+  starts (a bind of the address, at once: about 0.3 s per start for the interpreter) and stop with "cMeta notice: port
+  8004 of 127.0.0.1 is in use - process 6876 (python.exe: ... -m uvicorn ... --reload) listens there ...!" - the
+  process named through PowerShell's Get-NetTCPConnection on Windows (netstat lists no user's listener on some
+  builds), lsof on macOS, ss on Linux, preferring the server to the multiprocessing workers it started; an address of
+  another machine is said too. `cmeta.utils.net.port_free(host, port)` is the function. Tests:
+  `test_utils_net_port.py` (a listener with SO_REUSEADDR as uvicorn's, its process named, free once closed, TIME_WAIT
+  is no server, the launcher's entry, both scripts ask before uvicorn); checked end to end on Windows, Linux (WSL,
+  Python 3.15) and macOS (Python 3.15): a second `cx app run cserver` refused, the first one still answering.
+- **The configs page describes the keys of an app's config.** `category/app/_desc.yaml` declares the config artifact
+  an app names with `config_name` in its meta (`config::<config_name>`, read by `cx app run` before every run): `env`
+  and `param` for the app's run script (the command line's `--env` / `--param` win) and `vars`, which `cx app run`
+  reads but does not use.
+- **The date in front of an alias is asked for, not added: `-dt`.** `cx work add <name>` made `20261105.<name>`
+  whenever the name did not start with eight digits (`202604xx.tax` became `20261105.202604xx.tax`), `cx work get
+  <name>` made `<name>` in `local`, and the two answered differently - the same for `note`, `journal`,
+  `experiment`, `research` and every category whose `create` called `utils create_artifact_with_date`. Now `add`,
+  `get` and `set` of every category take `-dt` (today's date in front: `20261105.<name>`; `--dt=20261001` a given
+  date; the date alone names an artifact given no name) and add nothing to a name that starts with a date: a year,
+  a month, a day, a day with a time, dashes or not, the unknown part written with x (`2026xxxx`, `202604xx`,
+  `198xxxxx`), a range by its first date (`2020-2022`) - one rule, `cmeta.utils.names.date_in_alias`, also behind
+  `after_date` / `before_date` of `cx utils find_by_cid` and the dated order of `/browse`. A category whose meta
+  says `dated_aliases: true` (the engine's five above) warns about a new alias without a date (`cMeta warning: ...`
+  on stdout, `warnings` in the answer, nothing under `-q`) and keeps the alias as given; their own `create` is gone.
+  `get <name> -dt` reads `20261105.<name>` or makes it, the same name whether it exists or not.
+  `<category>_create_repo` of the `default` config (`work_create_repo: fgg`) is read by every create, so `add` and
+  `get` make an artifact in the same repository; `<category>_create_cmd` is no longer read (it ran a command on the
+  new folder). `utils create_artifact_with_date` stays for the categories of older repositories whose `create`
+  calls it: the base `get` with `-dt`, the same answer as before. The "+ new" form of `/browse` has the tick
+  "today's date in front of the name (-dt)", on by default for a category that names its artifacts by their date
+  (`dated` in the page's `options`), and its answer carries the engine's `warnings`. Docs: `common-commands.md`,
+  `using-cmeta.md`, the README's table of meta keys. Tests: `test_utils_names_dates.py` (the rule, 34 forms),
+  `test_integration_dated_aliases.py` (add, get and set with `-dt`, the warning and `-q`, a given date, the
+  repository of the config, the options of `_desc.yaml`, an older category's `create`, the shipped categories),
+  the page's create and dated order in `test_cserver_browse.py`.
+
 ## 0.38.8
 - **An engine upgraded in place indexes its internal repository again at the next start.** `pip install -U cmeta` or
   `uv tool upgrade` puts the new release into the same folder, so the home's index kept the internal repository of

@@ -428,9 +428,16 @@ def test_creating_from_the_page(cm):
     assert 'error' in create(BOTH, cat='log', repo='local', alias='made-here')       # not twice
     assert web(cm, BOTH, native_action='artifact', uid=out['uid'])['json']['can_create'] is True
 
-    # a dated category names it its way: the day in front
+    # a dated category (dated_aliases: true): the day in front only when asked (dt - the form's tick, on by default
+    # for such a category); without it the name is kept and the answer carries the engine's warning (2026-11-05)
     out = create(BOTH, cat='work', repo='local', alias='my task')
-    assert out['created'].endswith('.my task') and out['created'][:8].isdigit(), out
+    assert out['created'] == 'my task' and len(out['warnings']) == 1 and 'cMeta warning' in out['warnings'][0], out
+    out = create(BOTH, cat='work', repo='local', alias='my task', dt=1)
+    assert out['created'].endswith('.my task') and out['created'][:8].isdigit() and out['warnings'] == [], out
+    out = create(BOTH, cat='log', repo='local', alias='dated log', dt=1)             # any category
+    assert out['created'][:8].isdigit() and out['created'].endswith('.dated log') and out['warnings'] == [], out
+    cats = {c['alias']: c for c in web(cm, BOTH, native_action='options')['json']['categories']}
+    assert cats['work']['dated'] is True and cats['log']['dated'] is False               # what ticks the form's box
 
     # a signed-in reader writes only in the repositories of the grant; browse_edit: no turns it off for everyone
     assert 'may not write' in create({'same_origin': True, 'browse_edit': ['other*']}, cat='log', repo='local', alias='x')['error']
@@ -701,10 +708,13 @@ def test_a_category_declares_its_order_and_the_server_may_change_it(cm):
 
 def test_dated_order_lists_the_routines_first_then_the_newest(cm):
     """sort=dated (2026-11-04): the names without a date first, A to Z, then the dated ones newest first; dir=desc
-    gives the same list from its end; a category may declare it as its own order."""
-    for alias in ('Answer Emails', 'Update links', '20010101.change-word', '20261007.qr-codes', '2017xxxx.fp_p'):
+    gives the same list from its end; a category may declare it as its own order. A date is what the engine's
+    rule reads (names.date_in_alias, 2026-11-05): the unknown part written with x, a range by its first date."""
+    for alias in ('Answer Emails', 'Update links', '20010101.change-word', '20261007.qr-codes', '2017xxxx.fp_p',
+                  '202604xx.tax', '2020-2022.old photos', '2026beta.not a date'):
         make(cm, alias, category='log')
-    names = ['Answer Emails', 'Update links', '20261007.qr-codes', '2017xxxx.fp_p', '20010101.change-word']
+    names = ['2026beta.not a date', 'Answer Emails', 'Update links', '20261007.qr-codes', '202604xx.tax',
+             '2020-2022.old photos', '2017xxxx.fp_p', '20010101.change-word']
     out = search(cm, cats='log', sort='dated', limit=50)
     got = [a for a in aliases(out) if a in names]
     assert got == names, got

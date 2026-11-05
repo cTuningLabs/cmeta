@@ -96,6 +96,8 @@ cx <category> info <alias>             # path + cRef (+ clipboard)
 
 cx <category> add <alias> --tags=t1,t2 --yaml
 cx <category> add <repo>:<alias> --meta.owner="me"
+cx <category> add <alias> -dt             # today's date in front: 20261105.<alias> (--dt=20261001: that date)
+cx <category> get <alias> -dt             # read 20261105.<alias>, or make it: one name whether it exists or not
 cx <category> update <alias> --meta.description="..."
 cx <category> tags <alias> --add=t1,t2 --remove=t3
 cx <category> mv <alias> <new-alias>
@@ -106,6 +108,15 @@ cx <category> rm <alias>
 
 `find` is the best universal lister — unlike a bare `ls` it also prunes by tags
 and other filters.
+
+`-dt` adds nothing to an alias that already starts with a date — a day, a month, a
+year, a day with a time, with dashes or not, the unknown part written with `x`
+(`2026xxxx`, `202604xx`), a range (`2020-2022`) — and the date alone names an artifact
+given no alias. A category whose meta says `dated_aliases: true` (the engine's `work`,
+`note`, `journal`, `experiment` and `research`) warns about a new alias without a date
+and keeps the alias as typed; `<category>_create_repo` in the `default` config
+(`cx config set default --meta.work_create_repo=fgg`) names the repository a category's
+new artifacts go to when the command names none.
 
 ### Searching *across* categories
 

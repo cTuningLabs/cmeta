@@ -296,6 +296,8 @@ cx <category> read <alias>                     # parse and print _cmeta.yaml
 ```bash
 cx <category> add <alias> --yaml               # create with _cmeta.yaml
 cx <category> add <repo>:<alias> --tags=t1,t2  # create in a specific repo
+cx <category> add <alias> -dt                  # today's date in front: 20261105.<alias> (--dt=20261001: that date)
+cx <category> get <alias> -dt                  # read 20261105.<alias>, or make it: one name whether it exists or not
 cx <category> update <alias> --meta.description="..."   # merge metadata
 cx <category> add <alias> -ai                  # ask which AI contexts it uses (ai_uses in its _desc.yaml)
 cx <category> add <alias> -ai=cmeta,fgg        # by their aliases, no question; update appends the same way
@@ -317,6 +319,29 @@ cx <category> rm <alias>                       # delete (blocked if permanent: t
 
 Prefer YAML sidecars (`--yaml`) — they match the shipped artifacts and are
 easy to read/edit by hand.
+
+**Dated aliases: `-dt`.** Work items, notes and journal entries are named by their
+date (`20261105.improve the dashboard`), so that they sort by it. `-dt` on `add`, `get`
+and `set` of any category puts today's date in front of the alias (`--dt=20261001` a
+given one; the date alone names an artifact given no alias) and adds nothing to an alias
+that already starts with a date: a day, a month or a year, a day with a time, with dashes
+or not (`20261105`, `2026-11-05`, `202611`, `2026`, `20261105-1430`), the unknown part
+written with `x` (`2026xxxx`, `202604xx`, `198xxxxx`), a range by its first date
+(`2020-2022`) - one rule, `cmeta.utils.names.date_in_alias`, also behind the date window
+of `cx utils find_by_cid` and the dated order of the `/browse` page. A category whose
+meta says `dated_aliases: true` (the engine's `work`, `note`, `journal`, `experiment`
+and `research`) warns about a new alias without a date (`cMeta warning: ...` on stdout,
+`warnings` in the answer, nothing under `-q`) and keeps the alias as typed: nothing is
+added behind your back. `get <name> -dt` reads `20261105.<name>` or makes it - the same
+name whether it exists or not. The repository a category's new artifacts go to when the
+command names none is `<category>_create_repo` in the `default` config (the category's
+alias with `_` for its dots):
+
+```bash
+cx config set default --meta.work_create_repo=fgg --meta.my_notes_create_repo=fgg
+cx work add "improve the dashboard" -dt        # fgg/work/20261105.improve the dashboard
+cx work add "improve the dashboard"            # the same name as typed, with a warning
+```
 
 **Connections and the AI context are lists in `_desc.yaml`.** `-ai`, `--connect` and
 `--connect-to` (`--ct`) take aliases, `category::alias` or full cRefs (`{{{cRef}}}` too) and

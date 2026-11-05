@@ -7,6 +7,11 @@ configs:
     desc: the shared defaults of the engine and of its categories - the git origin of short repository names, where
       new artifacts of a dated category go, the addresses the CLI prints
     keys:
+      <category_alias>_create_repo:
+        desc: the repository a category's new artifacts go to when the command names none (cx work add <name> without
+          a repository) - the category's alias with "_" for its dots (my.notes -> my_notes_create_repo); read by the
+          create of every category since 0.38.9 (by the dated categories' own create before)
+        example: fgg
       url_cserver_info:
         desc: the address "cx <category> find <artifact> --url" prints and copies, the artifact's cRef appended to
           it; the environment variable CMETA_SERVER_INFO_URL goes first

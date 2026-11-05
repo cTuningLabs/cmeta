@@ -1370,6 +1370,119 @@ class Category(InitCategory):
         return {'return':0, 'artifacts': artifacts, 'deleted_artifacts': deleted_artifacts}
 
     ############################################################
+    def _alias_with_date(
+        self,
+        ctx: dict,  # cMeta context.
+        arg1 = None,  # The artifact the command was given: alias, UID, alias,UID, with a repository or not.
+        dt = None,  # True: today's date in front of the alias; a date as text (20261001, 202610): that one; None: nothing.
+    ):
+        """
+            The alias of a new artifact with its date in front, as the dated categories name theirs
+            (20261105.a note): -dt puts today's date (--dt=<date> that date) in front of an alias that starts
+            with none, and the date alone names an artifact given no alias. Nothing is put in front of an alias
+            that starts with a date (20261001.x, 202604xx.x, 2020-2022.x: utils.names.date_in_alias). A category
+            whose meta says `dated_aliases: true` gets a warning for an alias without a date - the alias is kept.
+
+            Args:
+                ctx (dict): cMeta context.
+                arg1 (str | None): The artifact the command was given.
+                dt (bool | str | None): The date to put in front.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error.
+                    - **error** (str): Error message if `return > 0`.
+                    - **arg1** (str | None): The artifact to create (as given when nothing changes).
+                    - **warnings** (list): The warning of a dated category, or nothing.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        warnings = []
+
+        r = utils.names.parse_cmeta_obj(arg1, fail_on_error = self.fail_on_error)
+        if r['return'] >0: return r
+
+        obj_parts = r['obj_parts']
+
+        alias = obj_parts.get('alias')
+        dated = alias is not None and utils.names.date_in_alias(alias) is not None
+
+        if dt is not None and dt is not False and dt != '' and not dated:
+            if dt is True:
+                from datetime import datetime
+                prefix = datetime.now().strftime('%Y%m%d')
+            else:
+                prefix = str(dt).strip()
+                found = utils.names.date_in_alias(prefix)
+                if found is None or found['text'] != prefix:
+                    return {'return':1, 'error': f'"{prefix}" is not a date to put in front of the alias (20261001, 202610, 2026, 2026-10-01)'}
+
+            obj_parts['alias'] = prefix if alias is None or alias == '' else f'{prefix}.{alias}'
+
+            r = utils.names.restore_cmeta_obj(obj_parts, fail_on_error = self.fail_on_error)
+            if r['return'] >0: return r
+
+            arg1 = r['obj']
+            dated = True
+
+        if not dated and ctx['category_artifact']['cmeta'].get('dated_aliases', False):
+            from datetime import datetime
+            category_alias = ctx['category']['artifact_alias']
+            what = f'"{alias}" has none; add -dt to put today\'s date in front' if alias else \
+                   'none was given; add -dt to name it by today\'s date'
+            warnings.append(f'cMeta warning: a {category_alias} alias starts with its date '
+                            f'({datetime.now().strftime("%Y%m%d")}.name) - {what}')
+
+        return {'return':0, 'arg1':arg1, 'warnings':warnings}
+
+    ############################################################
+    def _create_repo_of(
+        self,
+        ctx: dict,  # cMeta context.
+    ):
+        """
+            The repository the default config names for the category's new artifacts: the key
+            `<category alias, "_" for its dots>_create_repo` (work_create_repo: fgg), read by every create
+            since 0.38.9 (the dated categories' own create read it before). No config, or no key: none.
+
+            Args:
+                ctx (dict): cMeta context.
+
+            Returns:
+                dict: A cMeta dictionary with the following keys:
+                    - **return** (int): 0 if success, >0 if error.
+                    - **error** (str): Error message if `return > 0`.
+                    - **repo_alias** (str | None), **repo_uid** (str | None): The repository, both None when the
+                      config names none.
+
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        none = {'return':0, 'repo_alias': None, 'repo_uid': None}
+
+        r = self.cm.access({'category': f"config,{self.cm.cfg['category_config_uid']}",
+                            'command': 'read',
+                            'arg1': self.cm.cfg['default_config_name'],
+                            'con': False})
+        if r['return'] == 16:
+            return none
+        if r['return'] >0: return r
+
+        key = ctx['category']['artifact_alias'].replace('.', '_') + '_create_repo'
+
+        repo = str(r.get('config_cmeta', {}).get(key) or '').strip()
+        if repo == '':
+            return none
+
+        r = utils.names.parse_cmeta_name(repo, 'repo')
+        if r['return'] >0: return r
+
+        return {'return':0, 'repo_alias': r['name'].get('repo_alias'), 'repo_uid': r['name'].get('repo_uid')}
+
+    ############################################################
     def create_(
         self,
         ctx: dict,  # cMeta context.
@@ -1387,6 +1500,7 @@ class Category(InitCategory):
         connect = None,  # Connect both ways: names or cRefs (";" between cRefs); True = ask.
         connect_to = None,  # Connect the new artifact to them (its own _desc only): the same forms.
         ct = None,  # The short form of connect_to (--ct=<cRef>).
+        dt = None,  # The date in front of the alias: -dt today's (20261105.<alias>), --dt=<date> that one; nothing is added to an alias that starts with a date.
     ):
         """
             Create and index an artifact.
@@ -1405,6 +1519,8 @@ class Category(InitCategory):
                 connect: Artifacts to connect both ways - their cRefs go into the new artifact's `connections`
                     and its cRef into theirs; True asks.
                 connect_to, ct: Artifacts to connect the new one to, in its own _desc.yaml only.
+                dt (bool | str | None): The date in front of the alias: True today's, a text that date; nothing is
+                    added to an alias that starts with a date (_alias_with_date).
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -1412,6 +1528,8 @@ class Category(InitCategory):
                     - **error** (str): Error message if `return > 0`.
                     - **path** (str): Path to the created artifact.
                     - **meta** (dict): Artifact metadata.
+                    - **warnings** (list): The warning of a dated category (`dated_aliases: true` in its meta)
+                      for an alias without a date, printed too unless quiet; empty otherwise.
 
             Raises:
                 Exception: Propagated runtime errors, if any.
@@ -1424,6 +1542,17 @@ class Category(InitCategory):
         if tags is not None:
             if type(tags) != str and type(tags) != list:
                 return {'return':1, 'error': f'"tags" should be str or list but got {type(tags).__name__}'}
+
+        # The alias with its date in front (-dt), and the warning of a dated category for an alias without one;
+        # a folder that exists is indexed under its own name
+        warnings = []
+
+        if not index:
+            r = self._alias_with_date(ctx, arg1, dt)
+            if r['return'] >0: return r
+
+            arg1 = r['arg1']
+            warnings = r['warnings']
 
         # Use UID if arg1 is None
         if arg1 is None:
@@ -1462,6 +1591,14 @@ class Category(InitCategory):
         # Find path to target repository or local if not specified
         artifact_repo_alias = artifact_obj_parts.get('artifact_repo_alias')
         artifact_repo_uid = artifact_obj_parts.get('artifact_repo_uid')
+
+        # The repository the default config names for the category's new artifacts, when the request names none
+        if artifact_repo_uid is None and artifact_repo_alias is None and not virtual and not index:
+            r = self._create_repo_of(ctx)
+            if r['return'] >0: return r
+
+            artifact_repo_alias = r['repo_alias']
+            artifact_repo_uid = r['repo_uid']
 
         repo_cmeta_ref = {'category_alias': 'repo', 'category_uid': self.cm.cfg['category_repo_uid']}
         
@@ -1691,12 +1828,16 @@ class Category(InitCategory):
             if r['return']>0: return r
             desc_changes = r.get('lines') or []
 
-        # Print artifact path
+        # Print artifact path, and the warning of a dated category (not under -q: a script reads the output)
         if con:
             x = 'Virtual a' if virtual else 'A'
             print (f'{x}rtifact was created in "{artifact_path}"')
 
-        return {'return':0, 'path':artifact_path, 'meta':cmeta, 'desc_changes':desc_changes}
+            if not ctx['control'].get('quiet', False):
+                for warning in warnings:
+                    print (warning)
+
+        return {'return':0, 'path':artifact_path, 'meta':cmeta, 'desc_changes':desc_changes, 'warnings':warnings}
 
     ############################################################
     def _find_all(
@@ -2971,12 +3112,15 @@ class Category(InitCategory):
         connect = None,  # Connect both ways (as add / update).
         connect_to = None,  # Connect this artifact to them (its own _desc only).
         ct = None,  # The short form of connect_to (--ct).
+        dt = None,  # The date in front of the alias (-dt today's, --dt=<date>): what is read, and what is made when nothing is read.
     ):
         """
             Get artifact meta. Read if exists, create and read if doesn't exist. The _desc.yaml options of add
             and update (desc, ai_uses / ai, connect, connect_to / ct) go to the create of a new artifact and to
-            an update of one that exists: the categories that make dated aliases add through get (2026-11-03:
-            "cx work add <name> -ai" failed with "unexpected keyword argument 'ai'").
+            an update of one that exists (2026-11-03: the categories that made dated aliases added through get,
+            and "cx work add <name> -ai" failed with "unexpected keyword argument 'ai'"). With `dt` the alias is
+            read and made with its date in front (_alias_with_date): "get <name> -dt" reads 20261105.<name> or
+            makes it, the same name whether it exists or not.
 
             Args:
                 ctx (dict): cMeta context.
@@ -2989,6 +3133,7 @@ class Category(InitCategory):
                 path (str | None): Use this path for artifact (used during creation).
                 show_path (bool): Print path instead of meta
                 load_files: Value for load files.
+                dt (bool | str | None): The date in front of the alias: True today's, a text that date.
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -2997,11 +3142,13 @@ class Category(InitCategory):
                     - **artifact** (dict): Matched artifact.
                     - **cmeta** (dict): Artifact metadata.
                     - **created** (bool): True if artifact was created, False if it already existed.
+                    - **warnings** (list): The warning of a dated category when the artifact was created with
+                      an alias without a date (create_); empty otherwise.
 
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
-        
+
         # Try to read the artifact first
         con = ctx.get('control',{}).get('con', False)
 
@@ -3009,6 +3156,13 @@ class Category(InitCategory):
             import copy
             ctx = copy.deepcopy(ctx)
             ctx['control']['con'] = False
+
+        # The alias with its date in front: read under that name, made under it when nothing is read
+        if dt:
+            r = self._alias_with_date(ctx, arg1, dt)
+            if r['return'] >0: return r
+
+            arg1 = r['arg1']
 
         r = self.read_(ctx, arg1, tags=tags, skip_uids=skip_uids, load_files=load_files)
 
@@ -3018,6 +3172,7 @@ class Category(InitCategory):
         # If artifact exists, return it (with the _desc.yaml options made on it)
         if r['return'] == 0:
             r['created'] = False
+            r['warnings'] = []
             if desc_options:
                 ru = self.update_(ctx, arg1, skip_uids=skip_uids, **desc_options)   # (tags: to add on a create, not a filter)
                 if ru['return'] > 0:
@@ -3042,6 +3197,7 @@ class Category(InitCategory):
 
             r['created'] = True
             r['desc_changes'] = rc.get('desc_changes') or []
+            r['warnings'] = rc.get('warnings') or []
 
         if con and show_path:
             print (r['artifact']['path'])
@@ -3060,9 +3216,11 @@ class Category(InitCategory):
         virtual: bool = False,  # Virtual artifact created only in index (used during creation).
         path: str = None,  # Use this path for artifact (used during creation).
         show_path: bool = False,  # Print path instead of meta
+        dt = None,  # The date in front of the alias (-dt today's, --dt=<date>): what is read, and what is made when nothing is read.
     ):
         """
-            Set artifact meta. Update and read if exists, create and read if doesn't exist.
+            Set artifact meta. Update and read if exists, create and read if doesn't exist. With `dt` the alias
+            is read and made with its date in front, as get.
 
             Args:
                 ctx (dict): cMeta context.
@@ -3074,6 +3232,7 @@ class Category(InitCategory):
                 virtual (bool): Virtual artifact created only in index (used during creation).
                 path (str | None): Use this path for artifact (used during creation).
                 show_path (bool): Print path instead of meta
+                dt (bool | str | None): The date in front of the alias: True today's, a text that date.
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -3082,11 +3241,13 @@ class Category(InitCategory):
                     - **artifact** (dict): Matched artifact.
                     - **cmeta** (dict): Artifact metadata.
                     - **created** (bool): True if artifact was created, False if it already existed.
+                    - **warnings** (list): The warning of a dated category when the artifact was created with
+                      an alias without a date (create_); empty otherwise.
 
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
-        
+
         # Try to read the artifact first
         con = ctx.get('control',{}).get('con', False)
 
@@ -3095,10 +3256,18 @@ class Category(InitCategory):
 
         ctx['control']['con'] = False
 
+        # The alias with its date in front: read under that name, made under it when nothing is read
+        if dt:
+            r = self._alias_with_date(ctx, arg1, dt)
+            if r['return'] >0: return r
+
+            arg1 = r['arg1']
+
         r = self.read_(ctx, arg1, tags=tags, skip_uids=skip_uids)
-        
+
         # If artifact exists, return it
         created = False
+        warnings = []
 
         if r['return'] == 0:
             # Artifact doesn't exist, create it
@@ -3110,14 +3279,15 @@ class Category(InitCategory):
             # If error is not "artifact not found", return the error
             if r['return'] != 16:
                 return r
-            
+
             # Artifact doesn't exist, create it
             r = self.create_(ctx, arg1, tags=tags, meta=meta, yaml=yaml, virtual=virtual, path=path)
             if r['return'] > 0:
                 return r
 
             created = True
-            
+            warnings = r.get('warnings') or []
+
         # Read the newly created artifact
         if con and not show_path:
             ctx['control']['con'] = True
@@ -3125,8 +3295,9 @@ class Category(InitCategory):
         r = self.read_(ctx, arg1, tags=tags, skip_uids=skip_uids, yaml=yaml)
         if r['return'] > 0:
             return r
-            
+
         r['created'] = created
+        r['warnings'] = warnings
 
         if con and show_path:
             print (r['artifact']['path'])

@@ -646,6 +646,7 @@ alongside it. The framework reads whichever is present. Common fields:
 | `skip_base_category_commands: true` | Category doesn't inherit any base CRUD; only its own methods (e.g. `utils`). |
 | `command_aliases: {hi: hello}` | Per-category CLI aliases (global ones live in `cmeta/config.py`). |
 | `find_sort: false` | Disable default alphabetical sort for `find`. |
+| `dated_aliases: true` | The category names its artifacts by their date (`20261105.a note`: `work`, `note`, `journal`): `add`, `get` and `set` warn about a new alias without a date and keep it as typed; `-dt` puts today's date in front (any category). |
 | `uses_categories: {<name>: <alias>,<uid>}` | Declare cross-category dependencies. Read at runtime as `self.cmeta['uses_categories'][name]` — **the recommended way to reference other categories** so renames don't break your plugin. |
 | `default_env`, `param_env_prefix`, `config_name` | Used by the `app` category to run apps with pre-configured env vars merged with a named `config` artifact (see `internal-repo/app/cserver/_cmeta.yaml`). |
 
