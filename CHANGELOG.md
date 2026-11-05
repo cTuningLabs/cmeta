@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.8.1)
+## 0.38.9
 - **`cx app run cserver` refuses a port another server listens on, and names it.** On Windows a second server that
   sets SO_REUSEADDR - uvicorn does, with `--reload` (the cserver's default) or `--workers` - bound a port another one
   listened on, and the two shared its connections unseen (two cservers started on one port - by two AI sessions at
