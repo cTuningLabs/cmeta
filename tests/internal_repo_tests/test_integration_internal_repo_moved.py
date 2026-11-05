@@ -90,6 +90,27 @@ def test_an_incremental_index_moves_the_records_to_this_engine(engines):
     assert os.path.normcase(os.path.normpath(str(b))) in registered(home)
 
 
+def test_an_engine_upgraded_in_place_indexes_its_repository_again(engines):
+    home, a, b, monkeypatch = engines
+
+    # the release after in the same folder (pip or uv upgraded the engine in place): another version, a new app
+    meta = a / '_cmr.yaml'
+    meta.write_text(meta.read_text(encoding='utf-8').replace("version: '", "version: '9", 1), encoding='utf-8')
+    (a / 'app' / 'cserver-next').mkdir()
+    (a / 'app' / 'cserver-next' / '_cmeta.yaml').write_text('artifact: 0123456789abcdef\ncategory: app,554a9a2199104713\n',
+                                                          encoding='utf-8')
+
+    r = access(CMeta(home=home), category='app', command='find', arg1='cserver-next')
+    assert r['return'] == 0, r.get('error')                       # before: not found until "cx repo reindex internal"
+    assert under(os.path.normcase(r['artifacts'][0]['path']), a)
+
+    # once: the next start reads nothing again
+    app_index = os.path.join(home, 'index', 'app.pkl')
+    before = os.stat(app_index).st_mtime_ns
+    assert under(cserver_path(home), a)
+    assert os.stat(app_index).st_mtime_ns == before
+
+
 def test_the_same_engine_does_not_index_again_at_start(engines):
     home, a, b, monkeypatch = engines
     app_index = os.path.join(home, 'index', 'app.pkl')

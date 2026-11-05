@@ -270,6 +270,18 @@ class Repos:
                     utils.common.console_line(f'could not index the internal repository of this engine: {r.get("error", "")}',
                                               'warning', logger=self.logger, con=con)
 
+            # The engine was upgraded in place: its internal repository is read again, alone (as "cx repo reindex
+            # internal" would), so that what the new release brought - a category, an app - is found at once
+            stale = r.get('internal_repo_stale') if not gone else None
+            if stale:
+                utils.common.console_line(f'this engine is {stale[2]}; its internal repository was indexed '
+                                          f'at {stale[1] or "an older release"}: indexing it again', 'info',
+                                          logger=self.logger, con=con)
+                r = self.index(con=False, verbose=verbose, add_repo_paths=[stale[0]])
+                if r['return']>0:
+                    utils.common.console_line(f'could not index the internal repository of this engine: {r.get("error", "")}',
+                                              'warning', logger=self.logger, con=con)
+
         return {'return':0}
 
     ###################################################################################################
@@ -352,7 +364,9 @@ class Repos:
             `_register_soft_lock`). The index of repositories is small and read through the cache.
 
             Returns 'internal_repo_gone': the internal repository the index names when it is another one than
-            this engine's and is not there any more (see `init`).
+            this engine's and is not there any more, and 'internal_repo_stale': (path, the version indexed, the
+            version there) when it is this engine's folder holding another release than the index read - the
+            engine upgraded in place (see `init`).
         """
         index_repo_file = os.path.join(self.index_path, 'repo' + self.index_extension)
         if not os.path.isfile(index_repo_file):
@@ -362,21 +376,32 @@ class Repos:
         if r['return']>0: return r
 
         internal_repo_gone = None
+        internal_repo_stale = None
         this_internal_repo_path = None
 
         for entry in (r['data'].get(self.KEY_INDEX_UIDS) or {}).values():
             path = entry.get('path')
-            self._register_soft_lock(path, entry.get('_cmr') or entry.get('cmeta') or {})
+            meta = entry.get('_cmr') or entry.get('cmeta') or {}
+            self._register_soft_lock(path, meta)
 
             # (the internal repository is known by the name of its folder, as in _index)
             if path and os.path.normpath(path).endswith('internal-repo'):
                 if this_internal_repo_path is None:
                     this_internal_repo_path = self._this_internal_repo_path()
-                if not self._same_path(path, this_internal_repo_path) and \
-                        not os.path.isfile(os.path.join(path, self.cfg['repo_meta_desc'])):
-                    internal_repo_gone = path
+                if not self._same_path(path, this_internal_repo_path):
+                    if not os.path.isfile(os.path.join(path, self.cfg['repo_meta_desc'])):
+                        internal_repo_gone = path
+                else:
+                    # the same folder with another release in it (pip or uv upgraded the engine in place): the index
+                    # is of the release before, so a category the new one brought was not found until a reindex
+                    rr = utils.files.safe_read_file(os.path.join(path, self.cfg['repo_meta_desc']),
+                                                    fail_on_error=False, logger=self.logger)
+                    there = str((rr.get('data') or {}).get('version') or '') if rr['return'] == 0 else ''
+                    indexed = str(meta.get('version') or '')
+                    if there and there != indexed:
+                        internal_repo_stale = (path, indexed, there)
 
-        return {'return':0, 'internal_repo_gone': internal_repo_gone}
+        return {'return':0, 'internal_repo_gone': internal_repo_gone, 'internal_repo_stale': internal_repo_stale}
 
     ###################################################################################################
     def add_to_index(

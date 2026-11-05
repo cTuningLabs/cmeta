@@ -2,6 +2,15 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.38.7.1)
+- **An engine upgraded in place indexes its internal repository again at the next start.** `pip install -U cmeta` or
+  `uv tool upgrade` puts the new release into the same folder, so the home's index kept the internal repository of
+  the release before: what the new one brought was not found (`category "cserver.cmeta.configs" not found` on the
+  two cTuning sites after the upgrade to 0.38.7) until `cx repo reindex internal`. The start compares the version the
+  index holds for this engine's internal repository with its `_cmr.yaml` (one read of a small file per process,
+  ~0.3 ms) and, when they differ, indexes that repository alone, once (~0.7 s on a laptop), with an info line. Test:
+  `test_an_engine_upgraded_in_place_indexes_its_repository_again`.
+
 ## 0.38.7
 - **A new page, `/cmeta.configs` (category `cserver.cmeta.configs`): every key the plugged artifacts read from the
   config artifacts.** By config artifact: what each key does, its type and default, which artifacts read it (links to
