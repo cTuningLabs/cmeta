@@ -1,0 +1,20 @@
+# The keys of the config artifact an app names in its meta (config_name: <config>; app/cserver names cserver), which
+# cx app run reads before every run. An app declares the keys of its own config in its _desc.yaml
+# (app/cserver/_desc.yaml).
+
+configs:
+  <config_name>:
+    desc: the config artifact an app names with config_name in its meta - this machine's settings of the app, read by
+      cx app run before every run; all its keys go over the app's own meta (run_script, default_env, ...)
+    keys:
+      env:
+        desc: environment variables of the app's run script (_run.bat / _run.sh); --env.<VAR>=<value> on the command
+          line wins over a variable of the same name
+        type: dict
+      param:
+        desc: the app's parameters - each one reaches the run script as the environment variable
+          <param_env_prefix><NAME> (the name in capitals); --param.<name>=<value> on the command line wins
+        type: dict
+      vars:
+        desc: read by cx app run but not used - its keys only join the app's meta with the rest of the config
+        type: dict

@@ -2,6 +2,12 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.38.8.1)
+- **The configs page describes the keys of an app's config.** `category/app/_desc.yaml` declares the config artifact
+  an app names with `config_name` in its meta (`config::<config_name>`, read by `cx app run` before every run): `env`
+  and `param` for the app's run script (the command line's `--env` / `--param` win) and `vars`, which `cx app run`
+  reads but does not use.
+
 ## 0.38.8
 - **An engine upgraded in place indexes its internal repository again at the next start.** `pip install -U cmeta` or
   `uv tool upgrade` puts the new release into the same folder, so the home's index kept the internal repository of
