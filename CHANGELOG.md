@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.9.1)
+## 0.38.10
 - **`cx <category> info <artifact>` (and `cx . info`) prints and copies `{{{<category>::<alias>,<UID>}}}`.** The
   reference in the form notes, memories, records and docs use (the browse and cref pages make it a link,
   `smart_find_by_cid` and the Far plugins read it, a `/path` may follow it) - so what the clipboard brings is ready to
