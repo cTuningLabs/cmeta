@@ -8,8 +8,20 @@ All notable changes to cMeta are documented here, newest first.
   the release before: what the new one brought was not found (`category "cserver.cmeta.configs" not found` on the
   two cTuning sites after the upgrade to 0.38.7) until `cx repo reindex internal`. The start compares the version the
   index holds for this engine's internal repository with its `_cmr.yaml` (one read of a small file per process,
-  ~0.3 ms) and, when they differ, indexes that repository alone, once (~0.7 s on a laptop), with an info line. Test:
-  `test_an_engine_upgraded_in_place_indexes_its_repository_again`.
+  ~0.3 ms) and, when they differ, indexes that repository alone, once (~0.7 s on a laptop), with an info line on
+  stdout (as the first run of a new home prints one): the exit code, the answer and the JSON of `-j` are what they
+  were, nothing goes to stderr. Tests: `test_an_engine_upgraded_in_place_indexes_its_repository_again`, the first
+  command's output under `-j` and `--version`, six commands starting at once on such a home.
+- **Release tests** (`tests/release_tests/`, run with `CMETA_RELEASE_TESTS=1`; a step of `docs/releasing.md`): an
+  older cMeta from PyPI (0.37.3, 0.38.0, 0.38.4, 0.38.6, 0.38.7) indexes a home, the tree under test is installed
+  over it with `pip` and with `uv tool install --force`, and its first command must find what the new engine brings.
+  The suite of a fresh home could not see the gap above; a release is checked against the installations people
+  really have from now on.
+- **The configs page scans a file with a bad escape quietly.** A Python file whose text holds `"\!"` (a Windows
+  path) made Python print a `SyntaxWarning` into the server's output at its first scan. Test:
+  `test_cserver_configs_warnings.py`.
+- **Docs:** `configuration.md`, `installation.md` and `using-cmeta.md` said `cx config set task
+  --meta.check_versions`; the task engine of cMeta AOps reads `tool.check_versions`.
 
 ## 0.38.7
 - **A new page, `/cmeta.configs` (category `cserver.cmeta.configs`): every key the plugged artifacts read from the

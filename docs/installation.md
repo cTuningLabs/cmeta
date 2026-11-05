@@ -336,7 +336,7 @@ checks for detected tools, and choosing a default Git transport:
 
 ```bash
 cx config set task --meta.file_cache=/path/to/large/cache
-cx config set task --meta.check_versions
+cx config set task --meta.tool.check_versions
 cx config set default --meta.default_git=git@github.com:
 ```
 

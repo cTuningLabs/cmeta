@@ -70,6 +70,7 @@ import re
 import sys
 import threading
 import time
+import warnings
 
 import yaml
 
@@ -296,7 +297,11 @@ class _Code:
     ROUNDS = 2
 
     def __init__(self, text, routes=None):
-        self.tree = ast.parse(text)
+        # a text with a bad escape ("\!" in a Windows path) makes Python warn when it is parsed (SyntaxWarning): the
+        # warning is the file's author's, not the page's - nothing of it reaches the server's output
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            self.tree = ast.parse(text)
         self.lines = text.splitlines()
         # the dotted paths that carry the keys of a config (global.init -> task): path -> config
         self.routes = {tuple(k.split('.')): v for k, v in (routes or {}).items()}
