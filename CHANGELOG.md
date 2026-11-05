@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.7.1)
+## 0.38.8
 - **An engine upgraded in place indexes its internal repository again at the next start.** `pip install -U cmeta` or
   `uv tool upgrade` puts the new release into the same folder, so the home's index kept the internal repository of
   the release before: what the new one brought was not found (`category "cserver.cmeta.configs" not found` on the
