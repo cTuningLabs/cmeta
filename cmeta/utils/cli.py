@@ -522,6 +522,32 @@ def typed_params_from_cli(
     return {'return': 0, 'converted': converted}
 
 
+def keys_param(
+    name,  # The parameter's name (meta, desc).
+    value,  # What the command got for it.
+    empty,  # What an empty text ("--desc=") stands for: no keys ({} or None).
+):
+    """
+        A parameter that takes keys (meta, desc) -> (its value, None), or (None, the error) for anything else. A
+        text from the command line was dropped silently (desc: "Artifact was updated", nothing written) or broke
+        the command (meta: AttributeError, cMeta 0.38.9): a flag's value is never read as a file, so
+        "--desc=@file.yaml" reads none - the whole argument @file.yaml holding desc: does. An empty text is
+        `empty`; None stays None.
+    """
+    if isinstance(value, str) and not value.strip():
+        return empty, None
+
+    if value is None or isinstance(value, dict):
+        return value, None
+
+    what = f"the text '{value}'" if isinstance(value, str) else f'a {type(value).__name__}'
+    file_hint = f' (--{name}=@<file> reads no file)' if isinstance(value, str) and value.startswith('@') else ''
+
+    return None, {'return': 1, 'error': f'"{name}" takes keys, not {what}{file_hint}: give --{name}.<key>=<value>, '
+                                        f'or a whole argument @<file>.yaml (or .json) holding {name}: {{...}} for '
+                                        f'several keys at once'}
+
+
 def print_params_help(
     params_description: list,  # List of parameter dictionaries containing 'key', 'type',
 ):

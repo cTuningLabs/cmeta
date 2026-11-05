@@ -2,6 +2,29 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.38.9.1)
+- **`cx <category> info <artifact>` (and `cx . info`) prints and copies `{{{<category>::<alias>,<UID>}}}`.** The
+  reference in the form notes, memories, records and docs use (the browse and cref pages make it a link,
+  `smart_find_by_cid` and the Far plugins read it, a `/path` may follow it) - so what the clipboard brings is ready to
+  paste. `--cref` gives the full `cRef=<category>,<UID>::<alias>,<UID>` printed and copied up to 0.38.9; `--name`,
+  `--url` and `--clip-` as before. Nothing read the old output: no tool of cMeta, cmeta-aops or the Far plugins parses
+  it, and `cRef=...` texts already written stay readable as before. Test:
+  `tests/internal_repo_tests/test_integration_info_reference.py` (the default, `--cref`, `--name`, `--clip-`).
+- **`meta` and `desc` refuse a text instead of ignoring it or breaking.** `cx <category> update <a> --desc=@keys.yaml`
+  printed "Artifact was updated" and wrote nothing: a flag's value is never read as a file (only a whole argument
+  `@keys.yaml` is), and a `desc` that was not keys was dropped without a word; `--meta=@keys.yaml` stopped with
+  "AttributeError: 'str' object has no attribute 'items'" (in `cx config set` after locking the config file; in `cx
+  repo get` after the clone, with `_cmr.yaml` locked). `add`, `update` and `get` (and `set` through them), the config
+  category's own `set` and `repo get` now refuse such a value before anything is found, fetched, made, locked or
+  changed: `"desc" takes keys, not the text '@keys.yaml' (--desc=@<file> reads no file): give --desc.<key>=<value>, or
+  a whole argument @<file>.yaml (or .json) holding desc: {...} for several keys at once`
+  (`cmeta.utils.cli.keys_param`). An empty value (`--desc=`) is still no keys, and None stays None. The 0.38.0 entry
+  and the guide said that `--desc=@file.yaml` merged a file - it never did; the guide now shows the whole-argument
+  form (`cx <category> update <a> @desc.yaml`, the file holding `desc:`). Tests: two in
+  `tests/internal_repo_tests/test_integration_ai_uses_templates.py` (the texts refused by add, update, get and set
+  with nothing made or written, `repo get` with nothing fetched, an empty value, keys as before; the command line end
+  to end: `--desc=@keys.yaml` and `--meta=@keys.yaml` refused, the whole argument `@desc.yaml` merged).
+
 ## 0.38.9
 - **`cx app run cserver` refuses a port another server listens on, and names it.** On Windows a second server that
   sets SO_REUSEADDR - uvicorn does, with `--reload` (the cserver's default) or `--workers` - bound a port another one

@@ -136,7 +136,8 @@ def apply_artifact_defaults(
 # - several artifacts for one name is an error that names them. What is written is the full cRef
 # (<category alias>,<UID>::<alias>,<UID>), as run-ai reads it, so the context survives renames and machines.
 # The same on `update` (appended, no duplicates). A generic `desc` dict is merged into _desc.yaml the same way
-# (--desc.<key>=<value>, --desc=@file.yaml); a _desc.json found there is converted to YAML, never both.
+# (--desc.<key>=<value>, or several keys in a whole @file.yaml argument holding desc:); a _desc.json found there
+# is converted to YAML, never both.
 # The declaration lives in the meta because the index keeps every meta: the list is one query, no file walk.
 #
 # The connections of an artifact (2026-11-03): `--connect=<names>` on add / update writes the full cRef of each
@@ -556,19 +557,23 @@ class Category(InitCategory):
         self,
         ctx: dict,  # cMeta context.
         arg1: str = None,  # Artifact alias or UID.
-        clip: bool = True,  # If True, copy cRef to clipboard.
+        clip: bool = True,  # If True, copy the reference to the clipboard.
         url: bool = False,  # If True, copy URL with detected cRef to the clipboard.
         name: bool = False,  # If True, copy artifact name to the clipboard
+        cref: bool = False,  # If True, the old form cRef=<category>,<UID>::<alias>,<UID> instead of {{{<category>::<alias>,<UID>}}}.
     ):
         """
-            Get artifact info.
+            Get artifact info. The reference printed and copied is {{{<category>::<alias>,<UID>}}} - how memories,
+            records and docs name an artifact (the browse and cref pages make it a link, smart_find_by_cid reads it);
+            --cref gives the full cRef=... that info printed up to cMeta 0.38.9.
 
             Args:
                 ctx (dict): cMeta context.
                 arg1 (str | None): Artifact alias or UID.
-                clip (bool): If True, copy cRef to clipboard.
+                clip (bool): If True, copy the reference to the clipboard.
                 url (bool): If True, copy URL with detected cRef to the clipboard.
                 name (bool): If True, copy artifact name to the clipboard
+                cref (bool): If True, print and copy cRef=<full cRef> (the form up to 0.38.9).
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -601,13 +606,21 @@ class Category(InitCategory):
             r = utils.names.restore_cmeta_ref(cmeta_ref_parts)
             if r['return']>0: return r
 
-            cref = r['ref']
+            ref = r['ref']
 
-            cref_text = 'cRef='
+            # The reference printed and copied: {{{<category>::<alias>,<UID>}}}, or with --cref the full cRef=...
+            if cref:
+                cref_text = f'cRef={ref}'
+            else:
+                r = utils.names.restore_cmeta_name(cmeta_ref_parts, key='artifact', fail_on_error = self.fail_on_error)
+                if r['return']>0: return r
+
+                category = cmeta_ref_parts.get('category_alias') or cmeta_ref_parts.get('category_uid', '')
+                cref_text = '{{{' + f"{category}::{r['name']}" + '}}}'
 
             if con:
                 print ('')
-                print (f'{cref_text}{cref}')
+                print (cref_text)
 
                 print ('')
                 for k in sorted(cmeta_ref_parts):
@@ -626,7 +639,7 @@ class Category(InitCategory):
                 if url == '':
                     url = self.cm.cfg['url_cserver_info']
                 
-                clipboard_text = url + urllib.parse.quote(cref, safe="")
+                clipboard_text = url + urllib.parse.quote(ref, safe="")
 
                 if con:
                     print ('')
@@ -639,7 +652,7 @@ class Category(InitCategory):
                 clipboard_text = r['name']
 
             elif clip:
-                clipboard_text = f'{cref_text}{cref}'
+                clipboard_text = cref_text
 
             if clip:
                 r = self.cm.utils.common.copy_text_to_clipboard(clipboard_text, do_not_fail = not verbose)
@@ -848,7 +861,7 @@ class Category(InitCategory):
         match: dict = None,  # Value for match.
         match_empty_version: bool = False,  # Value for match empty version.
         all_tags: str = None,  # Value for all tags.
-        desc: dict = None,  # Keys merged into the artifact's _desc.yaml (--desc.<key>=<value>, --desc=@file).
+        desc: dict = None,  # Keys merged into the artifact's _desc.yaml (--desc.<key>=<value>, or a whole @file.yaml holding desc:).
         ai_uses = None,  # AI context to add: template aliases, artifact aliases or cRefs ("-name" removes); True = ask.
         ai = None,  # The short form of ai_uses (-ai, -ai=cmeta,fgg, -ai=-fgg).
         connect = None,  # Connect both ways: names or cRefs (";" between cRefs, "-name" disconnects); True = ask.
@@ -893,6 +906,12 @@ class Category(InitCategory):
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
+
+        # meta and desc take keys: anything else is refused before an artifact is found, made or changed
+        meta, r = utils.cli.keys_param('meta', meta, {})
+        if r: return r
+        desc, r = utils.cli.keys_param('desc', desc, None)
+        if r: return r
 
         # First, find artifact(s)
         con = ctx.get('control',{}).get('con', False)
@@ -1494,7 +1513,7 @@ class Category(InitCategory):
         path: str = None,  # Use this path for artifact (useful for virtual artifacts such as repo).
         index: bool = False, # If true and path exists but not index, just add to index
                              # Useful when AI agents create cMeta entries while bypassing cMeta
-        desc: dict = None,  # Keys merged into the artifact's _desc.yaml (--desc.<key>=<value>, --desc=@file).
+        desc: dict = None,  # Keys merged into the artifact's _desc.yaml (--desc.<key>=<value>, or a whole @file.yaml holding desc:).
         ai_uses = None,  # AI context: template aliases, artifact aliases or cRefs (comma-separated); True = ask.
         ai = None,  # The short form of ai_uses (-ai, -ai=cmeta,fgg).
         connect = None,  # Connect both ways: names or cRefs (";" between cRefs); True = ask.
@@ -1542,6 +1561,12 @@ class Category(InitCategory):
         if tags is not None:
             if type(tags) != str and type(tags) != list:
                 return {'return':1, 'error': f'"tags" should be str or list but got {type(tags).__name__}'}
+
+        # meta and desc take keys: anything else is refused before anything is made
+        meta, r = utils.cli.keys_param('meta', meta, {})
+        if r: return r
+        desc, r = utils.cli.keys_param('desc', desc, None)
+        if r: return r
 
         # The alias with its date in front (-dt), and the warning of a dated category for an alias without one;
         # a folder that exists is indexed under its own name
@@ -3148,6 +3173,12 @@ class Category(InitCategory):
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
+
+        # meta and desc take keys, whether the artifact is read or made (update_ and create_ say the same)
+        meta, r = utils.cli.keys_param('meta', meta, {})
+        if r: return r
+        desc, r = utils.cli.keys_param('desc', desc, None)
+        if r: return r
 
         # Try to read the artifact first
         con = ctx.get('control',{}).get('con', False)

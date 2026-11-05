@@ -56,14 +56,16 @@ Pass an explicit category after `.` to override detection:
 
 ### `cx . info` — the "where am I?" command
 
-Prints the artifact path, the full **cRef**, and the alias + UID of the
-artifact, its category and its repo — and copies the cRef to your clipboard:
+Prints the artifact path, its reference `{{{<category>::<alias>,<UID>}}}` (how
+notes, memories and docs name an artifact - the browse and cref pages make it a
+link), and the alias + UID of the artifact, its category and its repo — and
+copies the reference to your clipboard:
 
 ```console
 $ cx . info
 Artifact path: ...\cmeta\internal-repo\category\config
 
-cRef=category,dd9ea50e7f76467f::config,cc6bfe174be847ed
+{{{category::config,cc6bfe174be847ed}}}
 
 artifact_alias: config
 artifact_uid:   cc6bfe174be847ed
@@ -75,7 +77,8 @@ repo_uid:       21f6ce28893e4de8
 
 | Flag | Effect |
 |------|--------|
-| *(default)* | Copy the **cRef** to the clipboard. |
+| *(default)* | Copy the reference `{{{<category>::<alias>,<UID>}}}` to the clipboard. |
+| `--cref` | The full **cRef** instead, as `cRef=<category>,<UID>::<alias>,<UID>` (what `info` printed up to 0.38.9). |
 | `--clip-` | Don't touch the clipboard. |
 | `--url` | Also print and copy a shareable **cRef URL**. |
 | `--name` | Copy the artifact **name** instead of the cRef. |
@@ -92,7 +95,7 @@ cx <category> ls                       # list all artifacts
 cx <category> ls --tags=demo,gpu       # tag filter (AND-match)
 cx <category> find <alias-or-uid>      # resolve from the index
 cx <category> read <alias>             # print the artifact's meta
-cx <category> info <alias>             # path + cRef (+ clipboard)
+cx <category> info <alias>             # path + {{{cRef}}} (+ clipboard; --cref: cRef=...)
 
 cx <category> add <alias> --tags=t1,t2 --yaml
 cx <category> add <repo>:<alias> --meta.owner="me"

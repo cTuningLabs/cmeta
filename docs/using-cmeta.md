@@ -201,6 +201,15 @@ You can mix `@file` inclusions with regular flags — flags to the right overrid
 values from the file(s) to the left. On Windows, quote paths containing
 backslashes so `shlex.split` doesn't mangle them: `@"C:\path\to\file.yaml"`.
 
+Only a **whole argument** is read as a file. In `--desc=@keys.yaml` the value is
+the text `@keys.yaml`, and the parameters that take keys - `meta` (add, update,
+get, set, repo get) and `desc` (add, update, get) - refuse a text with a hint.
+Put the keys under their parameter in the file instead:
+
+```bash
+cx <category> update <alias> @desc.yaml   # desc.yaml holds:  desc: {owner: me, notes: [first]}
+```
+
 **Triple dashes rejected** — `---bogus` returns an error.
 
 ### 3.6 A few useful combinations
@@ -286,7 +295,7 @@ desktop session's PATH and ensure its active home contains the artifact.
 cx <category> find <alias-or-uid>              # returns matches from the index
 cx <category> ls                               # list all artifacts of a category
 cx <category> ls --tags=demo,gpu               # AND-match on tags
-cx <category> info <alias>                     # show path + cRef; copies cRef to clipboard
+cx <category> info <alias>                     # show path + {{{cRef}}}, copied to clipboard (--cref: cRef=...)
 cx . info                                      # auto-detect artifact in current dir
 cx <category> read <alias>                     # parse and print _cmeta.yaml
 ```
@@ -308,7 +317,7 @@ cx <category> update <alias> --ct=<name>       # --connect-to: this artifact onl
 cx <category> update <alias> --connect=-<name> # disconnect both ways (--ct=-<name>: this side only)
 cx <category> update <alias> --connect="<cRef>;<cRef>"   # several at once: ";" between cRefs
 cx <category> update <alias> --connect         # ask: its connections ("-N" disconnects), then names to add
-cx <category> update <alias> --desc.ck.owner=me   # merge any key into _desc.yaml (--desc=@file.yaml: a dict)
+cx <category> update <alias> --desc.ck.owner=me   # merge any key into _desc.yaml (several: @file.yaml holding desc:)
 cx utils ai_context                            # the declared AI contexts (alias, cRef, title); --names=a,b resolves names
 cx utils find_by_cid "*::*" --match.template.ai_uses.alias=*   # the same by the index search: "*" = any value (the key exists)
 cx <category> tags <alias> --add=t1,t2 --remove=t3
@@ -533,7 +542,7 @@ $ cd <repo>/category/config
 $ cx . info
 Artifact path: ...\cmeta\internal-repo\category\config
 
-cRef=category,dd9ea50e7f76467f::config,cc6bfe174be847ed
+{{{category::config,cc6bfe174be847ed}}}
 
 artifact_alias: config
 artifact_uid:   cc6bfe174be847ed
@@ -547,7 +556,8 @@ Useful flags:
 
 | Flag | Effect |
 |------|--------|
-| *(default)* | Copies the **cRef** to the clipboard, ready to paste into meta or a message. |
+| *(default)* | Copies the reference `{{{<category>::<alias>,<UID>}}}` to the clipboard, ready to paste into a note, a memory or a message. |
+| `--cref` | The full **cRef** instead, as `cRef=<category>,<UID>::<alias>,<UID>` (what `info` printed up to 0.38.9). |
 | `--clip-` | Don't touch the clipboard (the boolean off-switch). |
 | `--url` | Also print — and copy — a **cRef URL** pointing at the configured server, for sharing a link to the artifact. |
 | `--name` | Copy the artifact **name** to the clipboard instead of the cRef. |
