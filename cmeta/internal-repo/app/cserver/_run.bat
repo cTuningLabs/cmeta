@@ -50,4 +50,10 @@ if defined CSERVER_ON_TAILSCALE for /f "usebackq delims=" %%a in (`%PYTHON_PREFI
 if defined CSERVER_ON_TAILSCALE if not defined CSERVER_HOST exit /b 1
 if defined CSERVER_ON_TAILSCALE echo cMeta info: cserver listens on the Tailscale address %CSERVER_HOST%
 
+rem A port another server listens on already - another session's, a forgotten one - stops the start, the process named:
+rem on Windows uvicorn's SO_REUSEADDR (--reload, --workers) would bind it all the same, and the two servers would share
+rem its connections unseen.
+%PYTHON_PREFIX% "%CSERVER_PYTHON%" -W ignore::RuntimeWarning -m cmeta.utils.net port_free %CSERVER_HOST% %CSERVER_PORT%
+if errorlevel 1 exit /b 1
+
 %PYTHON_PREFIX% "%CSERVER_PYTHON%" -m uvicorn src.app:app --host %CSERVER_HOST% --port %CSERVER_PORT% %CSERVER_FLAGS%

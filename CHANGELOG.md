@@ -3,6 +3,19 @@
 All notable changes to cMeta are documented here, newest first.
 
 ## DEV VERSION (0.38.8.1)
+- **`cx app run cserver` refuses a port another server listens on, and names it.** On Windows a second server that
+  sets SO_REUSEADDR - uvicorn does, with `--reload` (the cserver's default) or `--workers` - bound a port another one
+  listened on, and the two shared its connections unseen (two cservers started on one port - by two AI sessions at
+  once, the second on another cMeta home); Linux and macOS refused it with a bare "address already in use".
+  Both run scripts of the cserver app now ask `python -m cmeta.utils.net port_free <host> <port>` before uvicorn
+  starts (a bind of the address, at once: about 0.3 s per start for the interpreter) and stop with "cMeta notice: port
+  8004 of 127.0.0.1 is in use - process 6876 (python.exe: ... -m uvicorn ... --reload) listens there ...!" - the
+  process named through PowerShell's Get-NetTCPConnection on Windows (netstat lists no user's listener on some
+  builds), lsof on macOS, ss on Linux, preferring the server to the multiprocessing workers it started; an address of
+  another machine is said too. `cmeta.utils.net.port_free(host, port)` is the function. Tests:
+  `test_utils_net_port.py` (a listener with SO_REUSEADDR as uvicorn's, its process named, free once closed, TIME_WAIT
+  is no server, the launcher's entry, both scripts ask before uvicorn); checked end to end on Windows, Linux (WSL,
+  Python 3.15) and macOS (Python 3.15): a second `cx app run cserver` refused, the first one still answering.
 - **The configs page describes the keys of an app's config.** `category/app/_desc.yaml` declares the config artifact
   an app names with `config_name` in its meta (`config::<config_name>`, read by `cx app run` before every run): `env`
   and `param` for the app's run script (the command line's `--env` / `--param` win) and `vars`, which `cx app run`

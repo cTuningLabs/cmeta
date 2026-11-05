@@ -565,13 +565,134 @@ def tailscale_ipv4(
     return _error(f'Tailscale gave no address of its own ({said or "no answer"}) - is it running and logged in?')
 
 ##################################################################################################
-if __name__ == '__main__':
-    # A launcher's question (the cserver app's _run.bat / _run.sh with --param.host=tailscale): the address alone on
-    # stdout; else the reason on stderr and exit code 1
+def port_free(
+    host,  # The address a server is about to listen on (127.0.0.1, 0.0.0.0, ::, an address of this machine).
+    port,  # Its port.
+):
+    """
+        Whether a server may listen on that port, asked before it starts (the cserver app's _run.bat / _run.sh) - and,
+        when another one listens there already (another session's, a forgotten one), which process it is if the
+        system says so. On Windows a second server that sets SO_REUSEADDR - uvicorn does, with --reload or
+        --workers - binds a port another one listens on, and the two share its connections unseen (checked
+        2026-11-05); Linux and macOS refuse it with a bare "address already in use".
+
+        A bind of the address tells, at once: on Windows a plain one (refused while anyone listens there), elsewhere
+        one with SO_REUSEADDR (what a closed server leaves, TIME_WAIT, is no server; a listener still refuses it). The
+        process, best effort: PowerShell's Get-NetTCPConnection on Windows (netstat lists no user's listener on some
+        builds), lsof and ps on macOS, ss -ltnp and /proc on Linux.
+
+        Args:
+            host: The address a server is about to listen on.
+            port: Its port.
+        Returns:
+            dict: {'return': 0, 'free': True}, or {'return': 0, 'free': False, 'in_use': <another server listens>,
+                  'reason': <the system's words>, 'pid': <int or None>, 'name': <the program, '' when unknown>,
+                  'cmd': <its command line, ''>}; {'return': 1, 'error': ...} for a port that is no number.
+    """
+
+    # imported here: "from .net import *" in the package would export a module-level "sys" over cmeta.utils.sys
+    import errno
+    import socket
+    import subprocess
     import sys
-    if sys.argv[1:] != ['tailscale_ipv4']:
-        sys.exit('usage: python -m cmeta.utils.net tailscale_ipv4')
-    r = tailscale_ipv4()
-    if r['return'] > 0:
-        sys.exit('cMeta notice: ' + r['error'] + '!')
-    print(r['ip'])
+
+    from .sys import decode_output
+
+    try:
+        port = int(str(port).strip())
+    except ValueError:
+        return _error(f'"{port}" is not a port number')
+    if not 0 < port < 65536:
+        return _error(f'{port} is not a port number (1-65535)')
+
+    host = str(host or '').strip().strip('[]')
+    s = socket.socket(socket.AF_INET6 if ':' in host else socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if os.name != 'nt':
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, port))
+        return {'return': 0, 'free': True}
+    except OSError as e:
+        out = {'return': 0, 'free': False, 'in_use': e.errno == errno.EADDRINUSE, 'reason': e.strerror or str(e),
+               'pid': None, 'name': '', 'cmd': ''}
+    finally:
+        s.close()
+
+    if not out['in_use']:
+        return out
+
+    def text(args):
+        try:
+            p = subprocess.run(args, stdin = subprocess.DEVNULL, capture_output = True, timeout = 10)
+        except (OSError, subprocess.SubprocessError):
+            return ''
+        return decode_output(p.stdout) if p.returncode == 0 else ''
+
+    # every process that holds the listening socket - a server and the workers it started share it: [(pid, name, cmd)]
+    found = []
+    if os.name == 'nt':
+        # a listener: no remote port (its state may be blank on some builds); a line per process: pid, name, command
+        for line in text(['powershell', '-NoProfile', '-NonInteractive', '-Command',
+                          f'Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | Where-Object {{ $_.RemotePort -eq 0 }} '
+                          f'| Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object {{ $p = Get-CimInstance '
+                          f'Win32_Process -Filter ("ProcessId=" + $_); "$_`t$($p.Name)`t$($p.CommandLine)" }}']).splitlines():
+            f = line.strip().split('\t')
+            if f[0].isdigit() and f[0] != '0':
+                found.append((int(f[0]), f[1] if len(f) > 1 else '', f[2].strip() if len(f) > 2 else ''))
+
+    elif sys.platform == 'darwin':
+        pid = 0
+        for line in text(['lsof', '-nP', f'-iTCP:{port}', '-sTCP:LISTEN', '-Fpc']).splitlines():
+            if line[:1] == 'p' and line[1:].isdigit():
+                pid = int(line[1:])
+            elif line[:1] == 'c' and pid:
+                found.append((pid, line[1:], text(['ps', '-o', 'command=', '-p', str(pid)]).strip()))
+
+    else:
+        for name, pid in re.findall(r'\("([^"]*)",pid=(\d+)', text(['ss', '-ltnp', 'sport', '=', f':{port}'])):
+            try:
+                with open(f'/proc/{pid}/cmdline', 'rb') as f:
+                    cmd = f.read().replace(b'\0', b' ').decode('utf-8', 'replace').strip()
+            except OSError:
+                cmd = ''
+            if int(pid) not in [x[0] for x in found]:
+                found.append((int(pid), name, cmd))
+
+    # the one that says what it is: the server, not a worker of Python's multiprocessing that it started
+    found.sort(key = lambda x: 'multiprocessing' in x[2])
+    if found:
+        out['pid'], out['name'], out['cmd'] = found[0]
+
+    return out
+
+##################################################################################################
+if __name__ == '__main__':
+    # A launcher's questions (the cserver app's _run.bat / _run.sh): tailscale_ipv4 - the address alone on stdout
+    # (--param.host=tailscale); port_free <host> <port> - nothing while no server listens there (before a start).
+    # Else the reason on stderr and exit code 1
+    import sys
+    args = sys.argv[1:]
+
+    if args == ['tailscale_ipv4']:
+        r = tailscale_ipv4()
+        if r['return'] > 0:
+            sys.exit('cMeta notice: ' + r['error'] + '!')
+        print(r['ip'])
+
+    elif len(args) == 3 and args[0] == 'port_free':
+        r = port_free(args[1], args[2])
+        if r['return'] > 0:
+            sys.exit('cMeta notice: ' + r['error'] + '!')
+        where = f'port {args[2]} of {args[1] or "this machine"}'
+        if not r['free'] and not r['in_use']:
+            sys.exit(f'cMeta notice: {where} cannot be used here: {r["reason"]}!')
+        if not r['free']:
+            who = f'process {r["pid"]}' if r['pid'] else 'another process'
+            if r['name'] or r['cmd']:
+                said = r['cmd'] if len(r['cmd']) <= 300 else r['cmd'][:300] + ' ...'
+                who += f' ({r["name"]}{": " if r["name"] and said else ""}{said})'
+            sys.exit(f'cMeta notice: {where} is in use - {who} listens there; start on another port (--param.port=<port>), '
+                     f'or stop that server if it is yours!')
+
+    else:
+        sys.exit('usage: python -m cmeta.utils.net tailscale_ipv4 | port_free <host> <port>')
