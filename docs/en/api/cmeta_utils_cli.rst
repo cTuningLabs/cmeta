@@ -14,6 +14,8 @@ Functions
 
 .. autofunction:: cmeta.utils.cli.cli_types_enabled
 
+.. autofunction:: cmeta.utils.cli.keys_param
+
 .. autofunction:: cmeta.utils.cli.parse_cmd
 
 .. autofunction:: cmeta.utils.cli.print_params_help
