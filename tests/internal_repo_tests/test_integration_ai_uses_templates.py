@@ -7,10 +7,13 @@ template for `ai_uses` in its meta (template: ai_uses: {alias, title, sort}); `a
 `ai_uses`/`ai` write the full cRefs into the artifact's _desc.yaml (appended, no duplicates), a name is a
 template alias first, then an artifact alias in any category, then a cRef, and an ambiguity is an error
 naming the candidates; `desc` merges any keys into _desc.yaml; a _desc.json is converted; a quiet run with
-`ai` True asks nothing. Each test runs in a fresh CMETA_HOME.
+`ai` True asks nothing; `meta` and `desc` refuse a text (2026-11-05: `--desc=@file.yaml` reads no file - a whole
+argument `@file.yaml` holding `desc:` does). Each test runs in a fresh CMETA_HOME.
 """
 
 import os
+import subprocess
+import sys
 
 import pytest
 import yaml
@@ -157,3 +160,75 @@ def test_desc_keys_merge_and_a_desc_json_is_converted_and_quiet_asks_nothing(cm)
     # no templates and no names: nothing written either
     r = cm.access({'category': 'config', 'command': 'add', 'arg1': 'local:q2', 'con': False, 'ai_uses': ''})
     assert r['return'] == 0 and not os.path.isfile(os.path.join(r['path'], '_desc.yaml'))
+
+
+def meta_file_of(path):
+    return next(os.path.join(path, f) for f in ('_cmeta.json', '_cmeta.yaml') if os.path.isfile(os.path.join(path, f)))
+
+
+def test_meta_and_desc_refuse_a_text_before_anything_is_made_or_changed(cm):
+    # 2026-11-05: "update --desc=@keys.yaml" said "Artifact was updated" and wrote nothing (a flag's value is never
+    # read as a file; a desc that was not keys was dropped), "--meta=@keys.yaml" broke with an AttributeError
+    r = add(cm, 'config', 't1')
+    meta_file = meta_file_of(r['path'])
+    with open(meta_file, 'rb') as f:
+        before = f.read()
+
+    for params in ({'desc': '@keys.yaml'}, {'desc': 'hello'}, {'desc': ['a', 'b']}, {'meta': '@keys.yaml'}, {'meta': 'x'}):
+        name = next(iter(params))
+        r2 = cm.access({'category': 'config', 'command': 'update', 'arg1': 'local:t1', 'con': False, **params})
+        assert r2['return'] == 1, (params, r2)
+        assert r2['error'].startswith(f'"{name}" takes keys, not ') and f'--{name}.<key>=<value>' in r2['error'], r2
+        assert f'holding {name}: {{...}}' in r2['error'], r2
+        assert ('reads no file' in r2['error']) == str(params[name]).startswith('@'), r2
+
+    assert not os.path.isfile(os.path.join(r['path'], '_desc.yaml'))
+    with open(meta_file, 'rb') as f:
+        assert f.read() == before                                                   # nothing written
+
+    # add, get and set: refused before an artifact is made
+    for command, params in (('add', {'desc': '@keys.yaml'}), ('add', {'meta': 'x'}), ('get', {'meta': 'x'}),
+                            ('get', {'desc': 'x'}), ('set', {'meta': 'x'})):
+        r3 = cm.access({'category': 'config', 'command': command, 'arg1': 'local:t2', 'con': False, **params})
+        assert r3['return'] == 1 and 'takes keys' in r3['error'], (command, params, r3)
+        assert cm.access({'category': 'config', 'command': 'find', 'arg1': 'local:t2', 'con': False})['return'] == 16
+
+    # repo get: refused before anything is fetched (a text crashed after the clone, with _cmr.yaml locked)
+    r6 = cm.access({'category': 'repo', 'command': 'get', 'arg1': 'never-made', 'url': 'https://example.invalid/x.git',
+                    'con': False, 'meta': '@m.yaml'})
+    assert r6['return'] == 1 and r6['error'].startswith('"meta" takes keys') and 'reads no file' in r6['error'], r6
+    assert not os.path.exists(os.path.join(cm.repos_path, 'never-made'))
+
+    # an empty value is no keys, as before; keys work as before
+    r4 = cm.access({'category': 'config', 'command': 'update', 'arg1': 'local:t1', 'con': False, 'desc': '', 'meta': ''})
+    assert r4['return'] == 0 and not os.path.isfile(os.path.join(r['path'], '_desc.yaml')), r4
+    r5 = cm.access({'category': 'config', 'command': 'update', 'arg1': 'local:t1', 'con': False, 'desc': {'note': 'x'}})
+    assert r5['return'] == 0 and desc_of(r['path']) == {'note': 'x'}, r5
+
+
+def cx(args, home, cwd):
+    env = {k: v for k, v in os.environ.items() if not k.startswith('CMETA_')}
+    env.update({'CMETA_HOME': str(home), 'PYTHONIOENCODING': 'utf-8'})
+    p = subprocess.run([sys.executable, '-m', 'cmeta'] + list(args), env=env, cwd=str(cwd), stdin=subprocess.DEVNULL,
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=600)
+    return p.returncode, p.stdout.decode('utf-8', 'replace') + p.stderr.decode('utf-8', 'replace')
+
+
+def test_the_command_line_takes_several_keys_from_a_whole_file_argument(cm, tmp_path):
+    r = add(cm, 'config', 'c1')
+    work = tmp_path / 'work'
+    work.mkdir()
+    (work / 'keys.yaml').write_text('note: from keys.yaml\n', encoding='utf-8')
+    (work / 'desc.yaml').write_text('desc:\n  note: from desc.yaml\n  owner: me\n', encoding='utf-8')
+
+    # a flag's value is a text: refused with the way to do it, nothing written
+    rc, out = cx(['config', 'update', 'local:c1', '--desc=@keys.yaml'], tmp_path, work)
+    assert rc != 0 and '"desc" takes keys' in out and '--desc=@<file> reads no file' in out, out
+    assert not os.path.isfile(os.path.join(r['path'], '_desc.yaml'))
+    rc, out = cx(['config', 'update', 'local:c1', '--meta=@keys.yaml'], tmp_path, work)
+    assert rc != 0 and '"meta" takes keys' in out and 'AttributeError' not in out, out
+
+    # the whole argument @desc.yaml: its desc keys merged into _desc.yaml
+    rc, out = cx(['config', 'update', 'local:c1', '@desc.yaml'], tmp_path, work)
+    assert rc == 0, out
+    assert desc_of(r['path']) == {'note': 'from desc.yaml', 'owner': 'me'}

@@ -230,6 +230,10 @@ class Category(InitCategory):
 
         import copy
 
+        # meta takes keys: a text ("--meta=@file.yaml" reads no file) is refused before the config file is locked
+        meta, r = utils.cli.keys_param('meta', meta, {})
+        if r: return r
+
         con = ctx['control'].get('con', False)
 
         p = {

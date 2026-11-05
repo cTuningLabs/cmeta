@@ -104,6 +104,10 @@ class Category(InitCategory):
         con = ctx.get('control',{}).get('con', False)
         verbose = ctx.get('control',{}).get('verbose', False)
 
+        # meta takes keys: a text ("--meta=@file.yaml" reads no file) is refused before anything is fetched or locked
+        meta, r = utils.cli.keys_param('meta', meta, None)
+        if r: return r
+
         if depth is not None and depth != '':
             try:
                 depth = int(depth)

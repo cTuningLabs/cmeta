@@ -14,6 +14,8 @@ Functions
 
 .. autofunction:: cmeta.utils.net.download
 
+.. autofunction:: cmeta.utils.net.port_free
+
 .. autofunction:: cmeta.utils.net.tailscale_ipv4
 
 .. autofunction:: cmeta.utils.net.unify_request
