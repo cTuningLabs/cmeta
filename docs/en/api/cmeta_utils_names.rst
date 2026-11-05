@@ -47,6 +47,8 @@ Find in Fast index:
 Functions
 ---------
 
+.. autofunction:: cmeta.utils.names.date_in_alias
+
 .. autofunction:: cmeta.utils.names.generate_cmeta_uid
 
 .. autofunction:: cmeta.utils.names.get_sort_key_cmeta_obj_alias_or_uid
