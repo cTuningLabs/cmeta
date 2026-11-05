@@ -1666,13 +1666,7 @@ class Repos:
 
                 touched_uids.add(uid.lower())
 
-        if conx:
-            print('')
-            print(f'  Recording repo index file: {index_repo_file}')
-
-        # Written only when a repository changed (an incremental run; a full rebuild writes into a new folder)
-        r = self._write_index_file(index_repo_file, index_repos, old=None if clean else self._read_index_file(index_repo_file))
-        if r['return']>0: return r
+        # (the index of the repositories is written at the end of this run, after the files of the categories)
 
         # A repository that asks for the soft lock is known to the path lock of this process at once (the
         # processes that start later read it from this index: see init)
@@ -2067,7 +2061,18 @@ class Repos:
                 r = self._write_index_file(index_artifact_file, existing_category_index, old=index_before, file_lock=index_file_lock)
                 if r['return']>0: return r
 
-        
+        if conx:
+            print('')
+            print(f'  Recording repo index file: {index_repo_file}')
+
+        # The index of the repositories is written LAST, after the files of the categories, and only when a repository
+        # changed (an incremental run; a full rebuild writes into a new folder). A reader takes no lock: one that
+        # finds this file fresh (init: the version of this engine's internal repository) then finds the files of the
+        # categories fresh too. Written first, it let a process that started while another one indexed the upgraded
+        # engine's repository read the new repositories and the old categories - "not found", once (2026-11-05)
+        r = self._write_index_file(index_repo_file, index_repos, old=None if clean else self._read_index_file(index_repo_file))
+        if r['return']>0: return r
+
         time_end = time.monotonic()
         elapsed = time_end - time_start
 

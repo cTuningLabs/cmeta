@@ -11,7 +11,11 @@ All notable changes to cMeta are documented here, newest first.
   ~0.3 ms) and, when they differ, indexes that repository alone, once (~0.7 s on a laptop), with an info line on
   stdout (as the first run of a new home prints one): the exit code, the answer and the JSON of `-j` are what they
   were, nothing goes to stderr. Tests: `test_an_engine_upgraded_in_place_indexes_its_repository_again`, the first
-  command's output under `-j` and `--version`, six commands starting at once on such a home.
+  command's output under `-j` and `--version`, eight commands starting at once on such a home. That last test found
+  a race on Linux (3 of 5 hosts of the fleet round): the index of the repositories was written before the files of
+  the categories, so a process that started while another one indexed the upgraded engine's repository could read
+  the new repositories and an old category index - "not found", once. An incremental index now writes the index of
+  the repositories last; a reader (which takes no lock) that finds it fresh finds the category files fresh too.
 - **Release tests** (`tests/release_tests/`, run with `CMETA_RELEASE_TESTS=1`; a step of `docs/releasing.md`): an
   older cMeta from PyPI (0.37.3, 0.38.0, 0.38.4, 0.38.6, 0.38.7) indexes a home, the tree under test is installed
   over it with `pip` and with `uv tool install --force`, and its first command must find what the new engine brings.

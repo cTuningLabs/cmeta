@@ -154,10 +154,12 @@ def test_many_commands_starting_at_once_after_an_upgrade_in_place(engines):
     cmd = [sys.executable, '-m', 'cmeta', 'app', 'find', 'cserver-next']
 
     procs = [subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
-             for _ in range(6)]
+             for _ in range(8)]
     outs = [p.communicate(timeout=600)[0].decode('utf-8', 'replace') for p in procs]
-    assert all(p.returncode == 0 for p in procs), outs
-    assert all('cserver-next' in o for o in outs), outs
+    # (the index of the repositories was written before the files of the categories: a process that read it fresh
+    # read an old app index - "not found" on 3 of 5 Linux hosts of the round of 2026-11-05 - written last since)
+    failed = [(p.returncode, o) for p, o in zip(procs, outs) if p.returncode != 0 or 'cserver-next' not in o]
+    assert not failed, failed
 
     code, out, err = cx('app', 'find', 'cserver-next', '-j')
     assert code == 0 and 'indexing it again' not in out, out + err
