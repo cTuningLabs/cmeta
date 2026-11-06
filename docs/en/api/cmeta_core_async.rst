@@ -14,3 +14,17 @@ Classes
    :members:
    :undoc-members:
    :show-inheritance:
+
+Functions
+---------
+
+.. autofunction:: cmeta.core_async.default_start_method
+
+.. autofunction:: cmeta.core_async.start_method_context
+
+Constants
+---------
+
+.. autodata:: cmeta.core_async.PARENT_WATCH_ENV
+
+.. autodata:: cmeta.core_async.START_METHOD_ENV
