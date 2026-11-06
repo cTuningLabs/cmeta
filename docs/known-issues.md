@@ -13,6 +13,32 @@ is deliberate or ambiguous; the fix depends on a design call) · **in progress**
 | [KI-001](#ki-001) | async | fixed | `CMetaAsync.access_sync()` returned a coroutine instead of a result dict for re-entrant commands. |
 | [KI-002](#ki-002) | error handling | needs decision | `CMeta.error(fail_on_error=False)` cannot force raising off. |
 | [KI-003](#ki-003) | docs | fixed | The published documentation site carried only the API reference, not the written guides. |
+| [KI-004](#ki-004) | async | fixed | `CMetaAsync` forked its workers on Linux: copies of the server's connections and port, a hang once per start behind a proxy, orphans holding the port. |
+
+---
+
+## KI-004
+
+**`CMetaAsync` forked its workers on Linux (Python up to 3.13): the first call
+after a start copied the server process, connections and all.**
+
+A `ProcessPoolExecutor` without a start method takes Python's default - `fork`
+on Linux up to 3.13 - and under fork every worker is launched at the first
+call as a copy of the server: with the client connections open at that instant
+and the listening socket. The copies kept a connection open after the server
+closed its end (no FIN reached the client; a proxy in front reused the dead
+connection and its next request hung until a reload - once per start of a
+server that made no pool call before accepting clients), kept the port taken
+after the server died (orphans and "address already in use"), and copied the
+state of every lock another thread held.
+
+**Fixed (0.38.11):** the workers come by `forkserver` on Linux and the other
+POSIX platforms, `spawn` on Windows and macOS (`start_method=` or
+`CMETA_ASYNC_START_METHOD` name another method, `fork` with a warning); every
+worker ends itself when its parent is gone; `warm()` / `warm_async()` start the
+workers before a server accepts anyone. A program that builds a `CMetaAsync`
+needs the `if __name__ == "__main__":` guard on every platform. See
+[async-and-concurrency.md](async-and-concurrency.md).
 
 ---
 
