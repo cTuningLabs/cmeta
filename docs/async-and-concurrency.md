@@ -70,7 +70,7 @@ async def main():
 
     cm.shutdown()
 
-if __name__ == "__main__":          # required on Windows/macOS (spawn)
+if __name__ == "__main__":          # required on every platform: a worker imports the main module again
     asyncio.run(main())
 ```
 
@@ -88,10 +88,53 @@ Constructor arguments:
 | `max_workers` | Size of the process pool. `None` lets Python choose. |
 | `logger` | Custom logger; defaults to the inherited `CMeta` logger. |
 | `loop` | Event loop to use; defaults to the current one. |
+| `start_method` | How the workers are started: `None` = never fork (below), or `spawn` / `forkserver` / `fork`. |
 | `**kwargs` | Anything `CMeta` accepts (`debug`, `fail_on_error`, `home`, ...) — forwarded to the `CMeta` built in each worker. |
 
 Always call `cm.shutdown()` (it waits for pending work) when the application
 stops.
+
+### How the workers are started
+
+The workers are never forked from the process that made the pool: `spawn` on
+Windows and macOS (the platforms' own choice), `forkserver` on Linux and the
+other POSIX platforms (the workers are forked from a small clean process that
+holds nothing of yours). Python's own default on Linux up to 3.13 is `fork`,
+and a forked worker is a copy of the server at the instant of the first call —
+with every client connection open right then and the listening socket. Those
+copies keep a connection open after the server closes its end (no FIN reaches
+the client, so a proxy or a browser reuses the dead connection and its next
+request hangs), keep the port taken after the server dies, and keep the state
+of every lock another thread held. `CMetaAsync(start_method='fork')` or
+`CMETA_ASYNC_START_METHOD=fork` still gives fork, with a warning.
+
+Two things follow:
+
+- Every program that builds a `CMetaAsync` needs the `if __name__ == "__main__":`
+  guard above, on Linux too: a worker imports the main module again, and an
+  unguarded one would start a pool of its own in every worker.
+- Every worker watches its parent and ends itself when the parent is gone — a
+  crash, a `kill -9`, a `TerminateProcess` — so a dead server leaves no worker
+  holding memory or a port. `CMETA_ASYNC_PARENT_WATCH=0` switches the watch off
+  (for diagnostics).
+
+### Starting the workers before the first request
+
+A worker starts when a call finds none idle, so the first requests of a server
+meet cold workers. `cm.warm()` (blocking) or `await cm.warm_async()` starts the
+whole pool, each worker with its `CMeta` made, and returns their pids — call it
+in the server's startup, before it accepts anyone:
+
+```python
+@app.on_event("startup")
+async def _startup():
+    await cm.warm_async()          # every worker ready; nothing of a client is open yet
+```
+
+`warm(count=n)` starts `n` of them; `hold` (0.5 s by default) is how long each
+warm-up call is held in its worker so that the others start and take theirs —
+give a slow Windows machine a second or two, or `hold=0` to merely start the
+processes.
 
 ### Errors cross the process boundary unchanged
 

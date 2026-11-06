@@ -2,6 +2,33 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.38.11
+- **`CMetaAsync` never forks a server: its workers come by `forkserver` on Linux (`spawn` on Windows and macOS, as
+  before), watch their parent and can be started before the first request.** Python's default on Linux up to 3.13 is
+  `fork`, and under it the pool started every worker at the first call as a copy of the server process - with the
+  client connections open at that instant and the listening socket. The copies kept a connection open after the
+  server closed its end: no FIN reached the client, a proxy in front (cloudflared, nginx, a browser's keep-alive)
+  reused the dead connection and its next request hung until a reload - once per start of a server that made no pool
+  call before accepting clients (a site behind a proxy, at every deploy; found 2026-11-05). The copies of the listening socket
+  kept the port after the server died, so a stop without a kill of the whole tree left "address already in use"
+  (2026-10-27), and a lock copied while another thread held it could stop a worker for good (Python 3.12 warns on
+  such a fork; 3.14 changed its default for it). Now: `ProcessPoolExecutor(..., mp_context=forkserver|spawn)` -
+  the workers hold nothing of the server; `CMetaAsync(start_method=...)` or `CMETA_ASYNC_START_METHOD` names
+  another method (`fork` included, with a warning); every worker runs a daemon thread that waits for its parent and
+  ends the process when the parent is gone (a crash, a kill, a `TerminateProcess` - `CMETA_ASYNC_PARENT_WATCH=0`
+  keeps the old behaviour), so no server leaves orphans holding memory or a port; `cm.warm()` / `await
+  cm.warm_async()` start every worker with its `CMeta` made, for a server's startup before it binds its port. A
+  program that builds a `CMetaAsync` needs the `if __name__ == '__main__':` guard on every platform now (the worker
+  imports the main module again), as it did on Windows and macOS. Measured: a worker starts in 0.0-0.2 s; the calls
+  cost the same. Tests: `tests/core_tests/test_core_async_workers.py` - the start method's rules and overrides, the
+  trap itself with plain sockets (the client sees the server's close at once and the port is free; and, for the
+  record, how `fork` keeps both), a server killed outright whose worker dies within seconds (and lives on with the
+  watch off), `warm()` and `warm_async()`; `tests/internal_repo_tests/test_cserver_workers_die_with_the_server.py` -
+  the cserver app itself, started as uvicorn starts it and killed outright: its workers gone and its port free.
+- **`cx --version` says which Python it runs on:** `cMeta python version: 3.14.8` after the python path, with
+  `free-threaded` when the interpreter runs without the GIL (3.13t and later) - the fact that decides how a
+  server's workers start; the fleet's probe (cmeta-aops `cx host ls`, the PYTHON column) records the same.
+
 ## 0.38.10
 - **`cx <category> info <artifact>` (and `cx . info`) prints and copies `{{{<category>::<alias>,<UID>}}}`.** The
   reference in the form notes, memories, records and docs use (the browse and cref pages make it a link,

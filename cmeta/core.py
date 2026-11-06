@@ -1071,7 +1071,12 @@ def _list_paths(
     paths_list.append(f"cMeta repositories config: {cmeta.repos_config_path}")
     paths_list.append(f"cMeta index path:          {cmeta.index_path}")
     paths_list.append("")
+    # the version of the interpreter cMeta runs on, "free-threaded" when it runs without the GIL (3.13t+): what decides
+    # how a server's workers start, and what the fleet's probe records (cx host ls, 2026-11-06)
+    gil = getattr(sys, '_is_gil_enabled', None)
+    python_version = '.'.join(str(x) for x in sys.version_info[:3]) + ('' if gil is None or gil() else ' free-threaded')
     paths_list.append(f"cMeta python path:         {sys.executable}")
+    paths_list.append(f"cMeta python version:      {python_version}")
     paths_list.append(f"cMeta package path:        {cmeta.path}")
 
     return paths_list
