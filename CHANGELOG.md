@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.10.1)
+## 0.38.11
 - **`CMetaAsync` never forks a server: its workers come by `forkserver` on Linux (`spawn` on Windows and macOS, as
   before), watch their parent and can be started before the first request.** Python's default on Linux up to 3.13 is
   `fork`, and under it the pool started every worker at the first call as a copy of the server process - with the
