@@ -99,6 +99,29 @@ def test_entries_are_the_same_artifact_by_uid_after_a_rename(cm):
     assert desc_of(a['path']) == {}                                    # and removed by its UID
 
 
+def test_a_hand_written_entry_without_a_uid_is_the_same_artifact(cm):
+    # 2026-11-09: an entry written by hand as cat::alias (or an alias) was neither removed by "-name" nor kept from a
+    # duplicate - the name is resolved to a full cRef first, and its UIDs were looked for in the entry
+    a, b, c = add(cm, 'a'), add(cm, 'b'), add(cm, 'c')
+    with open(os.path.join(a['path'], '_desc.yaml'), 'w', encoding='utf-8') as f:
+        f.write('connections:\n  - config::b\n  - c\n')
+    update(cm, 'a', ct='b')
+    assert desc_of(a['path'])['connections'] == ['config::b', 'c']     # not added again
+    update(cm, 'a', ct='-b')
+    assert desc_of(a['path'])['connections'] == ['c']                  # removed by the parts it gives
+    update(cm, 'a', ct='-config::c')
+    assert desc_of(a['path']) == {}
+    # another category with the same alias is not that entry
+    other = add(cm, 'b', category='work')
+    with open(os.path.join(a['path'], '_desc.yaml'), 'w', encoding='utf-8') as f:
+        f.write('connections:\n  - config::b\n')
+    update(cm, 'a', ct='-' + cref(other))
+    assert desc_of(a['path'])['connections'] == ['config::b']
+    full_b, full_other = (x['meta']['category'] + '::b,' + x['meta']['artifact'] for x in (b, other))
+    assert api.cref_matches('config::b', full_b) and api.cref_matches('b', full_b) and not api.cref_matches('config::b', full_other)
+    assert api.cref_matches(full_b, 'config::b')                       # a name without a UID: as before
+
+
 def test_ai_removes_with_a_dash(cm):
     add(cm, 'ctx', meta={'template': {'ai_uses': {'alias': 'ctx', 'title': 'C'}}})
     w = add(cm, 'w', ai='ctx')

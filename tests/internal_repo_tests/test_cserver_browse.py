@@ -241,6 +241,27 @@ def test_graph_focus_follows_connections_to_a_depth(cm):
     assert 'Nothing to focus on' in graph(cm, focus='no-such-artifact')['notices'][0]
 
 
+def test_a_focus_says_what_the_pickers_leave_out_and_the_page_of_an_artifact_follows_everything(cm):
+    """2026-11-09: a focused graph said nothing of the connected artifacts its pickers left out (an archive the server
+    unticks by default hid an artifact's own connection): it says where they are; the page of an artifact asks for
+    its graph with every repository, so that it draws what the page lists."""
+    r = cm.access({'category': 'category', 'command': 'add', 'arg1': 'local:other', 'con': False})
+    assert r['return'] == 0, r
+    a, pa = make(cm, 'focus-a')
+    b, _ = make(cm, 'focus-b', category='other')
+    connect(pa, 'other::focus-b,%s' % b)
+    web(cm, native_action='reload')
+    node = '%s::%s' % (web(cm, native_action='artifact', uid=a)['json']['row']['cat_uid'].lower(), a)
+    g = graph(cm, focus=node, cats='-other')
+    assert arts(g) == ['focus-a'], arts(g)
+    assert g['notices'][1] == 'Left out by the pickers: 1 more artifact within 2 hops (the category other: 1) - tick it to see it.', g['notices']
+    g = graph(cm, focus=node)
+    assert arts(g) == ['focus-a', 'focus-b'] and not any('Left out' in n for n in g['notices'])
+    html = cref_page(cm, 'log::focus-a,' + a)
+    assert 'browse?view=graph&amp;repos=%2A&amp;focus=' + node + '"' in html and '"focus_url": "' in html
+    assert 'view=graph&repos=*&focus=' + node in html.split('"focus_url": "', 1)[1].split('"', 1)[0]
+
+
 def test_graph_draws_uses_as_directed_edges(cm):
     a, _ = make(cm, 'uses-setup')
     b, pb = make(cm, 'uses-task')
@@ -446,6 +467,153 @@ def test_creating_from_the_page(cm):
     assert r['return'] == 0, r
     assert 'off here' in create(BOTH, cat='log', repo='local', alias='y')['error']
     assert web(cm, BOTH, native_action='artifact', uid=out['uid'])['json']['can_create'] is False
+
+
+def desc_yaml(path):
+    p = os.path.join(path, '_desc.yaml')
+    if not os.path.isfile(p):
+        return {}
+    with open(p, encoding='utf-8') as f:
+        return yaml.safe_load(f) or {}
+
+
+def meta_file(path):
+    return [os.path.join(path, n) for n in ('_cmeta.yaml', '_cmeta.json') if os.path.isfile(os.path.join(path, n))][0]
+
+
+def test_the_lists_of_a_desc_change_from_the_page(cm):
+    """connections and ai_uses changed from the page of an artifact (2026-11-09, ?native_action=link): by the
+    category's own update, the names those the page shows; a connection added on this side and removed from both;
+    nothing written when nothing changes; who may."""
+    a, pa = make(cm, 'list-a')
+    b, pb = make(cm, 'list-b')
+    c, pc = make(cm, 'list-c')
+    t, _ = make(cm, 'ctx-holder', template={'ai_uses': {'alias': 'myctx', 'title': 'My context'}})
+    web(cm, native_action='reload')
+    cat_uid = web(cm, native_action='artifact', uid=a)['json']['row']['cat_uid'].lower()
+    full = {x: 'log,%s::%s,%s' % (cat_uid, n, x) for x, n in ((a, 'list-a'), (b, 'list-b'), (c, 'list-c'), (t, 'ctx-holder'))}
+
+    def link(misc=BOTH, **q):
+        return web(cm, misc, native_action='link', uid=a, **q)['json']
+
+    # a browser elsewhere, a page of another site, a list that is not one of the two: refused
+    assert 'error' in link(None, key='connections', add='log::list-b')
+    assert 'page of this server' in link(LOCAL, key='connections', add='log::list-b')['error']
+    assert 'key must be' in link(key='uses', add='log::list-b')['error']
+
+    # added on this side only, by its full cRef; again: there already, and nothing is written
+    out = link(key='connections', add='log::list-b')
+    assert out['changes'] == ['+ ' + full[b]] and out['warnings'] == [], out
+    assert desc_yaml(pa) == {'connections': [full[b]]} and desc_yaml(pb) == {}
+    stamp = os.path.getmtime(meta_file(pa))
+    out = link(key='connections', add='list-b')
+    assert out['changes'] == [] and out['warnings'] == ['log::list-b: there already'], out
+    assert os.path.getmtime(meta_file(pa)) == stamp
+
+    # several at once (";" between them, {{{...}}} as a text holds it): all or nothing - itself is refused
+    out = link(key='connections', add='list-c; {{{log::list-a,%s}}}/README.md' % a)
+    assert 'not connected to itself' in out['error'] and desc_yaml(pa) == {'connections': [full[b]]}
+    assert 'no such artifact' in link(key='connections', add='log::nothing-here')['error']
+    assert link(key='connections', add='{{{log::list-c,%s}}}' % c)['changes'] == ['+ ' + full[c]]
+    r = cm.access({'category': 'category', 'command': 'add', 'arg1': 'local:other', 'con': False})
+    assert r['return'] == 0, r
+    make(cm, 'list-c', category='other')
+    assert 'names 2 artifacts' in link(key='connections', add='list-c')['error']
+
+    # removed from both sides: list-b names list-a too (as --connect writes it)
+    describe(pb, {'connections': ['log::list-a,%s' % a], 'notes': 'keep me'})
+    out = link(key='connections', remove=full[b])
+    assert out['changes'] == ['- ' + full[b], '- log::list-a,%s (in log::list-b)' % a], out
+    assert desc_yaml(pa) == {'connections': [full[c]]} and desc_yaml(pb) == {'notes': 'keep me'}
+
+    # an entry written by hand without a UID goes by the full cRef the page sends; the rest of the file stays
+    with open(os.path.join(pa, '_desc.yaml'), 'w', encoding='utf-8') as f:
+        f.write('notes: keep\nconnections:\n  - log::list-c\n')
+    d = web(cm, BOTH, native_action='artifact', uid=a)['json']
+    assert [(x['alias'], x['cat_uid']) for x in d['connections']] == [('list-c', cat_uid)]
+    assert link(key='connections', remove=full[c])['changes'] == ['- log::list-c']
+    with open(os.path.join(pa, '_desc.yaml'), encoding='utf-8') as f:
+        assert f.read() == 'notes: keep\n'
+
+    # ai_uses: the short name of an AI context (as -ai takes it), the templates the page offers, removed the same way
+    assert web(cm, native_action='templates')['json']['templates'] == [
+        {'alias': 'myctx', 'title': 'My context', 'sort': 0.0, 'cref': full[t], 'cat': 'log', 'name': 'ctx-holder'}]
+    assert link(key='ai_uses', add='myctx')['changes'] == ['+ ' + full[t]]
+    assert desc_yaml(pa)['ai_uses'] == [full[t]]
+    assert link(key='ai_uses', remove=full[t])['changes'] == ['- ' + full[t]] and 'ai_uses' not in desc_yaml(pa)
+
+    # a signed-in reader writes only in the repositories of the grant the host passes
+    assert 'may not write' in link({'same_origin': True, 'browse_edit': ['other*']}, key='connections', add='list-b')['error']
+    assert link({'same_origin': True, 'browse_edit': ['loc*']}, key='connections', add='list-b')['changes'] == ['+ ' + full[b]]
+
+
+def cref_page(cm, cref, misc=None, **query):
+    """The HTML of the page of one artifact (cserver.cref)."""
+    r = cm.access({'category': 'cserver.cref', 'command': 'web', 'con': False, 'urls': dict(URLS),
+                   'query': dict(query, cref=cref), 'misc': dict(misc or {})})
+    assert r['return'] == 0, r
+    return r['html_meta']['html']
+
+
+def test_the_page_of_an_artifact_copies_and_edits_its_texts_and_lists(cm):
+    """The page of one artifact (2026-11-09): the name and the cRef with buttons that copy them, a line, README.md and
+    _info.md each with its edit button (or a "+" for the missing one), the lists after the _desc in the technical
+    details - changed there by a reader who may write; a reader the page does not count as technical follows the
+    connections after the text."""
+    a, pa = make(cm, 'page-a')
+    b, _ = make(cm, 'page-b')
+    with open(os.path.join(pa, 'README.md'), 'w', encoding='utf-8') as f:
+        f.write('# page-a\n\nThe readme text.\n')
+    with open(os.path.join(pa, '_info.md'), 'w', encoding='utf-8') as f:
+        f.write('A note of mine.\n')
+    describe(pa, {'connections': ['log::page-b,%s' % b]})
+    web(cm, native_action='reload')
+    cat_uid = web(cm, native_action='artifact', uid=a)['json']['row']['cat_uid'].lower()
+    ref = 'log::page-a,' + a
+
+    html = cref_page(cm, ref, BOTH)
+    assert '<span class="cxr-tt">page-a</span><button type="button" class="cxr-ic" data-copy="page-a"' in html
+    assert 'data-copy="log,%s::page-a,%s"' % (cat_uid, a) in html and 'data-copy="{{{log::page-a,%s}}}"' % a in html
+    assert html.index('class="cxr-ref"') < html.index('<hr class="cxr-hr">') < html.index('class="cxr-texts"')
+    assert 'Copy cRef</button>' not in html                                  # the copy buttons took its place
+    assert '<h1>page-a</h1>' not in html                                     # the README's title: the page's own
+    assert html.index('The readme text.') < html.index('A note of mine.')
+    assert 'cxr-tedit" data-rel="README.md"' in html and 'cxr-tedit" data-rel="_info.md"' in html
+    assert 'class="cxr-copy sm cxr-tnew"' not in html
+    tech = html[html.index('<h2>Technical details</h2>'):]
+    assert tech.index('See _desc') < tech.index('data-box="connections"') < tech.index('data-box="ai_uses"') < tech.index('id="cxr-files"')
+    assert 'class="cxr-ic cxr-lx" data-key="connections" data-ref="log,%s::page-b,%s"' % (cat_uid, b) in tech
+    assert '<form class="cxr-ladd" data-key="connections"' in tech and '<form class="cxr-ladd" data-key="ai_uses"' in tech
+    assert '<div class="cxr-lcat"><a href=' in tech and '<ul class="cxr-litems"><li>' in tech
+    assert 'Connects to' not in html                                         # not after the text for this reader
+
+    # a browser elsewhere reads and copies, and changes nothing (the page's script names the classes: the markup is looked for)
+    changes = ('class="cxr-copy sm cxr-tedit"', 'class="cxr-copy sm cxr-tnew"', '<form class="cxr-ladd"', 'class="cxr-ic cxr-lx"')
+    html = cref_page(cm, ref)
+    assert 'data-copy="page-a"' in html and 'data-box="connections"' in html
+    assert not any(x in html for x in changes + ('data-box="ai_uses"',))
+
+    # a reader the page does not count as technical: the connections after the text, no technical details
+    html = cref_page(cm, ref, dict(BOTH, persona='sales'))
+    assert 'Connects to' in html and 'Technical details' not in html and 'page-b</a>' in html
+    assert not any(x in html for x in changes)
+
+    # an artifact without them: a "+" for README.md and for _info.md; with a README only, a "+" for _info.md
+    c, pc = make(cm, 'page-c')
+    html = cref_page(cm, 'log::page-c,' + c, BOTH)
+    assert 'cxr-tnew" data-rel="README.md"' in html and 'cxr-tnew" data-rel="_info.md"' in html
+    assert 'This artifact has no text of its own.' in html
+    # ... and without a _desc, no connection, no AI use: both lists with their fields, to add the first one
+    assert not os.path.exists(os.path.join(pc, '_desc.yaml')) and not os.path.exists(os.path.join(pc, '_desc.json'))
+    assert '<summary>Connections <span class="cxr-n">(0)' in html and '<summary>AI uses <span class="cxr-n">(0)' in html
+    assert '<form class="cxr-ladd" data-key="connections"' in html and '<form class="cxr-ladd" data-key="ai_uses"' in html
+    assert 'class="cxr-copy sm cxr-edit" data-rel="_desc.yaml" data-new="1"' in html          # + _desc.yaml as before
+    out = web(cm, BOTH, native_action='link', uid=c, key='connections', add='page-a')['json']
+    assert out['changes'] == ['+ log,%s::page-a,%s' % (cat_uid, a)] and desc_yaml(pc) == {'connections': ['log,%s::page-a,%s' % (cat_uid, a)]}
+    with open(os.path.join(pc, 'README.md'), 'w', encoding='utf-8') as f:
+        f.write('Some text.\n')
+    html = cref_page(cm, 'log::page-c,' + c, BOTH)
+    assert 'cxr-tnew" data-rel="README.md"' not in html and 'cxr-tnew" data-rel="_info.md"' in html
 
 
 def test_a_new_artifact_shows_without_a_restart(cm):

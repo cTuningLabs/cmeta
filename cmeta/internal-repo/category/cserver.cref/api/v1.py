@@ -7,23 +7,30 @@ cserver.cref - the page of one artifact, named by its cRef.
     cx app run cserver      ->  http://127.0.0.1:8004/cref/<category>::<alias>,<UID>[/<relative path>]
                                 http://127.0.0.1:8004/cref?cref=<cRef>
 
-What a reader sees: the title, the cRef, the tags; the artifact's text (README.md, or the file its category names in
-`cref_view.text` of its _cmeta.yaml - the latest dated copy of a note, say); beside it the facts - the category (a
-link to every artifact of it), the repository (a link to every artifact of it), the origin (the artifact's folder
-on GitHub, when the repository is a clone of one), the UID, the dates, the path on this machine (a browser on the
-server's own machine), the buttons that open the folder in the file manager, a shell or Far (the same browser), the
-graph focused on this artifact and the knowledge-graph page a host offers; then the connections grouped by
-category, what connects to it, and at the end, folded: the commands, the _cmeta, the _desc and the files - a tree
-of the artifact's folder (the dated records of `ck/YYYYMMDD/` explained), each file opening in place. The host that
-serves the page (the engine cserver, a site built on it) keeps the cRef in the address bar: the cRef is how
-artifacts are referenced, and a reader sees what is referenced.
+What a reader sees: the title and the cRef, each with a button that copies it (the cRef also as {{{...}}}, the form
+a text holds), the tags, a line; the artifact's text (README.md, or the file its category names in `cref_view.text`
+of its _cmeta.yaml - the latest dated copy of a note, say) with README.md and _info.md after it when it has them;
+beside it the facts - the category (a link to every artifact of it), the repository (a link to every artifact of
+it), the origin (the artifact's folder on GitHub, when the repository is a clone of one), the UID, the dates, the
+path on this machine (a browser on the server's own machine), the buttons that open the folder in the file manager,
+a shell or Far (the same browser), the graph focused on this artifact and the knowledge-graph page a host offers;
+at the end, folded: the commands, the _cmeta, the _desc, the lists - its connections, its AI uses (whose memory and
+skills its AI sessions read), what it uses, what connects to it: each a category, then its artifacts under it, with
+a button that copies each cRef - and the files - a tree of the artifact's folder (the dated records of
+`ck/YYYYMMDD/` explained), each file opening in place. A reader the page does not count as technical (misc.persona)
+sees the connections and what connects to it after the text instead. The host that serves the page (the engine
+cserver, a site built on it) keeps the cRef in the address bar: the cRef is how artifacts are referenced, and a
+reader sees what is referenced.
 
 The reference is resolved and the artifact read through cserver.browse (one catalogue, the same rules: the scope of
 the request, hidden repositories, key and secret categories, the file browser only where it is allowed); the text
 is read here under the same guards. The files and the open buttons are asked of cserver.browse from the page itself
 (misc.browse_url says where it is served), so the rules are applied once, there. A text file can be edited and
 saved from this page as from /browse (since 2026-11-03: the edit button in the file's head, "+ _desc.yaml" and
-"+ README.md" after the tree) - cserver.browse's save, with its rules, its checks and its fingerprint.
+"+ README.md" after the tree) - cserver.browse's save, with its rules, its checks and its fingerprint. Since
+2026-11-09 the texts are edited where they are read (README.md and _info.md made the same way when missing), and
+the connections and the AI uses change in their lists - a field adds names or cRefs, x removes one (a connection
+from both sides), through cserver.browse's link: the category's own update.
 
 The view is extended, never rewritten - `cref_view` in the category's _cmeta.yaml, or in an artifact's _desc:
     text:   a file, or a list of candidates (the first that exists wins); {ck.<key>} placeholders read the _desc
@@ -58,6 +65,27 @@ TOKEN_RE = re.compile(r'\x00(\d+)\x00')
 TECH_PERSONAS = ('', 'all', 'engineering', 'dev', 'developer', 'internal')
 SECTIONS = ('connections', 'incoming', 'commands', 'cmeta', 'desc', 'files', 'facts')
 PAGE_RE = re.compile(r'^cserver\.[A-Za-z0-9_.-]+$')
+
+# The texts shown after the one the page shows first, when the artifact has them (the names a file may have on a
+# file system that tells case), and what their "+" buttons say: a README, and a note of one's own
+TEXT_BESIDE = (('README.md', 'readme.md'), ('_info.md',))
+TEXT_NEW = {'README.md': 'A README: what this artifact is - the page shows it first',
+            '_info.md': 'A note of your own, shown after the README'}
+COPY_SVG = ('<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" '
+            'stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/>'
+            '<path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></svg>')
+
+# The lists of the technical details: the key of the box (kept open in the browser), its title, what it is
+LISTS = {'connections': ('Connections', 'what this artifact connects to (its _desc)'),
+         'ai_uses': ('AI uses', 'whose memory and skills its AI sessions read (its _desc)'),
+         'uses': ('Uses', 'what it runs'),
+         'incoming': ('Connected from', 'the artifacts that name this one')}
+ADD_HINT = {'connections': ('add a connection: a name or a cRef (; between several)',
+                            'Connect this artifact to others: a name, category::name, a cRef or {{{...}}} - several with ; '
+                            'between them. Written in the _desc of this artifact; the other one lists it under "Connected from".'),
+            'ai_uses': ('add an AI context: its short name, a name or a cRef',
+                        'Whose memory and skills the AI sessions of this artifact read: the short name of an AI context (as '
+                        '-ai takes it), a name, category::name or a cRef - several with ; between them.')}
 
 _view_cache = {}      # category alias -> (mtime, cref_view of its _cmeta)
 
@@ -185,6 +213,24 @@ def _stamp(ts):
     return ts[:16].replace('T', ' ') if len(ts) >= 16 else ts[:10]
 
 
+def _item_cref(c):
+    """The cRef of an entry of a list (cserver.browse's artifact: connections, uses, ai_uses, incoming): the full one
+    of an artifact this server shows, else as the _desc writes it."""
+    if c.get('uid') and c.get('cat') and c.get('found') is not False:
+        if c.get('cat_uid'):
+            return '%s,%s::%s,%s' % (c['cat'], c['cat_uid'], c.get('alias') or '', c['uid'])
+        return '%s::%s,%s' % (c['cat'], c.get('alias') or '', c['uid'])
+    return str(c.get('cref') or c.get('ref') or '')
+
+
+def _item_cat(c):
+    """The category an entry of a list is listed under: its own, else the one its cRef names."""
+    if c.get('cat'):
+        return c['cat']
+    left = str(c.get('cref') or '').partition('::')
+    return left[0].split(',')[0].strip() if left[1] else ''
+
+
 class Category(InitCategory):
     """The page of one artifact."""
 
@@ -262,24 +308,83 @@ class Category(InitCategory):
                 if rel and cand == rel:
                     return rel, '', 'the file %s is not shown (missing, outside the artifact, or a key)' % _esc(rel)
                 continue
-            if not cand.lower().endswith(TEXT_EXT):
-                return cand, '', 'the file %s is not a text: open it from the Files below' % _esc(cand)
-            with open(full, 'rb') as f:
-                raw = f.read(TEXT_CAP + 1)
-            body = raw[:TEXT_CAP].decode('utf-8', errors='replace')
-            note = 'the first %d KB' % (TEXT_CAP // 1024) if len(raw) > TEXT_CAP else ''
-            if cand.lower().endswith(('.md', '.markdown')):
-                front = ''
-                m = re.match(r'^---\r?\n(.*?)\r?\n---\r?\n', body, re.S)    # a note's YAML front matter: folded, not prose
-                if m:
-                    front, body = m.group(1), body[m.end():]
-                out = self._render_md(body, desc)
-                if front:
-                    out = ('<details class="cxr-front"><summary>Front matter</summary><pre class="cxr-pre" data-name="front-matter.yaml">%s</pre></details>\n'
-                           % _esc(front)) + out
-                return cand, out, note
-            return cand, '<pre class="cxr-pre" data-name="%s">%s</pre>' % (_esc(cand), _esc(body)), note      # coloured by the page's script
+            return (cand,) + self._render(full, cand, desc)
         return '', '', ''
+
+    def _render(self, full, cand, desc):
+        """(HTML, note) of one text file of the artifact: Markdown rendered (a note's front matter folded), any other
+        text as it is (coloured by the page's script)."""
+        if not cand.lower().endswith(TEXT_EXT):
+            return '', 'the file %s is not a text: open it from the Files below' % _esc(cand)
+        with open(full, 'rb') as f:
+            raw = f.read(TEXT_CAP + 1)
+        body = raw[:TEXT_CAP].decode('utf-8', errors='replace')
+        note = 'the first %d KB' % (TEXT_CAP // 1024) if len(raw) > TEXT_CAP else ''
+        if cand.lower().endswith(('.md', '.markdown')):
+            front = ''
+            m = re.match(r'^---\r?\n(.*?)\r?\n---\r?\n', body, re.S)    # a note's YAML front matter: folded, not prose
+            if m:
+                front, body = m.group(1), body[m.end():]
+            out = self._render_md(body, desc)
+            if front:
+                out = ('<details class="cxr-front"><summary>Front matter</summary><pre class="cxr-pre" data-name="front-matter.yaml">%s</pre></details>\n'
+                       % _esc(front)) + out
+            return out, note
+        return '<pre class="cxr-pre" data-name="%s">%s</pre>' % (_esc(cand), _esc(body)), note
+
+    def _list_html(self, items, browse_link, key=''):
+        """Artifacts as the page lists them (2026-11-09): the categories A to Z, each with its artifacts under it A to
+        Z - a link to the page of each, a button that copies its cRef, and with `key` (connections or ai_uses: a list
+        this viewer may change) a button that removes it. An entry the _cmeta declares (the layout before the _desc)
+        is not removed here."""
+        groups = {}
+        for c in items:
+            groups.setdefault(_item_cat(c) or '?', []).append(c)
+        out = []
+        for g in sorted(groups, key=lambda x: x.lower()):
+            rows = []
+            for c in sorted(groups[g], key=lambda c: str(c.get('alias') or c.get('cref') or c.get('ref') or '').lower()):
+                ref = _item_cref(c)
+                if c.get('found') is False or not c.get('uid') or not c.get('cat'):
+                    name = '<span class="cxr-missing" title="not shown by this server (gone, or in a repository it hides)">%s</span>' \
+                           % _esc(c.get('alias') or c.get('cref') or c.get('ref'))
+                else:
+                    name = '<a href="%s">%s</a>' % (_esc(self._cref_url + '%s::%s,%s' % (c['cat'], c.get('alias') or '', c['uid'])),
+                                                    _esc(c.get('alias') or c['uid']))
+                extra = (' <span class="cxr-n">uses it</span>' if c.get('uses') else '') + \
+                        (' <span class="cxr-n">its AI reads this one</span>' if c.get('ai') else '') + \
+                        (' <span class="cxr-n" title="declared in the _cmeta (the layout before the _desc): edit the _cmeta to change it">in its _cmeta</span>'
+                         if c.get('meta') else '')
+                btns = ('<button type="button" class="cxr-ic" data-copy="%s" title="Copy its cRef: %s" aria-label="Copy its cRef">%s</button>'
+                        % (_esc(ref), _esc(ref), COPY_SVG)) if ref else ''
+                if key and ref and not c.get('meta'):
+                    btns += ('<button type="button" class="cxr-ic cxr-lx" data-key="%s" data-ref="%s" title="Remove it from this list" '
+                             'aria-label="Remove %s">&times;</button>' % (key, _esc(ref), _esc(c.get('alias') or ref)))
+                rows.append('<li><span class="cxr-lname">%s%s</span>%s</li>' % (name, extra, btns))
+            out.append('<div class="cxr-lcat"><a href="%s" title="Every artifact of this category">%s</a> <span class="cxr-n">%d</span></div>'
+                       '<ul class="cxr-litems">%s</ul>' % (browse_link(view='browse', cats=g), _esc(g), len(groups[g]), ''.join(rows)))
+        return ''.join(out)
+
+    def _list_box(self, key, items, browse_link, editable=False, count=None, extra=''):
+        """One list of the technical details, folded (the browser keeps it open once opened): its title, how many and
+        what it is; "copy all" (the cRefs with ; between them - what the field of another artifact takes); the list;
+        for a viewer who may change it, the field that adds names or cRefs."""
+        title, what = LISTS[key]
+        body = ''
+        if items:
+            body += ('<p class="cxr-ltools"><button type="button" class="cxr-copy sm" data-copy="%s" title="Copy every cRef '
+                     'of this list, ; between them - what the field of another artifact takes">copy all</button></p>'
+                     % _esc(';'.join(x for x in (_item_cref(c) for c in items) if x)))
+            body += self._list_html(items, browse_link, key if editable else '')
+        else:
+            body += '<p class="cxr-muted">none yet</p>'
+        body += extra
+        if editable:
+            body += ('<form class="cxr-ladd" data-key="%s" autocomplete="off"><input type="text" list="cxr-dl-%s" placeholder="%s" '
+                     'title="%s" aria-label="Add to the %s"><button type="submit" class="cxr-btn">Add</button><span class="cxr-emsg" role="status"></span>'
+                     '<datalist id="cxr-dl-%s"></datalist></form>' % (key, key, _esc(ADD_HINT[key][0]), _esc(ADD_HINT[key][1]), _esc(title.lower()), key))
+        return ('<details class="cxr-lbox" data-box="%s"><summary>%s <span class="cxr-n">(%d) %s</span></summary>'
+                '<div class="cxr-lbody">%s</div></details>' % (key, title, len(items) if count is None else count, what, body))
 
     def _render_md(self, body, desc):
         """Markdown with the references turned into links: {{{cRef}}}/path and the artifact's own wikilinks map."""
@@ -370,24 +475,42 @@ class Category(InitCategory):
         title = (_get(desc, view['title']) if view.get('title') else None) or row.get('name') or alias
         root = self._path(cat, uid, alias)
 
-        # the artifact's text: a page category that renders it (cref_view.page), else its README or note
-        page_head, text_html, text_note, shown = '', '', '', ''
+        # the editor (2026-11-03): whether this viewer may save here - the edit buttons of the texts, of the _cmeta
+        # and the _desc, the lists and the files
+        can_edit = tech and bool(a.get('edit')) and bool(a.get('files')) and 'files' not in hide
+
+        # the artifact's text: a page category that renders it (cref_view.page), else the file it names (README.md,
+        # a note), with README.md and _info.md after it when it has them (2026-11-09: both shown, each edited in place)
+        page_head, page_html, texts, text_note = '', '', [], ''
         if view.get('page') and not rel:
-            page_head, text_html = self._embedded_page(str(view['page']), urls, query, misc, uid, short)
+            page_head, page_html = self._embedded_page(str(view['page']), urls, query, misc, uid, short)
         elif root:
             shown, text_html, text_note = self._text(root, view, desc, rel)
             if text_html:
-                # a README that opens with the artifact's own title would show it twice: the page's title stands
-                text_html = re.sub(r'^\s*<h1(?:\s[^>]*)?>(.*?)</h1>\s*',
-                                   lambda m: '' if re.sub(r'<[^>]+>', '', m.group(1)).strip().lower() == _esc(str(title)).strip().lower() else m.group(0),
-                                   text_html, count=1, flags=re.S)
+                texts.append((shown, text_html, text_note))
+                text_note = ''
+            if not rel:
+                for names in TEXT_BESIDE:
+                    have = next((n for n in names if self._safe_rel(root, n)), '')
+                    if have and have.lower() not in [x[0].lower() for x in texts]:
+                        html_, note_ = self._render(self._safe_rel(root, have), have, desc)
+                        if html_:
+                            texts.append((have, html_, note_))
+        missing = [names[0] for names in TEXT_BESIDE if not any(self._safe_rel(root, n) for n in names)] \
+            if can_edit and root and not page_html else []
 
         # the browser is asked by cRef, never by a bare UID (unique only with its category's): its own form,
         # <category UID>::<artifact UID> (':' and ',' stay readable in an address)
         node = '%s::%s' % (str(row.get('cat_uid') or cat).lower(), uid)
 
+        # the graph of this artifact (repos=*) follows every connection the page lists - into a repository the server
+        # unticks by default as well (browse_untick_repos: an archive; 2026-11-09, such a connection was not drawn)
         def browse_link(**keys):
             return _esc(browse_url + ('&' if '?' in browse_url else '?') + '&'.join('%s=%s' % (k, _q(v, ':,')) for k, v in keys.items() if v))
+
+        def copy_button(text, what):
+            return ('<button type="button" class="cxr-ic" data-copy="%s" title="Copy %s: %s" aria-label="Copy %s">%s</button>'
+                    % (_esc(text), what, _esc(text), what, COPY_SVG))
 
         H = []
         H.append('<div class="cxr-top"><a class="cxr-back" id="cxr-back" href="#" hidden>&larr; Back</a>'
@@ -395,76 +518,78 @@ class Category(InitCategory):
                  '<a href="%s" title="Every artifact of this repository">%s</a></span><span class="cxr-actions">'
                  '<a href="%s" title="This artifact in the knowledge browser">Browser</a> &middot; '
                  '<a href="%s" title="This artifact and its connections, drawn">Graph</a>%s'
-                 ' &middot; <button type="button" class="cxr-copy" data-copy="%s">Copy cRef</button>'
                  ' <button type="button" class="cxr-copy" id="cxr-new" hidden title="A new artifact of this category, in this repository, with these tags">+ Similar</button>'
                  ' <button type="button" class="cxr-copy" id="cxr-theme" title="Dark / light (kept in this browser)">&#9680;</button></span></div>'
                  % (browse_link(view='browse', cats=cat), _esc(cat),
                     browse_link(view='browse', repos=row.get('repo') or ''), _esc(row.get('repo') or '(registry)'),
-                    browse_link(cref=node), browse_link(view='graph', focus=node),
+                    browse_link(cref=node), browse_link(view='graph', repos='*', focus=node),
                     (' &middot; <a href="%s" title="The knowledge-graph page, focused on this artifact">Knowledge graph</a>'
-                     % _esc(graph_url + ('&' if '?' in graph_url else '?') + 'focus=' + _q(alias))) if graph_url else '',
-                    _esc(short)))
-        H.append('<h1 class="cxr-title">%s</h1>' % _esc(title))
-        H.append('<div class="cxr-ref"><code>%s</code></div>' % _esc(cref))
+                     % _esc(graph_url + ('&' if '?' in graph_url else '?') + 'focus=' + _q(alias))) if graph_url else ''))
+        # the name and the cRef, each with a button that copies it (2026-11-09) - the cRef also as a text holds it
+        H.append('<h1 class="cxr-title"><span class="cxr-tt">%s</span>%s</h1>' % (_esc(title), copy_button(str(title), 'the name')))
+        H.append('<div class="cxr-ref"><code>%s</code>%s<button type="button" class="cxr-copy sm" data-copy="{{{%s}}}" '
+                 'title="Copy it as a text holds it - a note, a memory, an AI prompt: {{{%s}}}">{{{ }}}</button></div>'
+                 % (_esc(cref), copy_button(cref, 'the cRef'), _esc(short), _esc(short)))
         if row.get('tags'):
             H.append('<div class="cxr-tags">%s</div>' % ''.join(
                 '<a class="cxr-chip" href="%s" title="Every artifact with this tag">%s</a>' % (browse_link(view='browse', q='tag:' + t), _esc(t))
                 for t in row['tags']))
+        H.append('<hr class="cxr-hr">')
 
-        # two columns: the text and the lists on the left, the facts on the right (stacked on a narrow screen)
-        H.append('<div class="cxr-cols"><div class="cxr-mainc">')
-        if text_html:
-            H.append('<article class="cxr-text">%s</article>' % text_html)
-            if shown:
-                H.append('<div class="cxr-muted">from <code>%s</code>%s</div>' % (_esc(shown), (' - ' + text_note) if text_note else ''))
-        elif text_note:
-            H.append('<p class="cxr-notice">%s</p>' % text_note)
-        elif desc and isinstance(desc.get('ck'), dict):
-            H.append(self._facts_of_desc(desc, tech))
-        else:
-            H.append('<p class="cxr-muted">This artifact has no text of its own.</p>')
+        def text_block(rel_, html_, note_):
+            # a text that opens with the artifact's own title would show it twice: the page's title stands
+            html_ = re.sub(r'^\s*<h1(?:\s[^>]*)?>(.*?)</h1>\s*',
+                           lambda m: '' if re.sub(r'<[^>]+>', '', m.group(1)).strip().lower() == _esc(str(title)).strip().lower() else m.group(0),
+                           html_, count=1, flags=re.S)
+            edit = (' <button type="button" class="cxr-copy sm cxr-tedit" data-rel="%s" title="Edit %s here (Ctrl+S saves)">edit</button>'
+                    % (_esc(rel_), _esc(rel_))) if can_edit and rel_.lower().endswith(TEXT_EXT) else ''
+            return ('<div class="cxr-tblock" data-rel="%s"><article class="cxr-text">%s</article>'
+                    '<div class="cxr-tfoot">from <code>%s</code>%s%s</div></div>'
+                    % (_esc(rel_), html_, _esc(rel_), (' - ' + note_) if note_ else '', edit))
 
-        def item_link(c):
-            if c.get('found') is False or not c.get('uid'):
-                return '<li class="cxr-missing" title="not shown by this server">%s</li>' % _esc(c.get('alias') or c.get('cref') or c.get('ref'))
-            r2 = '%s::%s,%s' % (c.get('cat') or '', c.get('alias') or '', c['uid'])
-            extra = (' &middot; uses it' if c.get('uses') else '') + (' &middot; its AI reads this one' if c.get('ai') else '')
-            return '<li><a href="%s">%s</a><span class="cxr-muted"> %s%s</span></li>' % (
-                _esc(self._cref_url + r2), _esc(c.get('alias') or c['uid']), _esc(c.get('cat') or ''), extra)
+        # two columns: the texts on the left (then, folded, the technical details), the facts on the right (stacked
+        # on a narrow screen)
+        H.append('<div class="cxr-cols"><div class="cxr-mainc"><div class="cxr-texts">')
+        if page_html:
+            H.append('<article class="cxr-text">%s</article>' % page_html)
+        for t in texts:
+            H.append(text_block(*t))
+        if not page_html and not texts:
+            if text_note:
+                H.append('<p class="cxr-notice">%s</p>' % text_note)
+            elif desc and isinstance(desc.get('ck'), dict):
+                H.append(self._facts_of_desc(desc, tech))
+            else:
+                H.append('<p class="cxr-muted">This artifact has no text of its own.</p>')
+        if missing:
+            H.append('<p class="cxr-tadd">%s</p>' % ''.join(
+                '<button type="button" class="cxr-copy sm cxr-tnew" data-rel="%s" title="%s">+ %s</button>' % (n, _esc(TEXT_NEW[n]), n)
+                for n in missing))
+        H.append('</div>')
 
-        if 'connections' not in hide:
-            groups = {}
-            for c in (a.get('connections') or []) + (a.get('uses') or []) + (a.get('ai_uses') or []):
-                groups.setdefault(c.get('cat') or '?', []).append(c)
-            if groups:
-                n = sum(len(v) for v in groups.values())
-                H.append('<section class="cxr-sec"><h2>Connects to <span class="cxr-n">(%d)</span></h2>' % n)
-                for g in sorted(groups):
-                    H.append('<h3><a href="%s" title="Every artifact of this category">%s</a> <span class="cxr-n">%d</span></h3><ul class="cxr-links">%s</ul>'
-                             % (browse_link(view='browse', cats=g), _esc(g), len(groups[g]), ''.join(item_link(c) for c in groups[g])))
-                H.append('</section>')
-        if 'incoming' not in hide and a.get('incoming'):
-            n = a.get('incoming_total') or len(a['incoming'])
-            groups = {}
-            for c in a['incoming']:
-                groups.setdefault(c.get('cat') or '?', []).append(c)
-            H.append('<section class="cxr-sec"><h2>Connected from <span class="cxr-n">(%d)</span></h2>' % n)
-            for g in sorted(groups):
-                H.append('<h3><a href="%s">%s</a> <span class="cxr-n">%d</span></h3><ul class="cxr-links">%s</ul>'
-                         % (browse_link(view='browse', cats=g), _esc(g), len(groups[g]), ''.join(item_link(c) for c in groups[g])))
-            if n > len(a['incoming']):
-                H.append('<p class="cxr-muted">... and %d more: <a href="%s">open the graph</a></p>' % (n - len(a['incoming']), browse_link(view='graph', focus=node)))
-            H.append('</section>')
-        elif 'incoming' not in hide and a.get('index') and not (a['index'] or {}).get('ready'):
-            H.append('<p class="cxr-muted">What connects to this artifact is still being read - open the page again in a moment.</p>')
+        incoming = a.get('incoming') or []
+        n_in = a.get('incoming_total') or len(incoming)
+        more_in = ('<p class="cxr-muted">... and %d more: <a href="%s">open the graph</a></p>' % (n_in - len(incoming), browse_link(view='graph', repos='*', focus=node))) \
+            if n_in > len(incoming) else ''
+        reading = 'incoming' not in hide and not incoming and a.get('index') and not (a['index'] or {}).get('ready')
+        reading = '<p class="cxr-muted">What connects to this artifact is still being read - open the page again in a moment.</p>' if reading else ''
+
+        # a reader the page does not count as technical: the connections after the text, to follow
+        if not tech:
+            outgoing = (a.get('connections') or []) + (a.get('uses') or []) + (a.get('ai_uses') or [])
+            if 'connections' not in hide and outgoing:
+                H.append('<section class="cxr-sec"><h2>Connects to <span class="cxr-n">(%d)</span></h2>%s</section>'
+                         % (len(outgoing), self._list_html(outgoing, browse_link)))
+            if 'incoming' not in hide and incoming:
+                H.append('<section class="cxr-sec"><h2>Connected from <span class="cxr-n">(%d)</span></h2>%s%s</section>'
+                         % (n_in, self._list_html(incoming, browse_link), more_in))
+            H.append(reading)
 
         if tech:
             T = []
             if 'commands' not in hide and a.get('commands'):
                 T.append('<details><summary>Commands</summary><p class="cxr-muted">The same artifact from a terminal with cMeta installed.</p>%s</details>'
                          % ''.join('<div class="cxr-cmd"><code>%s</code><button type="button" class="cxr-copy sm" data-copy="%s">copy</button></div>' % (_esc(c), _esc(c)) for c in a['commands']))
-            # the editor (2026-11-03): an edit button at the end of each viewer when this viewer may save here
-            can_edit = bool(a.get('edit')) and bool(a.get('files')) and 'files' not in hide
 
             def edit_row(name, new=False):
                 if not can_edit or not name:
@@ -481,10 +606,22 @@ class Category(InitCategory):
                          % (_esc(a.get('desc_file') or ''), _esc(json.dumps(desc, indent=2, ensure_ascii=False, default=str)), edit_row(a.get('desc_file'))))
             elif 'desc' not in hide and can_edit:
                 T.append(edit_row('_desc.yaml', new=True))
+            # the lists after the _desc that declares them (2026-11-09): each category, its artifacts under it; the
+            # connections and the AI uses changed here by a viewer who may write (cserver.browse's link)
+            if 'connections' not in hide:
+                for key in ('connections', 'ai_uses'):
+                    items = a.get(key) or []
+                    if items or can_edit:
+                        T.append(self._list_box(key, items, browse_link, editable=can_edit))
+                if a.get('uses'):
+                    T.append(self._list_box('uses', a['uses'], browse_link))
+            if 'incoming' not in hide and incoming:
+                T.append(self._list_box('incoming', incoming, browse_link, count=n_in, extra=more_in))
+            T.append(reading)
             if 'files' not in hide and a.get('files'):
                 T.append('<details id="cxr-files" data-uid="%s"><summary>Files <span class="cxr-n">the artifact\'s folder</span></summary>'
                          '<div class="cxr-files-body"><p class="cxr-muted">Loading the files...</p></div></details>' % _esc(uid))
-            if T:
+            if any(T):
                 H.append('<section class="cxr-tech"><h2>Technical details</h2>%s</section>' % ''.join(T))
         H.append('</div>')      # end of the main column
 
@@ -519,14 +656,14 @@ class Category(InitCategory):
             H.append('<div id="cxr-open" class="cxr-open" hidden></div>')
             H.append('<div class="cxr-graph"><a class="cxr-btn cxr-primary" id="cxr-focus" href="%s">Focus the graph here</a>'
                      '<label>depth <select id="cxr-depth">%s</select></label></div>'
-                     % (browse_link(view='graph', focus=node), ''.join('<option value="%d"%s>%s</option>' % (d, ' selected' if d == 2 else '', 'all' if d == 12 else d) for d in (1, 2, 3, 4, 5, 6, 12))))
+                     % (browse_link(view='graph', repos='*', focus=node), ''.join('<option value="%d"%s>%s</option>' % (d, ' selected' if d == 2 else '', 'all' if d == 12 else d) for d in (1, 2, 3, 4, 5, 6, 12))))
             if graph_url:
                 H.append('<div class="cxr-graph2"><a href="%s">Knowledge graph &#8599;</a></div>'
                          % _esc(graph_url + ('&' if '?' in graph_url else '?') + 'focus=' + _q(alias)))
         H.append('</aside></div>')      # end of the columns
 
         config = {'browse_url': browse_url, 'cref_url': self._cref_url, 'uid': uid, 'cref': short,
-                  'open': bool(misc.get('client_local')) and tech, 'focus_url': browse_url + ('&' if '?' in browse_url else '?') + 'view=graph&focus=' + _q(node, ':'),
+                  'open': bool(misc.get('client_local')) and tech, 'focus_url': browse_url + ('&' if '?' in browse_url else '?') + 'view=graph&repos=*&focus=' + _q(node, ':'),
                   'files': bool(a.get('files')) and tech and 'files' not in hide, 'file': rel if rel and not shown else '',
                   # "+ Similar": a new artifact of this category, in this repository, with these tags (a viewer who may write)
                   'create': bool(a.get('can_create')) and tech,
@@ -578,7 +715,9 @@ CSS = """
 .cxr-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:13px;margin-bottom:8px}
 .cxr-actions{margin-left:auto}.cxr-copy{font:inherit;color:var(--accent);background:none;border:1px solid var(--line);border-radius:6px;padding:2px 8px;cursor:pointer}
 .cxr-copy.sm{font-size:12px;padding:1px 6px}
-.cxr-title{font-size:28px;line-height:1.2;margin:4px 0 6px;overflow-wrap:anywhere}.cxr-ref code{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+.cxr-title{display:flex;align-items:center;gap:2px;font-size:28px;line-height:1.2;margin:4px 0 6px;overflow-wrap:anywhere}.cxr-title .cxr-tt{min-width:0}
+.cxr-ref{display:flex;align-items:center;flex-wrap:wrap;gap:2px}.cxr-ref code{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere;min-width:0}
+.cxr-hr{border:0;border-top:1px solid var(--line);opacity:1;margin:10px 0 16px}
 .cxr-tags{margin:8px 0 14px}.cxr-chip{display:inline-block;background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:1px 9px;margin:2px 4px 2px 0;font-size:12px;color:var(--fg)}
 .cxr-cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}
 .cxr-mainc{min-width:0}.cxr-side{position:sticky;top:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--soft);font-size:13px}
@@ -590,16 +729,15 @@ CSS = """
 .cxr-primary{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff!important;font-weight:600}
 .cxr-graph{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--muted)}.cxr-graph select{font:inherit;font-size:12.5px}
 .cxr-graph2{margin-top:8px;font-size:13px}
-.cxr-text{border-top:1px solid var(--line);padding-top:12px}.cxr-text h1{font-size:24px}.cxr-text h2{font-size:20px;margin-top:22px}.cxr-text h3{font-size:16.5px}
+.cxr-text h1{font-size:24px}.cxr-text h2{font-size:20px;margin-top:22px}.cxr-text h3{font-size:16.5px}
 .cxr-text pre,.cxr-pre{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow:auto;font-size:12.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .cxr-text code,.cxr-cmd code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
 .cxr-text table{border-collapse:collapse;margin:10px 0;font-size:14px}.cxr-text th,.cxr-text td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
 .cxr-text blockquote{border-left:3px solid var(--line);margin:8px 0;padding:2px 12px;color:var(--muted)}.cxr-text img{max-width:100%}
 .cxr-wiki{border-bottom:1px dotted var(--muted)}
 .cxr-muted{color:var(--muted);font-size:13px}.cxr-notice{color:#b4232c}.cxr-n{color:var(--muted);font-weight:normal;font-size:13px}
-.cxr-sec{margin-top:26px;border-top:1px solid var(--line);padding-top:10px}.cxr-sec h2{font-size:18px;margin:4px 0 8px}.cxr-sec h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 4px}
-.cxr-links,.cxr-files{list-style:none;padding:0;margin:0 0 6px}.cxr-links li,.cxr-files li{padding:2px 0;overflow-wrap:anywhere}.cxr-missing{color:var(--muted)}
-.cxr-links{columns:2;column-gap:24px}.cxr-links li{break-inside:avoid}
+.cxr-sec{margin-top:26px;border-top:1px solid var(--line);padding-top:10px}.cxr-sec h2{font-size:18px;margin:4px 0 8px}
+.cxr-files{list-style:none;padding:0;margin:0 0 6px}.cxr-files li{padding:2px 0;overflow-wrap:anywhere}.cxr-missing{color:var(--muted)}
 .cxr-facts-desc h2{font-size:16px;margin:6px 0}
 .cxr-tech{margin-top:30px;border-top:1px solid var(--line);padding-top:10px}.cxr-tech h2{font-size:15px;color:var(--muted);margin:4px 0 6px}
 .cxr-tech details{border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin:6px 0;background:var(--soft)}.cxr-tech summary{cursor:pointer;font-weight:500}
@@ -622,7 +760,24 @@ CSS = """
 .cxr-dark .cxr-newform input,.cxr-dark .cxr-newform select{background:#1f242e}.cxr-newform-acts{display:flex;gap:8px;align-items:center}
 .hl-c{color:#6a737d;font-style:italic}.hl-s{color:#0a7a3f}.hl-k{color:#1f4fbf;font-weight:600}.hl-v{color:#b35c00}.hl-n{color:#9a2a7a}.hl-h{color:#1f4fbf;font-weight:700}.hl-d{color:#7a3ab8}.hl-p{color:#6a737d}.hl-t{color:#1f4fbf}.hl-r{color:var(--accent);text-decoration:underline dotted}
 .cxr-dark .hl-c{color:#8b949e}.cxr-dark .hl-s{color:#7ee787}.cxr-dark .hl-k{color:#79c0ff}.cxr-dark .hl-v{color:#ffa657}.cxr-dark .hl-n{color:#d2a8ff}.cxr-dark .hl-h{color:#79c0ff}.cxr-dark .hl-d{color:#d2a8ff}.cxr-dark .hl-t{color:#79c0ff}
-@media (max-width:860px){.cxr{padding:8px 12px 40px}.cxr-title{font-size:22px}.cxr-cols{grid-template-columns:minmax(0,1fr)}.cxr-side{position:static}.cxr-links{columns:1}}
+.cxr-ic{display:inline-flex;align-items:center;justify-content:center;flex:none;width:26px;height:26px;margin-left:4px;padding:0;color:var(--muted);background:none;border:1px solid transparent;border-radius:6px;cursor:pointer;font:inherit;font-size:17px;line-height:1;vertical-align:middle}
+.cxr-ic:hover,.cxr-ic:focus-visible{color:var(--accent);border-color:var(--line)}.cxr-ic.cxr-lx:hover,.cxr-ic.cxr-lx:focus-visible{color:#b42318}
+.cxr-done{color:#0a7a3f!important;border-color:#0a7a3f!important}
+.cxr-tblock+.cxr-tblock{margin-top:22px;padding-top:12px;border-top:1px dashed var(--line)}
+.cxr-tfoot{display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--muted);font-size:13px;margin-top:6px}
+.cxr-tadd{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0}
+.cxr-ltools{margin:4px 0 2px}
+.cxr-lcat{margin:10px 0 2px;font-size:13px;font-weight:600}.cxr-lcat a{color:var(--fg)}
+.cxr-litems{list-style:none;margin:0;padding:0 0 0 22px}.cxr-litems li{display:flex;align-items:center;flex-wrap:wrap;min-height:26px;overflow-wrap:anywhere}
+.cxr-lname{min-width:0}.cxr-lname .cxr-n{margin-left:6px}
+.cxr-lsure{display:inline-flex;align-items:center;gap:6px;margin-left:8px}
+.cxr-ladd{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0 4px}
+.cxr-ladd input{flex:1 1 260px;min-width:0;font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--fg)}
+.cxr-dark .cxr-ladd input{background:#1f242e}
+.cxr-flash{margin:6px 0 8px;padding:6px 10px;border-left:3px solid #0a7a3f;background:var(--soft);font-size:13px;overflow-wrap:anywhere}.cxr-flash.bad{border-left-color:#b42318}
+.cxr-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(92vw,720px);padding:8px 14px;border-radius:8px;background:#14161a;color:#fff;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .15s;z-index:50;overflow-wrap:anywhere}
+.cxr-dark .cxr-toast{background:#e8eaee;color:#14161a}.cxr-toast.on{opacity:1}.cxr-toast.bad{background:#b42318;color:#fff}
+@media (max-width:860px){.cxr{padding:8px 12px 40px}.cxr-title{font-size:22px}.cxr-cols{grid-template-columns:minmax(0,1fr)}.cxr-side{position:static}}
 """
 
 # The theme (2026-11-09: a page in dark mode opened its cRef links in light mode), decided before the page is drawn:
@@ -666,15 +821,89 @@ JS = """<script>
   if(window.cmetaHL){document.querySelectorAll('pre.cxr-pre[data-name]').forEach(function(p){var n=p.getAttribute('data-name');if(cmetaHL.lang(n))p.innerHTML=cmetaHL(p.textContent,n,{cref_url:C.cref_url||'/cref/'});});}
   var b=document.getElementById('cxr-back');
   try{if(b&&history.length>1&&document.referrer&&new URL(document.referrer).origin===location.origin){b.hidden=false;b.addEventListener('click',function(e){e.preventDefault();history.back();});}}catch(e){}
-  document.querySelectorAll('.cxr-copy').forEach(function(x){x.addEventListener('click',function(){
-    var t=x.getAttribute('data-copy'),was=x.textContent;var done=function(){x.textContent='Copied';setTimeout(function(){x.textContent=was;},1200);};
-    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){});}
-    else{var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done();}catch(e){}document.body.removeChild(ta);}
-  });});
   function api(action,params){var u=C.browse_url||'/browse';u+=(u.indexOf('?')>=0?'&':'?')+'native_action='+action;
     return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params||{})}).then(function(r){return r.text().then(function(t){var d;try{d=JSON.parse(t);}catch(e){throw new Error('HTTP '+r.status);}if(d&&d.error)throw new Error(d.error);return d;});});}
   function h(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
   function size(n){return n<1024?n+' B':n<1048576?(n/1024).toFixed(n<10240?1:0)+' KB':(n/1048576).toFixed(1)+' MB';}
+  // copy (2026-11-09): every button with data-copy - the name, the cRef, {{{...}}}, the entries of a list, a list, the
+  // commands; the clipboard's API where the page is a secure context (https, this machine), else a selected text and
+  // the browser's own copy (a server reached over http by its name); a note at the foot of the window says what
+  function toast(text,bad){var t=document.getElementById('cxr-toast');if(!t){t=h('div','cxr-toast');t.id='cxr-toast';t.setAttribute('role','status');root.appendChild(t);}
+    t.textContent=text;t.className='cxr-toast on'+(bad?' bad':'');clearTimeout(t._h);t._h=setTimeout(function(){t.className='cxr-toast';},2400);}
+  function legacyCopy(text){var keep=document.activeElement,ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.top='0';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,text.length);var ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(ta);
+    if(keep&&keep.focus){try{keep.focus({preventScroll:true});}catch(e){}}return ok?Promise.resolve():Promise.reject(new Error('this browser did not let the page copy'));}
+  function copyText(text){if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text).catch(function(){return legacyCopy(text);});return legacyCopy(text);}
+  document.querySelectorAll('[data-copy]').forEach(function(x){x.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var t=x.getAttribute('data-copy');
+    copyText(t).then(function(){toast('Copied: '+t);x.classList.add('cxr-done');setTimeout(function(){x.classList.remove('cxr-done');},1200);}).catch(function(er){toast('Not copied ('+er.message+'): '+t,true);});});});
+  // the lists' boxes stay as the reader left them, open or folded (in this browser)
+  var OPEN='cserver.cref.open',opened=[];try{opened=JSON.parse(localStorage.getItem(OPEN)||'[]')||[];}catch(e){opened=[];}
+  document.querySelectorAll('details.cxr-lbox[data-box]').forEach(function(d){var k=d.getAttribute('data-box');if(opened.indexOf(k)>=0)d.open=true;
+    d.addEventListener('toggle',function(){var i=opened.indexOf(k);if(d.open&&i<0)opened.push(k);else if(!d.open&&i>=0)opened.splice(i,1);else return;try{localStorage.setItem(OPEN,JSON.stringify(opened));}catch(e){}});});
+  // a change is drawn again by the server (the page reloads); what the change said is shown after it, where it was made:
+  // a list's box, the technical details, the texts
+  var FLASH='cserver.cref.flash';
+  function again(where,lines,bad){try{sessionStorage.setItem(FLASH,JSON.stringify({uid:C.uid,where:where||'',lines:lines||[],bad:!!bad}));}catch(e){}location.reload();}
+  (function(){var f=null;try{f=JSON.parse(sessionStorage.getItem(FLASH)||'null');sessionStorage.removeItem(FLASH);}catch(e){f=null;}
+    if(!f||f.uid!==C.uid||!(f.lines||[]).length)return;
+    var d=h('div','cxr-flash'+(f.bad?' bad':''));f.lines.forEach(function(l){d.appendChild(h('div',null,l));});
+    var box=null;document.querySelectorAll('details.cxr-lbox[data-box]').forEach(function(x){if(x.getAttribute('data-box')===f.where)box=x;});
+    var tech=document.querySelector('.cxr-tech'),texts=document.querySelector('.cxr-texts');
+    if(box){box.open=true;var b=box.querySelector('.cxr-lbody');b.insertBefore(d,b.firstChild);}
+    else if(f.where==='tech'&&tech){tech.insertBefore(d,tech.children[1]||null);}
+    else if(texts){texts.insertBefore(d,texts.firstChild);}})();
+  // the editor of one text file (2026-11-03): the server says who may save; Save (Ctrl+S) hands the text back with the
+  // fingerprint it was read with, so that a file changed meanwhile is not overwritten; a refusal comes back as the message
+  function editorBox(rel,text,stamp,saved,cancel){var box=h('div','cxr-ebox');
+    var ta=h('textarea','cxr-editor');ta.spellcheck=false;ta.wrap='off';ta.value=text||'';ta.rows=Math.max(8,Math.min(40,(ta.value.match(/\\n/g)||[]).length+2));
+    var msg=h('span','cxr-emsg'),sv=h('button','cxr-btn','Save'),cn=h('button','cxr-copy sm','cancel');sv.type='button';cn.type='button';
+    function doSave(){msg.textContent='';sv.disabled=true;api('save',{uid:C.uid,rel:rel,text:ta.value,stamp:stamp||''}).then(saved).catch(function(e){sv.disabled=false;msg.textContent=e.message;});}
+    sv.addEventListener('click',doSave);cn.addEventListener('click',cancel);
+    ta.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();doSave();}
+      else if(e.key==='Tab'){e.preventDefault();var s=ta.selectionStart,t=ta.selectionEnd;ta.value=ta.value.slice(0,s)+'  '+ta.value.slice(t);ta.selectionStart=ta.selectionEnd=s+2;}});
+    var head=h('div','cxr-fhead');head.appendChild(h('b',null,(stamp?'editing ':'new file ')+rel));head.appendChild(sv);head.appendChild(cn);head.appendChild(msg);
+    box.appendChild(head);box.appendChild(ta);box.ta=ta;return box;}
+  // the texts (2026-11-09): README.md, _info.md, the file the page shows - edited where they are read, a missing one
+  // made the same way; the server draws the page again after a save
+  function textEdit(block,rel,isNew){if(block.querySelector('.cxr-ebox'))return;var kids=Array.prototype.slice.call(block.children);
+    function close(){var e=block.querySelector('.cxr-ebox');if(e)e.remove();if(isNew){block.remove();}else{kids.forEach(function(k){k.hidden=false;});}}
+    function open(text,stamp){kids.forEach(function(k){k.hidden=true;});var box=editorBox(rel,text,stamp,function(r){again('texts',[(r.created?'Made ':'Saved ')+rel].concat(r.warnings||[]));},close);
+      block.appendChild(box);box.ta.focus();box.scrollIntoView({block:'nearest'});}
+    if(isNew){open('','');return;}
+    api('file',{uid:C.uid,rel:rel}).then(function(j){if(j.kind==='text'&&j.editable&&j.stamp){open(j.text,j.stamp);}
+      else{toast(rel+': '+(j.truncated?'too large to edit here':'not editable here'),true);}}).catch(function(e){toast(e.message,true);});}
+  document.querySelectorAll('.cxr-tedit').forEach(function(x){x.addEventListener('click',function(){textEdit(x.closest('.cxr-tblock'),x.getAttribute('data-rel'),false);});});
+  document.querySelectorAll('.cxr-tnew').forEach(function(x){x.addEventListener('click',function(){var rel=x.getAttribute('data-rel'),texts=x.closest('.cxr-texts'),ex=null;
+    texts.querySelectorAll('.cxr-tblock.cxr-new').forEach(function(b){if(b.getAttribute('data-rel')===rel)ex=b;});
+    if(ex){ex.querySelector('textarea').focus();return;}
+    var b=h('div','cxr-tblock cxr-new');b.setAttribute('data-rel',rel);texts.insertBefore(b,x.parentNode);textEdit(b,rel,true);});});
+  // the lists (2026-11-09): x removes an entry (asked on its line; a connection goes from both sides where this reader
+  // may write), the field adds names or cRefs (";" between them), offering the AI contexts and the artifacts whose names
+  // hold what is typed; cserver.browse's link makes the change with the category's own update, then the page is drawn
+  // again with what it said
+  function said(r){var l=(r.changes||[]).map(function(c){return c.charAt(0)==='+'?'added '+c.slice(2):c.charAt(0)==='-'?'removed '+c.slice(2):c;});
+    (r.warnings||[]).forEach(function(w){l.push(w);});return l.length?l:['nothing changed'];}
+  document.querySelectorAll('.cxr-lx').forEach(function(x){x.addEventListener('click',function(e){e.preventDefault();var li=x.parentNode;if(li.querySelector('.cxr-lsure'))return;
+    var key=x.getAttribute('data-key'),sure=h('span','cxr-lsure'),yes=h('button','cxr-copy sm cxr-del','remove'),no=h('button','cxr-copy sm','keep');yes.type='button';no.type='button';
+    yes.title=key==='connections'?'Remove this connection - from the other artifact\\'s _desc too, where it names this one':'Remove it from the AI uses of this artifact';
+    sure.appendChild(yes);sure.appendChild(no);li.appendChild(sure);x.hidden=true;yes.focus();
+    no.addEventListener('click',function(){sure.remove();x.hidden=false;x.focus();});
+    yes.addEventListener('click',function(){yes.disabled=true;no.disabled=true;api('link',{uid:C.uid,key:key,remove:x.getAttribute('data-ref')}).then(function(r){again(key,said(r));})
+      .catch(function(er){sure.textContent='';sure.appendChild(h('span','cxr-emsg',er.message));x.hidden=false;});});});});
+  var templates=null;
+  function suggest(key,text,dl,mine,seq){var q=text.trim(),low=q.toLowerCase(),opts=[];
+    var tp=key!=='ai_uses'?Promise.resolve([]):templates?Promise.resolve(templates):api('templates',{}).then(function(j){templates=j.templates||[];return templates;},function(){templates=[];return templates;});
+    tp.then(function(ts){ts.forEach(function(t){if(!low||(t.alias+' '+t.title+' '+t.name).toLowerCase().indexOf(low)>=0)opts.push([t.alias,(t.title||t.name)+' - '+t.cat+'::'+t.name]);});
+      if(q.length<2||q.indexOf(';')>=0)return opts;
+      return api('search',{q:q,limit:12,facets:'0'}).then(function(j){(j.rows||[]).forEach(function(r){if(r.uid!==C.uid)opts.push([r.cat+'::'+r.alias+','+r.uid,(r.name&&r.name!==r.alias?r.name+' - ':'')+(r.repo||'')]);});return opts;},function(){return opts;});})
+      .then(function(o){if(mine!==seq.n)return;dl.innerHTML='';o.slice(0,20).forEach(function(x){var op=document.createElement('option');op.value=x[0];op.label=x[1];dl.appendChild(op);});});}
+  document.querySelectorAll('form.cxr-ladd').forEach(function(f){var key=f.getAttribute('data-key'),inp=f.querySelector('input'),dl=f.querySelector('datalist'),msg=f.querySelector('.cxr-emsg'),
+      btn=f.querySelector('button'),seq={n:0},timer=null;
+    f.addEventListener('submit',function(e){e.preventDefault();var v=inp.value.trim();if(!v){inp.focus();return;}msg.textContent='';btn.disabled=true;
+      api('link',{uid:C.uid,key:key,add:v}).then(function(r){if(!(r.changes||[]).length){btn.disabled=false;msg.textContent=said(r).join('; ');return;}again(key,said(r));})
+        .catch(function(er){btn.disabled=false;msg.textContent=er.message;});});
+    inp.addEventListener('input',function(){clearTimeout(timer);timer=setTimeout(function(){suggest(key,inp.value,dl,++seq.n,seq);},220);});
+    inp.addEventListener('focus',function(){if(!inp.value.trim())suggest(key,'',dl,++seq.n,seq);});});
   // the depth of the focused graph
   var sel=document.getElementById('cxr-depth'),fo=document.getElementById('cxr-focus');
   if(sel&&fo){sel.addEventListener('change',function(){fo.href=C.focus_url+(sel.value&&sel.value!=='2'?'&depth='+sel.value:'');});}
@@ -723,18 +952,15 @@ JS = """<script>
     // the editor (2026-11-03), as on /browse: the server says which files this viewer may save (cserver.browse's save,
     // its checks and its fingerprint); a saved _cmeta reloads the page, whose meta is rendered on the server
     function editFile(j,li){if(!view){view=h('div','cxr-fview');body.appendChild(view);}view.innerHTML='';
-      var ta=h('textarea','cxr-editor');ta.spellcheck=false;ta.wrap='off';
-      ta.value=j.text||(j.rel==='_desc.yaml'&&!j.stamp?'# What this artifact declares: links to other artifacts (connections), what it runs (uses),\\n# whose memory its AI sessions read (ai_uses), and any facts of its own.\\nconnections: []\\n':'');
-      ta.rows=Math.max(8,Math.min(40,(ta.value.match(/\\n/g)||[]).length+2));
-      var msg=h('span','cxr-emsg'),sv=h('button','cxr-btn','Save'),cn=h('button','cxr-copy sm','cancel');sv.type='button';cn.type='button';
-      function doSave(){msg.textContent='';sv.disabled=true;api('save',{uid:C.uid,rel:j.rel,text:ta.value,stamp:j.stamp||''}).then(function(r){
-        (r.warnings||[]).forEach(function(w){body.insertBefore(h('p','cxr-notice',w),view);});
-        if(/^_(cmeta|desc)\\./i.test(j.rel)){location.reload();}else{openFile(j.rel,li);}}).catch(function(e){sv.disabled=false;msg.textContent=e.message;});}
-      sv.addEventListener('click',doSave);cn.addEventListener('click',function(){if(j.stamp)openFile(j.rel,li);else view.innerHTML='';});
-      ta.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();doSave();}
-        else if(e.key==='Tab'){e.preventDefault();var s=ta.selectionStart,t=ta.selectionEnd;ta.value=ta.value.slice(0,s)+'  '+ta.value.slice(t);ta.selectionStart=ta.selectionEnd=s+2;}});
-      var head=h('div','cxr-fhead');head.appendChild(h('b',null,(j.stamp?'editing ':'new file ')+j.rel));head.appendChild(sv);head.appendChild(cn);head.appendChild(msg);
-      view.appendChild(head);view.appendChild(ta);ta.focus();view.scrollIntoView({block:'nearest'});}
+      var text=j.text||(j.rel==='_desc.yaml'&&!j.stamp?'# What this artifact declares: links to other artifacts (connections), what it runs (uses),\\n# whose memory its AI sessions read (ai_uses), and any facts of its own.\\nconnections: []\\n':'');
+      // a _cmeta, a _desc, a text the page shows or a new README.md / _info.md are drawn again by the server; another file here
+      var shown=/^_(cmeta|desc)\\.|^(readme\\.md|_info\\.md)$/i.test(j.rel);
+      document.querySelectorAll('.cxr-tblock').forEach(function(b){if(b.getAttribute('data-rel')===j.rel)shown=true;});
+      var box=editorBox(j.rel,text,j.stamp,function(r){
+          if(shown){again('tech',[(r.created?'Made ':'Saved ')+j.rel].concat(r.warnings||[]));return;}
+          (r.warnings||[]).forEach(function(w){body.insertBefore(h('p','cxr-notice',w),view);});openFile(j.rel,li);},
+        function(){if(j.stamp)openFile(j.rel,li);else view.innerHTML='';});
+      view.appendChild(box);box.ta.focus();view.scrollIntoView({block:'nearest'});}
     function reload(){loaded=false;load();}
     // delete a file or an empty folder: the person is asked first; the tree is read again after
     function del(rel,what){var x=h('button','cxr-copy sm cxr-del','\\u00d7');x.type='button';x.title='Delete this '+what;

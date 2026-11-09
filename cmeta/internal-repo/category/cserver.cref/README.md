@@ -12,15 +12,42 @@ referenced, and a reader sees what is referenced.
 
 ## What the page shows
 
-1. the title (the `_cmeta` name, else the alias), the category and the repository, the cRef with a copy button, the tags;
+1. the title (the `_cmeta` name, else the alias) and the cRef, each with a button that copies it - the cRef also as
+   `{{{<cRef>}}}`, the form a text holds (a note, a memory, an AI prompt) -, the category and the repository, the
+   tags, then a line;
 2. the artifact's **text**: `README.md` (then `_info.md`, `note.md`, `index.md`), or the file its category names in
-   `cref_view.text`; a relative path after the cRef shows that file instead; Markdown is rendered, and inside it
-   `{{{<cRef>}}}/<path>` references and the artifact's wikilinks (`_desc.ck.wikilinks`, written by an importer) become
-   links to their pages;
-3. the **connections**, grouped by category, then what **connects to** this artifact (from the connection index of
-   `cserver.browse`);
-4. folded at the end, for the technical personas only: the commands, `See _cmeta`, `See _desc`, the files (only where
-   the file browser is on - the server's own machine, or `browse_files` in the cserver config).
+   `cref_view.text`, with `README.md` and `_info.md` after it when the artifact has them; a relative path after the
+   cRef shows that file instead; Markdown is rendered, and inside it `{{{<cRef>}}}/<path>` references and the
+   artifact's wikilinks (`_desc.ck.wikilinks`, written by an importer) become links to their pages;
+3. folded at the end, for the technical personas only: the commands, `See _cmeta`, `See _desc`, the lists - the
+   **connections**, the **AI uses** (whose memory and skills the artifact's AI sessions read), what it **uses** (a
+   task's sub-tasks) and what **connects to** it (from the connection index of `cserver.browse`) -, the files (only
+   where the file browser is on - the server's own machine, or `browse_files` in the cserver config). A list shows
+   each category, then its artifacts under it, each with a button that copies its cRef, and "copy all" (the cRefs with
+   `;` between them, what the field of another artifact takes). The browser keeps a list open once it was opened.
+   Another persona sees the connections and what connects to it after the text instead.
+
+## Editing from the page
+
+Where this reader may write (`cserver.browse`'s rules: a browser on the server's own machine, `browse_edit` in the
+cserver config, or what a host grants a signed-in reader):
+
+- the texts are edited where they are read (`edit` under each; Ctrl+S saves), and a missing `README.md` or `_info.md` is
+  made with its `+` button - `cserver.browse`'s save, with its checks and the fingerprint that keeps a file changed
+  meanwhile from being overwritten;
+- the **connections** and the **AI uses** change in their lists, also when the artifact has none yet: the field adds
+  names or cRefs (`;` between several; it offers the AI contexts by their short names and the artifacts whose names
+  hold what is typed), `x` removes one after asking on its line. `cserver.browse`'s `link` makes the change with the
+  category's own `update` (`--ct`, `-ai`): the full cRef of each artifact, a hand-written `_desc.yaml` keeping its
+  text around the list. A connection is added on this side (the other artifact lists it under "connects to it"), and
+  removed from both sides where the reader may write - as `--connect=-<name>` does: the graph draws a connection
+  declared on either side;
+- the `_cmeta` and the `_desc` are edited from their sections, any file from the files.
+
+The page is drawn again after each change, with what the change said.
+
+The graph links of the page (Graph, Focus the graph here) ask for every repository (`repos=*`): a connection into a
+repository the server unticks by default (`browse_untick_repos`, an archive) is drawn too.
 
 Links to the browser and to the graph open `cserver.browse` on the same artifact. The rules are the browser's: hidden
 repositories and key or secret categories are not shown; a key-looking file is never read.
