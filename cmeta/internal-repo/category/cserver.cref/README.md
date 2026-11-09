@@ -39,3 +39,14 @@ cref_view:
 A host may pass `misc.persona` (a site's audience view): anything but `engineering`, `dev`, `internal` or `all` hides
 the technical sections; `misc.cref_url` and `misc.browse_url` tell the page where it and the browser are served
 (defaults: `<url_server>cref/` and `<url_server>browse`).
+
+## Dark or light
+
+The page decides its theme before it is drawn: `?dark=1` (or `0`) in its address; else the theme of the page of this
+server the reader came from - every page keeps its own in the browser as `cserver.<name>.theme`
+(`cserver.browse.theme`, `cserver.projects.theme`, a page of another repository the same way), so a link from a dark
+page opens a dark cRef page with nothing passed; else the choice kept by this page (`cserver.cref.theme`); else the
+server's (`misc.theme`, `?dark`). What is decided is kept, so the next cRef page opened from this one has it too. The
+switch at the top right (&#9680;) turns it and keeps it. In dark mode the page colours the window. Inside the
+cPlatform's shell (`misc.ctuning_server`) it follows the shell's theme (`html[data-ctp-theme]`, switched there without
+a reload) and shows no switch.

@@ -343,6 +343,8 @@ class Category(InitCategory):
         persona = str(misc.get('persona') or query.get('persona') or '').strip().lower()
         tech = persona in TECH_PERSONAS
         dark = str(misc.get('theme') or '') == 'dark' or str(query.get('dark', '')).lower() in ('1', 'true', 'yes')
+        # inside the cPlatform's shell the page follows the shell's theme (THEME_JS); elsewhere it has its own switch
+        self._hosted = bool(misc.get('ctuning_server'))
 
         ref = str(query.get('cref') or '').strip()
         if ref:
@@ -394,7 +396,8 @@ class Category(InitCategory):
                  '<a href="%s" title="This artifact in the knowledge browser">Browser</a> &middot; '
                  '<a href="%s" title="This artifact and its connections, drawn">Graph</a>%s'
                  ' &middot; <button type="button" class="cxr-copy" data-copy="%s">Copy cRef</button>'
-                 ' <button type="button" class="cxr-copy" id="cxr-new" hidden title="A new artifact of this category, in this repository, with these tags">+ Similar</button></span></div>'
+                 ' <button type="button" class="cxr-copy" id="cxr-new" hidden title="A new artifact of this category, in this repository, with these tags">+ Similar</button>'
+                 ' <button type="button" class="cxr-copy" id="cxr-theme" title="Dark / light (kept in this browser)">&#9680;</button></span></div>'
                  % (browse_link(view='browse', cats=cat), _esc(cat),
                     browse_link(view='browse', repos=row.get('repo') or ''), _esc(row.get('repo') or '(registry)'),
                     browse_link(cref=node), browse_link(view='graph', focus=node),
@@ -547,9 +550,11 @@ class Category(InitCategory):
 
     def _page(self, dark, title, body, head_only=False, config=None, extra_head=''):
         css = CSS
-        html_body = '<div id="cxr" class="cxr%s">%s</div>%s%s' % (
-            ' cxr-dark' if dark else '', body,
-            '<script>var CXR_CONFIG = %s;</script><script>%s</script>' % (_js(config or {}), HL_JS), JS)
+        # THEME_JS first in the page's box: the theme is set before anything of the page is drawn
+        hosted = bool(getattr(self, '_hosted', False))
+        html_body = '<div id="cxr" class="cxr%s"%s>%s%s</div>%s%s' % (
+            ' cxr-dark' if dark else '', ' data-hosted="1"' if hosted else '', THEME_JS, body,
+            '<script>var CXR_CONFIG = %s;</script><script>%s</script>' % (_js(dict(config or {}, hosted=hosted)), HL_JS), JS)
         return {'return': 0, 'html_meta': {'html': html_body, 'page_title': title,
                                             'page_extra_style': '<meta name="viewport" content="width=device-width, initial-scale=1">\n<style>%s</style>\n%s' % (css, extra_head or '')}}
 
@@ -620,9 +625,43 @@ CSS = """
 @media (max-width:860px){.cxr{padding:8px 12px 40px}.cxr-title{font-size:22px}.cxr-cols{grid-template-columns:minmax(0,1fr)}.cxr-side{position:static}.cxr-links{columns:1}}
 """
 
+# The theme (2026-11-09: a page in dark mode opened its cRef links in light mode), decided before the page is drawn:
+# ?dark=1|0 in the address; else the theme of the page of this server the reader came from - each page keeps its own
+# as cserver.<name>.theme in the browser (the knowledge browser cserver.browse.theme, the home page
+# cserver.projects.theme, a page of another repository the same way), with the engine's pages' keys after it as those
+# pages read them; else the choice kept here (cserver.cref.theme); else the server's (a platform theme,
+# ?dark). Whatever is decided is kept, so the next cRef page opened from this one has it too. In dark mode the page
+# colours the window; inside the cPlatform's shell it follows the shell's theme instead (html[data-ctp-theme]).
+THEME_JS = """<script>
+(function(){
+  var r=document.getElementById('cxr'),html=document.documentElement,K='cserver.cref.theme';if(!r)return;
+  var hosted=r.getAttribute('data-hosted')==='1';
+  function paint(d){r.classList.toggle('cxr-dark',!!d);if(!hosted){var bg=d?'#14161a':'';html.style.backgroundColor=bg;
+    if(document.body)document.body.style.backgroundColor=bg;html.style.colorScheme=d?'dark':'';}}
+  window.cxrTheme=paint;
+  if(hosted){var t=html.getAttribute('data-ctp-theme');if(t)paint(t==='dark');return;}
+  function get(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+  var d=null;
+  try{var q=new URLSearchParams(location.search).get('dark');if(q)d=/^(1|true|yes|dark)$/i.test(q);}catch(e){}
+  if(d===null){try{var f=document.referrer?new URL(document.referrer):null;
+    if(f&&f.origin===location.origin){var page=f.pathname.replace(/^[/]+/,'').split('/')[0]||'projects';
+      if(page!=='cref'){var v=get('cserver.'+page+'.theme')||get('cserver.browse.theme')||get('cserver.projects.theme');if(v)d=v==='dark';}}}catch(e){}}
+  if(d===null){var s=get(K);if(s)d=s==='dark';}
+  if(d===null)d=r.classList.contains('cxr-dark');
+  try{localStorage.setItem(K,d?'dark':'light');}catch(e){}
+  paint(d);
+})();
+</script>"""
+
 JS = """<script>
 (function(){
   var C=window.CXR_CONFIG||{};
+  // the theme switch (THEME_JS decided the theme): kept here; inside the cPlatform the shell's theme, followed
+  var tb=document.getElementById('cxr-theme'),root=document.getElementById('cxr');
+  if(tb&&C.hosted){tb.hidden=true;var ht=document.documentElement;
+    if(window.MutationObserver)new MutationObserver(function(){var t=ht.getAttribute('data-ctp-theme');if(t&&window.cxrTheme)cxrTheme(t==='dark');}).observe(ht,{attributes:true,attributeFilter:['data-ctp-theme']});}
+  else if(tb){tb.addEventListener('click',function(){var d=!root.classList.contains('cxr-dark');if(window.cxrTheme)cxrTheme(d);
+    try{localStorage.setItem('cserver.cref.theme',d?'dark':'light');}catch(e){}});}
   // the text blocks named by their file (the text shown, a front matter, the _cmeta/_desc) coloured by their kind, the cRefs inside as links
   if(window.cmetaHL){document.querySelectorAll('pre.cxr-pre[data-name]').forEach(function(p){var n=p.getAttribute('data-name');if(cmetaHL.lang(n))p.innerHTML=cmetaHL(p.textContent,n,{cref_url:C.cref_url||'/cref/'});});}
   var b=document.getElementById('cxr-back');
