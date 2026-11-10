@@ -276,11 +276,13 @@ def _lock_host_name():
 
 
 def _lock_pid_alive(pid):
+    """Whether the holder of a soft lock (its pid, on this system) still runs: utils.sys.pid_exists - psutil's rules,
+    the standard library (2026-11-09) - which says "gone" only when the system does; unknown: never treated as dead."""
     try:
-        import psutil
-        return psutil.pid_exists(pid)
+        from .sys import pid_exists       # here, not at the top: utils.sys imports this module
+        return pid_exists(pid)
     except Exception:
-        return True   # unknown: never treat it as dead
+        return True
 
 
 def _lock_system_id():
