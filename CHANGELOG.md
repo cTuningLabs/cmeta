@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.11.1)
+## 0.38.12
 - **psutil is no longer a dependency: the processes and the host are read with the standard library.** psutil was
   the one dependency of the engine without a wheel for the free-threaded Python 3.15t (and for musl on the
   free-threaded builds), so `pip install cmeta` on 3.15t failed wherever no compiler could build it (the VMs,
