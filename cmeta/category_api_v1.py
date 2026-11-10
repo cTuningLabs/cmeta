@@ -145,7 +145,8 @@ def apply_artifact_defaults(
 # edge declared on either side, so both say it); `--connect-to=<names>` (`--ct`) writes this side only. A name
 # with "-" in front removes (`--connect=-<name>` from both sides, `--ct=-<name>` and `-ai=-<name>` from this
 # one); a name no artifact has any more is removed by what the entries say. Entries are compared by the
-# artifact's UID, so an entry written before a rename is neither duplicated nor left behind.
+# artifact's UID, so an entry written before a rename is neither duplicated nor left behind; an entry written by
+# hand without one (cat::alias) by the parts it gives.
 DESC_FILENAME_BASE = '_desc'
 TEMPLATE_KEY = 'template'
 AI_USES_KEY = 'ai_uses'
@@ -317,16 +318,20 @@ def cref_matches(entry, name):
     """
         Whether an entry of ai_uses or connections (a cRef string, or {cref, note}) is the artifact a name names:
         by the artifact's UID when both carry one (an entry written before a rename keeps the old alias), else
-        by every part the name gives (a cRef, cat::alias, an alias, a UID; aliases without case).
+        by every part the side without the artifact's UID gives - the name (a cRef, cat::alias, an alias, a UID:
+        an artifact that is gone), or the entry (written by hand as cat::alias, against the full cRef a name was
+        resolved to, 2026-11-09: it was neither removed nor kept from a duplicate); aliases without case.
     """
     ec, ecu, ea, eau = _cref_split(entry)
     nc, ncu, na, nau = _cref_split(name)
     if eau and nau:
         return eau == nau and not (ecu and ncu and ecu != ncu)
-    given = [(n, e, True) for n, e in ((nc, ec), (na, ea)) if n] + [(n, e, False) for n, e in ((ncu, ecu), (nau, eau)) if n]
+    (gc, gcu, ga, gau), (oc, ocu, oa, oau) = ((ec, ecu, ea, eau), (nc, ncu, na, nau)) if nau else \
+                                             ((nc, ncu, na, nau), (ec, ecu, ea, eau))
+    given = [(g, o, True) for g, o in ((gc, oc), (ga, oa)) if g] + [(g, o, False) for g, o in ((gcu, ocu), (gau, oau)) if g]
     if not given:
         return False
-    return all((n.lower() == e.lower()) if fold else (n == e) for n, e, fold in given)
+    return all((g.lower() == o.lower()) if fold else (g == o) for g, o, fold in given)
 
 
 def split_changes(names):

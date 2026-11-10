@@ -57,8 +57,10 @@ The commands above are cross-platform truth. Any Windows `.bat` wrappers around
 them are the author's local workflow and are not tracked in this repository.
 
 Runtime deps are intentionally minimal: pyyaml, requests, setuptools, wheel,
-tabulate, tqdm, packaging, psutil. (File locks are the engine's own
-`cmeta.utils.files.PathLock` since 0.34.0; `filelock` is no longer used.)
+tabulate, tqdm, packaging. (File locks are the engine's own
+`cmeta.utils.files.PathLock` since 0.34.0; `filelock` is no longer used; the
+processes and the host's memory and cores are read with the standard library
+since 0.38.12 - `psutil` is no longer a dependency.)
 
 ### Useful environment variables
 `CMETA_HOME`, `CMETA_DEBUG=1`, `CMETA_LOG=DEBUG|INFO`, `CMETA_LOG_FILE=<path>`,

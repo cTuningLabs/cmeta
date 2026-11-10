@@ -1594,9 +1594,275 @@ def get_min_arch_host_info():
 
 
 ###################################################################################################
+# The processes and the host from the standard library (2026-11-09): psutil, the one dependency without a wheel for
+# the free-threaded Python 3.15t (cMeta did not install there without a compiler), is not needed any more. The rules
+# are psutil's own. A process is gone only when the system says so: on POSIX kill(pid, 0) answers "no such
+# process" (and on Linux a thread's ID is not a process); on Windows OpenProcess answers "invalid parameter", or the
+# process it opens has ended. Anything else - no permission, an error - is a process that exists, so that a caller
+# deciding on it (a soft lock taken over from a holder that is gone) never takes it from a live one. Never os.kill on
+# Windows: there it ends the process.
+
+def pid_exists(
+    pid,  # A process ID of this system.
+):
+    """
+        Whether a process with this ID exists on this system - psutil.pid_exists' rules, without psutil.
+
+        Args:
+            pid (int): A process ID.
+        Returns:
+            bool: False only when the system says that there is no such process (a negative or impossible ID too);
+                True for a process that exists, one this process may not look at, and when the system does not say.
+    """
+    import sys
+    # a pid is a whole number (an int, or the digits of a lock file's line - a word of it, no spaces): 3.5 is not the
+    # pid 3 and ' 7 ' is not the pid 7 (on Linux kernel threads have those pids - the VMs of the matrix of 2026-11-09
+    # said so), True is not the pid 1
+    if isinstance(pid, str):
+        if not (pid.isascii() and pid.isdigit()):       # isdigit alone takes the digits of every script
+            return False
+        pid = int(pid)
+    if isinstance(pid, bool) or not isinstance(pid, int):
+        return False
+    if pid < 0:
+        return False
+    if os.name == 'nt':
+        return _pid_exists_windows(pid)
+    if pid == 0:
+        # kill(0, 0) would signal the caller's own process group: PID 0 is the kernel's own task on macOS and BSD,
+        # none on Linux (psutil asks its list of processes)
+        return not sys.platform.startswith('linux')
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (OverflowError, ValueError):
+        return False                      # no process can have it
+    except PermissionError:
+        pass                              # EPERM: a process we may not signal - it exists (on Linux: unless it is a thread)
+    except OSError:
+        return True                       # the system does not say
+    if sys.platform.startswith('linux'):
+        # Linux takes a thread's id too, of our own processes and of other users' alike (kill says EPERM for a thread
+        # of rsyslogd as for the process: the WSL distribution of the matrix of 2026-11-09): an id is a process when
+        # it leads its thread group (psutil issue 687); a status that cannot be read: what the process table lists
+        # (a thread's id is never among /proc's entries, though /proc/<tid> opens)
+        try:
+            with open('/proc/%d/status' % pid, 'rb') as f:
+                for line in f:
+                    if line.startswith(b'Tgid:'):
+                        return int(line.split()[1]) == pid
+        except (OSError, ValueError, IndexError):
+            try:
+                return str(pid) in os.listdir('/proc')
+            except OSError:
+                pass
+    return True
+
+
+_kernel32 = None
+
+
+def _pid_exists_windows(pid):
+    """pid_exists on Windows: OpenProcess, the id of the process it opened (the kernel ignores the two low bits of a
+    process id - a pid is a multiple of 4 -, so OpenProcess(9603) opens the process 9600), then whether that process
+    has ended (its object can outlive it while a handle holds it) - WaitForSingleObject at once, no exit code to
+    misread (an exit code of 259 is STILL_ACTIVE's)."""
+    global _kernel32
+    if pid == 0:
+        return True                       # the System Idle Process
+    if pid > 0xFFFFFFFF or pid % 4:
+        return False
+    import ctypes
+    from ctypes import wintypes
+    if _kernel32 is None:
+        k = ctypes.WinDLL('kernel32', use_last_error=True)
+        k.OpenProcess.restype = wintypes.HANDLE
+        k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k.GetProcessId.restype = wintypes.DWORD
+        k.GetProcessId.argtypes = [wintypes.HANDLE]
+        k.WaitForSingleObject.restype = wintypes.DWORD
+        k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k.CloseHandle.argtypes = [wintypes.HANDLE]
+        _kernel32 = k
+    kernel32 = _kernel32
+    SYNCHRONIZE, PROCESS_QUERY_LIMITED_INFORMATION = 0x00100000, 0x1000
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, False, pid)
+    if not handle:
+        # ERROR_INVALID_PARAMETER: no such process; ERROR_ACCESS_DENIED (a protected or another user's process) or
+        # anything else: it is not known to be gone
+        return ctypes.get_last_error() != 87
+    try:
+        if kernel32.GetProcessId(handle) != pid:
+            return False                  # another process answered to this number
+        return kernel32.WaitForSingleObject(handle, 0) != 0     # WAIT_OBJECT_0: it has ended; WAIT_TIMEOUT: it runs
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _host_memory():
+    """(total, available) bytes of this host's memory, as psutil.virtual_memory() gives them: Windows the physical
+    memory and what is free of it (GlobalMemoryStatusEx), Linux MemTotal and MemAvailable (/proc/meminfo; a kernel
+    before 3.14 has no MemAvailable: free + buffers + page cache), macOS hw.memsize and the free + inactive pages."""
+    import sys
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [('dwLength', wintypes.DWORD), ('dwMemoryLoad', wintypes.DWORD), ('ullTotalPhys', ctypes.c_uint64),
+                        ('ullAvailPhys', ctypes.c_uint64), ('ullTotalPageFile', ctypes.c_uint64), ('ullAvailPageFile', ctypes.c_uint64),
+                        ('ullTotalVirtual', ctypes.c_uint64), ('ullAvailVirtual', ctypes.c_uint64),
+                        ('ullAvailExtendedVirtual', ctypes.c_uint64)]
+        m = MEMORYSTATUSEX()
+        m.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if not ctypes.WinDLL('kernel32').GlobalMemoryStatusEx(ctypes.byref(m)):
+            return None, None
+        return m.ullTotalPhys, m.ullAvailPhys
+    if sys.platform == 'darwin':
+        total = _sysctl_int('hw.memsize')
+        pages, size = {}, 4096
+        try:
+            import subprocess
+            out = subprocess.run(['/usr/bin/vm_stat'], capture_output=True, text=True, timeout=10).stdout
+        except (OSError, subprocess.SubprocessError):
+            return total, None
+        for line in out.splitlines():
+            try:
+                if 'page size of' in line:
+                    size = int(line.split('page size of')[1].split()[0])
+                elif ':' in line:
+                    key, _, value = line.partition(':')
+                    pages[key.strip()] = int(value.strip().rstrip('.'))
+            except (ValueError, IndexError):
+                continue
+        if 'Pages free' not in pages:
+            return total, None
+        return total, (pages['Pages free'] + pages.get('Pages inactive', 0)) * size
+    info = {}
+    try:
+        with open('/proc/meminfo', encoding='ascii', errors='replace') as f:
+            for line in f:
+                key, _, value = line.partition(':')
+                parts = value.split()
+                if parts and parts[0].isdigit():
+                    info[key.strip()] = int(parts[0]) * 1024
+    except OSError:
+        return None, None
+    available = info.get('MemAvailable')
+    if available is None and 'MemFree' in info:
+        available = info['MemFree'] + info.get('Buffers', 0) + info.get('Cached', 0)
+    return info.get('MemTotal'), available
+
+
+def _process_rss():
+    """The resident memory of this process in bytes (psutil's memory_info().rss): Windows its working set
+    (GetProcessMemoryInfo), Linux /proc/self/statm, macOS what ps says of it."""
+    import sys
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD)] + \
+                       [(n, ctypes.c_size_t) for n in ('PeakWorkingSetSize', 'WorkingSetSize', 'QuotaPeakPagedPoolUsage',
+                                                       'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage',
+                                                       'QuotaNonPagedPoolUsage', 'PagefileUsage', 'PeakPagefileUsage')]
+        kernel32 = ctypes.WinDLL('kernel32')
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.K32GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+        c = PROCESS_MEMORY_COUNTERS()
+        c.cb = ctypes.sizeof(c)
+        if not kernel32.K32GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(c), c.cb):
+            return None
+        return c.WorkingSetSize
+    if sys.platform == 'darwin':
+        try:
+            import subprocess
+            out = subprocess.run(['/bin/ps', '-o', 'rss=', '-p', str(os.getpid())], capture_output=True, text=True, timeout=10).stdout
+            return int(out.split()[0]) * 1024
+        except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+            return None
+    try:
+        with open('/proc/self/statm', encoding='ascii') as f:
+            return int(f.read().split()[1]) * os.sysconf('SC_PAGE_SIZE')
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _physical_cores():
+    """The physical cores of this host (psutil's cpu_count(logical=False)), or None when the system does not say:
+    Windows the processor cores of GetLogicalProcessorInformationEx, Linux the distinct core sibling lists of
+    /sys (else the physical id and core id pairs of /proc/cpuinfo), macOS hw.physicalcpu."""
+    import sys
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        fn = kernel32.GetLogicalProcessorInformationEx
+        fn.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD)]
+        length = wintypes.DWORD(0)
+        fn(0, None, ctypes.byref(length))                  # RelationProcessorCore: how much room the answer needs
+        if not length.value:
+            return None
+        buf = ctypes.create_string_buffer(length.value)
+        if not fn(0, buf, ctypes.byref(length)):
+            return None
+        cores, offset = 0, 0
+        while offset + 8 <= length.value:                  # entries of their own sizes: Relationship, Size, ...
+            relation, size = ctypes.cast(ctypes.byref(buf, offset), ctypes.POINTER(wintypes.DWORD * 2)).contents
+            if size <= 0:
+                break
+            cores += relation == 0
+            offset += size
+        return cores or None
+    if sys.platform == 'darwin':
+        return _sysctl_int('hw.physicalcpu')
+    import glob
+    seen = set()
+    for name in ('core_cpus_list', 'thread_siblings_list'):
+        for p in glob.glob('/sys/devices/system/cpu/cpu[0-9]*/topology/' + name):
+            try:
+                with open(p, encoding='ascii') as f:
+                    seen.add(f.read().strip())
+            except OSError:
+                pass
+        if seen:
+            return len(seen)
+    pairs, physical = set(), None
+    try:
+        with open('/proc/cpuinfo', encoding='ascii', errors='replace') as f:
+            for line in f:
+                key, _, value = line.partition(':')
+                key = key.strip()
+                if key == 'physical id':
+                    physical = value.strip()
+                elif key == 'core id':
+                    pairs.add((physical, value.strip()))
+    except OSError:
+        return None
+    return len(pairs) or None
+
+
+def _sysctl_int(name):
+    """An integer of macOS's sysctl (hw.memsize, hw.physicalcpu) through libc's sysctlbyname, or None."""
+    import ctypes
+    import ctypes.util
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+        value, size = ctypes.c_uint64(0), ctypes.c_size_t(8)
+        if libc.sysctlbyname(name.encode('ascii'), ctypes.byref(value), ctypes.byref(size), None, ctypes.c_size_t(0)) != 0:
+            return None
+        return value.value if size.value == 8 else value.value & 0xFFFFFFFF
+    except (OSError, AttributeError):
+        return None
+
+
+###################################################################################################
 def get_min_raw_host_info():
     """
-        Collect minimal host hardware information including CPU and memory.
+        Collect minimal host hardware information including CPU and memory (the standard library only since
+        2026-11-09: psutil's numbers by psutil's rules).
 
         Args:
             None.
@@ -1605,26 +1871,17 @@ def get_min_raw_host_info():
         Raises:
             Exception: Propagated runtime errors, if any.
     """
-    import psutil
-    import os
-    import platform
-    import sys
-    import struct
-
     result = get_min_arch_host_info()
     if result['return']>0: return result
 
     # --- Number of CPU cores ---
-    physical_cores = psutil.cpu_count(logical=False)
-    logical_cores = psutil.cpu_count(logical=True)
+    physical_cores = _physical_cores()
+    logical_cores = os.cpu_count()
 
-    mem_info = psutil.virtual_memory()
-    total_memory = mem_info.total
-    free_memory = mem_info.available
+    total_memory, free_memory = _host_memory()
 
     # --- Memory used by the current Python process ---
-    process = psutil.Process(os.getpid())
-    memory_used = process.memory_info().rss  # bytes
+    memory_used = _process_rss()  # bytes
 
     result.update({
       'physical_cores': physical_cores,
@@ -1698,17 +1955,16 @@ def get_min_host_info(
     # --- Memory used by the current Python process ---
     memory_used = result['memory_used']
 
-    r = format_size(total_memory, binary=binary, unit=unit)
-    if r['return']>0: return r
-    nice_total_memory = r['nice_size']
-
-    r = format_size(free_memory, binary=binary, unit=unit)
-    if r['return']>0: return r
-    nice_free_memory = r['nice_size']
-
-    r = format_size(memory_used, binary=binary, unit=unit)
-    if r['return']>0: return r
-    nice_memory_used = r['nice_size']
+    # a number the system did not give (None) is shown as such
+    nice = {}
+    for key, value in (('total', total_memory), ('free', free_memory), ('used', memory_used)):
+        if value is None:
+            nice[key] = 'unknown'
+            continue
+        r = format_size(value, binary=binary, unit=unit)
+        if r['return']>0: return r
+        nice[key] = r['nice_size']
+    nice_total_memory, nice_free_memory, nice_memory_used = nice['total'], nice['free'], nice['used']
 
     x = ''
 

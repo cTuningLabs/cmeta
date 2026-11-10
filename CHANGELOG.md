@@ -2,6 +2,29 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.38.12
+- **psutil is no longer a dependency: the processes and the host are read with the standard library.** psutil was
+  the one dependency of the engine without a wheel for the free-threaded Python 3.15t (and for musl on the
+  free-threaded builds), so `pip install cmeta` on 3.15t failed wherever no compiler could build it (the VMs,
+  Alpine and Fedora images). The engine asked it two things: whether the holder of a soft lock still runs
+  (`pid_exists`) and the host's cores and memory with this process's own (the memory line of a server's
+  console, the debug log). Now `cmeta.utils.sys.pid_exists` answers by psutil's own rules from the standard
+  library: on POSIX `kill(pid, 0)` ("no such process" = gone, "not permitted" = a process) and on Linux a
+  thread's id is not a process; on Windows `OpenProcess` through ctypes, the id of the process it opened (the
+  kernel ignores the two low bits of a pid, so the number 37921 opens the process 37920 - not a pid) and whether
+  it has ended (`WaitForSingleObject`, never an exit code: 259 is STILL_ACTIVE) - and "gone" only when the system
+  says so, so a soft lock is never taken from a live holder; `os.kill` is never used on Windows, where it ends
+  the process. The host's numbers come from `GlobalMemoryStatusEx` / `GetProcessMemoryInfo` /
+  `GetLogicalProcessorInformationEx` on Windows, `/proc/meminfo`, `/proc/self/statm` and the cpu topology of
+  `/sys` on Linux, `sysctl` (hw.memsize, hw.physicalcpu), `vm_stat` and `ps` on macOS; a number a system does
+  not give is `None` ("unknown" in the text). Tests: `tests/core_tests/test_utils_sys_without_psutil.py` -
+  this process, a live child (alive after fifty checks), an exited one (also while a handle keeps its process
+  object), a pid no process has, values that are not pids, PID 0 and the processes one may not look at as psutil
+  answers them, a zombie, a Linux thread id, the same answers as psutil over the whole process table where it is
+  installed, a stale soft lock of a dead pid taken over by the pid (not the silence) and a live holder's never,
+  the host's numbers against psutil's, the process's memory growing with an allocation, eight threads at once,
+  1500 checks in a few seconds, and no module of the engine importing psutil.
+
 ## 0.38.11
 - **`CMetaAsync` never forks a server: its workers come by `forkserver` on Linux (`spawn` on Windows and macOS, as
   before), watch their parent and can be started before the first request.** Python's default on Linux up to 3.13 is

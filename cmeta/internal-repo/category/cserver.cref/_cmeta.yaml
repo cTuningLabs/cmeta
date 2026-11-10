@@ -11,12 +11,13 @@ last_api_version: 1
 base_category_default_api_versions:
   '1': 1
 name: cMeta cref - the page of one artifact, named by its cRef
-desc: 'The full-page view of one artifact: /cref/<category>::<alias>,<UID>[/<relative path>]. The title, the
-  artifact''s text (README.md, or the file its category names - the latest dated copy of a note), the connections
-  grouped by category, what connects to it, and, folded at the end, the commands, the _cmeta, the _desc and the
-  files. The cRef stays in the address bar: it is how artifacts are referenced. Resolved and read through
-  cserver.browse (one catalogue, the same rules); extended through cref_view in a category''s _cmeta.yaml or an
-  artifact''s _desc.'
+desc: 'The full-page view of one artifact: /cref/<category>::<alias>,<UID>[/<relative path>]. The title and the
+  cRef with buttons that copy them, the artifact''s text (README.md, or the file its category names - the latest
+  dated copy of a note) with README.md and _info.md, and, folded at the end, the commands, the _cmeta, the _desc,
+  its lists - connections, AI uses, uses, what connects to it - and the files. A reader who may write edits the
+  texts in place and the connections and AI uses in their lists. The cRef stays in the address bar: it is how
+  artifacts are referenced. Resolved and read through cserver.browse (one catalogue, the same rules); extended
+  through cref_view in a category''s _cmeta.yaml or an artifact''s _desc.'
 permanent: true
 card: false
 tags:

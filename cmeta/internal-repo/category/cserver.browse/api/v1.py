@@ -83,7 +83,11 @@ and a file or an empty folder deleted (?native_action=delete) - never the _cmeta
 reading apply to all of it (never a key-like file, a dot-file, a path outside the folder, an artifact of a
 category of keys or secrets). A new artifact is made from the page too (?native_action=create: cat, repo, alias,
 tags) by the category's own "add" - a dated category puts the day in front of the name - for a viewer who may
-write to that repository; the page then opens it. Every save, folder, deletion and creation is one line of the
+write to that repository; the page then opens it. The two lists of a _desc that name other artifacts, connections
+and ai_uses, change through ?native_action=link (uid, key, add: names or cRefs, ";" between them, remove: one) - the
+artifact page's lists: by the category's own update (--ct, -ai), the names those the page shows; a connection is
+added on this side and removed from both sides where the viewer may write; ?native_action=templates lists the
+AI-context templates (what -ai offers). Every save, folder, deletion, creation and list change is one line of the
 server's log.
 
 These keys of the cserver config apply (cx config set cserver --meta.<key>=<value>):
@@ -842,6 +846,14 @@ def _ai_uses_refs(desc):
         if isinstance(c, str) and '::' in c:
             out.append(_parse_cref(c))
     return out
+
+
+def _ai_template(it):
+    """An artifact's declaration as an AI-context template - `template: ai_uses: {alias, title, sort}` in its meta,
+    the short names -ai takes - or None."""
+    t = (it.get('meta') or {}).get('template')
+    d = t.get('ai_uses') if isinstance(t, dict) else None
+    return d if isinstance(d, dict) and str(d.get('alias') or '').strip() else None
 
 
 def _resolve(ref, by_uid, by_key):
@@ -1698,13 +1710,17 @@ class Category(InitCategory):
         if desc is not None and size > DESC_MAX_BYTES:
             desc_out = {'_note': '%s is %d bytes; only its keys are shown' % (desc_file, size),
                         '_keys': sorted(desc.keys())}
+        # each entry with the category's UID of what it names (the page copies the full cRef); a connection declared
+        # in the _cmeta (the layout before the _desc) says so: it is not changed through the _desc
         links = []
-        for cref in _connections(desc, it['meta']):
-            ref = _parse_cref(cref)
-            tuid = _resolve(ref, by_uid, by_key)
-            t = by_uid.get(tuid) if tuid in shown else None
-            links.append({'cref': cref, 'uid': tuid if t else ref[3], 'alias': t['alias'] if t else ref[2],
-                          'cat': t['cat'] if t else '', 'found': t is not None})
+        for in_meta, src in ((False, (desc or {}).get('connections')), (True, it['meta'].get('connections'))):
+            for cref in (str(x) for x in src if x) if isinstance(src, list) else ():
+                ref = _parse_cref(cref)
+                tuid = _resolve(ref, by_uid, by_key)
+                t = by_uid.get(tuid) if tuid in shown else None
+                links.append(dict({'cref': cref, 'uid': tuid if t else ref[3], 'alias': t['alias'] if t else ref[2],
+                                   'cat': t['cat'] if t else '', 'cat_uid': t['cat_uid'] if t else ref[1],
+                                   'found': t is not None}, **({'meta': True} if in_meta else {})))
         uses, seen = [], set()
         for c, a, u in _uses_refs(desc):
             if u in seen:
@@ -1712,18 +1728,18 @@ class Category(InitCategory):
             seen.add(u)
             t = by_uid.get(u) if u in shown else None
             uses.append({'ref': '%s: %s,%s' % (c, a, u), 'uid': u, 'alias': t['alias'] if t else a,
-                         'cat': t['cat'] if t else c, 'found': t is not None})
+                         'cat': t['cat'] if t else c, 'cat_uid': t['cat_uid'] if t else '', 'found': t is not None})
         ai_uses = []
         for ref in _ai_uses_refs(desc):
             tuid = _resolve(ref, by_uid, by_key)
             t = by_uid.get(tuid) if tuid in shown else None
             ai_uses.append({'cref': '%s,%s::%s,%s' % ref, 'uid': tuid if t else ref[3], 'alias': t['alias'] if t else ref[2],
-                            'cat': t['cat'] if t else ref[0], 'found': t is not None})
+                            'cat': t['cat'] if t else ref[0], 'cat_uid': t['cat_uid'] if t else ref[1], 'found': t is not None})
         incoming, n_in = [], 0
         if _conn['ready']:
             with _conn_lock:
                 srcs, used_by, read_by = _conn['inn'].get(it['uid'], ()), _conn['uses'], _conn.get('ai', {})
-                rows = [{'uid': s, 'alias': by_uid[s]['alias'], 'cat': by_uid[s]['cat'],
+                rows = [{'uid': s, 'alias': by_uid[s]['alias'], 'cat': by_uid[s]['cat'], 'cat_uid': by_uid[s]['cat_uid'],
                          'uses': it['uid'] in used_by.get(s, ()), 'ai': it['uid'] in read_by.get(s, ())} for s in srcs if s in shown]
             rows.sort(key=lambda x: (x['cat'].lower(), x['alias'].lower()))
             n_in, incoming = len(rows), rows[:INCOMING_MAX]
@@ -1808,7 +1824,7 @@ class Category(InitCategory):
         focus = str(params.get('focus') or '').strip()
 
         layer, rank, notices = {}, {}, []
-        start, focus_next, grown = '', 0, 0
+        start, focus_next, grown, left_out = '', 0, 0, ''
         if focus:
             start = self._find_one(focus, scope)
             if start:
@@ -1825,6 +1841,17 @@ class Category(InitCategory):
                     if not nxt:
                         break
                 focus_next = len({v for u in frontier for v in adj.get(u, ()) if v in scope and v not in layer})
+                # what the pickers leave out within reach (2026-11-09: an archive unticked by default hid an artifact's
+                # own connection, and the graph said nothing of it)
+                shown = set(it['uid'] for it in vis)
+                left = {v for u in layer if layer[u] < depth for v in adj.get(u, ()) if v not in scope and v in shown}
+                if left:
+                    why = Counter(('the repository ' + by_uid[v]['repo']) if ui_repos and not _picked(by_uid[v]['repo'], by_uid[v]['repo_uid'], ui_repos)
+                                  else ('the category ' + by_uid[v]['cat']) for v in left)
+                    left_out = ('Left out by the pickers: %d more artifact%s within %d hop%s (%s) - tick %s to see %s.'
+                                % (len(left), '' if len(left) == 1 else 's', depth, '' if depth == 1 else 's',
+                                   ', '.join('%s: %d' % kv for kv in why.most_common()), 'it' if len(why) == 1 else 'them',
+                                   'it' if len(left) == 1 else 'them'))
             cand = sorted(layer, key=lambda u: layer[u])
         else:
             r = self._search(dict(params, limit=1, offset=0, facets='0'), items=vis)
@@ -1926,6 +1953,8 @@ class Category(InitCategory):
                             '' if depth == 1 else 's',
                             ('One more hop would add %d.' % focus_next) if focus_next else
                             'Nothing further is reachable.'))
+            if left_out:
+                notices.append(left_out)
         elif not matched:
             notices.append('Nothing matches the query.')
         if capped:
@@ -2359,6 +2388,140 @@ class Category(InitCategory):
             self._conn_start(force=True)               # the connection index re-reads what changed
         return out
 
+    # ------------------------------------------------------------ the lists of a _desc that name other artifacts
+    def _named(self, name, key=''):
+        """The artifact a name names among those this page shows: a cRef in any form ({{{...}}} with a path after it
+        too), category::alias, an alias that one shown artifact alone has, a UID - and for ai_uses first the alias of
+        a declared AI-context template, as -ai takes it. -> (the item, '') or (None, why not)."""
+        s = str(name or '').strip()
+        m = BRACES_RE.match(s)
+        if m:
+            s = m.group(1).strip()
+        if not s:
+            return None, 'a name is needed'
+        if UID_RE.match(s) and self._item(s) is not None:
+            return self._item(s), ''
+        if key == 'ai_uses' and '::' not in s and ',' not in s:
+            hits = [it for it in self._visible() if str((_ai_template(it) or {}).get('alias') or '').strip() == s]
+            if len(hits) == 1:
+                return hits[0], ''
+        uid, _rel, _notice = self._resolve_cref(s)
+        if uid:
+            return self._item(uid), ''
+        if '::' not in s:
+            hits = [it for it in self._visible() if it['alias_l'] == s.lower()]
+            if len(hits) > 1:
+                return None, '%s names %d artifacts here (%s): name one by its cRef' % (
+                    s, len(hits), ', '.join('%s::%s' % (x['cat'], x['alias']) for x in hits[:5]) + (' ...' if len(hits) > 5 else ''))
+        return None, '%s: no such artifact on this server (or it is hidden here)' % s
+
+    def _templates(self):
+        """The AI-context templates this page shows - what the AI uses field of an artifact page offers first, as -ai
+        offers them: [{alias, title, cref, cat, name}] by their sort, then their title."""
+        out = []
+        for it in self._visible():
+            d = _ai_template(it)
+            if d:
+                try:
+                    sort = float(d.get('sort', 0) or 0)
+                except (TypeError, ValueError):
+                    sort = 0.0
+                out.append({'alias': str(d['alias']).strip(), 'title': str(d.get('title') or '').strip(), 'sort': sort,
+                            'cref': '%s,%s::%s,%s' % (it['cat'], it['cat_uid'], it['alias'], it['uid']),
+                            'cat': it['cat'], 'name': it['alias']})
+        out.sort(key=lambda e: (e['sort'], e['title'].lower(), e['cref']))
+        return {'templates': out}
+
+    def _update_list(self, it, key, changes):
+        """The category's own update of one artifact's list - connections through --ct, ai_uses through -ai, "-" in
+        front removes -> {'changes': ['+ <cRef>', '- <cRef>']} or {'error'}."""
+        r = self.cm.access({'category': '%s,%s' % (it['cat'], it['cat_uid']), 'command': 'update', 'arg1': it['uid'],
+                            'ct' if key == 'connections' else 'ai': list(changes), 'con': False, 'quiet': True})
+        if r.get('return', 1) > 0:
+            return {'error': r.get('error') or 'the update of %s::%s did not go through' % (it['cat'], it['alias'])}
+        return {'changes': [x.strip() for x in r.get('desc_changes') or [] if x.startswith('  ')]}
+
+    def _link(self, uid, key, add, remove, misc, cfg):
+        """Add artifacts to, or remove one from, a list of an artifact's _desc that names other artifacts -
+        connections (what it connects to) or ai_uses (whose memory and skills its AI sessions read) - for a viewer
+        who may write to it, from a page of this server (2026-11-09: the lists of the artifact page). Made by the
+        category's own update (--ct, -ai): the full cRef of each artifact, a hand-written _desc.yaml keeping its text
+        around the list, the artifact stamped as updated; nothing is written when nothing changes. The names are
+        those the page shows (_named; several: a list, or ";" between them). Adding writes this artifact only - the
+        graph draws a connection declared on either side, and the other's page lists it under "Connected from";
+        removing a connection removes it from both sides, as --connect=-<name> does, where this viewer may write -
+        else the answer says that the other still declares it. One line of the server's log."""
+        from cmeta.category_api_v1 import cref_matches
+        if key not in ('connections', 'ai_uses'):
+            return {'error': 'key must be connections or ai_uses'}
+        t = self._target(uid, '_desc.yaml', misc, cfg)
+        if 'error' in t:
+            return t
+        it = t['it']
+        me = '%s,%s::%s,%s' % (it['cat'], it['cat_uid'], it['alias'], it['uid'])
+        names_ = add if isinstance(add, list) else re.split(r'[;\r\n]+', str(add or ''))
+        names_ = [str(n).strip() for n in names_ if str(n).strip()]
+        drop = str(remove or '').strip()
+        if not names_ and not drop:
+            return {'error': 'name the artifacts to add, or the one to remove'}
+        desc = _read_desc(it['path'])[0] or {}
+        value = desc.get(key)
+        entries = list(value) if isinstance(value, list) else ([value] if value else [])
+        adds, errors, there = [], [], []
+        for n in names_:
+            o, why = self._named(n, key)
+            if o is None:
+                errors.append(why)
+                continue
+            full = '%s,%s::%s,%s' % (o['cat'], o['cat_uid'], o['alias'], o['uid'])
+            if key == 'connections' and o['uid'] == it['uid']:
+                errors.append('%s is this artifact: an artifact is not connected to itself' % n)
+            elif any(cref_matches(e, full) for e in entries + adds):
+                there.append('%s::%s' % (o['cat'], o['alias']))
+            else:
+                adds.append(full)
+        if errors:
+            return {'error': '; '.join(errors)}
+        gone = [e for e in entries if drop and cref_matches(e, drop)]
+        out = {'key': key, 'changes': [], 'warnings': ['%s: there already' % x for x in there]}
+        if adds or gone:
+            r = self._update_list(it, key, adds + (['-' + drop] if gone else []))
+            if 'error' in r:
+                return r
+            out['changes'] += r['changes']
+
+        if key == 'connections' and drop:
+            o, _why = self._named(drop, key)
+            if o is not None and o['uid'] != it['uid']:
+                cat = self._catalog()
+
+                def names_me(src):
+                    return isinstance(src, list) and any(_resolve(_parse_cref(str(c)), cat['by_uid'], cat['by_key']) == it['uid']
+                                                         for c in src if c)
+                # the other side: an edge declared there stays in the graph
+                if names_me((_read_desc(o['path'])[0] or {}).get('connections')):
+                    why = self._edit_refused(o, misc, cfg)
+                    r = {'error': why} if why else self._update_list(o, key, ['-' + me])
+                    if 'error' in r:
+                        out['warnings'].append('%s::%s still declares this connection (%s): the graph keeps it'
+                                               % (o['cat'], o['alias'], r['error']))
+                    else:
+                        out['changes'] += ['%s (in %s::%s)' % (x, o['cat'], o['alias']) for x in r['changes']]
+                # a _cmeta that declares it (the layout before the _desc) is not changed here
+                if names_me(o['meta'].get('connections')):
+                    out['warnings'].append('%s::%s declares this connection in its _cmeta (the layout before the '
+                                           '_desc): edit that _cmeta to remove it' % (o['cat'], o['alias']))
+                mine = it['meta'].get('connections')
+                if isinstance(mine, list) and any(_resolve(_parse_cref(str(c)), cat['by_uid'], cat['by_key']) == o['uid']
+                                                  for c in mine if c):
+                    out['warnings'].append('this artifact declares it in its _cmeta as well (the layout before the '
+                                           '_desc): edit the _cmeta to remove it')
+        if out['changes']:
+            self._conn_start(force=True)               # the connection index re-reads what changed
+            print('cMeta info: cserver.browse: %s changed the %s of %s::%s: %s'
+                  % (self._who(misc), key, it['cat'], it['alias'], '; '.join(out['changes'])))
+        return out
+
     # ------------------------------------------------------------ web
     def web_(self, ctx, urls, query={}, misc={}):
         """Render the page (command web) or answer ?native_action=... with JSON."""
@@ -2413,6 +2576,11 @@ class Category(InitCategory):
                 elif na == 'create':
                     out = self._create(query.get('cat'), query.get('repo'), query.get('alias'), query.get('tags'),
                                        misc, self._cserver_config(), dt=query.get('dt'))
+                elif na == 'link':                 # connections / ai_uses of an artifact: add names, remove one
+                    out = self._link(query.get('uid'), query.get('key'), query.get('add'), query.get('remove'), misc,
+                                     self._cserver_config())
+                elif na == 'templates':            # the declared AI-context templates (what -ai offers)
+                    out = self._templates()
                 elif na == 'open':
                     out = self._open(query.get('uid'), query.get('what'), misc, self._cserver_config(),
                                      dry=_flag(query.get('dry'), False))

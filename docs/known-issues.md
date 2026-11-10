@@ -14,6 +14,30 @@ is deliberate or ambiguous; the fix depends on a design call) · **in progress**
 | [KI-002](#ki-002) | error handling | needs decision | `CMeta.error(fail_on_error=False)` cannot force raising off. |
 | [KI-003](#ki-003) | docs | fixed | The published documentation site carried only the API reference, not the written guides. |
 | [KI-004](#ki-004) | async | fixed | `CMetaAsync` forked its workers on Linux: copies of the server's connections and port, a hang once per start behind a proxy, orphans holding the port. |
+| [KI-005](#ki-005) | locks | open | On Docker Desktop for Mac's bind mounts the OS file locks do not exclude processes: a cMeta home there may let two writers in. |
+
+---
+
+## KI-005
+
+**On a bind mount of Docker Desktop for Mac (VirtioFS) the OS file locks do not
+exclude processes.**
+
+Found 2026-11-10 by the fleet matrix of the psutil removal: in Linux containers on
+the Mac mini (python:3.12-slim, the uv Debian and Alpine images, Python 3.12 to
+3.15t alike) with the test home on a bind mount of the Mac's disk, some 24 lock and
+concurrency tests failed - two processes held one `PathLock` at once, updates were
+lost - while the very same image, wheel and tests passed with the home inside the
+container's own file system, and the Mac's native suites were green. `flock` and
+`lockf` are accepted on the mount but not honoured between processes, so the
+engine does not fall back to its soft lock (it does where the OS lock is refused:
+some FUSE, 9p and SMB mounts). The Linux hosts' Docker bind mounts (ext4) are fine.
+
+**Until it is addressed:** keep a cMeta home that several processes write inside the
+container (a volume), or name it in `CMETA_SOFT_LOCK_PATHS` (`lock: soft` in the
+repository's `_cmr.yaml`), which makes the engine use its own lock file there.
+A fix would detect such a mount (a lock taken by two descriptors at once on a probe
+file) and switch to the soft lock by itself.
 
 ---
 

@@ -29,6 +29,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.9", "3.14", "3.15"]
+        # GitHub's ubuntu-latest is Ubuntu 26.04 since November 2026, and setup-python has no Python 3.9 build for
+        # it: the Linux job of 3.9 runs on Ubuntu 24.04
+        exclude:
+          - os: ubuntu-latest
+            python-version: "3.9"
+        include:
+          - os: ubuntu-24.04
+            python-version: "3.9"
 
     runs-on: ${{ matrix.os }}
 

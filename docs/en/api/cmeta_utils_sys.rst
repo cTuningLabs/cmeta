@@ -44,6 +44,8 @@ Functions
 
 .. autofunction:: cmeta.utils.sys.no_window_flags
 
+.. autofunction:: cmeta.utils.sys.pid_exists
+
 .. autofunction:: cmeta.utils.sys.plus_env
 
 .. autofunction:: cmeta.utils.sys.prefer_speed
