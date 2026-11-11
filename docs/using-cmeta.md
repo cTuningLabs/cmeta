@@ -632,6 +632,14 @@ It prints the path of each match (and returns them in `artifacts`). If you omit
 `::`, cMeta prepends `*::` for you — so a bare name is a global search. Omitting
 the argument entirely searches for `*`.
 
+`cx utils cref` is the same command under the name of what it takes — a cRef, as
+`cx info` prints it (`{{{<category>::<alias>,<UID>}}}` is accepted as it is):
+
+```bash
+cx utils cref "cserver.browse"
+cx utils cref "{{{category::cserver.browse,<UID>}}}"
+```
+
 This is the tool for finding **related artifacts across categories** — the same
 alias or tag used by a task, a tool and a result, for instance — which the
 per-category `find` cannot express.
@@ -1209,13 +1217,36 @@ a form into its own data.
 
 ### 8.2.2 The home page: every page of the server
 
-`cserver` opens on `/projects`. That page is category `cserver.projects`, shipped in
+`cserver` opens on `/projects` (titled Projects). That page is category `cserver.projects`, shipped in
 the internal repository. It shows every `cserver.*` page of every plugged repository
 as a card, grouped by repository, with:
 
-- a search box: `/` focuses it, and Enter opens the first match;
+- a search box on the left of its bar: `/` focuses it, and Enter opens the first match;
 - pins and copy-URL buttons, kept in the browser;
-- a dark theme.
+- A− / A+ for the size, and a dark theme, kept in the browser too.
+
+**Your own view.** The page's **Customized** switch (kept in the browser; off by
+default: the cards) shows the pages as sections of buttons with names of your own,
+in the order you choose. The first time, "Make my view" builds it from the pages of
+this machine - a section per repository, a button per page - in the repository you
+pick. Then **Edit**: drag a button to another place or section (a long press first on
+a phone), drag a section by its handle, rename it with its pencil, click a button to
+change its title, its page or address, its section or Important (a filled button),
+or to delete it; "+" adds a button to a section, "+ Section" a new one. A button opens a page of the server that
+shows it (`browse`, `monitor?watch=x`) or any address, a page of another machine
+too. Every change is saved at once and its message offers **Undo**.
+
+Each button is an artifact of the category `cserver.projects`, its `_desc.yaml`
+holding `title`, `page` or `url`, `section`, `order`, `star` and `note`; so the view is kept
+where its buttons are, and a repository that syncs between your machines shows each
+of them the same view. A page the view names that a machine does not have is dimmed
+there; the pages of a machine the view does not name are listed under it ("Not in
+your view"), to be dragged into a section. The view is changed from a browser on
+the server's machine, or one that passed its password.
+
+```bash
+cx cserver.projects view               # the view in a terminal (--as_json)
+```
 
 Under the cards come the version of the server and links to cMeta and cMeta AOps on
 GitHub and to cTuning.ai/project/cmeta.

@@ -5,21 +5,32 @@
 <div id="cpj" class="cpj">
   <header class="cpj-head">
     <div class="cpj-title">
-      <h1>cMeta server pages</h1>
-      <p class="cpj-sub">Every <code>cserver.*</code> page plugged into this machine, grouped by repository.
+      <h1>Projects</h1>
+      <p class="cpj-sub"><span id="cpj-subtext">Every <code>cserver.*</code> page plugged into this machine, grouped by repository.</span>
         <span id="cpj-count"></span></p>
     </div>
     <div class="cpj-tools">
-      <input id="cpj-search" type="search" placeholder="Filter by name, alias, repo or tag - Enter opens the first match"
-             autocomplete="off" spellcheck="false">
+      <button id="cpj-smaller" class="cpj-btn" type="button" title="Smaller (kept in this browser)">A&#8722;</button>
+      <button id="cpj-bigger" class="cpj-btn" type="button" title="Bigger (kept in this browser)">A+</button>
       <button id="cpj-theme" class="cpj-btn" type="button" title="Toggle dark / light">◐</button>
       <a id="cpj-json" class="cpj-btn" href="#" title="The same list as JSON">JSON</a>
       <button id="cpj-reload" class="cpj-btn" type="button" title="Rescan the index">↻</button>
     </div>
   </header>
 
+  <div id="cpj-bar" class="cpj-bar">
+    <input id="cpj-search" type="search" autocomplete="off" spellcheck="false" aria-label="Search the pages"
+           placeholder="Search the pages - name, alias, repo, tag      ( / to focus, Enter opens the first one )">
+    <button id="cpj-custom" class="cpj-btn" type="button" aria-pressed="false"
+            title="Your own view: sections of buttons with names of your own, arranged as you like (kept in this browser; off: the cards)">Customized</button>
+    <button id="cpj-edit" class="cpj-btn" type="button" aria-pressed="false" hidden
+            title="Arrange the view: drag a button or a section, click a button to change it">Edit</button>
+    <button id="cpj-add" class="cpj-btn" type="button" hidden title="A new button: a page of this server or any address">+ Button</button>
+  </div>
+
   <div id="cpj-error" class="cpj-error" hidden></div>
   <div id="cpj-groups" class="cpj-groups"><p class="cpj-muted">Scanning the index ...</p></div>
+  <div id="cpj-board" hidden></div>
 
   <div id="cpj-empty" class="cpj-empty" hidden>
     <h2>No pages yet</h2>
@@ -50,7 +61,8 @@
   </section>
 
   <footer class="cpj-foot">
-    <span>Pins are kept in this browser only.</span>
+    <span>Pins, the size, the theme and the Customized switch are kept in this browser; your view itself is kept in a
+      repository (<code>cx cserver.projects view</code> lists it).</span>
     <span>Open a page directly as <code>&lt;server&gt;/&lt;alias without cserver.&gt;</code>; the same list in the
       terminal: <code>cx cserver.projects pages</code>.</span>
     <span>Designed by a human, extended with AI &middot; Powered by

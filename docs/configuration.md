@@ -112,6 +112,28 @@ cx cserver.cmeta.configs artifacts             # the other way round: each artif
 cx cserver.cmeta.configs scan                  # look at the artifacts again (what changed)
 ```
 
+## Change them in place: `/settings`
+
+The page `/settings` (`http://127.0.0.1:8004/settings`) is the same list as a
+browser's settings page: one card per config artifact, a row per key with what
+it does, its type and default, who reads it - and a field or a switch to change
+it. A change is saved at once as `cx config set <name> --meta.<key>=<value>`
+would save it: the value typed as the key is (a number stays a number, yes/no
+stays yes/no, a list stays a list; a key not set yet takes its declared type), a
+dotted key nested, the file written under the engine's lock. **Reset** is
+`cx config unset`; the message offers **Undo**. A secret is never shown, but can
+be set and reset; a mapping is changed key by key (`param.port`). The search box
+prunes the rows as you type (a key, what it does, a config, who reads it), the
+chips keep the keys set here or not set, and the address holds both (`?q=...&show=set`).
+Who may change: a browser on the server's own machine, or one that signed in
+with its password, from a page of this server - never through the cTuning
+platform (the configs are the machine's); who sees the values: as `/cmeta.configs`.
+
+```bash
+cx cserver.settings list                       # the same list in a terminal (secrets hidden)
+cx cserver.settings list "run-ai" --show=set   # the keys set here that mention run-ai
+```
+
 ## Declare the keys your artifact reads
 
 An artifact that reads a config describes its keys in its `_desc.yaml`, so that

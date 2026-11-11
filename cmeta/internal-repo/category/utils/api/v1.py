@@ -7,6 +7,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 import os
+import re
 from cmeta.category import InitCategory
 
 from cmeta.utils import names
@@ -348,6 +349,133 @@ class Category(InitCategory):
         return out
 
     ############################################################
+    def view_cref_(
+        self,
+        ctx,  # Execution context dictionary with category, command, and control data.
+        arg1 = '',  # The cRef: <category>::<artifact> (alias, UID or alias,UID), {{{...}}}/<file> too; "." or nothing = the artifact of the current directory.
+        url = '',  # The cMeta server a browser reaches: http://host:port (default: cserver_url of the config "default", else http://127.0.0.1:<port of the cserver config, 8004>).
+        browser = '',  # The browser: a name Python's webbrowser knows (chrome, firefox, safari), or the command or path of one ("%s" = the address); default: browser of the config "default", else the system's.
+        print_only: bool = False,  # Only print the address: open nothing.
+        copy: bool = False,  # Copy the address to the clipboard too.
+    ):
+        """
+        Open the page of an artifact (/cref/<cRef>) on this machine's cMeta server in a browser, started detached -
+        on Windows, macOS and Linux alike (2026-11-10).
+
+            cx utils view_cref work::20261104.add x                     the page of that artifact
+            cx utils view_cref "{{{work::my work,0123456789abcdef}}}/README.md"   a file of it, in the reader
+            cx utils view_cref .                                        the artifact of the current directory
+            cx utils view_cref . --print_only                           the address alone
+            cx config set default --meta.cserver_url=http://my-laptop:8004        where the server is (the hub's name
+                                                                                   when its pages are read from other
+                                                                                   machines); http://127.0.0.1:8004 by default
+            cx config set default --meta.browser=firefox                 a browser that is not the system's default
+        """
+        import shlex
+        import subprocess
+        import sys
+        import urllib.parse
+        import webbrowser
+
+        con = ctx.get('control', {}).get('con', False)
+        spec = str(arg1 or '').strip()
+
+        # the artifact: "." (or nothing) = the one of the current directory, as "cx ." finds it; else the cRef as
+        # given, the braces of a text taken off, a path after them kept
+        path = ''
+        if spec in ('', '.'):
+            r = utils_common.detect_cid_in_the_current_directory(self.cm)
+            if r['return'] > 0:
+                return r
+            if r.get('artifact_name'):
+                cref = '%s::%s' % (r['category_obj'], r['artifact_name'])
+            elif r.get('category_alias'):
+                cref = 'category::%s' % r['category_alias']          # a category's folder: the category's own page
+            else:
+                return {'return': 1, 'error': 'no artifact in the current directory (a repository, but no category folder in it)'}
+        else:
+            if spec.startswith('{{{'):
+                end = spec.find('}}}')
+                if end < 0:
+                    return {'return': 1, 'error': 'the braces of %r do not close' % spec}
+                cref, path = spec[3:end].strip(), spec[end + 3:].strip()
+            else:
+                cref = spec
+            if '::' not in cref:
+                return {'return': 1, 'error': '%r is not a cRef: <category>::<artifact> (or "." for the artifact of this folder)' % spec}
+        # the artifact as alias,UID when it is here (a page that follows a rename); as named when it is not (the page says so)
+        cat, _sep, art = cref.partition('::')
+        r = self.cm.access({'category': cat.strip(), 'command': 'find', 'arg1': art.strip(), 'con': False})
+        found = (r.get('artifacts') or []) if r.get('return', 1) == 0 else []
+        if len(found) == 1:
+            p = found[0].get('cmeta_ref_parts') or {}
+            if p.get('artifact_alias') and p.get('artifact_uid'):
+                cref = '%s::%s,%s' % (p.get('category_alias') or cat.strip(), p['artifact_alias'], p['artifact_uid'])
+
+        # where the server is
+        base = str(url or '').strip()
+        cfg = {}
+        if not base or not browser:
+            rc = self.cm.access({'category': 'config,cc6bfe174be847ed', 'command': 'read', 'arg1': 'default',
+                                 'con': False})
+            cfg = (rc.get('config_cmeta') or {}) if rc.get('return', 1) == 0 else {}
+        if not base:
+            base = str(cfg.get('cserver_url') or '').strip()
+        if not base:
+            rs = self.cm.access({'category': 'config,cc6bfe174be847ed', 'command': 'read', 'arg1': 'cserver',
+                                 'con': False})
+            port = (((rs.get('config_cmeta') or {}) if rs.get('return', 1) == 0 else {}).get('param') or {}).get('port') or 8004
+            base = 'http://127.0.0.1:%s' % port
+        base = base.rstrip('/')
+        if base.lower().endswith('/cref'):
+            base = base[:-5]
+        if not base.lower().startswith(('http://', 'https://')):
+            base = 'http://' + base
+        address = base + '/cref/' + urllib.parse.quote(cref + path, safe=':,()-_./@+=')
+
+        if con:
+            print(address)
+        if copy:
+            utils_common.copy_text_to_clipboard(address, do_not_fail=True)
+        out = {'return': 0, 'url': address, 'cref': cref, 'opened': False}
+        if print_only:
+            return out
+
+        # the browser, detached: the system's default (webbrowser: os.startfile on Windows, open on macOS, xdg-open or
+        # the one found on Linux - none waits for the browser), a name webbrowser knows, or a command of one's own
+        which = str(browser or cfg.get('browser') or '').strip()
+        known = None
+        if which and re.fullmatch(r'[A-Za-z0-9_.-]+', which):
+            try:
+                known = webbrowser.get(which)                        # chrome, firefox, safari ... as webbrowser names them
+            except webbrowser.Error:
+                known = None
+        if not which:
+            ok = webbrowser.open(address, new=2)
+        elif known is not None:
+            ok = known.open(address, new=2)
+        else:
+            # a command or a path of one's own: started here, detached - never through webbrowser, whose GenericBrowser
+            # waits for the command to end
+            if True:
+                words = shlex.split(which, posix=(sys.platform != 'win32'))
+                if not words:
+                    return {'return': 1, 'error': 'browser: a name or a command is expected'}
+                argv = [w.replace('%s', address) for w in words] if any('%s' in w for w in words) else words + [address]
+                flags = {'creationflags': getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)} \
+                    if sys.platform == 'win32' else {'start_new_session': True}
+                try:
+                    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                     close_fds=True, **flags)
+                except OSError as e:
+                    return {'return': 1, 'error': 'the browser %s did not start: %s' % (argv[0], e)}
+                ok = True
+        if not ok:
+            return {'return': 1, 'error': 'no browser opened %s (cx config set default --meta.browser=<name or command> names one)' % address}
+        out['opened'] = True
+        return out
+
+    ############################################################
     def find_by_cid_(
         self,
         ctx,  # cMeta context.
@@ -423,6 +551,10 @@ class Category(InitCategory):
 
         if arg1 is None:
             arg1 = '*'
+
+        # a {{{cRef}}} as `cx info` prints it (and `cx utils cref` takes it)
+        if isinstance(arg1, str) and arg1.strip().startswith('{{{') and arg1.strip().endswith('}}}'):
+            arg1 = arg1.strip()[3:-3].strip()
 
         if '::' not in arg1:
             arg1 = '*::' + arg1

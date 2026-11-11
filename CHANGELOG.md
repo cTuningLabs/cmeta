@@ -2,6 +2,70 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.38.12.1)
+- **The detail panel of `/browse` (the sub-view of the graph and the lists) is the artifact page in short, and
+  edits in place.** It shows the texts of the artifact as `/cref/` renders them (README.md, `_info.md`, the file its
+  view names; `?native_action=artifact` carries them, `texts=0` leaves them out; the artifact page answers
+  `?native_action=texts`) - a viewer who may save files there edits each where it is read, and makes a missing
+  README.md or `_info.md` the same way; its lists are **Connected with**, **Connected to**, **AI uses** and
+  **Connected from**, each with the same picker as the artifact page (`files/js/picker.js` of `cserver.browse`,
+  inlined by `cserver.cref` as `hl.js` is) and an `×` on every entry; and **the tags are edited in both views**
+  ("edit tags", or "+ tags" when there are none: a field with all of them in order - add, remove, reorder - saved
+  whole by `?native_action=tags`, the category's own update with `replace_lists`), for a viewer who may write to the
+  artifact, from a page of this server. What a change said is shown in the panel drawn again.
+- **`cx <category> info <alias> --plain`** prints and copies the reference without the braces,
+  `<category>::<alias>,<UID>` - what the search of `/browse`, a picker of a page or `cx <category> find` takes
+  (`{{{...}}}` stays the default, `--cref` the old `cRef=...` form); `--qplain` gives it in double quotes - one word
+  of a command line, a name with spaces too.
+- **The artifact page (`/cref/`) tells its connections apart:** **Connected with** (both `_desc` name each other -
+  `cserver.browse` marks such connections `mutual` and the incoming ones `conn`), **Connected to** (this artifact's
+  `_desc` only) and **Connected from** (the other's only), after the text for a reader and as lists in the technical
+  details. Each list's field is now a picker: what is typed is searched as one types (the most recent artifacts
+  first - the date in front of a name, else the last change), a pick becomes a chip, `;` or Enter takes the next,
+  a cRef pasted whole is taken as it is; **Add** writes them - "with" on both sides (`link` of `cserver.browse` with
+  `both`, as `--connect` does, where the viewer may write there), "to" on this one.
+- **`cx utils view_cref <cRef> | .`** opens the page of an artifact (`/cref/<cRef>`, a `{{{cRef}}}/file` opens that
+  file) on this machine's cMeta server in a browser started detached, on Windows, macOS and Linux; `.` is the artifact
+  of the current directory. Where the server is: `cserver_url` of the config `default` (`http://127.0.0.1:<port>` by
+  default); the browser: `browser` of that config (a name `webbrowser` knows, or a command with `%s`), else the
+  system's; `--print_only`, `--copy`. Both keys are declared (`/cmeta.configs`, `/settings`).
+- **A new page, `/settings` (category `cserver.settings`): the settings of this machine as a browser's settings
+  page.** Every config artifact and every key the plugged artifacts read from it, as `/cmeta.configs` knows them
+  (what each does, its type and default, who reads it, its value here), one card per config and a row per key with a
+  field or a switch: a change is saved at once as `cx config set <name> --meta.<key>=<value>` would save it (the
+  value typed as the key is, a dotted key nested, the file under the engine's lock), **Reset** is `cx config unset`,
+  **Undo** in the message; a secret is never shown but can be set and reset; the search box prunes the rows, the
+  chips keep the keys set here or not set, the address holds both. From a browser on the server's machine or one past
+  its password, from a page of this server; never through the cTuning platform. `cx cserver.settings list` in a
+  terminal. Docs: `configuration.md`. Tests: `tests/internal_repo_tests/test_cserver_settings.py`.
+- **One dark or light for every page of a server.** The theme switch of a page (the home page, browse, the reader,
+  the configs page) writes `cmeta.theme` in the browser, every page reads it first (its own old key the first time,
+  which then becomes the shared one) and follows a change made on another page at once; a page opened from a dark
+  page is dark. The pages of cmeta-aops and cmeta-aops-ext2 do the same.
+- **`cserver.projects`: a page that draws one's view with `CmetaProjects.board` names itself** in `misc.projects_via`
+  of its `view_*` calls, and what is made records it as the place it was made.
+- **The home page of cserver (`/projects`) has a view of one's own.** Its **Customized** switch (kept in the
+  browser, off by default) shows the pages as sections of buttons with names of one's own instead of the cards:
+  "Make my view" builds it once from this machine's pages (a section per repository, a button per page) in the
+  repository chosen; **Edit** drags buttons within and between sections (a long press on a phone) and sections by
+  their handles, renames sections in place, changes a button's title, page or address, section and Important (a
+  filled button), deletes it,
+  adds buttons ("+") and sections ("+ Section"); every change is saved at once with **Undo** in its message, and
+  Alt+arrows move a focused button or section. Each button is an artifact of `cserver.projects` (its `_desc.yaml`:
+  `title`, `page` or `url`, `section`, `order`, `star`, `note`), so the view lives where its buttons are - a repository that
+  syncs between machines shows each of them the same view; a page a machine lacks is dimmed there, and the pages
+  of a machine the view does not name are listed under it, to be dragged in. The changes: `?native_action=view`,
+  `view_make`, `view_save`, `view_arrange`, `view_discard`, `view_restore`, from a browser on the server's machine or
+  one past its password, from a page of the server; `cx cserver.projects view` lists the view. Both ways the search
+  box now sits on the left of a bar that stays at the top, with A− / A+ for the size (kept in the browser), and the
+  page is titled **Projects**. Its board is `CmetaProjects.board` of `files/js/projects.js`, so another page can draw
+  one's view too (a dashboard puts the file into itself and sends the changes on to `view_*`). Tests:
+  `tests/internal_repo_tests/test_cserver_projects_view.py`.
+- **`cx utils cref` - `find_by_cid` under the name of what it takes.** The utils category declares `cref` as a
+  command alias of `find_by_cid` (`command_aliases` in its `_cmeta.yaml`): `cx utils cref "<category>::<artifact>"`,
+  a `{{{cRef}}}` as `cx info` prints it, the wildcards and every option of `find_by_cid`; `cx utils --help` lists
+  "find_by_cid (cref)". The old name stays.
+
 ## 0.38.12
 - **psutil is no longer a dependency: the processes and the host are read with the standard library.** psutil was
   the one dependency of the engine without a wheel for the free-threaded Python 3.15t (and for musl on the

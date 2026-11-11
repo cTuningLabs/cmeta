@@ -30,7 +30,11 @@ saved from this page as from /browse (since 2026-11-03: the edit button in the f
 "+ README.md" after the tree) - cserver.browse's save, with its rules, its checks and its fingerprint. Since
 2026-11-09 the texts are edited where they are read (README.md and _info.md made the same way when missing), and
 the connections and the AI uses change in their lists - a field adds names or cRefs, x removes one (a connection
-from both sides), through cserver.browse's link: the category's own update.
+from both sides), through cserver.browse's link: the category's own update. Since 2026-11-10 the connections are
+shown apart - "Connected with" (both _desc name each other: cserver.browse marks them mutual), "Connected to" (this
+artifact's _desc only), "Connected from" (the other's only) - and each list's field is a picker: what is typed is
+searched as one types (the most recent artifacts first), a pick becomes a chip, ";" or Enter takes the next; Add
+writes them - "with" on both sides (cserver.browse's link with both), "to" on this one.
 
 The view is extended, never rewritten - `cref_view` in the category's _cmeta.yaml, or in an artifact's _desc:
     text:   a file, or a list of candidates (the first that exists wins); {ck.<key>} placeholders read the _desc
@@ -77,12 +81,21 @@ COPY_SVG = ('<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke=
 
 # The lists of the technical details: the key of the box (kept open in the browser), its title, what it is
 LISTS = {'connections': ('Connections', 'what this artifact connects to (its _desc)'),
+         # the connections apart (2026-11-10, the user): both name each other / this artifact's _desc only / the other's only
+         'connections_with': ('Connected with', 'both name each other: a connection in both _desc'),
+         'connections_to': ('Connected to', 'named in the _desc of this artifact only'),
          'ai_uses': ('AI uses', 'whose memory and skills its AI sessions read (its _desc)'),
          'uses': ('Uses', 'what it runs'),
-         'incoming': ('Connected from', 'the artifacts that name this one')}
+         'incoming': ('Connected from', 'the artifacts whose _desc names this one, which does not name them back')}
 ADD_HINT = {'connections': ('add a connection: a name or a cRef (; between several)',
                             'Connect this artifact to others: a name, category::name, a cRef or {{{...}}} - several with ; '
                             'between them. Written in the _desc of this artifact; the other one lists it under "Connected from".'),
+            'connections_with': ('connect with: type a name or a word, pick one, ; or Enter for the next',
+                                 'Connect this artifact with others, both ways: the _desc of each names the other. Type a name or '
+                                 'a word and pick an artifact (the most recent first); a cRef or {{{...}}} pasted is taken as it is.'),
+            'connections_to': ('connect to: type a name or a word, pick one, ; or Enter for the next',
+                               'Connect this artifact to others, one way: only its own _desc names them; their pages list it under '
+                               '"Connected from". Type a name or a word and pick an artifact; a cRef pasted is taken as it is.'),
             'ai_uses': ('add an AI context: its short name, a name or a cRef',
                         'Whose memory and skills the AI sessions of this artifact read: the short name of an AI context (as '
                         '-ai takes it), a name, category::name or a cRef - several with ; between them.')}
@@ -365,26 +378,66 @@ class Category(InitCategory):
                        '<ul class="cxr-litems">%s</ul>' % (browse_link(view='browse', cats=g), _esc(g), len(groups[g]), ''.join(rows)))
         return ''.join(out)
 
-    def _list_box(self, key, items, browse_link, editable=False, count=None, extra=''):
+    def _list_box(self, key, items, browse_link, editable=False, count=None, extra='', link_key='', both=False):
         """One list of the technical details, folded (the browser keeps it open once opened): its title, how many and
         what it is; "copy all" (the cRefs with ; between them - what the field of another artifact takes); the list;
-        for a viewer who may change it, the field that adds names or cRefs."""
+        for a viewer who may change it, the picker that adds artifacts (the names typed searched as one types, the
+        picked ones as chips) to the list link_key (the key of the _desc: connections, ai_uses; by default the box's
+        own), both: the other artifact names this one back too (Connected with)."""
         title, what = LISTS[key]
+        link_key = link_key or key
         body = ''
         if items:
             body += ('<p class="cxr-ltools"><button type="button" class="cxr-copy sm" data-copy="%s" title="Copy every cRef '
                      'of this list, ; between them - what the field of another artifact takes">copy all</button></p>'
                      % _esc(';'.join(x for x in (_item_cref(c) for c in items) if x)))
-            body += self._list_html(items, browse_link, key if editable else '')
+            body += self._list_html(items, browse_link, link_key if editable else '')
         else:
             body += '<p class="cxr-muted">none yet</p>'
         body += extra
         if editable:
-            body += ('<form class="cxr-ladd" data-key="%s" autocomplete="off"><input type="text" list="cxr-dl-%s" placeholder="%s" '
-                     'title="%s" aria-label="Add to the %s"><button type="submit" class="cxr-btn">Add</button><span class="cxr-emsg" role="status"></span>'
-                     '<datalist id="cxr-dl-%s"></datalist></form>' % (key, key, _esc(ADD_HINT[key][0]), _esc(ADD_HINT[key][1]), _esc(title.lower()), key))
+            body += ('<form class="cxr-ladd" data-key="%s" data-box="%s" data-both="%s" autocomplete="off"><span class="cmp-chips"></span>'
+                     '<input type="text" placeholder="%s" title="%s" aria-label="Add to the %s" spellcheck="false">'
+                     '<button type="submit" class="cxr-btn">Add</button><span class="cxr-emsg" role="status"></span>'
+                     '<div class="cmp-list" role="listbox" hidden></div></form>'
+                     % (link_key, key, '1' if both else '', _esc(ADD_HINT[key][0]), _esc(ADD_HINT[key][1]), _esc(title.lower())))
         return ('<details class="cxr-lbox" data-box="%s"><summary>%s <span class="cxr-n">(%d) %s</span></summary>'
                 '<div class="cxr-lbody">%s</div></details>' % (key, title, len(items) if count is None else count, what, body))
+
+    def _texts_of(self, root, view, desc, rel=''):
+        """The texts of an artifact as the page shows them: the file its view names (or rel: one file asked for),
+        then README.md and _info.md when it has them -> ([(name, html, note)], a note when there is no text, the
+        file shown first - '' when the file asked for could not be shown as a text)."""
+        texts = []
+        shown, text_html, text_note = self._text(root, view, desc, rel)
+        if text_html:
+            texts.append((shown, text_html, text_note))
+            text_note = ''
+        if not rel:
+            for names in TEXT_BESIDE:
+                have = next((n for n in names if self._safe_rel(root, n)), '')
+                if have and have.lower() not in [x[0].lower() for x in texts]:
+                    html_, note_ = self._render(self._safe_rel(root, have), have, desc)
+                    if html_:
+                        texts.append((have, html_, note_))
+        return texts, text_note, shown if text_html else ''
+
+    def _texts_json(self, urls, misc, uid):
+        """The texts of the artifact uid for another page (the browser's panel): [{rel, html, note}]."""
+        if not uid:
+            return []
+        base = urls.get('url_server') or '/'
+        self._cref_url = str(misc.get('cref_url') or (base + 'cref/'))
+        a = self._browse(urls, misc, native_action='artifact', uid=uid, texts='0')
+        if 'error' in a:
+            return []
+        row, desc = a['row'], a.get('desc') or {}
+        view = self._view(row['cat'], desc)
+        root = self._path(row['cat'], uid, row['alias'])
+        if not root or view.get('page'):
+            return []
+        texts, _note, _shown = self._texts_of(root, view, desc)
+        return [{'rel': n, 'html': h, 'note': note} for n, h, note in texts]
 
     def _render_md(self, body, desc):
         """Markdown with the references turned into links: {{{cRef}}}/path and the artifact's own wikilinks map."""
@@ -451,6 +504,14 @@ class Category(InitCategory):
         # inside the cPlatform's shell the page follows the shell's theme (THEME_JS); elsewhere it has its own switch
         self._hosted = bool(misc.get('ctuning_server'))
 
+        # the texts of an artifact for the browser's detail panel (2026-11-10): README.md, _info.md and the file its
+        # view names, rendered as this page renders them - [{rel, html, note}]
+        if query.get('native_action') == 'texts':
+            try:
+                return {'return': 0, 'json': {'texts': self._texts_json(urls, misc, str(query.get('uid') or '').strip().lower())}}
+            except Exception as e:
+                return {'return': 0, 'json': {'error': '%s: %s' % (type(e).__name__, e), 'texts': []}}
+
         ref = str(query.get('cref') or '').strip()
         if ref:
             j = self._browse(urls, misc, native_action='resolve', cref=ref)
@@ -459,7 +520,7 @@ class Category(InitCategory):
             uid, rel, notice = str(query.get('uid') or '').strip().lower(), str(query.get('file') or ''), ''
             if not uid:
                 notice = 'no artifact named: /cref/<category>::<alias>,<UID>'
-        a = self._browse(urls, misc, native_action='artifact', uid=uid) if uid else {}
+        a = self._browse(urls, misc, native_action='artifact', uid=uid, texts='0') if uid else {}
         if not uid or 'error' in a:
             return self._page(dark, 'Not found', '<p class="cxr-notice">%s</p>' % _esc(notice or a.get('error', '')),
                               head_only=True)
@@ -481,21 +542,13 @@ class Category(InitCategory):
 
         # the artifact's text: a page category that renders it (cref_view.page), else the file it names (README.md,
         # a note), with README.md and _info.md after it when it has them (2026-11-09: both shown, each edited in place)
-        page_head, page_html, texts, text_note = '', '', [], ''
+        page_head, page_html, texts, text_note, shown = '', '', [], '', ''
         if view.get('page') and not rel:
             page_head, page_html = self._embedded_page(str(view['page']), urls, query, misc, uid, short)
         elif root:
-            shown, text_html, text_note = self._text(root, view, desc, rel)
-            if text_html:
-                texts.append((shown, text_html, text_note))
-                text_note = ''
-            if not rel:
-                for names in TEXT_BESIDE:
-                    have = next((n for n in names if self._safe_rel(root, n)), '')
-                    if have and have.lower() not in [x[0].lower() for x in texts]:
-                        html_, note_ = self._render(self._safe_rel(root, have), have, desc)
-                        if html_:
-                            texts.append((have, html_, note_))
+            # shown: the file the first text block shows (the one asked for, when it could be rendered: then the
+            # file browser is not asked to open it as well)
+            texts, text_note, shown = self._texts_of(root, view, desc, rel)
         missing = [names[0] for names in TEXT_BESIDE if not any(self._safe_rel(root, n) for n in names)] \
             if can_edit and root and not page_html else []
 
@@ -530,10 +583,15 @@ class Category(InitCategory):
         H.append('<div class="cxr-ref"><code>%s</code>%s<button type="button" class="cxr-copy sm" data-copy="{{{%s}}}" '
                  'title="Copy it as a text holds it - a note, a memory, an AI prompt: {{{%s}}}">{{{ }}}</button></div>'
                  % (_esc(cref), copy_button(cref, 'the cRef'), _esc(short), _esc(short)))
-        if row.get('tags'):
-            H.append('<div class="cxr-tags">%s</div>' % ''.join(
-                '<a class="cxr-chip" href="%s" title="Every artifact with this tag">%s</a>' % (browse_link(view='browse', q='tag:' + t), _esc(t))
-                for t in row['tags']))
+        # the tags (2026-11-10: edited in place by a viewer who may write - the chips, then a field with all of them
+        # in order: add, remove, reorder, Save; the knowledge browser's tags action writes the _cmeta)
+        if row.get('tags') or can_edit:
+            H.append('<div class="cxr-tags" id="cxr-tags" data-tags="%s">%s%s</div>' % (
+                _esc(json.dumps([str(t) for t in row.get('tags') or []], ensure_ascii=False)),
+                ''.join('<a class="cxr-chip" href="%s" title="Every artifact with this tag">%s</a>' % (browse_link(view='browse', q='tag:' + t), _esc(t))
+                        for t in row.get('tags') or []),
+                ' <button type="button" class="cxr-copy sm" id="cxr-tags-edit" title="Add, remove or reorder the tags">%s</button>'
+                % ('edit tags' if row.get('tags') else '+ tags') if can_edit else ''))
         H.append('<hr class="cxr-hr">')
 
         def text_block(rel_, html_, note_):
@@ -567,18 +625,27 @@ class Category(InitCategory):
                 for n in missing))
         H.append('</div>')
 
-        incoming = a.get('incoming') or []
-        n_in = a.get('incoming_total') or len(incoming)
+        # the connections apart (2026-11-10, the user: "separately show Connected with and Connected to"): with = both
+        # name each other (cserver.browse marks them mutual), to = this artifact's _desc only, from = the other's only
+        links = a.get('connections') or []
+        with_ = [c for c in links if c.get('mutual')]
+        to_ = [c for c in links if not c.get('mutual')]
+        incoming_all = a.get('incoming') or []
+        incoming = [r for r in incoming_all if not r.get('mutual')]
+        n_in = (a.get('incoming_total') or len(incoming_all)) - (len(incoming_all) - len(incoming))
         more_in = ('<p class="cxr-muted">... and %d more: <a href="%s">open the graph</a></p>' % (n_in - len(incoming), browse_link(view='graph', repos='*', focus=node))) \
             if n_in > len(incoming) else ''
-        reading = 'incoming' not in hide and not incoming and a.get('index') and not (a['index'] or {}).get('ready')
+        reading = 'incoming' not in hide and not incoming_all and a.get('index') and not (a['index'] or {}).get('ready')
         reading = '<p class="cxr-muted">What connects to this artifact is still being read - open the page again in a moment.</p>' if reading else ''
 
         # a reader the page does not count as technical: the connections after the text, to follow
         if not tech:
-            outgoing = (a.get('connections') or []) + (a.get('uses') or []) + (a.get('ai_uses') or [])
+            outgoing = to_ + (a.get('uses') or []) + (a.get('ai_uses') or [])
+            if 'connections' not in hide and with_:
+                H.append('<section class="cxr-sec"><h2>Connected with <span class="cxr-n">(%d)</span></h2>%s</section>'
+                         % (len(with_), self._list_html(with_, browse_link)))
             if 'connections' not in hide and outgoing:
-                H.append('<section class="cxr-sec"><h2>Connects to <span class="cxr-n">(%d)</span></h2>%s</section>'
+                H.append('<section class="cxr-sec"><h2>Connected to <span class="cxr-n">(%d)</span></h2>%s</section>'
                          % (len(outgoing), self._list_html(outgoing, browse_link)))
             if 'incoming' not in hide and incoming:
                 H.append('<section class="cxr-sec"><h2>Connected from <span class="cxr-n">(%d)</span></h2>%s%s</section>'
@@ -609,10 +676,13 @@ class Category(InitCategory):
             # the lists after the _desc that declares them (2026-11-09): each category, its artifacts under it; the
             # connections and the AI uses changed here by a viewer who may write (cserver.browse's link)
             if 'connections' not in hide:
-                for key in ('connections', 'ai_uses'):
-                    items = a.get(key) or []
-                    if items or can_edit:
-                        T.append(self._list_box(key, items, browse_link, editable=can_edit))
+                if with_ or can_edit:
+                    T.append(self._list_box('connections_with', with_, browse_link, editable=can_edit, link_key='connections', both=True))
+                if to_ or can_edit:
+                    T.append(self._list_box('connections_to', to_, browse_link, editable=can_edit, link_key='connections'))
+                items = a.get('ai_uses') or []
+                if items or can_edit:
+                    T.append(self._list_box('ai_uses', items, browse_link, editable=can_edit))
                 if a.get('uses'):
                     T.append(self._list_box('uses', a['uses'], browse_link))
             if 'incoming' not in hide and incoming:
@@ -691,7 +761,7 @@ class Category(InitCategory):
         hosted = bool(getattr(self, '_hosted', False))
         html_body = '<div id="cxr" class="cxr%s"%s>%s%s</div>%s%s' % (
             ' cxr-dark' if dark else '', ' data-hosted="1"' if hosted else '', THEME_JS, body,
-            '<script>var CXR_CONFIG = %s;</script><script>%s</script>' % (_js(dict(config or {}, hosted=hosted)), HL_JS), JS)
+            '<script>var CXR_CONFIG = %s;</script><script>%s</script><script>%s</script>' % (_js(dict(config or {}, hosted=hosted)), HL_JS, PICKER_JS), JS)
         return {'return': 0, 'html_meta': {'html': html_body, 'page_title': title,
                                             'page_extra_style': '<meta name="viewport" content="width=device-width, initial-scale=1">\n<style>%s</style>\n%s' % (css, extra_head or '')}}
 
@@ -707,6 +777,12 @@ try:
         HL_JS = _f.read()
 except OSError:
     HL_JS = ''
+# The picker of the lists (2026-11-10), shared with cserver.browse the same way: its files/js/picker.js
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'cserver.browse', 'files', 'js', 'picker.js'), encoding='utf-8') as _f:
+        PICKER_JS = _f.read()
+except OSError:
+    PICKER_JS = ''
 
 CSS = """
 .cxr{--fg:#14161a;--muted:#6b7280;--accent:#2a78d6;--line:#e5e7eb;--soft:#f6f7f9;color:var(--fg);max-width:1180px;margin:0 auto;padding:12px 16px 48px;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -774,6 +850,10 @@ CSS = """
 .cxr-ladd{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0 4px}
 .cxr-ladd input{flex:1 1 260px;min-width:0;font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--fg)}
 .cxr-dark .cxr-ladd input{background:#1f242e}
+.cxr-ladd{position:relative}.cxr{--cmp-accent:var(--accent);--cmp-line:var(--line);--cmp-bg:#fff;--cmp-muted:var(--muted);--cmp-soft:rgba(42,120,214,.12)}
+.cxr.cxr-dark{--cmp-bg:#1f242e;--cmp-soft:rgba(57,135,229,.22)}
+.cxr-tagform{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;margin-left:6px;vertical-align:middle}.cxr-tagform input{min-width:280px;font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--fg)}
+.cxr-dark .cxr-tagform input{background:#1f242e}
 .cxr-flash{margin:6px 0 8px;padding:6px 10px;border-left:3px solid #0a7a3f;background:var(--soft);font-size:13px;overflow-wrap:anywhere}.cxr-flash.bad{border-left-color:#b42318}
 .cxr-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(92vw,720px);padding:8px 14px;border-radius:8px;background:#14161a;color:#fff;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .15s;z-index:50;overflow-wrap:anywhere}
 .cxr-dark .cxr-toast{background:#e8eaee;color:#14161a}.cxr-toast.on{opacity:1}.cxr-toast.bad{background:#b42318;color:#fff}
@@ -781,7 +861,9 @@ CSS = """
 """
 
 # The theme (2026-11-09: a page in dark mode opened its cRef links in light mode), decided before the page is drawn:
-# ?dark=1|0 in the address; else the theme of the page of this server the reader came from - each page keeps its own
+# ?dark=1|0 in the address; else the one theme of every page of this server, cmeta.theme in the browser (2026-11-10:
+# the pages of a server share it - its switch writes it, a change on another page is followed); else the theme of the
+# page of this server the reader came from, as pages kept it before cmeta.theme - each page keeps its own
 # as cserver.<name>.theme in the browser (the knowledge browser cserver.browse.theme, the home page
 # cserver.projects.theme, a page of another repository the same way), with the engine's pages' keys after it as those
 # pages read them; else the choice kept here (cserver.cref.theme); else the server's (a platform theme,
@@ -798,6 +880,7 @@ THEME_JS = """<script>
   function get(k){try{return localStorage.getItem(k);}catch(e){return null;}}
   var d=null;
   try{var q=new URLSearchParams(location.search).get('dark');if(q)d=/^(1|true|yes|dark)$/i.test(q);}catch(e){}
+  if(d===null){var sh=get('cmeta.theme');if(sh)d=sh==='dark';}
   if(d===null){try{var f=document.referrer?new URL(document.referrer):null;
     if(f&&f.origin===location.origin){var page=f.pathname.replace(/^[/]+/,'').split('/')[0]||'projects';
       if(page!=='cref'){var v=get('cserver.'+page+'.theme')||get('cserver.browse.theme')||get('cserver.projects.theme');if(v)d=v==='dark';}}}catch(e){}}
@@ -816,7 +899,9 @@ JS = """<script>
   if(tb&&C.hosted){tb.hidden=true;var ht=document.documentElement;
     if(window.MutationObserver)new MutationObserver(function(){var t=ht.getAttribute('data-ctp-theme');if(t&&window.cxrTheme)cxrTheme(t==='dark');}).observe(ht,{attributes:true,attributeFilter:['data-ctp-theme']});}
   else if(tb){tb.addEventListener('click',function(){var d=!root.classList.contains('cxr-dark');if(window.cxrTheme)cxrTheme(d);
-    try{localStorage.setItem('cserver.cref.theme',d?'dark':'light');}catch(e){}});}
+    try{localStorage.setItem('cserver.cref.theme',d?'dark':'light');localStorage.setItem('cmeta.theme',d?'dark':'light');}catch(e){}});
+    // the theme of every page of this server, changed on another page (another tab): followed
+    window.addEventListener('storage',function(e){if(e.key==='cmeta.theme'&&e.newValue&&window.cxrTheme)cxrTheme(e.newValue==='dark');});}
   // the text blocks named by their file (the text shown, a front matter, the _cmeta/_desc) coloured by their kind, the cRefs inside as links
   if(window.cmetaHL){document.querySelectorAll('pre.cxr-pre[data-name]').forEach(function(p){var n=p.getAttribute('data-name');if(cmetaHL.lang(n))p.innerHTML=cmetaHL(p.textContent,n,{cref_url:C.cref_url||'/cref/'});});}
   var b=document.getElementById('cxr-back');
@@ -850,6 +935,7 @@ JS = """<script>
     var box=null;document.querySelectorAll('details.cxr-lbox[data-box]').forEach(function(x){if(x.getAttribute('data-box')===f.where)box=x;});
     var tech=document.querySelector('.cxr-tech'),texts=document.querySelector('.cxr-texts');
     if(box){box.open=true;var b=box.querySelector('.cxr-lbody');b.insertBefore(d,b.firstChild);}
+    else if(f.where==='tags'&&document.getElementById('cxr-tags')){var tg=document.getElementById('cxr-tags');tg.parentNode.insertBefore(d,tg.nextSibling);}
     else if(f.where==='tech'&&tech){tech.insertBefore(d,tech.children[1]||null);}
     else if(texts){texts.insertBefore(d,texts.firstChild);}})();
   // the editor of one text file (2026-11-03): the server says who may save; Save (Ctrl+S) hands the text back with the
@@ -884,26 +970,32 @@ JS = """<script>
   function said(r){var l=(r.changes||[]).map(function(c){return c.charAt(0)==='+'?'added '+c.slice(2):c.charAt(0)==='-'?'removed '+c.slice(2):c;});
     (r.warnings||[]).forEach(function(w){l.push(w);});return l.length?l:['nothing changed'];}
   document.querySelectorAll('.cxr-lx').forEach(function(x){x.addEventListener('click',function(e){e.preventDefault();var li=x.parentNode;if(li.querySelector('.cxr-lsure'))return;
-    var key=x.getAttribute('data-key'),sure=h('span','cxr-lsure'),yes=h('button','cxr-copy sm cxr-del','remove'),no=h('button','cxr-copy sm','keep');yes.type='button';no.type='button';
+    var key=x.getAttribute('data-key'),box=(x.closest('details.cxr-lbox')||x).getAttribute('data-box')||key,sure=h('span','cxr-lsure'),yes=h('button','cxr-copy sm cxr-del','remove'),no=h('button','cxr-copy sm','keep');yes.type='button';no.type='button';
     yes.title=key==='connections'?'Remove this connection - from the other artifact\\'s _desc too, where it names this one':'Remove it from the AI uses of this artifact';
     sure.appendChild(yes);sure.appendChild(no);li.appendChild(sure);x.hidden=true;yes.focus();
     no.addEventListener('click',function(){sure.remove();x.hidden=false;x.focus();});
-    yes.addEventListener('click',function(){yes.disabled=true;no.disabled=true;api('link',{uid:C.uid,key:key,remove:x.getAttribute('data-ref')}).then(function(r){again(key,said(r));})
+    yes.addEventListener('click',function(){yes.disabled=true;no.disabled=true;api('link',{uid:C.uid,key:key,remove:x.getAttribute('data-ref')}).then(function(r){again(box,said(r));})
       .catch(function(er){sure.textContent='';sure.appendChild(h('span','cxr-emsg',er.message));x.hidden=false;});});});});
-  var templates=null;
-  function suggest(key,text,dl,mine,seq){var q=text.trim(),low=q.toLowerCase(),opts=[];
-    var tp=key!=='ai_uses'?Promise.resolve([]):templates?Promise.resolve(templates):api('templates',{}).then(function(j){templates=j.templates||[];return templates;},function(){templates=[];return templates;});
-    tp.then(function(ts){ts.forEach(function(t){if(!low||(t.alias+' '+t.title+' '+t.name).toLowerCase().indexOf(low)>=0)opts.push([t.alias,(t.title||t.name)+' - '+t.cat+'::'+t.name]);});
-      if(q.length<2||q.indexOf(';')>=0)return opts;
-      return api('search',{q:q,limit:12,facets:'0'}).then(function(j){(j.rows||[]).forEach(function(r){if(r.uid!==C.uid)opts.push([r.cat+'::'+r.alias+','+r.uid,(r.name&&r.name!==r.alias?r.name+' - ':'')+(r.repo||'')]);});return opts;},function(){return opts;});})
-      .then(function(o){if(mine!==seq.n)return;dl.innerHTML='';o.slice(0,20).forEach(function(x){var op=document.createElement('option');op.value=x[0];op.label=x[1];dl.appendChild(op);});});}
-  document.querySelectorAll('form.cxr-ladd').forEach(function(f){var key=f.getAttribute('data-key'),inp=f.querySelector('input'),dl=f.querySelector('datalist'),msg=f.querySelector('.cxr-emsg'),
-      btn=f.querySelector('button'),seq={n:0},timer=null;
-    f.addEventListener('submit',function(e){e.preventDefault();var v=inp.value.trim();if(!v){inp.focus();return;}msg.textContent='';btn.disabled=true;
-      api('link',{uid:C.uid,key:key,add:v}).then(function(r){if(!(r.changes||[]).length){btn.disabled=false;msg.textContent=said(r).join('; ');return;}again(key,said(r));})
-        .catch(function(er){btn.disabled=false;msg.textContent=er.message;});});
-    inp.addEventListener('input',function(){clearTimeout(timer);timer=setTimeout(function(){suggest(key,inp.value,dl,++seq.n,seq);},220);});
-    inp.addEventListener('focus',function(){if(!inp.value.trim())suggest(key,'',dl,++seq.n,seq);});});
+  // the picker of a list (2026-11-10): cmetaPicker of cserver.browse's picker.js, inlined above - what is typed is searched
+  // as one types (the most recent first), chips, ";" or Enter for the next; Add writes the chips ("with": both sides, "to":
+  // this artifact's _desc) through cserver.browse's link, then the page is drawn again with what it said
+  document.querySelectorAll('form.cxr-ladd').forEach(function(f){var key=f.getAttribute('data-key'),box=f.getAttribute('data-box')||key,both=f.getAttribute('data-both')==='1',msg=f.querySelector('.cxr-emsg');
+    if(!window.cmetaPicker)return;
+    cmetaPicker(f,{api:api,self:C.uid,key:key,submit:function(all){msg.textContent='';
+      return api('link',{uid:C.uid,key:key,add:all.join(';'),both:both?'1':''}).then(function(r){if(!(r.changes||[]).length){msg.textContent=said(r).join('; ');return true;}again(box,said(r));})
+        .catch(function(er){msg.textContent=er.message;return true;});}});});
+  // the tags (2026-11-10): "edit tags" opens a field with all of them in order (commas or spaces between them) - add, remove,
+  // reorder -, Save writes them through cserver.browse's tags action, the page is drawn again with what changed
+  var tb=document.getElementById('cxr-tags-edit'),tagsBox=document.getElementById('cxr-tags');
+  if(tb&&tagsBox){tb.addEventListener('click',function(){if(tagsBox.querySelector('.cxr-tagform'))return;var cur=[];try{cur=JSON.parse(tagsBox.getAttribute('data-tags')||'[]');}catch(e){cur=[];}
+    var f=h('form','cxr-tagform'),inp=document.createElement('input'),sv=h('button','cxr-btn','Save'),cn=h('button','cxr-copy sm','cancel'),msg=h('span','cxr-emsg');
+    inp.type='text';inp.value=cur.join(', ');inp.placeholder='the tags, in order - commas or spaces between them';inp.setAttribute('aria-label','The tags');inp.spellcheck=false;
+    sv.type='submit';cn.type='button';f.appendChild(inp);f.appendChild(sv);f.appendChild(cn);f.appendChild(msg);tagsBox.appendChild(f);tb.hidden=true;inp.focus();
+    cn.addEventListener('click',function(){f.remove();tb.hidden=false;});
+    f.addEventListener('submit',function(e){e.preventDefault();msg.textContent='';sv.disabled=true;
+      api('tags',{uid:C.uid,tags:inp.value}).then(function(r){if(!r.changed){sv.disabled=false;msg.textContent='nothing changed';return;}
+        again('tags',['tags: '+((r.tags||[]).join(', ')||'none')+(r.old&&r.old.length?' (were '+r.old.join(', ')+')':'')]);})
+        .catch(function(er){sv.disabled=false;msg.textContent=er.message;});});});}
   // the depth of the focused graph
   var sel=document.getElementById('cxr-depth'),fo=document.getElementById('cxr-focus');
   if(sel&&fo){sel.addEventListener('change',function(){fo.href=C.focus_url+(sel.value&&sel.value!=='2'?'&depth='+sel.value:'');});}

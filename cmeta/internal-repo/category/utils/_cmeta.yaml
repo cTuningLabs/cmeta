@@ -1,6 +1,8 @@
 artifact: 234ce5e3262e4d52
 authors: '[Grigori Fursin](https://cTuning.ai/@gfursin)'
 category: category,dd9ea50e7f76467f
+command_aliases:
+  cref: find_by_cid
 copyright: 2025-2026 Grigori Fursin and cTuning Labs. See the cMeta COPYRIGHT and
   LICENSE files for details.
 creation_timestamp: '2026-06-11T09:28:52.365316+00:00'

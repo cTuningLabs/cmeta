@@ -1,5 +1,8 @@
 /* Licensed under the Apache License, Version 2.0. See the COPYRIGHT and LICENSE files in the project root for details.
-   cserver.projects - scoped to #cpj so nothing leaks into the host page (engine cserver or cPlatform). */
+   cserver.projects - scoped to #cpj so nothing leaks into the host page (engine cserver or cPlatform). The cards and
+   the customized view take their size from --cpj-scale (A- / A+). The view's board (.cpj-board, its dialog, its
+   dragged copy) takes its colours from --cpj-* alone: #cpj sets them (light and dark), a page that draws the board
+   with CmetaProjects.board maps them to its own. */
 
 #cpj {
   --cpj-bg: #ffffff;
@@ -11,6 +14,10 @@
   --cpj-accent: #5c0fc9;
   --cpj-accent-soft: rgba(92, 15, 201, .10);
   --cpj-pin: #f0a202;
+  --cpj-warn: #b45309;
+  --cpj-star: rgba(92, 15, 201, .13);
+  --cpj-scale: 1;
+  position: relative;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--cpj-fg);
   max-width: 1180px;
@@ -35,14 +42,17 @@
   --cpj-card-hover: #232830;
   --cpj-accent: #a98cf0;
   --cpj-accent-soft: rgba(169, 140, 240, .14);
+  --cpj-warn: #f59e0b;
+  --cpj-star: rgba(169, 140, 240, .24);
 }
 
 #cpj * { box-sizing: border-box; }
+#cpj [hidden] { display: none !important; }
 #cpj code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
 
 /* The hosts style h1/h2/h3 and links themselves (engine task.html, cPlatform theme); pin ours so a card title
    is legible in both themes instead of inheriting a dark-blue underlined link colour. */
-#cpj h1, #cpj h2, #cpj h3, #cpj p, #cpj summary, #cpj li { color: inherit; }
+#cpj h1, #cpj h2, #cpj h3, #cpj p, #cpj summary, #cpj li, #cpj label { color: inherit; }
 #cpj a.cpj-link, #cpj a.cpj-link:link, #cpj a.cpj-link:visited, #cpj a.cpj-link:hover {
   color: inherit;
   text-decoration: none;
@@ -55,48 +65,66 @@
   gap: 12px 20px;
   align-items: flex-end;
   justify-content: space-between;
-  padding: 10px 0 14px;
-  border-bottom: 1px solid var(--cpj-line);
+  padding: 10px 0 8px;
 }
 .cpj-head h1 { margin: 0 0 4px; font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
 .cpj-sub { margin: 0; color: var(--cpj-muted); font-size: 13.5px; }
 #cpj-count { white-space: nowrap; }
 
-.cpj-tools { display: flex; gap: 8px; align-items: center; flex: 1 1 320px; justify-content: flex-end; }
-#cpj-search {
-  flex: 1 1 260px;
-  min-width: 180px;
-  max-width: 420px;
-  padding: 8px 11px;
-  font: inherit;
-  font-size: 14px;
-  color: var(--cpj-fg);
-  background: var(--cpj-card);
-  border: 1px solid var(--cpj-line);
-  border-radius: 8px;
-}
-#cpj-search:focus { outline: 2px solid var(--cpj-accent-soft); border-color: var(--cpj-accent); }
+.cpj-tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
 .cpj-btn {
-  padding: 8px 11px;
+  padding: 7px 11px;
   font: inherit;
   font-size: 13px;
-  line-height: 1;
+  line-height: 1.1;
   color: var(--cpj-fg);
   text-decoration: none;
   background: var(--cpj-card);
   border: 1px solid var(--cpj-line);
   border-radius: 8px;
   cursor: pointer;
+  white-space: nowrap;
 }
+#cpj a.cpj-btn, #cpj a.cpj-btn:hover { color: var(--cpj-fg); text-decoration: none; }
 .cpj-btn:hover { background: var(--cpj-card-hover); border-color: var(--cpj-accent); }
+.cpj-btn.cpj-on { background: var(--cpj-accent); border-color: var(--cpj-accent); color: #fff; font-weight: 600; }
+#cpj.dark .cpj-btn.cpj-on { color: #14161a; }
 
-/* ---------------------------------------------------------------- groups */
-.cpj-groups { display: flex; flex-direction: column; gap: 22px; margin-top: 20px; }
+/* the search box (on the left, as wide as there is room) and the switches: they stay at the top while the page
+   scrolls */
+.cpj-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  background: var(--cpj-bg);
+  border-bottom: 1px solid var(--cpj-line);
+}
+#cpj-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--cpj-fg);
+  background: var(--cpj-card);
+  border: 1px solid var(--cpj-line);
+  border-radius: 8px;
+  outline: none;
+}
+#cpj-search:focus { border-color: var(--cpj-accent); box-shadow: 0 0 0 3px var(--cpj-accent-soft); }
+
+/* ---------------------------------------------------------------- the cards, grouped */
+.cpj-groups { display: flex; flex-direction: column; gap: calc(22px * var(--cpj-scale)); margin-top: 20px;
+  font-size: calc(14px * var(--cpj-scale)); }
 .cpj-groups:empty { display: none; }
 .cpj-group > h2 {
   margin: 0 0 10px;
-  font-size: 13px;
+  font-size: .93em;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -115,7 +143,7 @@
 
 .cpj-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(268px * var(--cpj-scale))), 1fr));
   gap: 12px;
 }
 
@@ -130,6 +158,7 @@
   border-radius: 10px;
   text-decoration: none;
   color: inherit;
+  cursor: pointer;
   transition: background .12s, border-color .12s, transform .12s;
 }
 .cpj-card:hover { background: var(--cpj-card-hover); border-color: var(--cpj-accent); transform: translateY(-1px); }
@@ -137,7 +166,7 @@
 
 .cpj-card h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 1.07em;
   font-weight: 620;
   line-height: 1.25;
   padding-right: 46px;
@@ -147,10 +176,10 @@
   overflow: hidden;
 }
 .cpj-card:hover h3 { text-decoration: underline; text-underline-offset: 2px; }
-.cpj-alias { font-size: 12px; color: var(--cpj-accent); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.cpj-alias { font-size: .86em; color: var(--cpj-accent); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .cpj-desc {
   margin: 0;
-  font-size: 12.8px;
+  font-size: .915em;
   line-height: 1.42;
   color: var(--cpj-muted);
   display: -webkit-box;
@@ -158,7 +187,7 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.cpj-meta { margin-top: auto; padding-top: 6px; font-size: 11.5px; color: var(--cpj-muted); display: flex; gap: 8px; flex-wrap: wrap; }
+.cpj-meta { margin-top: auto; padding-top: 6px; font-size: .82em; color: var(--cpj-muted); display: flex; gap: 8px; flex-wrap: wrap; }
 .cpj-meta .cpj-repo { background: var(--cpj-accent-soft); color: var(--cpj-accent); padding: 2px 7px; border-radius: 99px; }
 
 .cpj-acts { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; }
@@ -178,6 +207,110 @@
 }
 .cpj-act:hover { color: var(--cpj-fg); background: var(--cpj-card-hover); border-color: var(--cpj-line); }
 .cpj-act.cpj-on { color: var(--cpj-pin); }
+
+/* ---------------------------------------------------------------- the customized view: a section per line, its
+   name in a column, its buttons beside it (the name above them on a phone) */
+.cpj-board { position: relative; font-size: calc(14px * var(--cpj-scale, 1)); }
+#cpj-board { margin-top: 14px; }
+.cpj-sec { display: grid; grid-template-columns: minmax(90px, 12em) minmax(0, 1fr); gap: 4px 12px; align-items: start;
+  padding: 6px 0; border-top: 1px solid var(--cpj-line); }
+.cpj-sec:first-child { border-top: 0; }
+.cpj-stitle { display: flex; align-items: center; gap: 3px; min-height: 2em; color: var(--cpj-muted); font-size: .9em;
+  font-weight: 600; overflow-wrap: anywhere; }
+.cpj-sname { white-space: pre-wrap; }
+.cpj-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 2em; }
+.cpj-pill { display: inline-flex; align-items: center; max-width: 100%; padding: .15em .85em; border: 1px solid var(--cpj-line);
+  border-radius: 999px; background: var(--cpj-card); color: var(--cpj-fg); font: inherit; line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; cursor: pointer;
+  transition: border-color .12s, background .12s; }
+.cpj-board a.cpj-pill, .cpj-board a.cpj-pill:hover { color: var(--cpj-fg); text-decoration: none; }
+.cpj-board .cpj-pill:hover { border-color: var(--cpj-accent); background: var(--cpj-card-hover); }
+.cpj-board .cpj-pill.cpj-star { background: var(--cpj-star); border-color: var(--cpj-accent); font-weight: 600; }
+.cpj-board .cpj-pill.cpj-hit { border-color: var(--cpj-accent); box-shadow: 0 0 0 2px var(--cpj-accent-soft); }
+.cpj-board .cpj-pill.cpj-missing { border-style: dashed; color: var(--cpj-muted); opacity: .7; }
+.cpj-board .cpj-pill.cpj-bad { border-style: dashed; color: var(--cpj-muted); cursor: default; }
+.cpj-pill:focus-visible { outline: 2px solid var(--cpj-accent); outline-offset: 2px; }
+.cpj-loosesec .cpj-stitle { font-weight: 500; font-style: italic; }
+.cpj-board .cpj-pill.cpj-loose { border-style: dashed; background: none; color: var(--cpj-muted); }
+.cpj-board .cpj-pill.cpj-loose:hover { color: var(--cpj-fg); }
+.cpj-empty-view { color: var(--cpj-muted); font-size: 13px; padding: 4px 0; }
+.cpj-viewnote { margin: 14px 0 0; font-size: 12.5px; color: var(--cpj-muted); }
+
+/* Edit: dashed buttons that move, the handle and the pencil of a section, "+" at the end of each section */
+.cpj-editing .cpj-pill { cursor: grab; border-style: dashed; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; touch-action: manipulation; }
+.cpj-board .cpj-pill.cpj-addpill { justify-content: center; min-width: 2.3em; border-style: dashed; background: none; color: var(--cpj-muted); }
+.cpj-board .cpj-pill.cpj-addpill:hover { color: var(--cpj-accent); }
+.cpj-handle { padding: 0 3px; border-radius: 4px; color: var(--cpj-muted); font-size: 1.15em; line-height: 1; cursor: grab;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.cpj-handle:hover, .cpj-handle:focus-visible { color: var(--cpj-accent); background: var(--cpj-card-hover); outline: none; }
+.cpj-mini { padding: 0 5px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--cpj-muted);
+  font: inherit; line-height: 1.4; cursor: pointer; }
+.cpj-mini:hover, .cpj-mini:focus-visible { border-color: var(--cpj-line); color: var(--cpj-accent); outline: none; }
+.cpj-sin { min-width: 0; width: 100%; padding: 1px 6px; border: 1px solid var(--cpj-accent); border-radius: 6px; outline: none;
+  box-shadow: 0 0 0 3px var(--cpj-accent-soft); background: var(--cpj-bg); color: var(--cpj-fg); font: inherit; font-weight: 600; }
+.cpj-sfoot { padding: 8px 0 2px; }
+
+/* a drag: the button (or section) where it was, faint; its copy under the pointer; a line where it would go */
+.cpj-dragging { opacity: .35; }
+.cpj-dnd, .cpj-dnd * { cursor: grabbing !important; }
+.cpj-ghost { position: fixed; z-index: 90; margin: 0; pointer-events: none; opacity: .93; box-shadow: 0 6px 18px rgba(0, 0, 0, .22);
+  transform: rotate(-1.5deg); }
+.cpj-stitle.cpj-ghost { padding: 3px 10px; border: 1px solid var(--cpj-accent); border-radius: 8px; background: var(--cpj-card);
+  color: var(--cpj-fg); font-weight: 600; }
+.cpj-marker { position: absolute; z-index: 5; pointer-events: none; background: var(--cpj-accent); border-radius: 2px; }
+.cpj-marker.v { width: 3px; }
+.cpj-marker.hz { height: 3px; }
+.cpj-flash { animation: cpj-flash 2.4s ease-out; }
+@keyframes cpj-flash { from { box-shadow: 0 0 0 3px var(--cpj-accent); } to { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0); } }
+
+/* no view yet: what it is, where to keep it */
+.cpj-make { margin-top: 6px; padding: 16px 20px; background: var(--cpj-card); border: 1px dashed var(--cpj-line); border-radius: 10px; }
+.cpj-make h2 { margin: 0 0 8px; font-size: 17px; font-weight: 640; }
+.cpj-make p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.55; color: var(--cpj-muted); max-width: 860px; }
+.cpj-make select { margin: 0 4px; padding: 4px 6px; border: 1px solid var(--cpj-line); border-radius: 6px; background: var(--cpj-bg);
+  color: var(--cpj-fg); font: inherit; font-size: 13.5px; }
+
+/* the form of a button */
+.cpj-modal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-start; justify-content: center;
+  padding: 9vh 12px 12px; background: rgba(10, 12, 16, .38); }
+.cpj-form { width: 500px; max-width: 100%; max-height: 84vh; overflow: auto; padding: 14px 18px 16px; border: 1px solid var(--cpj-line);
+  border-radius: 12px; background: var(--cpj-card); color: var(--cpj-fg); box-shadow: 0 18px 50px rgba(0, 0, 0, .28); font-size: 14px;
+  text-align: left; }
+.cpj-form-head { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+.cpj-form-head h3 { margin: 0; font-size: 16px; font-weight: 650; }
+.cpj-x { margin-left: auto; padding: 0 4px; border: 0; background: none; color: var(--cpj-muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.cpj-x:hover { color: var(--cpj-fg); }
+.cpj-field { display: flex; align-items: center; gap: 10px; margin: 0 0 9px; font-weight: 400; }
+.cpj-flabel { flex: none; width: 58px; color: var(--cpj-muted); font-size: 13px; }
+.cpj-field input[type=text], .cpj-field textarea { flex: 1; min-width: 0; padding: 6px 9px; border: 1px solid var(--cpj-line);
+  border-radius: 7px; background: var(--cpj-bg); color: var(--cpj-fg); font: inherit; font-size: 14px; color-scheme: light dark; }
+.cpj-field textarea { resize: vertical; min-height: 50px; }
+.cpj-field input:focus, .cpj-field textarea:focus { outline: none; border-color: var(--cpj-accent); box-shadow: 0 0 0 3px var(--cpj-accent-soft); }
+.cpj-art { margin: 2px 0 0 68px; color: var(--cpj-muted); font-size: 12px; overflow-wrap: anywhere; }
+.cpj-art a { color: var(--cpj-accent); text-decoration: none; }
+.cpj-check { cursor: pointer; }
+.cpj-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--cpj-accent); }
+.cpj-err { margin: 10px 0 0; padding: 6px 10px; border: 1px solid var(--cpj-warn); border-radius: 7px; color: var(--cpj-warn); font-size: 13px; }
+.cpj-acts2 { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.cpj-spacer { flex: 1; }
+.cpj-go { padding: 7px 22px; border: 0; border-radius: 8px; background: var(--cpj-accent); color: #fff; font: inherit; font-size: 14px;
+  font-weight: 600; cursor: pointer; }
+#cpj.dark .cpj-go { color: #14161a; }
+.cpj-go:disabled { opacity: .6; cursor: wait; }
+.cpj-btn.cpj-del { border-color: rgba(180, 35, 24, .4); color: #c0392b; }
+.cpj-btn.cpj-del:hover { background: rgba(180, 35, 24, .08); }
+
+/* the messages, with Undo (their own class names: .cpj-act and .cpj-on belong to the cards' buttons) */
+.cpj-toast { position: fixed; right: 18px; bottom: 18px; z-index: 95; max-width: 440px; padding: 9px 14px; border-radius: 8px;
+  background: var(--cpj-fg); color: var(--cpj-bg); font-size: 13px; box-shadow: 0 6px 24px rgba(0, 0, 0, .18); opacity: 0;
+  transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none; }
+.cpj-toast.cpj-shown { opacity: .96; transform: none; }
+.cpj-toast.cpj-badt { background: #b42318; color: #fff; }
+.cpj-toast.cpj-withundo { pointer-events: auto; }
+.cpj-toast-act { margin-left: 10px; padding: 2px 10px; border: 1px solid currentColor; border-radius: 6px; background: none;
+  color: inherit; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cpj-toast-act:hover { background: rgba(127, 127, 127, .25); }
 
 /* ---------------------------------------------------------------- no pages yet */
 .cpj-empty {
@@ -248,8 +381,28 @@
   color: var(--cpj-muted);
 }
 
-@media (max-width: 560px) {
-  #cpj { padding: 4px 12px 32px; }
+/* phones: the tools under the title, a section's name above its buttons, bigger buttons for a finger, 16px fields
+   (no zoom on focus) */
+@media (max-width: 640px) {
+  #cpj { padding: 4px 10px 32px; }
+  .cpj-head { flex-direction: column; align-items: flex-start; }
   .cpj-tools { justify-content: flex-start; }
-  .cpj-cards, .cpj-links { grid-template-columns: 1fr; }
+  .cpj-bar { flex-wrap: wrap; }
+  #cpj-search { flex-basis: 100%; font-size: 16px; }
+  .cpj-links { grid-template-columns: 1fr; }
+  .cpj-sec { grid-template-columns: minmax(0, 1fr); gap: 3px; padding: 7px 0; }
+  .cpj-stitle { min-height: 0; }
+  .cpj-pills { gap: 7px; padding-left: 14px; }
+  .cpj-pill { padding: .35em 1em; }
+  .cpj-modal { padding: 3vh 8px 8px; }
+  .cpj-form { max-height: 94vh; padding: 12px 14px 14px; }
+  .cpj-field input[type=text], .cpj-field textarea { font-size: 16px; }
+  .cpj-art { margin-left: 0; }
+  .cpj-toast { left: 12px; right: 12px; bottom: 12px; max-width: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cpj-flash { animation: none; }
+  .cpj-ghost { transform: none; }
+  .cpj-pill, .cpj-toast, .cpj-card { transition: none; }
 }
