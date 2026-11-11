@@ -22,6 +22,7 @@
   function $(id) { return document.getElementById(id); }
 
   var THEME_KEY = 'cserver.cmeta.configs.theme';
+  var SHARED_THEME = 'cmeta.theme';                 // the theme of every page of this server (2026-11-10)
   var PANE_KEY = 'cserver.cmeta.configs.pane';      // which list a narrow screen shows: arts | cfgs
   var URL_KEYS = ['q', 'show', 'repo', 'view', 'open', 'art', 'cfg'];
   var SHOWS = ['', 'set', 'unset', 'unread', 'undocumented'];
@@ -973,6 +974,8 @@
     URL_KEYS.forEach(function (k) { if (st[k]) u.searchParams.set(k, st[k]); else u.searchParams.delete(k); });
     window.history.replaceState(null, '', u.toString());
     $('ccf-json').href = apiUrl('configs');
+    // the settings page (2026-11-10): the same keys, changed in place - on the engine cserver only
+    if (CFG.settings_page) { $('ccf-settings-page').href = CFG.settings_page; $('ccf-settings-page').hidden = false; }
   }
   function fillRepos() {
     var sel = $('ccf-repo');
@@ -1076,14 +1079,23 @@
     follow();
     new MutationObserver(follow).observe(html, {attributes: true, attributeFilter: ['data-ctp-theme']});
   } else {
+    // one dark or light for every page of this server (cmeta.theme: read first - this page's own key until there is
+    // one -, written by the switch, followed when another page changes it)
     var saved = null;
-    try { saved = localStorage.getItem(THEME_KEY); } catch (e) { saved = null; }
+    try {
+      saved = localStorage.getItem(SHARED_THEME);
+      if (!saved) { saved = localStorage.getItem(THEME_KEY); if (saved) localStorage.setItem(SHARED_THEME, saved); }
+    } catch (e) { saved = null; }
     setDark(saved ? saved === 'dark' : CFG.dark_mode === true);
     $('ccf-theme').addEventListener('click', function () {
       var on = !root.classList.contains('dark');
       setDark(on);
-      try { localStorage.setItem(THEME_KEY, on ? 'dark' : 'light'); } catch (e) { /* private mode */ }
+      try {
+        localStorage.setItem(SHARED_THEME, on ? 'dark' : 'light');
+        localStorage.setItem(THEME_KEY, on ? 'dark' : 'light');
+      } catch (e) { /* private mode */ }
     });
+    window.addEventListener('storage', function (e) { if (e.key === SHARED_THEME && e.newValue) setDark(e.newValue === 'dark'); });
   }
 
   if (CFG.settings_url) {

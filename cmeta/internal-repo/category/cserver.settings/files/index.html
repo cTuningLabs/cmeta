@@ -1,0 +1,43 @@
+<!-- Licensed under the Apache License, Version 2.0. See the COPYRIGHT and LICENSE files in the project root for details.
+     cserver.settings: the settings of this machine - every config key, searched and changed in place. -->
+<script>var CONFIG = %%CONFIG%%;</script>
+<div id="cst" class="cst">
+
+  <header class="cst-head">
+    <div class="cst-titles">
+      <h1>Settings</h1>
+      <p class="cst-sub" id="cst-sub">Every config key of this machine, as the plugged artifacts read them - a change is saved at once.</p>
+    </div>
+    <div class="cst-tools">
+      <a class="cst-tool" id="cst-configs" href="#" hidden title="Who reads what: the configs page">who reads what</a>
+      <button type="button" class="cst-tool" id="cst-smaller" title="Smaller (kept in this browser)" aria-label="Smaller">A&#8722;</button>
+      <button type="button" class="cst-tool" id="cst-bigger" title="Bigger (kept in this browser)" aria-label="Bigger">A+</button>
+      <button type="button" class="cst-tool" id="cst-theme" title="Dark / light - for every page of this server" aria-label="Dark or light">&#9680;</button>
+      <button type="button" class="cst-tool" id="cst-reload" title="Read the settings again">&#8635;</button>
+    </div>
+  </header>
+
+  <div class="cst-top" id="cst-top">
+    <input type="search" id="cst-q" spellcheck="false" autocomplete="off" aria-label="Search the settings"
+           placeholder="Search the settings - a key, what it does, a config, who reads it ...   ( / to focus )">
+    <span class="cst-chips" id="cst-show" role="group" aria-label="Which keys">
+      <button type="button" data-show="" class="on">all</button>
+      <button type="button" data-show="set">set here</button>
+      <button type="button" data-show="unset">not set</button>
+    </span>
+    <span class="cst-count" id="cst-count"></span>
+  </div>
+
+  <div class="cst-note" id="cst-note" hidden></div>
+  <div class="cst-error" id="cst-error" hidden></div>
+  <div class="cst-body" id="cst-body">
+    <div class="cst-groups" id="cst-groups"></div>
+    <p class="cst-empty" id="cst-empty" hidden>Nothing matches - try fewer words.</p>
+  </div>
+
+  <footer class="cst-foot">
+    <span>cMeta %%VERSION%%</span>
+    <span>A change here is <code>cx config set &lt;config&gt; --meta.&lt;key&gt;=&lt;value&gt;</code>; Reset is <code>cx config unset</code>. Some artifacts read their keys at startup (the cserver: restart it).</span>
+  </footer>
+  <div id="cst-toast" class="cst-toast" role="status" aria-live="polite"></div>
+</div>

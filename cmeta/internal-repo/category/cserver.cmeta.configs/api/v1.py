@@ -2046,6 +2046,8 @@ class Category(InitCategory):
                   'cref_url': str(misc.get('cref_url') or ('' if platform else url_server + 'cref/')),
                   'settings_url': '' if platform else url_server + 'cref/category::cserver.cmeta.configs,%s/files/%s' %
                                                       (self.cmeta.get('artifact', 'cc8dd8bdf9fe4132'), SETTINGS_FILE),
+                  # the settings page (cserver.settings, 2026-11-10): the same keys, changed in place - the engine cserver's
+                  'settings_page': '' if platform else url_server + 'settings',
                   'problems': problems}
 
         with open(os.path.join(path_to_files, 'index.html'), encoding='utf-8') as f:

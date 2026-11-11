@@ -90,6 +90,16 @@ added on this side and removed from both sides where the viewer may write; ?nati
 AI-context templates (what -ai offers). Every save, folder, deletion, creation and list change is one line of the
 server's log.
 
+The detail of an artifact (the panel of a row, of a node of the graph) is the artifact page in short (2026-11-10):
+?native_action=artifact carries the texts as cserver.cref renders them (README.md, _info.md, the file the view
+names; texts=0 leaves them out - the artifact page itself asks so) and a viewer who may save files edits each
+where it is read, or makes a missing one; the lists Connected with (both _desc name each other: `mutual`),
+Connected to (this _desc only), AI uses and Connected from (the other's only) change in place through link - the
+picker of the artifact page (files/js/picker.js, one source for both pages) adds, an x removes; and the tags are set
+whole through ?native_action=tags (uid, tags: a list, or a text with commas or spaces between them - in that order:
+add, remove, reorder) by the category's own update with replace_lists, for a viewer who may write to the artifact,
+from a page of this server - the artifact page edits them the same way.
+
 These keys of the cserver config apply (cx config set cserver --meta.<key>=<value>):
     hide_repos                repositories left out (aliases or fnmatch patterns) - the same key as /projects
     browse_hide_categories    categories left out; by default anything matching *crypt*, *secret* or
@@ -190,6 +200,7 @@ ARTIFACT_WAIT = 10               # ... and the detail of one artifact, when ther
 INCOMING_MAX = 300               # incoming connections listed in the detail of one artifact
 DESC_TEXT_MAX = 65536            # the text of a _desc kept for search (characters; the rest is not searched)
 LINK_KEYS = ('connections', 'uses', 'ai_uses')   # the link lists of a _desc: not searched by plain words
+CREF_UID = 'a24a8d9cf3164903'    # the artifact page (cserver.cref): it renders the texts the detail panel shows
 
 # The cache artifact of this page: cache::cserver--browse in the local repository, created on first use
 CACHE_CATEGORY = 'cache,1ebdcc1cc30c4022'
@@ -1738,9 +1749,18 @@ class Category(InitCategory):
         incoming, n_in = [], 0
         if _conn['ready']:
             with _conn_lock:
-                srcs, used_by, read_by = _conn['inn'].get(it['uid'], ()), _conn['uses'], _conn.get('ai', {})
+                srcs, used_by, read_by, outs = _conn['inn'].get(it['uid'], ()), _conn['uses'], _conn.get('ai', {}), _conn.get('out', {})
+                # (2026-11-10, the user: "Connected with" and "Connected to" apart) conn: the source names this one in
+                # its connections; mutual: both name each other - a connection of this artifact the other declares too
                 rows = [{'uid': s, 'alias': by_uid[s]['alias'], 'cat': by_uid[s]['cat'], 'cat_uid': by_uid[s]['cat_uid'],
-                         'uses': it['uid'] in used_by.get(s, ()), 'ai': it['uid'] in read_by.get(s, ())} for s in srcs if s in shown]
+                         'uses': it['uid'] in used_by.get(s, ()), 'ai': it['uid'] in read_by.get(s, ()),
+                         'conn': it['uid'] in outs.get(s, ())} for s in srcs if s in shown]
+                mine = {l['uid'] for l in links if l.get('found')}
+                for r in rows:
+                    r['mutual'] = r['conn'] and r['uid'] in mine
+                back = {l['uid'] for l in links if l.get('found') and it['uid'] in outs.get(l['uid'], ())}
+            for l in links:
+                l['mutual'] = l['uid'] in back
             rows.sort(key=lambda x: (x['cat'].lower(), x['alias'].lower()))
             n_in, incoming = len(rows), rows[:INCOMING_MAX]
         mig = it['meta'].get('migrated_to')
@@ -2441,14 +2461,55 @@ class Category(InitCategory):
             return {'error': r.get('error') or 'the update of %s::%s did not go through' % (it['cat'], it['alias'])}
         return {'changes': [x.strip() for x in r.get('desc_changes') or [] if x.startswith('  ')]}
 
-    def _link(self, uid, key, add, remove, misc, cfg):
+    def _texts_of(self, uid, urls, misc):
+        """The texts of an artifact as the artifact page (cserver.cref) renders them - README.md, _info.md, the file
+        its view names -, for the detail panel: [{rel, html, note}]; [] when that page is not here or has none."""
+        try:
+            r = self.cm.access({'category': 'cserver.cref,%s' % CREF_UID, 'command': 'web', 'con': False, 'urls': dict(urls or {}),
+                                'misc': dict(misc or {}), 'query': {'native_action': 'texts', 'uid': uid}})
+        except Exception as e:
+            print('cMeta warning: cserver.browse: the artifact page did not give the texts: %s: %s' % (type(e).__name__, e))
+            return []
+        j = (r.get('json') or {}) if r.get('return', 1) == 0 else {}
+        return list(j.get('texts') or [])
+
+    def _set_tags(self, uid, tags, misc, cfg):
+        """The tags of an artifact set, as given (2026-11-10, the user: "edit/update/move/delete tags in both full and
+        sub-view"): a list, or a text with commas or spaces between them, in that order - the whole list replaces the
+        _cmeta's (the category's own update, replace_lists) - for a viewer who may write to it, from a page of this
+        server -> {'tags', 'changed'} or {'error'}."""
+        t = self._target(uid, '_cmeta.yaml', misc, cfg)
+        if 'error' in t:
+            return t
+        it = t['it']
+        raw = [str(x) for x in tags] if isinstance(tags, (list, tuple)) else re.split(r'[,\s]+', str(tags or ''))
+        new = []
+        for x in raw:
+            x = x.strip().strip(',')
+            if x and x not in new:
+                new.append(x)
+        old = [str(x) for x in (it['meta'].get('tags') or [])] if isinstance(it['meta'].get('tags'), list) else []
+        if new == old:
+            return {'tags': old, 'changed': False}
+        r = self.cm.access({'category': '%s,%s' % (it['cat'], it['cat_uid']), 'command': 'update', 'arg1': it['uid'],
+                            'meta': {'tags': new}, 'replace_lists': True, 'con': False, 'quiet': True})
+        if r.get('return', 1) > 0:
+            return {'error': r.get('error') or 'the update of %s::%s did not go through' % (it['cat'], it['alias'])}
+        self._catalog(force=True)                      # the panel drawn again shows the new tags at once
+        print('cMeta info: cserver.browse: %s changed the tags of %s::%s: %s -> %s'
+              % (self._who(misc), it['cat'], it['alias'], ', '.join(old) or '-', ', '.join(new) or '-'))
+        return {'tags': new, 'changed': True, 'old': old}
+
+    def _link(self, uid, key, add, remove, misc, cfg, both=False):
         """Add artifacts to, or remove one from, a list of an artifact's _desc that names other artifacts -
         connections (what it connects to) or ai_uses (whose memory and skills its AI sessions read) - for a viewer
         who may write to it, from a page of this server (2026-11-09: the lists of the artifact page). Made by the
         category's own update (--ct, -ai): the full cRef of each artifact, a hand-written _desc.yaml keeping its text
         around the list, the artifact stamped as updated; nothing is written when nothing changes. The names are
-        those the page shows (_named; several: a list, or ";" between them). Adding writes this artifact only - the
-        graph draws a connection declared on either side, and the other's page lists it under "Connected from";
+        those the page shows (_named; several: a list, or ";" between them). Adding writes this artifact only ("Connected
+        to": the graph draws a connection declared on either side, and the other's page lists it under "Connected
+        from") - or, with `both` (2026-11-10, "Connected with"), the other artifact's _desc names this one too, as
+        --connect does, where this viewer may write there (else the answer says so and the connection stays one-way);
         removing a connection removes it from both sides, as --connect=-<name> does, where this viewer may write -
         else the answer says that the other still declares it. One line of the server's log."""
         from cmeta.category_api_v1 import cref_matches
@@ -2467,7 +2528,7 @@ class Category(InitCategory):
         desc = _read_desc(it['path'])[0] or {}
         value = desc.get(key)
         entries = list(value) if isinstance(value, list) else ([value] if value else [])
-        adds, errors, there = [], [], []
+        adds, errors, there, others = [], [], [], []
         for n in names_:
             o, why = self._named(n, key)
             if o is None:
@@ -2478,8 +2539,11 @@ class Category(InitCategory):
                 errors.append('%s is this artifact: an artifact is not connected to itself' % n)
             elif any(cref_matches(e, full) for e in entries + adds):
                 there.append('%s::%s' % (o['cat'], o['alias']))
+                if both and key == 'connections':
+                    others.append(o)                # there already on this side: the other side may still lack it
             else:
                 adds.append(full)
+                others.append(o)
         if errors:
             return {'error': '; '.join(errors)}
         gone = [e for e in entries if drop and cref_matches(e, drop)]
@@ -2489,6 +2553,22 @@ class Category(InitCategory):
             if 'error' in r:
                 return r
             out['changes'] += r['changes']
+
+        if both and key == 'connections' and others:
+            # "Connected with": the other side names this artifact too - where this viewer may write there
+            cat = self._catalog()
+            for o in others:
+                theirs = (_read_desc(o['path'])[0] or {}).get('connections')
+                if isinstance(theirs, list) and any(_resolve(_parse_cref(str(c)), cat['by_uid'], cat['by_key']) == it['uid']
+                                                    for c in theirs if c):
+                    continue
+                why = self._edit_refused(o, misc, cfg)
+                r = {'error': why} if why else self._update_list(o, key, [me])
+                if 'error' in r:
+                    out['warnings'].append('%s::%s does not name this artifact back (%s): connected to it, not with it'
+                                           % (o['cat'], o['alias'], r['error']))
+                else:
+                    out['changes'] += ['%s (in %s::%s)' % (x, o['cat'], o['alias']) for x in r['changes']]
 
         if key == 'connections' and drop:
             o, _why = self._named(drop, key)
@@ -2554,6 +2634,12 @@ class Category(InitCategory):
                     if th is not None and not _conn['ready']:
                         th.join(ARTIFACT_WAIT)         # a fresh worker process: what connects to it comes soon
                     out = self._artifact(query.get('uid'), local, self._files_on(misc, self._cserver_config()), misc)
+                    # the texts of the artifact (README.md, _info.md, the file its view names) as the artifact page
+                    # renders them, for the detail panel (2026-11-10); texts=0: without (the artifact page itself asks so)
+                    if 'error' not in out and _flag(query.get('texts'), True):
+                        out['texts'] = self._texts_of(query.get('uid'), urls, misc)
+                elif na == 'tags':                 # the tags of an artifact set (2026-11-10: the panel and the artifact page)
+                    out = self._set_tags(query.get('uid'), query.get('tags'), misc, self._cserver_config())
                 elif na == 'graph':
                     out = self._graph(query)
                 elif na in ('files', 'file'):
@@ -2578,7 +2664,7 @@ class Category(InitCategory):
                                        misc, self._cserver_config(), dt=query.get('dt'))
                 elif na == 'link':                 # connections / ai_uses of an artifact: add names, remove one
                     out = self._link(query.get('uid'), query.get('key'), query.get('add'), query.get('remove'), misc,
-                                     self._cserver_config())
+                                     self._cserver_config(), both=_flag(query.get('both'), False))
                 elif na == 'templates':            # the declared AI-context templates (what -ai offers)
                     out = self._templates()
                 elif na == 'open':
@@ -2640,6 +2726,7 @@ class Category(InitCategory):
                 '<link rel="stylesheet" href="%s">\n' % _asset(path_to_files, url_files, 'css/browse.css') +
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/graph.js') +
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/hl.js') +      # the file viewer's colouring
+                '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/picker.js') +  # the picker of the lists
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/browse.js')
             )
             return {'return': 0, 'html_meta': {'html': body, 'page_title': title,

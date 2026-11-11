@@ -10,3 +10,9 @@ configs:
       default_page:
         desc: what "/" shows (read by the server at startup) - /projects by default, none = the plain welcome page
         default: /projects
+  default:
+    keys:
+      cserver_projects_create_repo:
+        desc: the repository the "Make my view" panel of the customized view offers first (the engine's rule for new
+          artifacts of cserver.projects); a view's new buttons go where its buttons are
+        default: local

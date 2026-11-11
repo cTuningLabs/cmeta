@@ -481,6 +481,12 @@ def meta_file(path):
     return [os.path.join(path, n) for n in ('_cmeta.yaml', '_cmeta.json') if os.path.isfile(os.path.join(path, n))][0]
 
 
+def tags_of(path):
+    """The tags the _cmeta file of an artifact folder holds."""
+    with open(meta_file(path), encoding='utf-8') as f:
+        return (yaml.safe_load(f) or {}).get('tags') or []
+
+
 def test_the_lists_of_a_desc_change_from_the_page(cm):
     """connections and ai_uses changed from the page of an artifact (2026-11-09, ?native_action=link): by the
     category's own update, the names those the page shows; a connection added on this side and removed from both;
@@ -581,21 +587,26 @@ def test_the_page_of_an_artifact_copies_and_edits_its_texts_and_lists(cm):
     assert 'cxr-tedit" data-rel="README.md"' in html and 'cxr-tedit" data-rel="_info.md"' in html
     assert 'class="cxr-copy sm cxr-tnew"' not in html
     tech = html[html.index('<h2>Technical details</h2>'):]
-    assert tech.index('See _desc') < tech.index('data-box="connections"') < tech.index('data-box="ai_uses"') < tech.index('id="cxr-files"')
+    # the connections apart (2026-11-10): with (both name each other), to (this _desc only), from (the other's only)
+    assert tech.index('See _desc') < tech.index('data-box="connections_with"') < tech.index('data-box="connections_to"') \
+        < tech.index('data-box="ai_uses"') < tech.index('id="cxr-files"')
+    assert '<summary>Connected with <span class="cxr-n">(0)' in tech and '<summary>Connected to <span class="cxr-n">(1)' in tech
     assert 'class="cxr-ic cxr-lx" data-key="connections" data-ref="log,%s::page-b,%s"' % (cat_uid, b) in tech
-    assert '<form class="cxr-ladd" data-key="connections"' in tech and '<form class="cxr-ladd" data-key="ai_uses"' in tech
+    assert '<form class="cxr-ladd" data-key="connections" data-box="connections_with" data-both="1"' in tech
+    assert '<form class="cxr-ladd" data-key="connections" data-box="connections_to" data-both=""' in tech
+    assert '<form class="cxr-ladd" data-key="ai_uses" data-box="ai_uses" data-both=""' in tech
     assert '<div class="cxr-lcat"><a href=' in tech and '<ul class="cxr-litems"><li>' in tech
-    assert 'Connects to' not in html                                         # not after the text for this reader
+    assert '<h2>Connected to' not in html and '<h2>Connected with' not in html      # not after the text for this reader
 
     # a browser elsewhere reads and copies, and changes nothing (the page's script names the classes: the markup is looked for)
     changes = ('class="cxr-copy sm cxr-tedit"', 'class="cxr-copy sm cxr-tnew"', '<form class="cxr-ladd"', 'class="cxr-ic cxr-lx"')
     html = cref_page(cm, ref)
-    assert 'data-copy="page-a"' in html and 'data-box="connections"' in html
+    assert 'data-copy="page-a"' in html and 'data-box="connections_to"' in html
     assert not any(x in html for x in changes + ('data-box="ai_uses"',))
 
     # a reader the page does not count as technical: the connections after the text, no technical details
     html = cref_page(cm, ref, dict(BOTH, persona='sales'))
-    assert 'Connects to' in html and 'Technical details' not in html and 'page-b</a>' in html
+    assert '<h2>Connected to' in html and 'Technical details' not in html and 'page-b</a>' in html
     assert not any(x in html for x in changes)
 
     # an artifact without them: a "+" for README.md and for _info.md; with a README only, a "+" for _info.md
@@ -605,7 +616,8 @@ def test_the_page_of_an_artifact_copies_and_edits_its_texts_and_lists(cm):
     assert 'This artifact has no text of its own.' in html
     # ... and without a _desc, no connection, no AI use: both lists with their fields, to add the first one
     assert not os.path.exists(os.path.join(pc, '_desc.yaml')) and not os.path.exists(os.path.join(pc, '_desc.json'))
-    assert '<summary>Connections <span class="cxr-n">(0)' in html and '<summary>AI uses <span class="cxr-n">(0)' in html
+    assert '<summary>Connected with <span class="cxr-n">(0)' in html and '<summary>Connected to <span class="cxr-n">(0)' in html
+    assert '<summary>AI uses <span class="cxr-n">(0)' in html
     assert '<form class="cxr-ladd" data-key="connections"' in html and '<form class="cxr-ladd" data-key="ai_uses"' in html
     assert 'class="cxr-copy sm cxr-edit" data-rel="_desc.yaml" data-new="1"' in html          # + _desc.yaml as before
     out = web(cm, BOTH, native_action='link', uid=c, key='connections', add='page-a')['json']
@@ -614,6 +626,54 @@ def test_the_page_of_an_artifact_copies_and_edits_its_texts_and_lists(cm):
         f.write('Some text.\n')
     html = cref_page(cm, 'log::page-c,' + c, BOTH)
     assert 'cxr-tnew" data-rel="README.md"' not in html and 'cxr-tnew" data-rel="_info.md"' in html
+
+
+def test_connected_with_writes_both_sides_and_the_page_tells_with_to_and_from_apart(cm):
+    """2026-11-10, the user: "is it possible to separately show Connected with and Connected to?" - the link action's
+    `both` names the other artifact back (as --connect does), where this viewer may write there; cserver.browse marks
+    the mutual connections, and the artifact page lists them under Connected with, the one-way ones under Connected to
+    (this _desc) and Connected from (the other's)."""
+    x, px = make(cm, 'with-x')
+    y, py = make(cm, 'with-y')
+    z, pz = make(cm, 'with-z')
+    web(cm, native_action='reload')
+    cat_uid = web(cm, native_action='artifact', uid=x)['json']['row']['cat_uid'].lower()
+    full = {u: 'log,%s::%s,%s' % (cat_uid, n, u) for u, n in ((x, 'with-x'), (y, 'with-y'), (z, 'with-z'))}
+
+    out = web(cm, BOTH, native_action='link', uid=x, key='connections', add='with-y', both='1')['json']
+    assert out['changes'] == ['+ ' + full[y], '+ %s (in log::with-y)' % full[x]] and out['warnings'] == [], out
+    assert desc_yaml(px) == {'connections': [full[y]]} and desc_yaml(py) == {'connections': [full[x]]}
+    out = web(cm, BOTH, native_action='link', uid=x, key='connections', add='with-z')['json']          # one way
+    assert out['changes'] == ['+ ' + full[z]] and desc_yaml(pz) == {}
+    # "with" again for a connection both sides have: nothing written, said so
+    out = web(cm, BOTH, native_action='link', uid=x, key='connections', add='with-y', both='1')['json']
+    assert out['changes'] == [] and out['warnings'] == ['log::with-y: there already'], out
+    # "with" for a connection this side has already (one way so far): only the other side is written - then removed
+    # from that side, which takes the connection out of both (as --connect=-name does): added one way again
+    out = web(cm, BOTH, native_action='link', uid=x, key='connections', add='with-z', both='1')['json']
+    assert out['changes'] == ['+ %s (in log::with-z)' % full[x]] and out['warnings'] == ['log::with-z: there already'], out
+    assert desc_yaml(pz) == {'connections': [full[x]]}
+    web(cm, BOTH, native_action='link', uid=z, key='connections', remove=full[x])
+    assert desc_yaml(pz) in ({'connections': []}, {}) and desc_yaml(px) == {'connections': [full[y]]}
+    assert web(cm, BOTH, native_action='link', uid=x, key='connections', add='with-z')['json']['changes'] == ['+ ' + full[z]]
+
+    graph(cm, q='with-x')                                  # waits for the connection index
+    d = web(cm, BOTH, native_action='artifact', uid=x)['json']
+    assert [(c['alias'], c['mutual']) for c in d['connections']] == [('with-y', True), ('with-z', False)]
+    d = web(cm, BOTH, native_action='artifact', uid=z)['json']
+    assert [(c['alias'], c['conn'], c['mutual']) for c in d['incoming']] == [('with-x', True, False)]
+
+    html = cref_page(cm, 'log::with-x,' + x, BOTH)
+    tech = html[html.index('<h2>Technical details</h2>'):]
+    assert '<summary>Connected with <span class="cxr-n">(1)' in tech and 'with-y</a>' in tech
+    assert '<summary>Connected to <span class="cxr-n">(1)' in tech and 'with-z</a>' in tech
+    assert '<summary>Connected from' not in tech                                 # (the field's hint names it)
+    html = cref_page(cm, 'log::with-z,' + z, BOTH)
+    tech = html[html.index('<h2>Technical details</h2>'):]
+    assert '<summary>Connected from <span class="cxr-n">(1)' in tech and 'with-x</a>' in tech
+    assert '<summary>Connected with <span class="cxr-n">(0)' in tech
+    html = cref_page(cm, 'log::with-y,' + y, dict(BOTH, persona='sales'))
+    assert '<h2>Connected with <span class="cxr-n">(1)</span></h2>' in html and '<h2>Connected from' not in html
 
 
 def test_a_new_artifact_shows_without_a_restart(cm):
@@ -1004,3 +1064,73 @@ def test_after_an_index_change_a_word_search_looks_only_at_the_changed_categorie
     wait_index(cm)
     assert aliases(search(cm, q='fence')) == ['zoo-plan']
     assert index_status(cm)['trusted'] == 0           # the last build looked at every file
+
+
+def test_the_detail_carries_the_texts_and_sets_the_tags(cm):
+    """The detail panel of the browser (2026-11-10, the user: the sub-view of the graph with the README / _info and the
+    tags, connections and AI uses editable): ?native_action=artifact carries the texts as the artifact page renders
+    them (texts=0 leaves them out: the page itself asks so), the page answers ?native_action=texts; the tags of an
+    artifact are set whole by ?native_action=tags (a text with commas or spaces, or a list; in that order; nothing
+    written when nothing changes; who may), and the page of the artifact offers "+ tags" when there are none."""
+    a, pa = make(cm, 'panel-a', tags=['one', 'two'])
+    b, pb = make(cm, 'panel-b')
+    with open(os.path.join(pa, 'README.md'), 'w', encoding='utf-8') as f:
+        f.write('# panel-a\n\nThe readme of panel-a.\n')
+    with open(os.path.join(pa, '_info.md'), 'w', encoding='utf-8') as f:
+        f.write('A note on panel-a.\n')
+    web(cm, native_action='reload')
+
+    # the texts: README.md then _info.md, rendered; none for an artifact without; texts=0 for the artifact page
+    d = web(cm, BOTH, native_action='artifact', uid=a)['json']
+    assert [t['rel'] for t in d['texts']] == ['README.md', '_info.md'], d['texts']
+    assert 'The readme of panel-a.' in d['texts'][0]['html'] and 'A note on panel-a.' in d['texts'][1]['html']
+    assert web(cm, BOTH, native_action='artifact', uid=b)['json']['texts'] == []
+    assert 'texts' not in web(cm, BOTH, native_action='artifact', uid=a, texts='0')['json']
+    r = cm.access({'category': 'cserver.cref', 'command': 'web', 'con': False, 'urls': dict(URLS),
+                   'query': {'native_action': 'texts', 'uid': a}, 'misc': dict(BOTH)})
+    assert r['return'] == 0 and [t['rel'] for t in r['json']['texts']] == ['README.md', '_info.md'], r
+    assert r['json']['texts'][0]['html'] == d['texts'][0]['html']
+
+    # the tags: refused from elsewhere; a text in order, duplicates dropped; a list; unchanged = nothing written
+    assert 'error' in web(cm, None, native_action='tags', uid=a, tags='x y')['json']
+    assert 'error' in web(cm, LOCAL, native_action='tags', uid=a, tags='x y')['json']
+    assert tags_of(pa) == ['one', 'two']
+    j = web(cm, BOTH, native_action='tags', uid=a, tags='two, three one,  three')['json']
+    assert j == {'tags': ['two', 'three', 'one'], 'changed': True, 'old': ['one', 'two']}, j
+    assert tags_of(pa) == ['two', 'three', 'one']
+    assert web(cm, BOTH, native_action='artifact', uid=a)['json']['row']['tags'] == ['two', 'three', 'one']
+    assert aliases(search(cm, q='tag:three')) == ['panel-a']           # the catalog follows at once
+    stamp = os.path.getmtime(meta_file(pa))
+    j = web(cm, BOTH, native_action='tags', uid=a, tags=['two', 'three', 'one'])['json']
+    assert j == {'tags': ['two', 'three', 'one'], 'changed': False}, j
+    assert os.path.getmtime(meta_file(pa)) == stamp
+    j = web(cm, BOTH, native_action='tags', uid=a, tags='')['json']
+    assert j['tags'] == [] and j['changed'] and j['old'] == ['two', 'three', 'one'], j
+    assert aliases(search(cm, q='tag:three')) == []
+    j = web(cm, BOTH, native_action='tags', uid=b, tags=['fresh'])['json']
+    assert j == {'tags': ['fresh'], 'changed': True, 'old': []}, j
+    assert tags_of(pb) == ['fresh']
+
+    # the page of the artifact: the tags row with its button - "+ tags" when there are none, "edit tags" otherwise -
+    # for a reader who may write; a reader who may not sees the chips alone, and no row without tags
+    html = cref_page(cm, 'log::panel-a,' + a, BOTH)
+    assert 'id="cxr-tags" data-tags="[]"' in html and 'id="cxr-tags-edit"' in html and '>+ tags<' in html, html
+    html = cref_page(cm, 'log::panel-b,' + b, BOTH)
+    assert 'data-tags="[&quot;fresh&quot;]"' in html and '>edit tags<' in html, html
+    html = cref_page(cm, 'log::panel-b,' + b)                       # a browser elsewhere: it may not write
+    assert 'id="cxr-tags"' in html and 'tag%3Afresh' in html.replace('tag:fresh', 'tag%3Afresh') and 'id="cxr-tags-edit"' not in html, html
+    assert 'id="cxr-tags"' not in cref_page(cm, 'log::panel-a,' + a)
+    # the page carries the shared picker (cserver.browse's picker.js) and its lists' forms use its boxes
+    html = cref_page(cm, 'log::panel-a,' + a, BOTH)
+    assert 'window.cmetaPicker = picker' in html and '<span class="cmp-chips"></span>' in html and 'class="cmp-list"' in html
+    # the page of one file of the artifact (/cref/<cRef>/<file>): that file shown, the page's config naming it
+    html = cref_page(cm, 'log::panel-a,%s/_info.md' % a, BOTH)
+    assert 'A note on panel-a.' in html and '"file": ""' in html and 'The readme of panel-a.' not in html, html[-3000:]
+    with open(os.path.join(pa, 'run.bat'), 'w', encoding='utf-8') as f:
+        f.write('@echo off\r\ncx --reindex\r\n')
+    html = cref_page(cm, 'log::panel-a,%s/run.bat' % a, BOTH)           # a script: shown as a text, coloured
+    assert 'reindex' in html and '"file": ""' in html, html[-3000:]
+    with open(os.path.join(pa, 'pic.png'), 'wb') as f:
+        f.write(b'\x89PNG\r\n\x1a\n' + b'\x00' * 20)
+    html = cref_page(cm, 'log::panel-a,%s/pic.png' % a, BOTH)           # not a text: the file browser opens it
+    assert '"file": "pic.png"' in html, html[-3000:]

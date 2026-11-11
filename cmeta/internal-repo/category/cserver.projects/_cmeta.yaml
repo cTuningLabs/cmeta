@@ -5,8 +5,10 @@ base_category_default_api_versions:
 category: category,dd9ea50e7f76467f
 creation_timestamp: '2026-09-18T14:50:17.078475+00:00'
 desc: 'The home page of cserver: every web page of this cMeta server as cards, found
-  in the index with no registry, with search, pins and copy-URL buttons; under them
-  the version of the server and where cMeta lives.'
+  in the index with no registry, with search, pins and copy-URL buttons - or, with
+  its Customized switch, one''s own view: sections of buttons with names of one''s own,
+  arranged in place and kept as artifacts of this category; under them the version
+  of the server and where cMeta lives.'
 last_api_version: 1
 last_generator:
   agent: Claude Code 2.1.287

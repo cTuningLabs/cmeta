@@ -298,6 +298,31 @@
 .cbr-copy { border: 1px solid var(--cbr-line); background: var(--cbr-card); color: var(--cbr-fg); border-radius: 6px; padding: 2px 7px;
   font-size: 12px; cursor: pointer; }
 .cbr-copy:hover { background: var(--cbr-hover); }
+/* the detail's texts (2026-11-10): a block per text, clamped until "more"; the tags row; the lists that change in
+   place - x on an entry, the picker's form (its own styles come with picker.js: the colours from this page's) */
+#cbr { --cmp-accent: var(--cbr-accent); --cmp-line: var(--cbr-line); --cmp-bg: var(--cbr-card); --cmp-muted: var(--cbr-muted); --cmp-soft: var(--cbr-accent-soft); }
+.cbr-d-tblock { position: relative; margin: 0 0 10px; }
+.cbr-d-tname { font-size: 11.5px; color: var(--cbr-muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 0 0 2px; }
+.cbr-d-text { max-height: 220px; overflow: hidden; font-size: 13.5px; line-height: 1.5; padding: 8px 10px; border: 1px solid var(--cbr-line);
+  border-radius: 8px; background: var(--cbr-card); }
+.cbr-d-tblock.open .cbr-d-text { max-height: none; }
+.cbr-d-text > :first-child { margin-top: 0; } .cbr-d-text > :last-child { margin-bottom: 0; }
+.cbr-d-text h1, .cbr-d-text h2, .cbr-d-text h3 { font-size: 1.05em; margin: 10px 0 4px; }
+.cbr-d-text pre { max-height: 160px; }
+.cbr-d-text img { max-width: 100%; }
+.cbr-d-tbar { display: flex; gap: 6px; margin-top: 3px; }
+.cbr-d-tnew { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.cbr-d-tedit { margin: 4px 0 8px; }
+.cbr-d-flash { margin: 4px 0 8px; padding: 6px 10px; border-left: 3px solid var(--cbr-accent); background: var(--cbr-accent-soft); border-radius: 0 6px 6px 0;
+  font-size: 13px; overflow-wrap: anywhere; }
+.cbr-d-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; margin: 2px 0 4px; }
+.cbr-ladd { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; }
+.cbr-ladd input { flex: 1 1 220px; min-width: 0; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--cbr-line); border-radius: 6px;
+  background: var(--cbr-card); color: var(--cbr-fg); outline: none; }
+.cbr-ladd input:focus { border-color: var(--cbr-accent); box-shadow: 0 0 0 3px var(--cbr-accent-soft); }
+.cbr-lmsg { font-size: 12px; }
+.cbr-lx { margin-left: 6px; }
+.cbr-lx:hover { color: #b42318; border-color: #b42318; }
 .cbr-links { list-style: none; padding: 0; margin: 0; font-size: 13px; max-height: 260px; overflow: auto; }
 .cbr-links li { padding: 2px 0; overflow-wrap: anywhere; }
 .cbr-links .missing { color: var(--cbr-muted); }

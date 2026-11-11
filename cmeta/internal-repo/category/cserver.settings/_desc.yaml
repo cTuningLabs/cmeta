@@ -1,0 +1,4 @@
+# The config keys this page reads: none of its own - what it lists, who may see the values (configs_values) and which
+# repositories are left out (hide_repos) come from cserver.cmeta.configs, whose keys those are.
+
+configs: {}

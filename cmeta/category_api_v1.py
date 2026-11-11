@@ -566,11 +566,15 @@ class Category(InitCategory):
         url: bool = False,  # If True, copy URL with detected cRef to the clipboard.
         name: bool = False,  # If True, copy artifact name to the clipboard
         cref: bool = False,  # If True, the old form cRef=<category>,<UID>::<alias>,<UID> instead of {{{<category>::<alias>,<UID>}}}.
+        plain: bool = False,  # If True, the reference without the braces: <category>::<alias>,<UID> (what a field of a page takes).
+        qplain: bool = False,  # If True, the plain reference in double quotes: "<category>::<alias>,<UID>" (pasted into a command line as one word).
     ):
         """
             Get artifact info. The reference printed and copied is {{{<category>::<alias>,<UID>}}} - how memories,
             records and docs name an artifact (the browse and cref pages make it a link, smart_find_by_cid reads it);
-            --cref gives the full cRef=... that info printed up to cMeta 0.38.9.
+            --plain gives it without the braces (<category>::<alias>,<UID>: what the search of /browse, a picker of a
+            page or cx <category> find takes), --qplain the same in double quotes (one word of a command line, a name
+            with spaces too), --cref the full cRef=... that info printed up to cMeta 0.38.9.
 
             Args:
                 ctx (dict): cMeta context.
@@ -579,6 +583,8 @@ class Category(InitCategory):
                 url (bool): If True, copy URL with detected cRef to the clipboard.
                 name (bool): If True, copy artifact name to the clipboard
                 cref (bool): If True, print and copy cRef=<full cRef> (the form up to 0.38.9).
+                plain (bool): If True, print and copy <category>::<alias>,<UID> - the reference without the braces.
+                qplain (bool): If True, the plain reference in double quotes - one word of a command line, whatever the name holds.
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -613,7 +619,8 @@ class Category(InitCategory):
 
             ref = r['ref']
 
-            # The reference printed and copied: {{{<category>::<alias>,<UID>}}}, or with --cref the full cRef=...
+            # The reference printed and copied: {{{<category>::<alias>,<UID>}}}, with --plain the same without the
+            # braces (2026-11-10, the user: "copy/paste only cRef without {{{}}}"), or with --cref the full cRef=...
             if cref:
                 cref_text = f'cRef={ref}'
             else:
@@ -621,7 +628,7 @@ class Category(InitCategory):
                 if r['return']>0: return r
 
                 category = cmeta_ref_parts.get('category_alias') or cmeta_ref_parts.get('category_uid', '')
-                cref_text = '{{{' + f"{category}::{r['name']}" + '}}}'
+                cref_text = f"{category}::{r['name']}" if plain else f'"{category}::{r["name"]}"' if qplain else '{{{' + f"{category}::{r['name']}" + '}}}'
 
             if con:
                 print ('')

@@ -95,7 +95,7 @@ cx <category> ls                       # list all artifacts
 cx <category> ls --tags=demo,gpu       # tag filter (AND-match)
 cx <category> find <alias-or-uid>      # resolve from the index
 cx <category> read <alias>             # print the artifact's meta
-cx <category> info <alias>             # path + {{{cRef}}} (+ clipboard; --cref: cRef=...)
+cx <category> info <alias>             # path + {{{cRef}}} (+ clipboard; --plain: category::alias,UID without the braces, --qplain: the same in quotes; --cref: cRef=...)
 
 cx <category> add <alias> --tags=t1,t2 --yaml
 cx <category> add <repo>:<alias> --meta.owner="me"
@@ -129,8 +129,13 @@ you don't know which category something lives in — use a cRef with wildcards:
 ```bash
 cx utils find_by_cid "config"            # bare name -> implicit '*::' -> search all categories
 cx utils find_by_cid "*::*server*"       # any artifact containing 'server', any category
+cx utils view_cref work::20261104.x      # the artifact's page (/cref/...) on this machine's cMeta server, in a browser
+cx utils view_cref .                     # ... of the artifact of the current directory ({{{cRef}}}/file opens that file)
+cx config set default --meta.cserver_url=http://my-laptop:8004   # where that server is (default http://127.0.0.1:8004);
+                                                                 # --meta.browser=firefox: a browser that is not the default
 cx utils find_by_cid "cserver*::*"       # everything in categories starting with 'cserver'
 cx utils find_by_cid "*::*" --tags=demo  # ...and filter by tags
+cx utils cref "cserver*::*"              # the same command under the name of what it takes (a cRef)
 ```
 
 Prints the path of each match. Handy flags: `--tags=`, `--skip_non_indexed`

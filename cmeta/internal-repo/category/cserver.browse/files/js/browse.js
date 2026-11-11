@@ -16,6 +16,7 @@
   function $(id) { return document.getElementById(id); }
 
   var THEME_KEY = 'cserver.browse.theme';
+  var SHARED_THEME = 'cmeta.theme';           // the theme of every page of this server (2026-11-10)
   var VIEWS = ['browse', 'search', 'graph'];
   var GCFG = CFG.graph || {max_nodes: 300, max: 1000, depth_max: 12};
 
@@ -219,20 +220,38 @@
   }
 
   /* ------------------------------------------------------------------ theme */
+  // One dark or light for every page of this server (2026-11-10): cmeta.theme in this browser, read first - this
+  // page's own key until there is one, which then becomes the shared one -, written by the switch, and followed when
+  // another page (another tab) changes it
   function applyTheme(dark) {
     root.classList.toggle('dark', !!dark);
     document.body.style.backgroundColor = dark ? getComputedStyle(root).getPropertyValue('--cbr-bg').trim() : '';
   }
+  function setDark(dark) {
+    applyTheme(dark);
+    if (graph) graph.setDark(dark);
+    if (gdata) drawLegend(gdata);
+  }
   function initTheme() {
     var stored = null;
-    try { stored = localStorage.getItem(THEME_KEY) || localStorage.getItem('cserver.projects.theme'); } catch (e) { /* ignore */ }
+    try {
+      stored = localStorage.getItem(SHARED_THEME);
+      if (!stored) {
+        stored = localStorage.getItem(THEME_KEY) || localStorage.getItem('cserver.projects.theme');
+        if (stored) localStorage.setItem(SHARED_THEME, stored);
+      }
+    } catch (e) { /* ignore */ }
     applyTheme(stored ? stored === 'dark' : !!CFG.dark_mode);
     $('cbr-theme').addEventListener('click', function () {
       var dark = !root.classList.contains('dark');
-      applyTheme(dark);
-      try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
-      if (graph) graph.setDark(dark);
-      if (gdata) drawLegend(gdata);
+      setDark(dark);
+      try {
+        localStorage.setItem(SHARED_THEME, dark ? 'dark' : 'light');
+        localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+      } catch (e) { /* ignore */ }
+    });
+    window.addEventListener('storage', function (e) {
+      if (e.key === SHARED_THEME && e.newValue && (e.newValue === 'dark') !== root.classList.contains('dark')) setDark(e.newValue === 'dark');
     });
   }
 
@@ -750,6 +769,7 @@
     return h('div', {class: 'cbr-cmd'}, h('code', {}, text), b);
   }
   var detailToken = 0;       // a later open or a close wins over an answer still on its way
+  var detailFlash = null;    // what a change made in the panel said, shown when the panel is drawn again (2026-11-10)
   function openDetail(uid, file) {
     if (!uid) return;
     st.uid = uid;
@@ -766,6 +786,8 @@
       close.addEventListener('click', closeDetail);
       var full = h('a', {class: 'cbr-btn cbr-d-full', href: crefUrl(d.row.cat, d.row.alias, d.row.uid), title: 'The page of this artifact'}, 'Open full view');
       box.appendChild(h('div', {class: 'cbr-d-head'}, h('h2', {}, d.row.alias), full, close));
+      if (detailFlash && detailFlash.uid === uid) box.appendChild(h('div', {class: 'cbr-d-flash'}, detailFlash.text));
+      detailFlash = null;
       if (d.row.name && d.row.name !== d.row.alias) box.appendChild(h('div', {class: 'cbr-d-name'}, d.row.name));
       box.appendChild(cmdLine(d.cref));
       var facts = h('table', {class: 'cbr-d-facts'});
@@ -791,17 +813,65 @@
         } else m.appendChild(document.createTextNode(d.row.migrated_to));
         box.appendChild(m);
       }
-      if (d.row.tags && d.row.tags.length) {
-        var tg = h('div');
-        d.row.tags.forEach(function (t) { tg.appendChild(chip(t)); });
-        box.appendChild(tg);
-      }
+      // the tags (2026-11-10: edited here too - the chips, "edit tags" opens a field with all of them in order)
+      var canList = !!d.edit;                       // the lists and the tags: a viewer who may write to the artifact
+      if ((d.row.tags && d.row.tags.length) || canList) box.appendChild(tagsRow(d));
       box.appendChild(focusBar(crefOf(d.row.cat_uid, d.row.uid)));
-      linkList(box, 'Connects to', d.connections, function (c) { return c.cref; });
+      // the texts (2026-11-10): README.md, _info.md, the file the view names - as the artifact page renders them;
+      // edited in place by a viewer who may save files here (the user: "edit Readme/_note in the sub-view too"), a
+      // missing README.md or _info.md made the same way
+      var canText = !!d.edit && !!d.files;          // the texts are saved through the file browser, under its rules
+      var texts = d.texts || [];
+      if (texts.length || canText) {
+        box.appendChild(h('h3', {}, 'Text'));
+        texts.forEach(function (t) {
+          var tx = h('div', {class: 'cbr-d-text'});
+          tx.innerHTML = t.html;
+          var wrap = h('div', {class: 'cbr-d-tblock', 'data-rel': t.rel}, h('div', {class: 'cbr-d-tname'}, t.rel), tx);
+          var bar = h('div', {class: 'cbr-d-tbar'});
+          var more = h('button', {type: 'button', class: 'cbr-mini cbr-d-more'}, 'more');
+          more.addEventListener('click', function () { var open = wrap.classList.toggle('open'); more.textContent = open ? 'less' : 'more'; });
+          bar.appendChild(more);
+          if (canText) {
+            var eb = h('button', {type: 'button', class: 'cbr-mini cbr-d-tedit', title: 'Edit ' + t.rel + ' here (Ctrl+S saves)'}, 'edit');
+            eb.addEventListener('click', function () { textEdit(d, t.rel, wrap, false); });
+            bar.appendChild(eb);
+          }
+          wrap.appendChild(bar);
+          box.appendChild(wrap);
+          // "more" only when the text is cut (measured once the panel is shown)
+          requestAnimationFrame(function () { if (tx.scrollHeight <= tx.clientHeight + 4) more.hidden = true; });
+        });
+        if (canText) {
+          var have = texts.map(function (t) { return String(t.rel).toLowerCase(); });
+          var row = h('div', {class: 'cbr-d-tnew'});
+          TEXT_NEW.forEach(function (n) {
+            if (n.names.some(function (x) { return have.indexOf(x.toLowerCase()) >= 0; })) return;
+            var nb = h('button', {type: 'button', class: 'cbr-mini', title: n.hint}, '+ ' + n.names[0]);
+            nb.addEventListener('click', function () {
+              var ex = box.querySelector('.cbr-d-tblock.cbr-new[data-rel="' + n.names[0] + '"]');
+              if (ex) { var ta = ex.querySelector('textarea'); if (ta) ta.focus(); return; }
+              var blk = h('div', {class: 'cbr-d-tblock cbr-new', 'data-rel': n.names[0]}, h('div', {class: 'cbr-d-tname'}, n.names[0]));
+              box.insertBefore(blk, row);
+              textEdit(d, n.names[0], blk, true);
+            });
+            row.appendChild(nb);
+          });
+          if (row.childNodes.length) box.appendChild(row);
+        }
+      }
+      // the connections apart (2026-11-10): with (both name each other), to (this _desc only), from (the other's only);
+      // the AI uses; each with a picker and x where this viewer may write
+      var links = d.connections || [];
+      var withL = links.filter(function (c) { return c.mutual; }), toL = links.filter(function (c) { return !c.mutual; });
+      var fromL = (d.incoming || []).filter(function (c) { return !c.mutual; });
+      var nFrom = (d.incoming_total || (d.incoming || []).length) - ((d.incoming || []).length - fromL.length);
+      editList(box, d, 'Connected with', withL, {key: 'connections', both: true, hint: 'connect with: type a name or a word, pick one, ";" for the next - both name each other'});
+      editList(box, d, 'Connected to', toL, {key: 'connections', both: false, hint: 'connect to: type a name or a word, pick one - this artifact\'s _desc only'});
       linkList(box, 'Uses', d.uses, function (c) { return c.ref; });
-      linkList(box, 'AI uses (reads the memory and skills of)', d.ai_uses, function (c) { return c.cref; });
+      editList(box, d, 'AI uses (reads the memory and skills of)', d.ai_uses || [], {key: 'ai_uses', both: false, hint: 'an AI context: its short name, a name or a cRef'});
       if (d.index && d.index.ready) {
-        linkList(box, 'Connected from', d.incoming, null, d.incoming_total);
+        linkList(box, 'Connected from', fromL, null, nFrom);
       } else if (d.index) {
         box.appendChild(h('h3', {}, 'Connected from'));
         box.appendChild(h('p', {class: 'cbr-muted'}, 'The connections are still being read (' + num(d.index.done) +
@@ -935,6 +1005,111 @@
         ' more: focus the graph here to see them all'));
     }
     box.appendChild(ul);
+  }
+
+  // A list of the detail that a viewer who may write changes in place (2026-11-10): x removes an entry (a connection
+  // from both sides, where this viewer may write there), the picker adds (cmetaPicker of picker.js: searched as one
+  // types, chips, ";" for the next; "with" written on both sides); the panel is read again after a change
+  function editList(box, d, title, items, opts) {
+    var can = !!d.edit && !!window.cmetaPicker;
+    if (!items.length && !can) return;
+    box.appendChild(h('h3', {}, title + (items.length ? ' (' + num(items.length) + ')' : '')));
+    var ul = h('ul', {class: 'cbr-links'});
+    items.forEach(function (c) {
+      var li = h('li');
+      if (c.found === false) li.appendChild(h('span', {class: 'missing', title: 'not shown by this server'}, c.alias || c.cref));
+      else {
+        var a = h('a', {href: '#', title: c.cref || c.alias}, c.alias);
+        a.addEventListener('click', function (e) { e.preventDefault(); openDetail(c.uid); });
+        li.appendChild(a);
+        li.appendChild(h('span', {class: 'cbr-muted'}, '  ' + (c.cat || '')));
+      }
+      if (can && c.cref && !c.meta) {
+        var x = h('button', {type: 'button', class: 'cbr-mini cbr-lx', title: opts.key === 'connections' ? 'Remove this connection (from the other artifact too, where it names this one)' : 'Remove it from the AI uses'}, '×');
+        x.addEventListener('click', function () {
+          if (!confirm('Remove ' + c.alias + ' from "' + title + '"?')) return;
+          x.disabled = true;
+          call('link', {uid: d.row.uid, key: opts.key, remove: c.cref}, 'removing')
+            .then(function (r) { note(r); openDetail(d.row.uid); })
+            .catch(function (e) { x.disabled = false; showError(e.message); });
+        });
+        li.appendChild(x);
+      }
+      ul.appendChild(li);
+    });
+    if (!items.length) ul.appendChild(h('li', {class: 'cbr-muted'}, 'none yet'));
+    box.appendChild(ul);
+    if (!can) return;
+    var f = h('form', {class: 'cbr-ladd', autocomplete: 'off'}, h('input', {type: 'text', placeholder: opts.hint, 'aria-label': 'Add to ' + title, spellcheck: 'false'}),
+              h('button', {type: 'submit', class: 'cbr-mini'}, 'Add'));
+    var msg = h('span', {class: 'cbr-muted cbr-lmsg'});
+    f.appendChild(msg);
+    box.appendChild(f);
+    window.cmetaPicker(f, {api: function (action, p) { return call(action, p); }, self: d.row.uid, key: opts.key, submit: function (all) {
+      msg.textContent = '';
+      return call('link', {uid: d.row.uid, key: opts.key, add: all.join(';'), both: opts.both ? '1' : ''}, 'connecting')
+        .then(function (r) { if (!(r.changes || []).length) { msg.textContent = ((r.warnings || []).join('; ')) || 'nothing changed'; return true; } note(r); openDetail(d.row.uid); })
+        .catch(function (e) { msg.textContent = e.message; return true; });
+    }});
+    function note(r) {
+      var l = (r.changes || []).map(function (c) { return c.charAt(0) === '+' ? 'added ' + c.slice(2) : c.charAt(0) === '-' ? 'removed ' + c.slice(2) : c; }).concat(r.warnings || []);
+      if (l.length) detailFlash = {uid: d.row.uid, text: l.join('; ')};
+    }
+  }
+  // The texts a panel offers to make when they are missing (as the artifact page does): the names each may have, the
+  // first is the one made
+  var TEXT_NEW = [{names: ['README.md', 'readme.md'], hint: 'A README: what this artifact is - the page shows it first'},
+                  {names: ['_info.md'], hint: 'A note of your own, shown after the README'}];
+  // A text of the detail edited where it is read (2026-11-10): the block's rendering gives way to the editor (the
+  // file browser's: the text with the fingerprint it was read with, Ctrl+S saves), a missing text starts empty; after
+  // a save the panel is drawn again with the new text, cancel puts the rendering back (or takes a new block away)
+  function textEdit(d, rel, block, isNew) {
+    if (block.querySelector('.cbr-editor')) return;
+    var kids = Array.prototype.slice.call(block.children);
+    var view = h('div', {class: 'cbr-d-tedit'});
+    function start(j) {
+      kids.forEach(function (k) { k.hidden = true; });
+      block.appendChild(view);
+      editFile(d.row.uid, j, view, function (r) {
+        detailFlash = {uid: d.row.uid, text: (r.created ? 'made ' : 'saved ') + rel + ((r.warnings || []).length ? '; ' + r.warnings.join('; ') : '')};
+        openDetail(d.row.uid);
+      }, function () {
+        view.remove();
+        if (isNew) block.remove(); else kids.forEach(function (k) { k.hidden = false; });
+      });
+      view.scrollIntoView({block: 'nearest'});
+    }
+    if (isNew) { start({rel: rel, text: '', stamp: ''}); return; }
+    call('file', {uid: d.row.uid, rel: rel}, 'reading ' + rel).then(function (j) {
+      if (j.kind === 'text' && j.editable && j.stamp) start(j);
+      else toast(rel + ': ' + (j.truncated ? 'too large to edit here' : 'not editable here'), true);
+    }).catch(function (e) { toast(e.message, true); });
+  }
+  // the tags of the detail (2026-11-10): the chips, and for a viewer who may write "edit tags" - a field with all of
+  // them in order (commas or spaces between them: add, remove, reorder), Save through the tags action
+  function tagsRow(d) {
+    var tg = h('div', {class: 'cbr-d-tags'});
+    (d.row.tags || []).forEach(function (t) { tg.appendChild(chip(t)); });
+    if (!d.edit) return tg;
+    var eb = h('button', {type: 'button', class: 'cbr-mini cbr-d-tags-edit', title: 'Add, remove or reorder the tags'}, (d.row.tags || []).length ? 'edit tags' : '+ tags');
+    eb.addEventListener('click', function () {
+      if (tg.querySelector('form')) return;
+      var inp = h('input', {type: 'text', 'aria-label': 'The tags', spellcheck: 'false', placeholder: 'the tags, in order - commas or spaces between them'});
+      inp.value = (d.row.tags || []).join(', ');
+      var f = h('form', {class: 'cbr-ladd', autocomplete: 'off'}, inp, h('button', {type: 'submit', class: 'cbr-mini'}, 'Save'));
+      var cn = h('button', {type: 'button', class: 'cbr-mini'}, 'cancel'), msg = h('span', {class: 'cbr-muted cbr-lmsg'});
+      cn.addEventListener('click', function () { f.remove(); eb.hidden = false; });
+      f.appendChild(cn); f.appendChild(msg);
+      f.addEventListener('submit', function (e) {
+        e.preventDefault();
+        call('tags', {uid: d.row.uid, tags: inp.value}, 'saving the tags')
+          .then(function (r) { if (!r.changed) { msg.textContent = 'nothing changed'; return; } detailFlash = {uid: d.row.uid, text: 'tags: ' + ((r.tags || []).join(', ') || 'none')}; openDetail(d.row.uid); })
+          .catch(function (er) { msg.textContent = er.message; });
+      });
+      tg.appendChild(f); eb.hidden = true; inp.focus();
+    });
+    tg.appendChild(eb);
+    return tg;
   }
 
   /* ------------------------------------------------------------------ the files of one artifact */
@@ -1071,7 +1246,8 @@
   // _cmeta (and reindexes it), and refuses a file changed meanwhile (the fingerprint it gave with the text).
   var DESC_TEMPLATE = '# What this artifact declares: links to other artifacts (connections), what it runs (uses),\n' +
                       '# whose memory its AI sessions read (ai_uses), and any facts of its own.\nconnections: []\n';
-  function editFile(uid, j, view) {
+  // after: what to do once saved (the texts of the detail, 2026-11-10: the panel drawn again); cancelled: on cancel
+  function editFile(uid, j, view, after, cancelled) {
     view.innerHTML = '';
     var ta = h('textarea', {class: 'cbr-editor', spellcheck: 'false', wrap: 'off'});
     ta.value = j.text || (j.rel === '_desc.yaml' && !j.stamp ? DESC_TEMPLATE : '');
@@ -1085,12 +1261,13 @@
       call('save', {uid: uid, rel: j.rel, text: ta.value, stamp: j.stamp || ''}, 'saving ' + j.rel).then(function (r) {
         toast('saved ' + r.saved + (r.reindexed ? ' - the artifact is reindexed' : ''));
         (r.warnings || []).forEach(function (w) { toast(w, true); });
-        if (/^_(cmeta|desc)\./i.test(j.rel)) openDetail(uid);      // the meta and the description on the page follow
+        if (after) after(r);
+        else if (/^_(cmeta|desc)\./i.test(j.rel)) openDetail(uid);      // the meta and the description on the page follow
         else openFile(uid, j.rel, view);
       }).catch(function (e) { save.disabled = false; msg.textContent = e.message; });
     }
     save.addEventListener('click', doSave);
-    cancel.addEventListener('click', function () { if (j.stamp) openFile(uid, j.rel, view); else view.innerHTML = ''; });
+    cancel.addEventListener('click', function () { if (cancelled) cancelled(); else if (j.stamp) openFile(uid, j.rel, view); else view.innerHTML = ''; });
     ta.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); doSave(); }
       else if (e.key === 'Tab') {                // two spaces, as YAML wants

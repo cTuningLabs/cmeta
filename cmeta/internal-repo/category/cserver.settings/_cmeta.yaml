@@ -1,0 +1,29 @@
+artifact: 5af988a5d810498f
+category: category,dd9ea50e7f76467f
+authors: Grigori Fursin
+creation_timestamp: '2026-11-10T19:40:00.000000+00:00'
+generator:
+  method: agent
+  agent: Claude Code 2.1.310
+  via: cmeta 0.38.12
+  by: Grigori Fursin
+last_api_version: 1
+base_category_default_api_versions:
+  '1': 1
+
+name: Settings - every config key of this machine in one list, searched and changed in place
+desc: 'The config artifacts of this machine (cx config set <name> --meta.<key>=<value>) and every key the plugged
+  artifacts read from them, as /cmeta.configs knows them - what each key does, its type and default, who reads it,
+  its value here -, in one list a search box prunes, with a field or a switch per key: a change is saved at once
+  (the engine''s config set, the value typed as the key is), Reset takes a key out, Undo in the message. From a
+  browser on this machine or one past the server''s password; never through the cTuning platform.'
+tags:
+- cserver
+- web
+- config
+- configs
+- settings
+
+uses_categories:
+  config: config,cc6bfe174be847ed
+  cserver.cmeta.configs: cserver.cmeta.configs,cc8dd8bdf9fe4132

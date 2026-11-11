@@ -14,3 +14,18 @@ configs:
       api_key:
         desc: the personal API key of the cTuning.ai platform, sent as the x-api-key header
         secret: true
+
+  # cx utils view_cref (2026-11-10): where the pages of this machine's cMeta server are, and the browser that opens them
+  default:
+    keys:
+      cserver_url:
+        desc: the address of this machine's cMeta server as a browser reaches it - cx utils view_cref opens /cref/<cRef>
+          there; unset = http://127.0.0.1:<the port of the cserver config, 8004>; the machine's own name when its pages
+          are read from other machines too (http://my-laptop:8004)
+        type: url
+        example: http://my-laptop:8004
+      browser:
+        desc: the browser cx utils view_cref opens pages with - a name Python's webbrowser knows (chrome, firefox,
+          safari), or the command or path of one ("%s" stands for the address); unset = the system's default browser
+        type: text
+        example: firefox

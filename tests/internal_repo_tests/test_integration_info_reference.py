@@ -52,6 +52,15 @@ def test_info_prints_and_copies_the_braces_reference_and_cref_the_old_form(cm, c
     assert old in out.splitlines() and '{{{' not in out, out
     assert cm.copied[-1] == old
 
+    # --plain (2026-11-10): the reference without the braces, printed and copied
+    out = info(cm, capsys, plain=True)
+    plain = 'config::my-notes,' + uid
+    assert plain in out.splitlines() and '{{{' not in out and 'cRef=' not in out, out
+    assert cm.copied[-1] == plain
+    # --qplain: the same in double quotes - one word of a command line
+    out = info(cm, capsys, qplain=True)
+    assert '"' + plain + '"' in out.splitlines() and cm.copied[-1] == '"' + plain + '"', out
+
     # --name copies the name, --clip- copies nothing; the parts are printed as before
     info(cm, capsys, name=True)
     assert cm.copied[-1] == 'my-notes,' + uid
