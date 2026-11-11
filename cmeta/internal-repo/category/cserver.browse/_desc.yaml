@@ -13,6 +13,14 @@ configs:
           never show), none = every category
         type: list
         default: '*crypt*,*secret*,*credential*'
+      browse_search_skip_keys:
+        desc: the keys of the meta and the _desc whose values the plain words of a search do not read (the dashboard, the pages and
+          /browse search the same way) - patterns on the dotted key or any part in front (generator skips
+          generator.by); unset = the authorship every artifact carries, so that a name finds the artifacts about it,
+          not all of them; none = every value searched; the key qualifiers (authors:x, has:x) read every key
+        type: list
+        default: copyright,control,authors,contributors,generator,last_generator,artifact_defaults
+        example: copyright,control,authors,contributors,generator,last_generator,artifact_defaults,owner
       browse_files:
         desc: yes = the file browser for everyone the server lets in, no = for no one; unset = a browser on the
           server's own machine only

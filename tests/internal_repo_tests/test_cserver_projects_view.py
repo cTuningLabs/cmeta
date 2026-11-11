@@ -183,6 +183,98 @@ def test_a_button_deleted_and_put_back(cm):
     assert 'already' in act(cm, 'view_restore', removed=d['removed'])['error']
 
 
+def test_an_empty_section_by_its_name_alone(cm):
+    """'+ Section' (2026-11-11): a section by its name alone - its record (kind: section, the section, its order; no
+    title, page or address) at the end of the view, in the repository of the view; listed among the sections and the
+    markers, never as a button; a button put into it lands there, the section keeps its place; it moves and is
+    renamed with its section; a name a section has is refused; its record deleted and put back."""
+    v = made(cm)
+    assert v['sections'] == ['internal', 'mine'] and v['markers'] == []
+    s = ok(act(cm, 'view_section', section='Later'))
+    assert s['section'] == 'Later' and s['created']
+    v = view(cm)
+    assert v['sections'] == ['internal', 'mine', 'Later'] and v['markers'] == [{'uid': s['uid'], 'section': 'Later'}]
+    assert len(v['buttons']) == 4 and v['count'] == 4 and 'Later' not in [b['section'] for b in v['buttons']]
+    # its file: the kind, the section, the order - nothing of a button
+    rec = cm.access({'category': 'cserver.projects', 'command': 'find', 'arg1': s['uid'], 'con': False})['artifacts'][0]
+    with open(os.path.join(rec['path'], '_desc.yaml'), encoding='utf-8') as f:
+        d = yaml.safe_load(f)
+    assert d['kind'] == 'section' and d['section'] == 'Later' and isinstance(d['order'], (int, float)) and \
+        not any(k in d for k in ('title', 'page', 'url')), d
+    assert rec['cmeta_ref_parts']['repo_alias'] == 'mine'
+    # refused: an empty name, a name a section has (a case apart)
+    assert 'section' in act(cm, 'view_section', section='  ')['error']
+    assert 'already' in act(cm, 'view_section', section='later')['error']
+    assert 'already' in act(cm, 'view_section', section='MINE')['error']
+    # a button into it: there, the section keeps its place; moved before "mine": its record goes with it
+    t = by_title(v)
+    ok(act(cm, 'view_arrange', uid=t['Settings']['uid'], section='later'))       # a case apart: the section's name
+    v = view(cm)
+    assert v['sections'] == ['internal', 'mine', 'Later'] and by_title(v)['Settings']['section'] == 'Later'
+    ok(act(cm, 'view_arrange', move_section='Later', before_section='mine'))
+    assert view(cm)['sections'] == ['internal', 'Later', 'mine']
+    ok(act(cm, 'view_arrange', uid=t['Settings']['uid'], section='internal'))   # empty again: still there, in its place
+    v = view(cm)
+    assert v['sections'] == ['internal', 'Later', 'mine'] and [m['section'] for m in v['markers']] == ['Later']
+    # renamed: its record follows; a new button by its name lands in it
+    ok(act(cm, 'view_arrange', section='Later', rename='Soon'))
+    v = view(cm)
+    assert v['sections'] == ['internal', 'Soon', 'mine'] and v['markers'][0]['section'] == 'Soon'
+    nb = ok(act(cm, 'view_save', url='https://example.org', title='Example', section='soon'))['button']
+    assert nb['section'] == 'Soon' and view(cm)['sections'] == ['internal', 'Soon', 'mine']
+    ok(act(cm, 'view_discard', uid=nb['uid']))
+    # a record is not a button: no change, no move of it as one
+    assert 'no button' in act(cm, 'view_save', uid=s['uid'], title='x')['error']
+    assert 'no button' in act(cm, 'view_arrange', uid=s['uid'], section='mine')['error']
+    # removed (x of an empty section) and put back (Undo)
+    d = ok(act(cm, 'view_discard', uid=s['uid']))
+    assert view(cm)['sections'] == ['internal', 'mine'] and view(cm)['markers'] == []
+    back = ok(act(cm, 'view_restore', removed=d['removed']))['button']
+    v = view(cm)
+    assert back['uid'] == s['uid'] and v['sections'] == ['internal', 'Soon', 'mine'] and v['markers'][0]['uid'] == s['uid']
+    # the terminal shows it empty; "Make my view" still refuses while buttons exist
+    r = cm.access({'category': 'cserver.projects', 'command': 'view', 'con': False})
+    assert r['return'] == 0 and r['sections'] == ['internal', 'Soon', 'mine']
+    assert 'there is a view already' in act(cm, 'view_make', repo='mine')['error']
+
+
+def test_a_button_ends_its_line(cm):
+    """newline (2026-11-11, the user: "some toggle that forces next button on a new line so that I could also group
+    multiple buttons per line"): saved with a new button or a change, in its _desc.yaml as `newline: true` (absent when
+    not), given back by the view, kept by a change of something else, part of what Undo gives back, kept by restore."""
+    v = made(cm)
+    t = by_title(v)
+    assert not any(b['newline'] for b in v['buttons'])
+    ch = ok(act(cm, 'view_save', uid=t['cMeta browse']['uid'], newline='yes'))
+    assert ch['changed'] and ch['button']['newline'] is True and ch['old']['newline'] is False
+    v = view(cm)
+    assert by_title(v)['cMeta browse']['newline'] is True and by_title(v)['cMeta configs']['newline'] is False
+    rec = cm.access({'category': 'cserver.projects', 'command': 'find', 'arg1': t['cMeta browse']['uid'], 'con': False})['artifacts'][0]
+    with open(os.path.join(rec['path'], '_desc.yaml'), encoding='utf-8') as f:
+        assert yaml.safe_load(f).get('newline') is True
+    ok(act(cm, 'view_save', uid=t['cMeta browse']['uid'], note='a note'))      # something else changed: kept
+    assert by_title(view(cm))['cMeta browse']['newline'] is True
+    nb = ok(act(cm, 'view_save', url='https://example.org', title='Example', section='mine', newline='yes'))['button']
+    assert nb['newline'] is True
+    d = ok(act(cm, 'view_discard', uid=nb['uid']))
+    assert d['removed']['desc'].get('newline') is True
+    assert ok(act(cm, 'view_restore', removed=d['removed']))['button']['newline'] is True
+    ok(act(cm, 'view_save', uid=t['cMeta browse']['uid'], newline='no'))
+    with open(os.path.join(rec['path'], '_desc.yaml'), encoding='utf-8') as f:
+        assert 'newline' not in yaml.safe_load(f)
+
+
+def test_a_section_made_before_any_button_and_the_view_made_after(cm):
+    """An empty section in a home without a view yet: kept in the repository the view would be made in; "Make my view"
+    is not refused because of it (it counts buttons only)."""
+    s = ok(act(cm, 'view_section', section='First'))
+    v = view(cm)
+    assert v['sections'] == ['First'] and v['buttons'] == [] and v['markers'][0]['uid'] == s['uid']
+    ok(act(cm, 'view_make', repo='mine'))
+    v = view(cm)
+    assert v['sections'][0] == 'First' and len(v['buttons']) == 4 and len(v['markers']) == 1
+
+
 def test_pages_this_machine_does_not_have_and_hidden_repositories(cm):
     made(cm)
     ok(act(cm, 'view_save', page='monitor?watch=x', section='Elsewhere'))

@@ -1350,7 +1350,7 @@ takes about 0.1 s on the server. A spinner shows during every wait.
 
 | Query | Meaning |
 |---|---|
-| `word "a phrase"` | in the alias, UID, tags, any value of the meta or the text of the `_desc` - not its `connections`, `uses` and `ai_uses` lists, which the graph shows (case-insensitive) |
+| `word "a phrase"` | in the alias, UID, tags, the values of the meta (never its key names; not the values of the keys `browse_search_skip_keys` leaves out - the authorship, see below) or the text of the `_desc` - not its `connections`, `uses` and `ai_uses` lists, which the graph shows (case-insensitive) |
 | `-word` | in none of them |
 | `repo:<name>` `cat:<name>` | a repository / category: alias, UID or the part after `@`; several = any of them |
 | `tag:<tag>` `-tag:<tag>` | has / has not this tag |
@@ -1419,6 +1419,14 @@ On a shared server:
 - `browse_hide_categories` leaves categories out. By default it leaves out anything
   matching `*crypt*`, `*secret*` or `*credential*`, so that key bundles never show; `none`
   shows every category.
+- `browse_search_skip_keys` names the keys of the meta and the `_desc` whose values the plain
+  words of a search do not read (the key names are never read). By default `copyright`, `control`,
+  `authors`, `contributors`, `generator`, `last_generator` and `artifact_defaults`: the authorship every artifact carries, so
+  that a person's name finds the artifacts about them, not every artifact they made.
+  Patterns, on the dotted key or any part in front (`generator` covers `generator.by`);
+  `none` searches every value. The key qualifiers (`authors:lovelace`, `has:copyright`) read
+  every key whatever the setting. The dashboard and the pages that search through `/browse`
+  follow it; a change takes effect at the next search.
 - An artifact's local path, its files and the open buttons are only for a browser on the
   server's own machine: the engine `cserver` tells the page when the request comes from a
   loopback address, with no proxy header and a `Host` that names the machine (`localhost`,

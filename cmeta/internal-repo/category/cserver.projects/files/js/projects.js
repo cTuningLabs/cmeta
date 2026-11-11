@@ -82,15 +82,21 @@
         n++;
       });
       if (editing && !ws.length) {
-        /* every section in Edit, also one the search leaves empty */
-        (view.sections || []).forEach(function (s) { if (!by.hasOwnProperty(s)) { by[s] = []; order.push(s); } });
+        /* every section in Edit, in its place - an empty one too (2026-11-11: "+ Section" makes one by its name alone) */
+        var all = (view.sections || []).slice();
+        order.forEach(function (s) { if (all.indexOf(s) < 0) { all.push(s); } });
+        all.forEach(function (s) { if (!by.hasOwnProperty(s)) { by[s] = []; } });
+        order = all;
       }
-      if (!(view.buttons || []).length) { el.appendChild(h('div', { 'class': 'cpj-empty-view' }, opts.empty ? opts.empty() : 'No view yet.')); }
+      if (!(view.buttons || []).length && !(editing && order.length)) {
+        el.appendChild(h('div', { 'class': 'cpj-empty-view' }, opts.empty ? opts.empty() : 'No view yet.'));
+      }
       order.forEach(function (s) { el.appendChild(sectionEl(s, by[s])); });
       if (editing) {
-        var ns = h('button', { type: 'button', 'class': 'cpj-btn cpj-newsec', title: 'A new section: its name and its first button' }, '+ Section');
-        ns.addEventListener('click', function () { openForm(null, ''); });
-        el.appendChild(h('div', { 'class': 'cpj-sfoot' }, ns));
+        var ns = h('button', { type: 'button', 'class': 'cpj-btn cpj-newsec', title: 'A new section: its name (then drag buttons into it, or "+" in it)' }, '+ Section');
+        var foot = h('div', { 'class': 'cpj-sfoot' }, ns);
+        ns.addEventListener('click', function () { startNewSection(foot, ns); });
+        el.appendChild(foot);
       }
       var loose = (view.loose || []).filter(function (l) { return hits(l, ws); });
       if (loose.length && (view.buttons || []).length) { el.appendChild(looseEl(loose)); }
@@ -126,9 +132,20 @@
                                 'aria-label': 'Rename the section ' + s }, '\u270e');
         ren.addEventListener('click', function () { startRename(s, title, name); });
         title.appendChild(ren);
+        /* an empty section made by "+ Section": x removes it (its record); a section with buttons goes with them */
+        var marks = (view.markers || []).filter(function (m) { return m.section === s; });
+        if (!list.length && marks.length) {
+          var rm = h('button', { type: 'button', 'class': 'cpj-mini cpj-srm', title: 'Remove this empty section',
+                                 'aria-label': 'Remove the empty section ' + s }, '\u00d7');
+          rm.addEventListener('click', function () { removeSection(s, marks); });
+          title.appendChild(rm);
+        }
       }
       var pills = h('div', { 'class': 'cpj-pills' });
-      list.forEach(function (b) { pills.appendChild(pillEl(b)); });
+      list.forEach(function (b) {
+        pills.appendChild(pillEl(b));
+        if (b.newline) { pills.appendChild(h('span', { 'class': 'cpj-break', 'aria-hidden': 'true' })); }   /* the next one on a new line */
+      });
       if (editing) {
         var add = h('button', { type: 'button', 'class': 'cpj-pill cpj-addpill', title: 'A new button in ' + s, 'aria-label': 'A new button in ' + s }, '+');
         add.addEventListener('click', function () { openForm(null, s); });
@@ -255,6 +272,66 @@
           return changed().then(function () {
             flash(k.uid);
             toastUndo('Added: ' + k.title + ' - ' + k.section, function () { discardIt(k, true); });
+          });
+        })
+        .catch(failed);
+    }
+
+    /* ------------------------------------------------------- a new, empty section: its name alone */
+    function startNewSection(foot, btn) {
+      closeRename();
+      if (foot.querySelector('.cpj-sin')) { foot.querySelector('.cpj-sin').focus(); return; }
+      var input = h('input', { type: 'text', 'class': 'cpj-sin cpj-newsin', maxlength: '100', placeholder: 'the name of the new section',
+                               'aria-label': 'The name of the new section' });
+      btn.hidden = true;
+      foot.insertBefore(input, btn);
+      var done = false;
+      function close(refocus) {
+        if (done) { return; }
+        done = true;
+        input.remove();
+        btn.hidden = false;
+        if (refocus) { btn.focus(); }
+      }
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
+      });
+      input.addEventListener('blur', function () { setTimeout(function () { if (!input.disabled && !input.value.trim()) { close(); } }, 150); });
+      function submit() {
+        var name = input.value.trim();
+        if (!name) { close(true); return; }
+        var low = name.toLowerCase();
+        var have = (view.sections || []).filter(function (x) { return x.toLowerCase() === low; })[0];
+        if (have) { toast('There is a section ' + have + ' already', true); input.select(); return; }
+        input.disabled = true;
+        call('section', { section: name })
+          .then(function (res) {
+            done = true;
+            return changed().then(function () {
+              var sEl = el.querySelector('.cpj-sec[data-section="' + cssEsc(res.section) + '"]');
+              if (sEl) { sEl.scrollIntoView({ block: 'nearest' }); sEl.classList.add('cpj-flash'); }
+              toastUndo('Added the section ' + res.section, function () {
+                call('discard', { uid: res.uid }).then(changed).then(function () { toast('Removed again: ' + res.section); }).catch(failed);
+              });
+            });
+          })
+          .catch(function (e) { toast(e.message, true); input.disabled = false; input.focus(); });
+      }
+      input.focus();
+    }
+    /* an empty section removed: its record(s) deleted, put back by Undo */
+    function removeSection(s, marks) {
+      var removed = [];
+      marks.reduce(function (p, m) {
+        return p.then(function () { return call('discard', { uid: m.uid }).then(function (res) { removed.push(res.removed); }); });
+      }, Promise.resolve())
+        .then(function () {
+          return changed().then(function () {
+            toastUndo('Removed the empty section ' + s, function () {
+              removed.reduce(function (p, r) { return p.then(function () { return call('restore', { removed: r }); }); }, Promise.resolve())
+                .then(changed).then(function () { toast('Back: ' + s); }).catch(failed);
+            });
           });
         })
         .catch(failed);
@@ -387,6 +464,7 @@
     function uidAfter(pill) {
       for (var n = pill.nextElementSibling; n; n = n.nextElementSibling) {
         if (drag && n === drag.src) { continue; }
+        if (n.classList.contains('cpj-break')) { continue; }        /* a line break is no button */
         return n.getAttribute('data-uid') || '';
       }
       return '';
@@ -482,6 +560,7 @@
       var secs = h('datalist', { id: 'cpj-secs-' + id });
       var section = h('input', { type: 'text', name: 'section', list: 'cpj-secs-' + id, maxlength: '100', placeholder: 'its section' });
       var star = h('input', { type: 'checkbox', name: 'star' });
+      var newline = h('input', { type: 'checkbox', name: 'newline' });
       var note = h('textarea', { name: 'note', rows: '2', maxlength: '1000', placeholder: 'optional: a line shown when it is pointed at' });
       row('Title', title, 'Empty: the heading of its page\'s card, or the name of its site');
       row('Page', target, 'A page of this server (its name, a path or ?query may follow), or the address of any page - another machine\'s too');
@@ -491,6 +570,8 @@
       f.appendChild(h('label', { 'class': 'cpj-field cpj-check' }, h('span', { 'class': 'cpj-flabel' }, ''), star,
                       h('span', {}, 'Important - a filled button')));
       row('Note', note);
+      f.appendChild(h('label', { 'class': 'cpj-field cpj-check', title: 'Several lines of buttons in one section: this button ends its line' },
+                      h('span', { 'class': 'cpj-flabel' }, ''), newline, h('span', {}, 'New line after it - the next button starts a line of its own')));
       var art = h('div', { 'class': 'cpj-art' });
       var err = h('div', { 'class': 'cpj-err', role: 'alert', hidden: '' });
       var del = h('button', { type: 'button', 'class': 'cpj-btn cpj-del', title: 'Delete this button (Undo in the message)' }, 'Delete');
@@ -502,7 +583,7 @@
       var modal = h('div', { 'class': 'cpj-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'cpj-form-h-' + id, hidden: '' }, f);
       host().appendChild(modal);
       form = { modal: modal, f: f, head: head, title: title, target: target, pages: pages, section: section, secs: secs, star: star,
-               note: note, art: art, err: err, del: del, ok: ok, button: null };
+               newline: newline, note: note, art: art, err: err, del: del, ok: ok, button: null };
       f.addEventListener('input', function () { err.hidden = true; });
       f.addEventListener('submit', submitForm);
       cancel.addEventListener('click', closeForm);
@@ -528,6 +609,7 @@
       form.target.value = b ? (b.page ? '/' + b.page : b.url) : (l ? '/' + l.page : '');
       form.section.value = b ? b.section : (s || '');
       form.star.checked = !!(b && b.star);
+      form.newline.checked = !!(b && b.newline);
       form.note.value = b ? (b.note || '') : '';
       form.pages.innerHTML = '';
       var seen = {};
@@ -556,7 +638,8 @@
       ev.preventDefault();
       var x = form, b = x.button;
       var target = x.target.value.trim();
-      var p = { title: x.title.value.trim(), section: x.section.value.trim(), note: x.note.value, star: x.star.checked ? 'yes' : 'no' };
+      var p = { title: x.title.value.trim(), section: x.section.value.trim(), note: x.note.value, star: x.star.checked ? 'yes' : 'no',
+                newline: x.newline.checked ? 'yes' : 'no' };
       if (!target) { formError('A page of this server (its name) or an address is needed.'); x.target.focus(); return; }
       if (/^(?:[a-z][\w+.\-]*:|\/\/)/i.test(target)) { p.url = target; } else { p.page = target.replace(/^\/+/, ''); }
       if (!p.section) { formError('A section is needed: one of the sections, or a new name.'); x.section.focus(); return; }
@@ -579,7 +662,7 @@
     /* Undo of a change: what the button was, its place too */
     function saveBack(k, o) {
       var p = { uid: k.uid, title: o.title, section: o.section, note: o.note || '', star: o.star ? 'yes' : 'no',
-                order: o.order === null ? '' : o.order };
+                newline: o.newline ? 'yes' : 'no', order: o.order === null ? '' : o.order };
       if (o.page) { p.page = o.page; } else { p.url = o.url; }
       return call('save', p).then(changed).then(function () { flash(k.uid); toast('Put back: ' + o.title); }).catch(failed);
     }

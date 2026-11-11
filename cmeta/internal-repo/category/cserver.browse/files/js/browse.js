@@ -1557,6 +1557,12 @@
       renderToc();
     });
     $('cbr-help-btn').addEventListener('click', function () { $('cbr-help').hidden = !$('cbr-help').hidden; });
+    // the help names the settings page of this server (none through a hosting platform: its pages are elsewhere)
+    var hs = $('cbr-help-settings');
+    if (hs) {
+      if (CFG.url_server && !/\/project\//.test(location.pathname)) hs.href = CFG.url_server + 'settings';
+      else hs.replaceWith(document.createTextNode('/settings of a cMeta server'));
+    }
     $('cbr-reload').addEventListener('click', function () {
       call('reload', {}, 'reloading the index').then(function (o) {
         options = o;

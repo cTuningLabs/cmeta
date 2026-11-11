@@ -119,6 +119,59 @@ def test_words_tags_and_negation(cm):
     assert aliases(search(cm, q='"ada lovelace"')) == ['gpu-costs']
 
 
+def test_words_read_the_values_of_the_meta_not_its_keys_and_skip_the_authorship(cm):
+    """A plain word (2026-11-11, the user: "when I search for my name, it finds all entries since they have my
+    copyright") reads the values of the meta, never its key names, and not the values of the keys
+    browse_search_skip_keys names - copyright, control, authors, contributors, generator and last_generator by default (a dotted
+    key under one of them too); the key qualifiers read every key; the config replaces the list (none: every value),
+    and a change counts at the next search; the snippet never comes from a skipped key. (The searches stay in the
+    category log: the engine's own artifacts are in the home too, with words of their own.)"""
+    a, _ = make(cm, 'paper-a', copyright='(C) Ada Lovelace', authors='Ada Lovelace', generator={'method': 'agent', 'by': 'Ada Lovelace'},
+                control={'engine': 'ckq1', 'author_uoa': 'x1'}, zzkeyonly={'inner': 'zzvalue'},
+                contributors=[{'name': 'Ada Lovelace', 'email': 'ada@lovelace.example'}])
+    b, _ = make(cm, 'paper-b', owner='Ada Lovelace')                       # a key of its own: searched
+    c, _ = make(cm, 'paper-c', copyright='(C) Ada Lovelace', notes='about Ada and her zzmachine')
+    d, pd = make(cm, 'paper-d')                                             # the name in its _desc's authors only
+    describe(pd, {'authors': 'Ada Lovelace', 'zzdesckey': 'zzdescvalue'})
+    e, _ = make(cm, 'paper-e', artifact_defaults={'authors': 'Ada Lovelace'})   # a repository's defaults
+    web(cm, native_action='reload')
+
+    def found(q):
+        return aliases(search(cm, q=q, cats='log', sort='alias'))
+
+    # the name finds the artifacts ABOUT the person, not those carrying the authorship; the fixture gpu-costs (owner) too
+    assert found('lovelace') == ['gpu-costs', 'paper-b']
+    assert found('ada') == ['gpu-costs', 'paper-b', 'paper-c']
+    # a key's name is no longer a word (zzkeyonly, author_uoa); a value under a skipped key is not searched (ckq1),
+    # a value under another key is (zzvalue), a note is (zzmachine)
+    assert found('zzkeyonly') == [] and found('author_uoa') == [] and found('ckq1') == []
+    assert found('zzvalue') == ['paper-a'] and found('zzmachine') == ['paper-c']
+    # the _desc the same way: its values searched (zzdescvalue), its key names (zzdesckey) and its skipped keys not
+    assert found('zzdescvalue') == ['paper-d'] and found('zzdesckey') == []
+    assert found('_desc.authors:lovelace') == ['paper-d'] and found('artifact_defaults.authors:lovelace') == ['paper-e']
+    # the key qualifiers read every key, the skipped ones too
+    assert found('authors:lovelace') == ['paper-a']
+    assert found('generator.by:ada') == ['paper-a']
+    assert found('control.engine:ckq1') == ['paper-a']
+    assert found('has:contributors') == ['paper-a'] and found('lovelace.example') == []   # a contributor (name, email): skipped
+    assert found('has:control') == ['paper-a'] and found('has:zzkeyonly') == ['paper-a']     # (copyright: every artifact's default)
+    # the snippet of a hit: never a skipped key (paper-c: the note, not the copyright)
+    row = next(r for r in search(cm, q='ada', cats='log')['rows'] if r['alias'] == 'paper-c')
+    assert row['snippet'].startswith('notes:'), row['snippet']
+    # the config: its own list (owner too), then none, then back to the default - each at the next search
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'meta': {'browse_search_skip_keys': 'copyright,owner'}, 'con': False})
+    assert r['return'] == 0, r
+    assert found('lovelace') == ['paper-a', 'paper-d', 'paper-e']           # authors, generator, artifact_defaults searched again, owner not
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'meta': {'browse_search_skip_keys': 'none'}, 'con': False})
+    assert r['return'] == 0, r
+    assert found('lovelace') == ['gpu-costs', 'paper-a', 'paper-b', 'paper-c', 'paper-d', 'paper-e']
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'meta': {'browse_search_skip_keys': ''}, 'con': False})
+    assert r['return'] == 0, r
+    assert found('lovelace') == ['gpu-costs', 'paper-b']
+    # the page's help names the setting
+    assert 'browse_search_skip_keys' in web(cm)['html_meta']['html']
+
+
 def test_meta_keys_has_and_crefs(cm):
     assert aliases(search(cm, q='generator.method:task')) == ['sla-report']
     assert aliases(search(cm, q='owner:ada*')) == ['gpu-costs']
