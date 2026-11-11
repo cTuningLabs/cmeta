@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.38.12.1)
+## 0.39.0
 - **The detail panel of `/browse` (the sub-view of the graph and the lists) is the artifact page in short, and
   edits in place.** It shows the texts of the artifact as `/cref/` renders them (README.md, `_info.md`, the file its
   view names; `?native_action=artifact` carries them, `texts=0` leaves them out; the artifact page answers

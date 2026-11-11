@@ -221,6 +221,10 @@
     {
       "version": "0.38.12",
       "version_date": "20261110"
+    },
+    {
+      "version": "0.39.0",
+      "version_date": "20261111"
     }
   ]
 }
