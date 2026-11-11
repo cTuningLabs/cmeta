@@ -39,20 +39,25 @@
       <label class="cbr-date">created after <input id="cbr-after" type="date"></label>
       <label class="cbr-date">before <input id="cbr-before" type="date"></label>
       <button type="button" id="cbr-clear" class="cbr-link">clear</button>
-      <button type="button" id="cbr-help-btn" class="cbr-link">syntax</button>
+      <button type="button" id="cbr-help-btn" class="cbr-link cbr-info" title="Search help: the patterns, and the settings that shape a search" aria-label="Search help">i</button>
     </div>
   </form>
 
   <div id="cbr-help" class="cbr-help" hidden>
     <table>
-      <tr><td><code>word "a phrase"</code></td><td>in the alias, UID, tags, any value of the meta or the text of the <code>_desc</code>
-        (not its <code>connections</code>, <code>uses</code> and <code>ai_uses</code>: the graph shows those)</td></tr>
+      <tr><td><code>word "a phrase"</code></td><td>in the alias, UID, tags, the <b>values</b> of the meta (never its key names) or the text of the
+        <code>_desc</code> (not its <code>connections</code>, <code>uses</code> and <code>ai_uses</code>: the graph shows those). The values of
+        <code>copyright</code>, <code>control</code>, <code>authors</code>, <code>contributors</code>, <code>generator</code>, <code>last_generator</code> and <code>artifact_defaults</code> (in the meta and the <code>_desc</code>) are left out - the
+        authorship every artifact carries, so that a name finds the artifacts about it, not all of them: the setting
+        <code>browse_search_skip_keys</code> of the config <code>cserver</code> (<a id="cbr-help-settings" href="#">/settings</a>) names the keys,
+        <code>none</code> searches every value</td></tr>
       <tr><td><code>-word</code></td><td>in none of them</td></tr>
       <tr><td><code>repo:name</code> <code>cat:name</code></td><td>a repository / category (alias, UID, or the part after @); several = any of them</td></tr>
       <tr><td><code>tag:sla</code> <code>-tag:draft</code></td><td>has / has not this tag</td></tr>
       <tr><td><code>after:2026-09-01</code> <code>before:2026-10</code></td><td>created on or after / before (a year or a month works too)</td></tr>
       <tr><td><code>has:generator</code> <code>-has:connections</code></td><td>the meta has / has not this key (dotted keys work)</td></tr>
-      <tr><td><code>generator.method:task</code></td><td>a meta value contains it (any item of a list)</td></tr>
+      <tr><td><code>generator.method:task</code> <code>authors:lovelace</code></td><td>a meta value contains it (any item of a list) - every key, the
+        ones left out of the words too</td></tr>
       <tr><td><code>_desc:mlperf</code> <code>-_desc:draft</code></td><td>the <code>_desc</code> contains it (keys and values, its links too) / does not</td></tr>
       <tr><td><code>_desc.connections:fursin</code></td><td>a value at that key of the <code>_desc</code> contains it (dotted keys, any item of a list)</td></tr>
       <tr><td><code>has:_desc</code> <code>-has:_desc.ai_uses</code></td><td>has a <code>_desc</code> / its <code>_desc</code> has not this key</td></tr>

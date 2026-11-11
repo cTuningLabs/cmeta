@@ -250,6 +250,11 @@
 .cpj-sin { min-width: 0; width: 100%; padding: 1px 6px; border: 1px solid var(--cpj-accent); border-radius: 6px; outline: none;
   box-shadow: 0 0 0 3px var(--cpj-accent-soft); background: var(--cpj-bg); color: var(--cpj-fg); font: inherit; font-weight: 600; }
 .cpj-sfoot { padding: 8px 0 2px; }
+/* "+ Section" asks for a name in place (2026-11-11); x on an empty section removes it */
+.cpj-sin.cpj-newsin { width: 320px; max-width: 100%; padding: 4px 8px; }
+/* a button that ends a line: the next one starts a line of its own (newline: true in its _desc) */
+.cpj-break { flex-basis: 100%; height: 0; }
+.cpj-mini.cpj-srm:hover, .cpj-mini.cpj-srm:focus-visible { border-color: rgba(180, 35, 24, .4); color: #c0392b; }
 
 /* a drag: the button (or section) where it was, faint; its copy under the pointer; a line where it would go */
 .cpj-dragging { opacity: .35; }

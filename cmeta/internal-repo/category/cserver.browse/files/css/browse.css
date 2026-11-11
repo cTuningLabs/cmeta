@@ -85,6 +85,10 @@
 .cbr-date input { margin-left: 4px; font-size: 13px; padding: 3px 6px; border: 1px solid var(--cbr-line); border-radius: 6px;
   background: var(--cbr-card); color: var(--cbr-fg); color-scheme: light dark; }
 .cbr-link { border: 0; background: none; color: var(--cbr-accent); cursor: pointer; padding: 0; font-size: 13px; }
+/* the round "i" beside the search: the help of the patterns and the settings (2026-11-11) */
+.cbr-info { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid var(--cbr-accent);
+  border-radius: 50%; font: italic 700 12px/1 Georgia, 'Times New Roman', serif; }
+.cbr-info:hover, .cbr-info:focus-visible { background: var(--cbr-accent); color: #fff; outline: none; }
 
 /* the repository / category pickers */
 .cbr-pick { position: relative; }

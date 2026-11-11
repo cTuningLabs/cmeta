@@ -2,6 +2,30 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.39.1
+- **The words of a search read the values of the meta, never its key names, and leave the authorship out.** A
+  name found every artifact, since every `_cmeta` carries it in `copyright`, `authors` and `generator.by`; and the
+  word `control` found every record with a `control` key. Now a plain word (or `-word`) searches the alias, the UID,
+  the tags and the values of the meta and of the `_desc`, without the values of the keys the cserver config's
+  `browse_search_skip_keys` names (in both): `copyright`, `control`, `authors`, `contributors`, `generator`,
+  `last_generator` and `artifact_defaults` by default
+  (patterns on the dotted key or any part in front; `none` searches every value; declared for `/cmeta.configs` and
+  `/settings`; a change takes effect at the next search). The key qualifiers (`authors:lovelace`, `has:priority`,
+  `generator.method:task`) read every key as before, and the snippet of a result never comes from a skipped key.
+  Every page that searches through `/browse` (the dashboard, the pages on its code) follows it.
+- **A round "i" beside the search of `/browse`** opens the help of the patterns, which now says what the words read
+  and names the setting above, with a link to `/settings`.
+- **A button of the customized view can end its line** (`newline: true` in its `_desc.yaml`, "New line after it" in
+  its dialog): the next button of the section starts a line of its own, so a section can hold several lines of
+  buttons. `view_save` takes `newline`; Undo and restore keep it.
+- **"+ Section" of the customized view of `/projects` asks for the section's name alone** and makes an empty section;
+  it opened the dialog of a new button before. The section is kept by a small record of its own, an artifact of
+  `cserver.projects` whose `_desc.yaml` holds `kind: section`, its name and its order (no title, page or address):
+  it stays in its place, a button put into it lands there, it moves and is renamed with its section, and the `×` of
+  an empty section in Edit removes it (Undo puts it back). `?native_action=view_section` (section); the view answers
+  every section in order (an empty one too) and `markers`; a record is never counted, changed or moved as a button,
+  and does not stop "Make my view". Pages that draw the view with `CmetaProjects.board` get it as they are.
+
 ## 0.39.0
 - **The detail panel of `/browse` (the sub-view of the graph and the lists) is the artifact page in short, and
   edits in place.** It shows the texts of the artifact as `/cref/` renders them (README.md, `_info.md`, the file its

@@ -20,8 +20,11 @@ the _desc files that changed. The artifact is created on first use; removing it 
 only costs one full read.
 
 Query syntax (one box; everything must hold):
-    word  "a phrase"       in the alias, UID, tags, any value of the meta or the text of the _desc - not in its
-                           link lists: connections, uses, ai_uses (case-insensitive)
+    word  "a phrase"       in the alias, UID, tags, the values of the meta (never its key names; not the values of
+                           the keys browse_search_skip_keys leaves out - copyright, control, authors, contributors,
+                           generator, last_generator and artifact_defaults by default: the authorship every artifact
+                           carries) or the values of the _desc (the same keys left out) - not in its link lists:
+                           connections, uses, ai_uses (case-insensitive)
     -word                  in none of them
     repo:<name>            repository alias or UID; the part after "@" is enough (several repo: = any of them)
     cat:<name>             category alias or UID (also category:); several cat: = any of them
@@ -104,6 +107,12 @@ These keys of the cserver config apply (cx config set cserver --meta.<key>=<valu
     hide_repos                repositories left out (aliases or fnmatch patterns) - the same key as /projects
     browse_hide_categories    categories left out; by default anything matching *crypt*, *secret* or
                               *credential*, so that key bundles never show; "none" shows every category
+    browse_search_skip_keys   the keys of the meta whose values plain words do not search (patterns on the
+                              dotted key or any part in front: generator skips generator.by); by default
+                              copyright, control, authors, contributors, generator, last_generator,
+                              artifact_defaults - the authorship every artifact carries, in its meta and its _desc,
+                              so that a name finds the artifacts about it, not all of them;
+                              "none" searches every value; the key qualifiers (authors:x, has:x) read every key
     browse_files              yes = the file browser for everyone; no = for no one; default: a browser on the
                               server's own machine only (the real peer address, no proxy header, a loopback Host)
     browse_edit               yes = the editor for everyone the host lets in; no = for no one; default: a browser on
@@ -201,6 +210,12 @@ INCOMING_MAX = 300               # incoming connections listed in the detail of 
 DESC_TEXT_MAX = 65536            # the text of a _desc kept for search (characters; the rest is not searched)
 LINK_KEYS = ('connections', 'uses', 'ai_uses')   # the link lists of a _desc: not searched by plain words
 CREF_UID = 'a24a8d9cf3164903'    # the artifact page (cserver.cref): it renders the texts the detail panel shows
+# The keys of the meta whose values plain words do not search (2026-11-11, the user: "when I search for my name, it
+# finds all entries since they have my copyright"): the authorship and the provenance every artifact carries. The
+# cserver config's browse_search_skip_keys replaces the list (patterns on the dotted key or any part of it in front;
+# "none" = every value searched); the key qualifiers (authors:lovelace, has:copyright) read every key as before.
+SEARCH_SKIP_KEYS = ('copyright', 'control', 'authors', 'contributors', 'generator', 'last_generator',
+                    'artifact_defaults')
 
 # The cache artifact of this page: cache::cserver--browse in the local repository, created on first use
 CACHE_CATEGORY = 'cache,1ebdcc1cc30c4022'
@@ -234,6 +249,7 @@ _lock = threading.Lock()
 _catalog = {'stamp': None, 'items': [], 'by_uid': {}, 'by_key': {}, 'by_cat': {}, 'built': '', 'ms': 0,
             'reread': 0, 'dirty': None}
 _desc_cache = {}                 # path of _desc -> (mtime, data)
+_desc_words_cache = {}           # uid -> (skip signature, the _desc text it was made of, what plain words read)
 
 # The connection index: what every artifact connects to (`connections`, both ways), runs (`uses`, one way) and
 # reads (`ai_uses`, one way), and the text of its _desc, read from all _desc files in a background thread; kept per
@@ -318,6 +334,37 @@ def _patterns(value):
 def _matches_any(text, patterns):
     text = (text or '').lower()
     return any(fnmatch.fnmatchcase(text, p) for p in patterns)
+
+
+def _skip_keys(cfg):
+    """The keys of the meta plain words leave out, from the cserver config (browse_search_skip_keys: patterns,
+    comma-separated; "none" = nothing left out; unset = SEARCH_SKIP_KEYS) -> (the patterns, their signature)."""
+    v = cfg.get('browse_search_skip_keys')
+    if v is None or (isinstance(v, str) and not v.strip()):
+        pats = list(SEARCH_SKIP_KEYS)
+    else:
+        pats = _patterns(v)
+        if pats == ['none']:
+            pats = []
+    return pats, ','.join(pats)
+
+
+def _key_skipped(key, pats):
+    """A dotted key of the meta, or any part of it in front (generator.by: generator), matches a pattern."""
+    parts = key.lower().split('.')
+    return any(fnmatch.fnmatchcase('.'.join(parts[:i + 1]), p) for i in range(len(parts)) for p in pats)
+
+
+def _hay(it, pats, sig):
+    """The text plain words search in an artifact, lower-cased: its alias, UID, category and repository, then the
+    VALUES of its meta - never the key names, never the values of the keys skipped (pats; the result is kept on the
+    item under the signature of the patterns, so a changed config takes effect at the next search)."""
+    if it.get('hay_sig') == sig:
+        return it['hay']
+    kept = [text for key, text in it['hay_parts'] if not _key_skipped(key, pats)]
+    it['hay'] = ' '.join([it['hay_head']] + kept)
+    it['hay_sig'], it['hay_skip'] = sig, pats
+    return it['hay']
 
 
 def _wild(v):
@@ -500,20 +547,43 @@ def _desc_match(text_l, key, want):
     return want in text_l
 
 
-def _desc_snippet(t, w):
-    """Where a word is in the text of a _desc (before its link lists): '_desc.<key>: ...text...' ('' when it is
-    not there)."""
+def _desc_snippet(t, w, pats=()):
+    """Where a word is in the text of a _desc (before its link lists), in a value - never a key's name, never a key
+    plain words skip (pats): '_desc.<key>: ...text...' ('' when it is not there)."""
     text, low, cut = t
     i = low.find(w, 0, cut)
-    if i < 0:
+    while i >= 0:
+        ls = low.rfind('\n', 0, i) + 1
+        le = low.find('\n', i)
+        key, sep, val = text[ls:le if le >= 0 else len(text)].partition(': ')
+        j = i - ls - len(key) - len(sep)            # where the word starts in the value (< 0: in the key)
+        if j >= 0 and not (pats and _key_skipped(key, pats)):
+            start = max(0, j - 40)
+            return '_desc.%s: %s%s%s' % (key, '...' if start else '', val[start:j + len(w) + 60],
+                                         '...' if j + len(w) + 60 < len(val) else '')
+        i = low.find(w, i + 1, cut)
+    return ''
+
+
+def _desc_words(uid, t, pats, sig):
+    """What plain words read in the text of a _desc (lower-cased): the values of its lines before the link lists -
+    never the key names, never the keys skipped (pats) - kept per artifact while its text and the skip list are the
+    same."""
+    if not t:
         return ''
-    ls = low.rfind('\n', 0, i) + 1
-    le = low.find('\n', i)
-    key, sep, val = text[ls:le if le >= 0 else len(text)].partition(': ')
-    j = max(0, i - ls - len(key) - len(sep))       # where the word starts in the value (0: it is in the key)
-    start = max(0, j - 40)
-    return '_desc.%s: %s%s%s' % (key, '...' if start else '', val[start:j + len(w) + 60],
-                                 '...' if j + len(w) + 60 < len(val) else '')
+    low, cut = t[1], t[2]
+    c = _desc_words_cache.get(uid)
+    if c is not None and c[0] == sig and c[1] is low:
+        return c[2]
+    out = []
+    for line in low[:cut].split('\n'):
+        key, sep, val = line.partition(': ')
+        if not sep or (pats and _key_skipped(key, pats)):
+            continue
+        out.append(val)
+    words = '\n'.join(out)
+    _desc_words_cache[uid] = (sig, low, words)
+    return words
 
 
 def parse_query(q):
@@ -586,10 +656,11 @@ def parse_query(q):
     return out
 
 
-def _item_matches(it, pq, ui_repos, ui_cats, after, before, texts=None):
+def _item_matches(it, pq, ui_repos, ui_cats, after, before, texts=None, skip=None):
     """True when the catalog item holds everything the parsed query and the pickers ask for. texts: the text of
     every _desc by UID, (text, lower-cased, where its link lists start) - None when the _desc files have not been
-    read (then words search the meta alone, and nothing passes a _desc qualifier)."""
+    read (then words search the meta alone, and nothing passes a _desc qualifier). skip: (patterns, signature) of
+    browse_search_skip_keys - the words then read the values of the _desc without those keys, as in the meta."""
     if ui_repos and not _picked(it['repo'], it['repo_uid'], ui_repos):
         return False
     if ui_cats and not _picked(it['cat'], it['cat_uid'], ui_cats):
@@ -626,11 +697,12 @@ def _item_matches(it, pq, ui_repos, ui_cats, after, before, texts=None):
     hay = it['hay']
     t = texts.get(it['uid']) if texts is not None else None
     tl, cut = (t[1], t[2]) if t else ('', 0)
+    dw = _desc_words(it['uid'], t, skip[0], skip[1]) if skip is not None and t else None
     for w in pq['words']:
-        if w not in hay and tl.find(w, 0, cut) < 0:
+        if w not in hay and (w not in dw if dw is not None else tl.find(w, 0, cut) < 0):
             return False
     for w in pq['not_words']:
-        if w in hay or tl.find(w, 0, cut) >= 0:
+        if w in hay or (w in dw if dw is not None else tl.find(w, 0, cut) >= 0):
             return False
     if pq['desc'] or pq['desc_has']:
         if texts is None:
@@ -670,15 +742,16 @@ def _snippet(it, words, texts=None):
         found = _meta_snippet(it, w)
         if not found and texts:
             t = texts.get(it['uid'])
-            found = _desc_snippet(t, w) if t else ''
+            found = _desc_snippet(t, w, it.get('hay_skip') or ()) if t else ''
         if found:
             return found
     return ''
 
 
 def _meta_snippet(it, w):
-    """Where a word is in the meta: 'key: ...text...' (or '')."""
+    """Where a word is in the meta: 'key: ...text...' (or '') - never in a key plain words skip (hay_skip)."""
     stack = [('', it['meta'])]
+    pats = it.get('hay_skip') or []
     while stack:
         prefix, cur = stack.pop()
         if isinstance(cur, dict):
@@ -687,6 +760,8 @@ def _meta_snippet(it, w):
         elif isinstance(cur, (list, tuple)):
             for v in cur:
                 stack.append((prefix, v))
+        elif pats and _key_skipped(prefix, pats):
+            continue
         else:
             text = str(cur)
             i = text.lower().find(w)
@@ -1410,8 +1485,13 @@ class Category(InitCategory):
                           'created': created[:10] if isinstance(created, str) else '',
                           'created_full': created if isinstance(created, str) else '',
                           'updated_full': updated if isinstance(updated, str) else ''}
-                    it['hay'] = ' '.join([alias, it['uid'], it['cat'], it['repo'],
-                                          json.dumps(meta, ensure_ascii=False, default=str)]).lower()
+                    # what plain words search: the names first, then the values of the meta by their dotted key
+                    # (_hay joins them per request, without the keys the config skips)
+                    leaves = []
+                    _flatten(meta, leaves)
+                    it['hay_head'] = ' '.join([alias, it['uid'], it['cat'], it['repo']]).lower()
+                    it['hay_parts'] = [(l.split(': ', 1)[0], l.split(': ', 1)[1].lower()) for l in leaves if ': ' in l]
+                    it['hay'], it['hay_sig'] = '', None
                     mine.append(it)
                 by_cat[cat] = mine
             items = [it for mine in by_cat.values() for it in mine]
@@ -1545,16 +1625,22 @@ class Category(InitCategory):
         pq = parse_query(params.get('q', ''))
         asked = bool(pq['words'] or pq['not_words'] or pq['desc'] or pq['desc_has'])
         texts = self._desc_texts() if asked else None
+        skip = None
+        if pq['words'] or pq['not_words']:
+            pats, sig = _skip_keys(cfg)
+            skip = (pats, sig)
+            for it in items:
+                _hay(it, pats, sig)
         ui_repos = _list(params.get('repos'))
         ui_cats = _list(params.get('cats'))
         after = str(params.get('after') or pq['after'] or '').strip()
         before = str(params.get('before') or pq['before'] or '').strip()
         # what the category picker does not narrow: the Browse view lists every category with how many of its
         # artifacts the rest of the query keeps (words, repositories, dates), so a reader prunes by picking one
-        wide = [it for it in items if _item_matches(it, pq, ui_repos, [], after, before, texts)] if ui_cats else None
+        wide = [it for it in items if _item_matches(it, pq, ui_repos, [], after, before, texts, skip)] if ui_cats else None
         found = [it for it in (wide if wide is not None else items)
-                 if _item_matches(it, pq, [], ui_cats, '', '', texts)] if ui_cats else \
-            [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before, texts)]
+                 if _item_matches(it, pq, [], ui_cats, '', '', texts, skip)] if ui_cats else \
+            [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before, texts, skip)]
         # a bare query lists by name (a reader browsing a category expects its artifacts in order), words by
         # relevance; a category may declare its own order (work items: the newest first) - the server's
         # browse_category_sort, else the category's meta (browse_sort)

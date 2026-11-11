@@ -42,9 +42,13 @@ the cards). Each button is an artifact of this category, cserver.projects::<name
     order:   10                    its place, the smaller first; a section shows where its first button is
     star:    true                  an important button: a filled one
     note:    ...                   a line shown when the button is pointed at
+    newline: true                  the next button of the section starts a line of its own (several lines per section)
 
 so the view lives where its buttons are: a repository that syncs between machines gives each of them the same
-view. It is made once from the pages of this machine ("Make my view": a section per repository, a button per
+view. A section without buttons yet ("+ Section": its name alone) is an artifact of this category too, whose
+_desc.yaml holds `kind: section`, its section and its order - no title, page or address: it keeps the section in its
+place until it is removed (the x of an empty section in Edit); a button put into it lands after it, and it moves and
+is renamed with its section. It is made once from the pages of this machine ("Make my view": a section per repository, a button per
 page, in the repository chosen there; none chosen: cserver_projects_create_repo of the default config, else
 local); a new button goes to the repository that holds the view. A page the view names that this machine does not
 have shows dimmed; the pages of this machine the view does not name are listed under it, to be added.
@@ -53,11 +57,13 @@ have shows dimmed; the pages of this machine the view does not name are listed u
     ?native_action=view                          the view as JSON (with the pages it leaves out, the repositories)
     ?native_action=view_make                     the view made from this machine's pages (repo)
     ?native_action=view_save                     a button added or changed (uid, title, page | url, section, star,
-                                                 note, before, order)
+                                                 note, newline, before, order)
     ?native_action=view_arrange                  a button moved (uid, section, before), a section moved
                                                  (move_section, before_section) or renamed (section, rename),
                                                  orders set back (orders: Undo)
-    ?native_action=view_discard | view_restore   a button deleted (uid) | put back (removed: what discard gave)
+    ?native_action=view_section                  an empty section made (section: its name), at the end of the view
+    ?native_action=view_discard | view_restore   a button deleted (uid) | put back (removed: what discard gave);
+                                                 an empty section removed (the uid of its record) | put back
 
 A change is taken from a browser on this machine or one that passed the server's password, and only from a page
 of this server; never on the cTuning platform. Another page of this server may draw the view with the board of
@@ -81,7 +87,7 @@ from cmeta.utils import files
 PREFIX = 'cserver.'
 
 # ---------------------------------------------------------------------------------------- the customized view
-VIEW_KEYS = ('title', 'page', 'url', 'section', 'order', 'star', 'note')   # a button's _desc.yaml, in this order
+VIEW_KEYS = ('title', 'page', 'url', 'section', 'order', 'star', 'note', 'newline')   # a button's _desc.yaml, in this order
 STEP = 10                       # the distance between two orders numbered again
 FINEST = 1.0 / 1024             # the closest two orders may come before all are numbered again
 TEXT_MAX = 100                  # at most: a title or a section; a note; an address or a page
@@ -93,11 +99,13 @@ CREATE_REPO_KEY = 'cserver_projects_create_repo'    # of the default config: whe
 GENERATOR = {'method': 'manual', 'via': 'cserver.projects (the home page of cserver)'}
 VIEW_WRITES = {                 # what a browser may send to each change of the view
     'view_make': ('repo',),
-    'view_save': ('uid', 'title', 'page', 'url', 'section', 'star', 'note', 'before', 'order'),
+    'view_save': ('uid', 'title', 'page', 'url', 'section', 'star', 'note', 'newline', 'before', 'order'),
     'view_arrange': ('uid', 'section', 'before', 'move_section', 'before_section', 'rename', 'orders'),
+    'view_section': ('section',),
     'view_discard': ('uid',),
     'view_restore': ('removed',),
 }
+SECTION_KIND = 'section'        # the kind: in the _desc.yaml of an empty section's record (it has no page or address)
 
 CTRL_RE = re.compile(r'[\x00-\x1f\x7f]')
 BAD_SCHEME_RE = re.compile(r'^(?:javascript|data|vbscript):', re.I)   # never kept: they run in the page
@@ -525,7 +533,8 @@ class Category(InitCategory):
 
     def _buttons(self):
         """Every button of the view in the plugged repositories, in no order -> [button]: uid, alias, repo, title,
-        page, url, section, order (None: none), note; _path and _repo_uid (never sent to a page)."""
+        page, url, section, order (None: none), note, marker (the record of a section: no page or address); _path and
+        _repo_uid (never sent to a page)."""
         r = self.cm.access({'category': self._cat(), 'command': 'find', 'arg1': '', 'con': False})
         if r.get('return', 1) > 0:
             if r.get('return') == 16:
@@ -538,12 +547,17 @@ class Category(InitCategory):
             d = _read_desc(path) if path else {}
             alias = str(parts.get('artifact_alias') or '')
             order = d.get('order')
+            page, url = str(d.get('page') or '').strip(), str(d.get('url') or '').strip()
+            # the record of a section has no title: none is written back into it when it moves or is renamed
+            marker = str(d.get('kind') or '').strip().lower() == SECTION_KIND or not (page or url)
             out.append({'uid': str(parts.get('artifact_uid') or '').lower(), 'alias': alias,
-                        'repo': parts.get('repo_alias') or '', 'title': str(d.get('title') or '').strip() or alias,
-                        'page': str(d.get('page') or '').strip(), 'url': str(d.get('url') or '').strip(),
+                        'repo': parts.get('repo_alias') or '',
+                        'title': '' if marker else (str(d.get('title') or '').strip() or alias),
+                        'page': page, 'url': url,
                         'section': str(d.get('section') or '').strip(), 'order': order if _num(order) else None,
-                        'star': _yes(d.get('star')), 'note': str(d.get('note') or '').strip(), '_path': path,
-                        '_repo_uid': str(parts.get('repo_uid') or '').lower()})
+                        'star': _yes(d.get('star')), 'note': str(d.get('note') or '').strip(), 'marker': marker,
+                        'newline': _yes(d.get('newline')),
+                        '_path': path, '_repo_uid': str(parts.get('repo_uid') or '').lower()})
         return out
 
     @staticmethod
@@ -597,14 +611,16 @@ class Category(InitCategory):
 
     def _view(self, urls):
         """The view as the page draws it -> {buttons (in order, with href and missing: a page this machine does not
-        have), sections, loose (the pages of this machine the view does not name), home (the repository that holds
-        the view), repos (those that may keep one), default_repo}."""
+        have), sections (every one, in order - an empty one too), markers (the records of the sections: [{uid,
+        section}]), loose (the pages of this machine the view does not name), home (the repository that holds the
+        view), repos (those that may keep one), default_repo}."""
         scan = self._scan()
         if scan['return'] > 0:
             return {'error': scan.get('error', 'the index could not be read')}
         url_server = (urls or {}).get('url_server') or '/'
         pages = {p['page']: p for p in scan['pages']}
-        buttons = _sort_buttons(self._buttons())
+        every = _sort_buttons(self._buttons())
+        buttons = [b for b in every if not b['marker']]
         out = []
         for b in buttons:
             x = self._public(b)
@@ -625,8 +641,9 @@ class Category(InitCategory):
                  for p in scan['pages'] if p['page'] not in named and not p['self'] and p['card']
                  and not _hidden(p['repo'], hide)]
         pages_here = [{'page': p['page'], 'title': _card_title(p)} for p in scan['pages'] if not p['self'] and p['card']]
-        return {'buttons': out, 'sections': _sections_of(buttons), 'loose': loose, 'pages': pages_here,
-                'home': self._home(buttons), 'repos': self._repos(), 'default_repo': self._default_repo(), 'count': len(out)}
+        return {'buttons': out, 'sections': _sections_of(every), 'loose': loose, 'pages': pages_here,
+                'markers': [{'uid': b['uid'], 'section': b['section']} for b in every if b['marker']],
+                'home': self._home(every), 'repos': self._repos(), 'default_repo': self._default_repo(), 'count': len(out)}
 
     def _one(self, buttons, name):
         """The button a change names: its UID, its name (a case apart), its title, or the only one whose title or
@@ -664,7 +681,7 @@ class Category(InitCategory):
         section: at the end of all) -> (the sequence of every button with it there, its section, an error)."""
         seq = [x for x in _sort_buttons(buttons) if x['uid'] != button['uid']]
         if before:
-            b, error = self._one(seq, before)
+            b, error = self._one([x for x in seq if not x.get('marker')], before)
             if error:
                 return None, '', 'before: ' + error
             section = b['section']
@@ -718,7 +735,7 @@ class Category(InitCategory):
     def _view_make(self, repo='', generator=None):
         """The view made from the pages of this machine as the cards show them: a section per repository, a button
         per page with its card's heading; only while there is no view -> {'made', 'home'} or {'error'}."""
-        buttons = self._buttons()
+        buttons = [b for b in self._buttons() if not b['marker']]
         if buttons:
             return {'error': 'there is a view already (%d buttons): change it on the page' % len(buttons)}
         scan = self._scan()
@@ -746,10 +763,11 @@ class Category(InitCategory):
         return {'made': len(made), 'home': home}
 
     def _view_save(self, uid='', title=None, page=None, url=None, section=None, star=None, note=None, before='',
-                   order=None, repo='', generator=None):
+                   order=None, repo='', generator=None, newline=None):
         """A new button (no uid) or a button changed (only what is given: a page or an address, its title, section,
-        note; a new section puts it at that section's end, before: before that button, order: exactly there - Undo)
-        -> {'button', 'created'} and, for a change, 'old' and 'changed'; or {'error'}."""
+        note, newline - the next button starts a line of its own; a new section puts it at that section's end,
+        before: before that button, order: exactly there - Undo) -> {'button', 'created'} and, for a change, 'old'
+        and 'changed'; or {'error'}."""
         buttons = self._buttons()
         given = {}
         if page not in (None, ''):
@@ -777,6 +795,8 @@ class Category(InitCategory):
                 return {'error': error}
         if star is not None:
             given['star'] = _yes(star)
+        if newline is not None:
+            given['newline'] = _yes(newline)
         if order is not None and order != '':
             try:
                 given['order'] = float(order)
@@ -812,7 +832,7 @@ class Category(InitCategory):
         if error:
             return {'error': error}
         made.update(title=given['title'], page=given.get('page', ''), url=given.get('url', ''), section=sec,
-                    star=given.get('star', False), note=given.get('note', ''), order=None)
+                    star=given.get('star', False), note=given.get('note', ''), newline=given.get('newline', False), order=None)
         seq = [made if x['uid'] == '' else x for x in seq]
         if 'order' in given:
             made['order'] = _tidy(given['order'])
@@ -823,10 +843,10 @@ class Category(InitCategory):
         return {'button': self._public(made), 'created': True}
 
     def _view_change(self, buttons, uid, given, before):
-        button, error = self._one(buttons, uid)
+        button, error = self._one([x for x in buttons if not x['marker']], uid)
         if error:
             return {'error': error}
-        old = {k: button[k] for k in ('title', 'page', 'url', 'section', 'star', 'note', 'order')}
+        old = {k: button[k] for k in ('title', 'page', 'url', 'section', 'star', 'note', 'newline', 'order')}
         new = dict(button, **{k: v for k, v in given.items() if k != 'order'})
         if not new['section']:
             return {'error': 'section: a button is in a section'}
@@ -875,7 +895,7 @@ class Category(InitCategory):
                 want[x['uid']] = (s, _tidy(v) if v is not None else None)
 
         elif str(uid or '').strip():
-            button, error = self._one(buttons, uid)
+            button, error = self._one([x for x in buttons if not x['marker']], uid)
             if error:
                 return {'error': error}
             s = None
@@ -950,9 +970,38 @@ class Category(InitCategory):
             print('cMeta info: cserver.projects: arranged %d button(s) of the view' % len(changed))
         return {'changed': changed, 'undo': undo}
 
+    def _view_section(self, section='', repo='', generator=None):
+        """An empty section (2026-11-11, the user: "+ Section ... should just ask me for a name of the section and
+        create an empty one"): the record of a section - kind: section, its name and its order, no page or address -
+        at the end of the view, in the repository that holds the view; a name a section has already (a case apart) is
+        refused -> {'section', 'uid', 'created'} or {'error'}."""
+        name, error = _clean_text(section, 'section', TEXT_MAX, need=True)
+        if error:
+            return {'error': error}
+        buttons = self._buttons()
+        have = [x['section'] for x in buttons if x['section'].lower() == name.lower()]
+        if have:
+            return {'error': 'section: there is a section %s already' % have[0]}
+        where, error = self._repo_for(buttons, repo)
+        if error:
+            return {'error': error}
+        marker = {'uid': '', 'order': None, 'title': '', 'section': name, 'marker': True}
+        seq, sec, error = self._place(buttons, marker, name, '')
+        if error:
+            return {'error': error}
+        made, error = self._create(where, 'Section ' + name, name, {x['alias'].lower() for x in buttons}, generator)
+        if error:
+            return {'error': error}
+        made.update(title='', page='', url='', section=name, star=False, note='', order=None, marker=True)
+        seq = [made if x['uid'] == '' else x for x in seq]
+        made['order'] = self._orders(seq, {made['uid']}, skip={made['uid']}).get(made['uid'], STEP)
+        self._write(made, {'kind': SECTION_KIND})
+        print('cMeta info: cserver.projects: made the empty section %s (%s) in %s' % (name, made['alias'], made['repo']))
+        return {'section': name, 'uid': made['uid'], 'created': True}
+
     def _view_discard(self, uid=''):
-        """A button deleted -> {'removed': {uid, alias, repo, desc}} - what restore takes to put it back - or
-        {'error'}."""
+        """A button deleted, or the record of an empty section -> {'removed': {uid, alias, repo, desc}} - what restore
+        takes to put it back - or {'error'}."""
         buttons = self._buttons()
         button, error = self._one(buttons, uid)
         if error:
@@ -964,7 +1013,8 @@ class Category(InitCategory):
         if r.get('return', 1) > 0:
             return {'error': '%s::%s: %s' % (self._own_alias(), button['alias'], r.get('error', 'not deleted'))}
         _DESC.pop(os.path.join(button['_path'], '_desc.yaml'), None)
-        print('cMeta info: cserver.projects: deleted the button %s from %s' % (button['alias'], button['repo']))
+        print('cMeta info: cserver.projects: deleted %s %s from %s' % ('the record of the section' if button['marker'] else
+                                                                       'the button', button['alias'], button['repo']))
         return {'removed': removed}
 
     def _view_restore(self, removed=None, generator=None):
@@ -984,8 +1034,12 @@ class Category(InitCategory):
             clean[k], error = _clean_text(desc.get(k), k, limit, lines=k == 'note')
             if error:
                 return {'error': error}
-        page, url = '', ''
-        if desc.get('page'):
+        page, url, error = '', '', ''
+        marker = str(desc.get('kind') or '').strip().lower() == SECTION_KIND
+        if marker:
+            if not clean['section']:
+                return {'error': 'removed: the record of a section names its section'}
+        elif desc.get('page'):
             page, error = _clean_page(desc.get('page'))
         else:
             url, error = _clean_url(desc.get('url'))
@@ -1003,10 +1057,12 @@ class Category(InitCategory):
         if error:
             return {'error': error}
         order = desc.get('order')
-        made.update(title=clean['title'] or alias, page=page, url=url, section=clean['section'], note=clean['note'],
-                    star=_yes(desc.get('star')), order=order if _num(order) else None)
+        made.update(title='' if marker else (clean['title'] or alias), page=page, url=url, section=clean['section'],
+                    note=clean['note'], star=_yes(desc.get('star')), newline=_yes(desc.get('newline')),
+                    order=order if _num(order) else None, marker=marker)
         self._write(made, {k: v for k, v in desc.items() if k not in VIEW_KEYS})
-        print('cMeta info: cserver.projects: restored the button %s in %s' % (alias, made['repo']))
+        print('cMeta info: cserver.projects: restored %s %s in %s' % ('the record of the section' if marker else 'the button',
+                                                                      alias, made['repo']))
         return {'button': self._public(made)}
 
     # ------------------------------------------------------------------ web
@@ -1034,7 +1090,7 @@ class Category(InitCategory):
                     if not misc.get('same_origin'):
                         return {'return': 0, 'json': {'error': 'refused: the request did not come from a page of this server'}}
                     params = {k: query[k] for k in VIEW_WRITES[na] if k in query}
-                    if na in ('view_make', 'view_save', 'view_restore'):
+                    if na in ('view_make', 'view_save', 'view_section', 'view_restore'):
                         # what it makes records who made it: this page, or the page of this server that drew the view
                         # and sent the change on (misc projects_via - set by that page's code, never by a browser)
                         params['generator'] = dict(GENERATOR, via=str(misc.get('projects_via') or GENERATOR['via']))
@@ -1117,13 +1173,14 @@ class Category(InitCategory):
             elif not out['buttons']:
                 print('No view yet: it is made on the home page of cserver (its Customized switch, then "Make my view").')
             else:
-                section = None
-                for b in out['buttons']:
-                    if b['section'] != section:
-                        section = b['section']
-                        print('\n%s' % section)
-                    print('  %-30s %s%s' % (b['title'][:30], ('/' + b['page']) if b['page'] else b['url'],
-                                            '   (not on this machine)' if b['missing'] else ''))
+                for section in out['sections']:
+                    print('\n%s' % section)
+                    mine = [b for b in out['buttons'] if b['section'] == section]
+                    if not mine:
+                        print('  (empty)')
+                    for b in mine:
+                        print('  %-30s %s%s' % (b['title'][:30], ('/' + b['page']) if b['page'] else b['url'],
+                                                '   (not on this machine)' if b['missing'] else ''))
                 print('\n%d buttons in %d sections, kept in %s; %d pages of this machine not in it' %
                       (len(out['buttons']), len(out['sections']), out['home'], len(out['loose'])))
         return dict({'return': 0}, **out)
