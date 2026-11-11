@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.39.0.1)
+## 0.39.1
 - **The words of a search read the values of the meta, never its key names, and leave the authorship out.** A
   name found every artifact, since every `_cmeta` carries it in `copyright`, `authors` and `generator.by`; and the
   word `control` found every record with a `control` key. Now a plain word (or `-word`) searches the alias, the UID,
