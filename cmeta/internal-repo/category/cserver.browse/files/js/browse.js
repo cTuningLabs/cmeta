@@ -25,11 +25,17 @@
   // An artifact is named there by its cRef, never by a bare UID (unique only with its category's): the open one is
   // cref=<category UID>::<artifact UID>, a focus the same; st.uid is the page's own handle, resolved by the server.
   var URL_KEYS = ['q', 'repos', 'cats', 'after', 'before', 'sort', 'dir', 'cref', 'file', 'focus', 'depth', 'max_nodes',
-                  'categories', 'core', 'isolated', 'neighbors', 'labels', 'links'];
+                  'categories', 'core', 'isolated', 'neighbors', 'labels', 'links', 'names', 'texts'];
   var st = {view: 'browse', uid: ''};
   URL_KEYS.forEach(function (k) { st[k] = ''; });
   Object.keys(st).forEach(function (k) { if (CFG.state && CFG.state[k]) st[k] = CFG.state[k]; });
   if (VIEWS.indexOf(st.view) < 0) st.view = 'browse';
+  // the file search's switches (2026-11-12): what the address says, else what this browser chose last
+  var FS = CFG.file_search || {};
+  ['names', 'texts'].forEach(function (k) {
+    if (st[k] === '' && FS.on) { try { st[k] = localStorage.getItem('cbr-files-' + k) === '1' ? '1' : ''; } catch (e) { /* ignore */ } }
+    if (st[k] && st[k] !== '1') st[k] = (st[k] === '0' || st[k] === 'no' || st[k] === 'false') ? '' : '1';
+  });
   st.offset = 0;
   st.limit = 50;
 
@@ -187,11 +193,13 @@
   /* ------------------------------------------------------------------ state, URL, the query words */
   function params() {
     return {q: st.q, repos: st.repos, cats: st.cats, after: st.after, before: st.before, sort: st.sort, dir: st.dir,
-            offset: st.offset, limit: st.limit};
+            offset: st.offset, limit: st.limit, names: st.names ? '1' : '', texts: st.texts ? '1' : ''};
   }
   function cliLine() {
     var s = 'cx cserver.browse query "' + (st.q || '').replace(/"/g, '\\"') + '"';
     ['repos', 'cats', 'after', 'before', 'sort', 'dir'].forEach(function (k) { if (st[k]) s += ' --' + k + '=' + st[k]; });
+    if (st.names) s += ' --names';
+    if (st.texts) s += ' --texts';
     return s;
   }
   function syncUrl() {
@@ -256,6 +264,8 @@
   // another page (another tab) changes it
   function applyTheme(dark) {
     root.classList.toggle('dark', !!dark);
+    // inside a host's shell the shell paints the window (the page's band over it covered the shell's menu, 2026-11-12)
+    if (CFG.hosted) { root.classList.add('hosted'); return; }
     document.body.style.backgroundColor = dark ? getComputedStyle(root).getPropertyValue('--cbr-bg').trim() : '';
   }
   function setDark(dark) {
@@ -515,6 +525,9 @@
     var dsc = r.descs || {};
     if (dsc.asked) s += dsc.searched ? ' · meta and ' + num(dsc.count) + ' descriptions searched'
                                      : ' · the descriptions are not read yet: the meta alone was searched';
+    var fs = r.file_search || {};
+    if (fs.used) s += ' · the files\' ' + [fs.names ? 'names' : '', fs.texts ? 'texts' : ''].filter(Boolean).join(' and ') +
+      (fs.names || fs.texts ? '' : 'files') + ' searched (' + fs.ms + ' ms)';
     if (r.catalog && r.catalog.built) s += ' · index loaded ' + r.catalog.built;
     // a server started before an engine upgrade keeps the core it loaded while its pages reload: say so
     if (r.catalog && r.catalog.stale_engine) showError('This server runs an older cMeta core than its pages (Repos.find_in_index without scope): restart it (cx app run cserver) to load the engine it was upgraded to.');
@@ -536,6 +549,44 @@
   }
 
   /* ------------------------------------------------------------------ Search view */
+  // the files of an artifact that matched (the file search, 2026-11-12): each a link to the file on the artifact's
+  // page, a text hit with its snippet (the words marked); "..." when the index found more than it names
+  // a list under the artifact, set in from it (2026-11-12, the user: "move in to the right ... in file(s): and then
+  // on the new line with * file1 * file2 (each on new line)"): one file a line, its snippet under it
+  function filesLine(r) {
+    var box = h('div', {class: 'cbr-r-files'});
+    box.appendChild(h('div', {class: 'cbr-r-files-in'}, r.files.length > 1 || r.files_more ? 'in files:' : 'in file:'));
+    var ul = h('ul', {class: 'cbr-r-filelist'});
+    r.files.forEach(function (f) {
+      var a = h('a', {class: 'cbr-r-file' + (f.kind === 'text' ? ' text' : '') + (f.best ? ' best' : ''),
+                       href: crefUrl(r.cat, r.alias, r.uid, f.rel),
+                       title: (f.best ? 'this file holds every word' : f.kind === 'text' ? 'the text holds a word' : 'the name holds a word') +
+                              ' - open it on the artifact\'s page'},
+                h('span', {html: hl(f.rel)}));
+      a.addEventListener('click', function (e) { e.stopPropagation(); });
+      var li = h('li', {}, a);
+      // a small button after the file (2026-11-12, the user): Far with its cursor on it when Far is here, else the
+      // folder with the file selected - a browser on the server's own machine only (CFG.open)
+      var ow = CFG.open ? (CFG.open.far ? 'far' : CFG.open.folder ? 'folder' : '') : '';
+      if (ow) {
+        var ob = h('button', {type: 'button', class: 'cbr-mini cbr-r-fopen',
+                              title: ow === 'far' ? 'Far Manager, its cursor on ' + f.rel : 'The folder, ' + f.rel + ' selected'},
+                   ow === 'far' ? 'Far' : 'Folder');
+        ob.addEventListener('click', function (e) {
+          e.stopPropagation();
+          call('open', {uid: r.uid, what: ow, rel: f.rel}, null)
+            .then(function () { toast((ow === 'far' ? 'Far' : 'The folder') + ' opened at ' + f.rel); })
+            .catch(function (err) { toast(err.message, true); });
+        });
+        li.appendChild(ob);
+      }
+      if (f.snip) li.appendChild(h('div', {class: 'cbr-r-snip', html: hl(f.snip)}));
+      ul.appendChild(li);
+    });
+    if (r.files_more) ul.appendChild(h('li', {class: 'cbr-r-more', title: 'more files of this artifact hold the words'}, '...'));
+    box.appendChild(ul);
+    return box;
+  }
   function chip(t) {
     var c = h('button', {type: 'button', class: 'cbr-chip', title: 'Add tag:' + t + ' to the query'}, t);
     c.addEventListener('click', function (e) { e.stopPropagation(); addToQuery('tag:' + quoteIf(t)); });
@@ -546,8 +597,11 @@
     ol.innerHTML = '';
     $('cbr-search-hint').hidden = true;
     last.rows.forEach(function (r) {
-      var url = crefUrl(r.cat, r.alias, r.uid);
-      var title = h('a', {class: 'cbr-r-title', href: url, html: hl(r.alias)});
+      // a row found through a file that holds every word opens the artifact on that file (expanded, highlighted)
+      var best = r.files && r.files.length && r.files[0].best ? r.files[0].rel : '';
+      var url = crefUrl(r.cat, r.alias, r.uid, best);
+      var title = h('a', {class: 'cbr-r-title', href: url, html: hl(r.alias),
+                          title: best ? 'open the artifact on ' + best : 'open the artifact'});
       var li = h('li', {}, title);
       rowLink(li, url);
       if (r.name && r.name !== r.alias) li.appendChild(h('span', {class: 'cbr-r-name', html: hl(r.name)}));
@@ -555,6 +609,7 @@
       var when = r.updated ? 'updated ' + r.updated : (r.created ? 'created ' + r.created : '');
       li.appendChild(h('div', {class: 'cbr-r-meta'}, [r.cat, r.repo || '(registry)', when].filter(Boolean).join(' · '), rowOpen(r)));
       if (r.snippet) li.appendChild(h('div', {class: 'cbr-r-snip', html: hl(r.snippet)}));
+      if (r.files && r.files.length) li.appendChild(filesLine(r));
       if (r.tags && r.tags.length) {
         var tg = h('div');
         r.tags.forEach(function (t) { tg.appendChild(chip(t)); });
@@ -808,11 +863,15 @@
     $('cbr-table').classList.toggle('one-cat', !!st.cats);
     COLS.forEach(function (c) { $('cbr-table').classList.toggle('no-' + c, !colOn(c)); });
     last.rows.forEach(function (r) {
-      var url = crefUrl(r.cat, r.alias, r.uid);
+      // found through a file that holds every word: the row opens the artifact on it, and names the files under the
+      // artifact's name (the file search, as in the Search tab)
+      var best = r.files && r.files.length && r.files[0].best ? r.files[0].rel : '';
+      var url = crefUrl(r.cat, r.alias, r.uid, best);
       var a = h('td', {class: 'alias'});
-      a.appendChild(h('a', {class: 'cbr-a', href: url, html: hl(r.alias)}));
+      a.appendChild(h('a', {class: 'cbr-a', href: url, html: hl(r.alias), title: best ? 'open the artifact on ' + best : 'open the artifact'}));
       if (r.name && r.name !== r.alias) a.appendChild(h('span', {class: 'nm', html: hl(r.name)}));
       if (r.migrated_to) a.appendChild(h('span', {class: 'cbr-badge'}, 'migrated'));
+      if (r.files && r.files.length) a.appendChild(filesLine(r));
       var tags = h('td', {class: 'tags'});
       (r.tags || []).slice(0, 6).forEach(function (t) { tags.appendChild(chip(t)); });
       var tr = h('tr', {}, a, h('td', {class: 'cat'}, r.cat), h('td', {class: 'repo'}, r.repo || '(registry)'), tags,
@@ -1155,13 +1214,16 @@
   // viewer who may write (the dialog of move.js lists where it may go).
   function rowOpen(r) {
     var uid = r.uid;
+    // a row with files the search found: the buttons open at the first of them (Far's cursor on it, selected in
+    // Explorer / Finder, a shell in its folder)
+    var at = r.files && r.files.length ? r.files[0].rel : '';
     var box = h('span', {class: 'cbr-row-open'});
     OPEN.forEach(function (w) {
       if (!CFG.open || !CFG.open[w[0]]) return;
-      var b = h('button', {type: 'button', class: 'cbr-mini', title: w[2]}, w[0] === 'folder' ? 'Folder' : w[1]);
+      var b = h('button', {type: 'button', class: 'cbr-mini', title: w[2] + (at ? ' - at ' + at : '')}, w[0] === 'folder' ? 'Folder' : w[1]);
       b.addEventListener('click', function (e) {
         e.stopPropagation();
-        call('open', {uid: uid, what: w[0]}, null)
+        call('open', {uid: uid, what: w[0], rel: at}, null)
           .then(function () { toast((w[0] === 'folder' ? 'The folder' : w[1]) + ' opened on this machine'); })
           .catch(function (err) { toast(err.message, true); });
       });
@@ -1908,9 +1970,11 @@
         buildPicker('repos');
         buildPicker('cats');
         buildFavourites();
+        filesState(o.file_index);
         run();
       }).catch(function (e) { showError(e.message); });
     });
+    initFileSearch();
     initGraphControls();
     root.querySelectorAll('[data-copy-from]').forEach(function (b) {
       b.addEventListener('click', function () { copy($(b.getAttribute('data-copy-from')).textContent, b); });
@@ -1931,10 +1995,128 @@
       buildPicker('repos');
       buildPicker('cats');
       buildFavourites();
+      filesState(o.file_index);
       setView(st.view);
       if (wantUid) openDetail(wantUid, wantFile);
       if (CFG.notice) showError(CFG.notice);   // a cref= that names nothing this server shows
     }).catch(function (e) { showError(e.message); });
+  }
+
+  /* ------------------------------------------------------------------ the file search (2026-11-12) */
+  // The switches under the pickers (remembered by this browser, carried by the address), the state of the index
+  // (polled while a pass runs: the server's start, Refresh, what cMeta changed), Refresh and the Statistics dialog.
+  var filesPoll = null;
+  function initFileSearch() {
+    var row = $('cbr-files-row');
+    if (!row) return;
+    if (!FS.on) { row.hidden = true; return; }
+    row.hidden = false;
+    ['names', 'texts'].forEach(function (k) {
+      var box = $('cbr-' + k);
+      box.checked = st[k] === '1';
+      box.addEventListener('change', function () {
+        st[k] = box.checked ? '1' : '';
+        try { localStorage.setItem('cbr-files-' + k, box.checked ? '1' : '0'); } catch (e) { /* ignore */ }
+        if (st.q.trim() || st.view === 'browse') run();
+        else syncUrl();
+      });
+    });
+    var refresh = $('cbr-files-refresh');
+    if (FS.manage) {
+      refresh.hidden = false;
+      refresh.addEventListener('click', function () {
+        call('file_index', {do: 'sweep'}, 'refreshing the file index').then(filesState).catch(function (e) { showError(e.message); });
+      });
+    }
+    // the statistics name the files of every repository: for the owners of a hosted site (and this machine) only
+    if (!FS.manage) $('cbr-files-stats').hidden = true;
+    $('cbr-files-stats').addEventListener('click', function () {
+      var box = $('cbr-files-dialog');
+      if (!box.hidden && box.getAttribute('data-what') === 'stats') { box.hidden = true; return; }
+      call('file_stats', {}, 'reading the statistics').then(renderFileStats).catch(function (e) { showError(e.message); });
+    });
+  }
+  // the progress of a pass: a bar with the phase's share done, and the time left from the rate this page observed
+  // since the phase began (the first poll of a phase is the anchor; "about" after two polls with progress)
+  var filesPace = {phase: '', done: 0, t: 0};
+  function etaText(fi) {
+    var now = Date.now();
+    if (fi.phase !== filesPace.phase) { filesPace = {phase: fi.phase, done: fi.done || 0, t: now}; return ''; }
+    var dt = (now - filesPace.t) / 1000, dd = (fi.done || 0) - filesPace.done;
+    if (dt < 3 || dd <= 0 || !fi.total) return '';
+    var left = (fi.total - fi.done) / (dd / dt);
+    if (left < 60) return 'under a minute left';
+    if (left < 3600) return 'about ' + Math.round(left / 60) + ' min left';
+    return 'about ' + (left / 3600).toFixed(1) + ' h left';
+  }
+  function filesState(fi) {
+    var el = $('cbr-files-state'), bar = $('cbr-files-bar');
+    if (!el || !FS.on) return;
+    if (filesPoll) { clearTimeout(filesPoll); filesPoll = null; }
+    if (!fi) { el.textContent = ''; return; }
+    el.classList.toggle('busy', !!fi.building);
+    if (fi.building) {
+      var pct = fi.total ? Math.min(100, Math.round(100 * (fi.done || 0) / fi.total)) : 0;
+      var eta = etaText(fi);
+      el.textContent = (fi.notice || 'the file index is being built') + (fi.total ? ' · ' + pct + '%' : '') + (eta ? ' · ' + eta : '');
+      if (bar) { bar.hidden = false; bar.firstElementChild.style.width = pct + '%'; bar.title = pct + '%'; }
+      filesPoll = setTimeout(function () {
+        call('file_index', {}, null).then(filesState).catch(function () { el.textContent = ''; });
+      }, 2000);
+      return;
+    }
+    if (bar) bar.hidden = true;
+    filesPace = {phase: '', done: 0, t: 0};
+    if (fi.error) { el.textContent = 'the file index: ' + fi.error; return; }
+    if (!fi.ready) { el.textContent = fi.notice || 'the file index is not built yet'; return; }
+    var s = num(fi.files) + ' files of ' + num(fi.arts) + ' artifacts, ' + num(fi.texts) + ' with their text';
+    if (fi.built) s += ' · last indexed ' + fi.built;
+    el.textContent = s;
+    el.title = (fi.dirs ? num(fi.dirs) + ' folders · ' : '') + fmtSize(fi.size || 0) + ' on disk · ' + (fi.db || '');
+  }
+  function renderFileStats(x) {
+    var box = $('cbr-files-dialog');
+    box.innerHTML = '';
+    box.setAttribute('data-what', 'stats');
+    box.hidden = false;
+    var close = h('button', {type: 'button', class: 'cbr-link'}, 'close');
+    close.addEventListener('click', function () { box.hidden = true; });
+    if (!x || !x.ready) {
+      box.appendChild(h('div', {class: 'cbr-dialog-bar'}, h('b', {}, 'File statistics'), close));
+      box.appendChild(h('p', {}, x && x.on ? 'The index is not built yet.' : 'The file search is off on this server.'));
+      return;
+    }
+    box.appendChild(h('div', {class: 'cbr-dialog-bar'}, h('b', {}, 'File statistics'),
+      h('span', {}, num(x.files) + ' files (' + fmtSize(x.bytes) + ') in ' + num(x.dirs) + ' folders of ' + num(x.arts) +
+        ' artifacts · ' + num(x.texts) + ' with their text indexed · as of ' + (x.built || '-') + ' · ' + x.ms + ' ms'), close));
+    function table(title, head, rows) {
+      box.appendChild(h('h3', {}, title));
+      var t = h('table');
+      var tr = h('tr');
+      head.forEach(function (c) { tr.appendChild(h('th', {class: c.n ? 'n' : ''}, c.t)); });
+      t.appendChild(tr);
+      rows.forEach(function (r) {
+        var row = h('tr');
+        r.forEach(function (c, i) { row.appendChild(h('td', {class: head[i].n ? 'n' : ''}, String(c))); });
+        t.appendChild(row);
+      });
+      box.appendChild(t);
+    }
+    table('Categories (by files)', [{t: 'category'}, {t: 'artifacts', n: 1}, {t: 'files', n: 1}, {t: 'size', n: 1}, {t: 'texts', n: 1}],
+      x.categories.slice(0, 60).map(function (c) { return [c.cat, num(c.arts), num(c.files), fmtSize(c.bytes), num(c.texts)]; }));
+    table('Repositories', [{t: 'repository'}, {t: 'artifacts', n: 1}, {t: 'files', n: 1}, {t: 'size', n: 1}],
+      x.repos.map(function (r) { return [r.repo || '(registry)', num(r.arts), num(r.files), fmtSize(r.bytes)]; }));
+    table('Kinds of files', [{t: 'extension'}, {t: 'files', n: 1}, {t: 'size', n: 1}],
+      x.exts.map(function (e) { return [e.ext, num(e.files), fmtSize(e.bytes)]; }));
+    table('Folders with the most files directly inside', [{t: 'category'}, {t: 'artifact'}, {t: 'folder'}, {t: 'files', n: 1}],
+      x.folders.map(function (f) { return [f.cat, f.alias, f.rel || '(top)', num(f.files)]; }));
+    table('The largest files', [{t: 'category'}, {t: 'artifact'}, {t: 'file'}, {t: 'size', n: 1}],
+      x.big.map(function (f) { return [f.cat, f.alias, f.rel, fmtSize(f.bytes)]; }));
+    table('!AI folders', [{t: 'part'}, {t: 'files', n: 1}, {t: 'size', n: 1}],
+      x.ai.map(function (a) { return [a.part, num(a.files), fmtSize(a.bytes)]; }));
+    table('Depth of the files inside their artifact (0 = at the top)', [{t: 'depth', n: 1}, {t: 'files', n: 1}],
+      x.depths.map(function (d) { return [d.depth, num(d.files)]; }));
+    box.scrollIntoView({block: 'nearest'});
   }
   // The connections are read in the background; any answer that carries the state of that index updates this
   // line (no polling: on the engine cserver every call can land in another worker process, with its own index)

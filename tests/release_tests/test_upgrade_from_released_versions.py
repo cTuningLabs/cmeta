@@ -38,7 +38,7 @@ from version import __version__ as NEW  # noqa: E402  (cmeta/version.py: the ver
 # The releases people upgrade from: the one with the previous fix of the internal repository (0.37.3), the first
 # 0.38, a middle one, the one before the gap was found, the one that showed it, and the latest ones
 FROM = ['0.37.3', '0.38.0', '0.38.4', '0.38.6', '0.38.7', '0.38.8', '0.38.9', '0.38.10', '0.38.11', '0.38.12', '0.39.0',
-        '0.39.1']
+        '0.39.1', '0.40.0']
 WINDOWS = os.name == 'nt'
 
 pytestmark = pytest.mark.skipif(not os.environ.get('CMETA_RELEASE_TESTS'),

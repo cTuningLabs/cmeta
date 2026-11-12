@@ -27,6 +27,7 @@ ALLOWED = (
     ('utils/files.py', 'time.time() - mtime'),                   # the time the file system gave a lock file
     ('internal-repo/app/cserver/src/app.py', 'return time.time() > float(written or 0) + plus'),   # a login's end, a code's expiry: written in the cookie or the codes file, read by another worker
     ('internal-repo/app/cserver/src/app.py', 'return time.time() + float(seconds)'),               # the time written down for that
+    ('internal-repo/category/cserver.browse/api/files_index.py', 'time.time() - os.path.getmtime(p) > LOCK_STALE'),   # the file index's build lock: the time the file system gave it (its builder touches it), read by another process
 )
 
 
