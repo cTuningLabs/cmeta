@@ -46,7 +46,20 @@
       <button type="button" id="cbr-clear" class="cbr-link">clear</button>
       <button type="button" id="cbr-help-btn" class="cbr-link cbr-info" title="Search help: the patterns, and the settings that shape a search" aria-label="Search help">i</button>
     </div>
+    <!-- the file search (2026-11-12): the words also look into the files inside the artifacts - their names, their
+         texts (an index of this machine, built by the server; file: and text: in a query do without the switches) -->
+    <div class="cbr-row2 cbr-files-row" id="cbr-files-row" hidden>
+      <span class="cbr-files-label" title="The files inside the artifacts: an index of their names and texts kept by this server">files:</span>
+      <label class="cbr-switch" title="The words also search the names of the files inside the artifacts (and their folders)"><input type="checkbox" id="cbr-names"> file names</label>
+      <label class="cbr-switch" title="The words also search the texts of the files (markdown, text, yaml, json, mail, html, scripts, docx, pptx, xlsx)"><input type="checkbox" id="cbr-texts"> file contents</label>
+      <span id="cbr-files-bar" class="cbr-files-bar" hidden><i></i></span>
+      <span id="cbr-files-state" class="cbr-files-state"></span>
+      <button type="button" id="cbr-files-refresh" class="cbr-link" title="Look for files added, removed or changed outside cMeta (every folder's time, every text file's size and time)" hidden>refresh</button>
+      <button type="button" id="cbr-files-stats" class="cbr-link" title="What the index holds: the categories, the kinds of files, the biggest folders">statistics</button>
+    </div>
   </form>
+
+  <div id="cbr-files-dialog" class="cbr-files-dialog" hidden></div>
 
   <div id="cbr-help" class="cbr-help" hidden>
     <table>
@@ -57,6 +70,16 @@
         <code>browse_search_skip_keys</code> of the config <code>cserver</code> (<a id="cbr-help-settings" href="#">/settings</a>) names the keys,
         <code>none</code> searches every value</td></tr>
       <tr><td><code>-word</code></td><td>in none of them</td></tr>
+      <tr><td><code>file names</code> <code>file contents</code></td><td>the switches below the search: the words also look into the files inside the artifacts -
+        their names and folders, their texts (markdown, text, yaml, json, csv, mail, html, scripts, docx, pptx, xlsx; the first 256 KB) - from an index this
+        server keeps of this machine's files (<code>browse_file_search</code> in <a href="#" class="cbr-help-settings">/settings</a> turns it on; what it
+        skips: the categories of machine output, <code>.git</code>, <code>.venv</code>, <code>node_modules</code> ..., the keys and secrets never). A word
+        matches inside a longer one (<code>dash</code> finds <code>dashboard</code>); <code>*</code> and <code>?</code> inside a word; a
+        <code>"phrase"</code> is whole words. Each row says which files matched; <b>refresh</b> looks for files changed outside cMeta;
+        <b>statistics</b> shows what the index holds</td></tr>
+      <tr><td><code>file:name</code> <code>file:*.pdf</code></td><td>a file (or folder) by a part of its name, or a glob on its path inside the artifact - every kind of
+        file, by its name alone; <code>-file:...</code> the artifacts without one</td></tr>
+      <tr><td><code>text:word</code> <code>text:"a phrase"</code></td><td>in the texts of the files alone, whatever the switches</td></tr>
       <tr><td><code>repo:name</code> <code>cat:name</code></td><td>a repository / category (alias, UID, or the part after @); several = any of them</td></tr>
       <tr><td><code>tag:sla</code> <code>-tag:draft</code></td><td>has / has not this tag</td></tr>
       <tr><td><code>after:2026-09-01</code> <code>before:2026-10</code></td><td>created on or after / before (a year or a month works too)</td></tr>

@@ -172,6 +172,15 @@ import yaml
 from cmeta.category import InitCategory
 from cmeta.utils import names
 
+# the file search (2026-11-12): the index of the files' names and texts, the module beside this file
+try:
+    from . import files_index as _fx
+except ImportError:                                  # this file loaded by itself, outside the engine's package
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location('files_index', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'files_index.py'))
+    _fx = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_fx)
+
 CATEGORY_UID = 'dd9ea50e7f76467f'
 SECRET_CATEGORIES = ['*crypt*', '*secret*', '*credential*']
 PAGE_DEFAULT = 50
@@ -182,8 +191,11 @@ DEPTH_MAX = 12
 DESC_MAX_BYTES = 400000          # a larger _desc is summarised, not sent
 
 # What the URL of the page keeps: the query, the view, the open artifact and the graph controls
-STATE_KEYS = ('q', 'repos', 'cats', 'after', 'before', 'view', 'sort', 'dir', 'uid', 'file',
+STATE_KEYS = ('q', 'repos', 'cats', 'after', 'before', 'view', 'sort', 'dir', 'uid', 'file', 'names', 'texts',
               'focus','depth', 'max_nodes', 'categories', 'core', 'isolated', 'neighbors', 'labels', 'links')
+
+# the file search: the result artifact that keeps the index (files_index.py), in the local repository
+FILES_RESULT_CATEGORY = 'result,6567e4df4d04488a'
 
 UID_RE = re.compile(r'^[0-9a-fA-F]{16}$')
 KEY_RE = re.compile(r'^[A-Za-z_][\w.\-]*$')
@@ -282,6 +294,20 @@ _conn = {'stamp': None, 'want': 0, 'ready': False, 'building': False, 'thread': 
          'text': {}, 'reread': 0, 'desc_of': {}, 'all': False, 'trusted': 0}
 _links_cache = {}                # path of _desc -> ((mtime, size), connections, uses, ai_uses, text)
 _disk = {'key': None, 'dir': '', 'loaded': '', 'files': frozenset(), 'load_ms': 0, 'saved': '', 'error': ''}
+
+# the file search (2026-11-12): the folder of its result artifact, and the catalog stamp the index last followed
+_fdisk = {'key': None, 'dir': '', 'error': ''}
+_fstate = {'catalog_stamp': None}
+
+
+def _size(n):
+    """Bytes for a person, 1000-based (as everywhere since 2026-11-12): 812 B, 3.4 GB."""
+    n = float(n or 0)
+    for unit in ('B', 'kB', 'MB', 'GB', 'TB'):
+        if n < 1000 or unit == 'TB':
+            return '%d %s' % (n, unit) if unit in ('B', 'kB') else '%.1f %s' % (n, unit)
+        n /= 1000
+    return '%.1f TB' % n
 _launchers = {}                  # what the open buttons can start here, found once per process
 _origins = {}                    # repository UID -> (its remote URL, its branch, its path): the origin of its artifacts
 
@@ -610,7 +636,7 @@ def parse_query(q):
     negated)], 'desc_has': [(key in the _desc or '', negated)]}."""
     out = {'words': [], 'not_words': [], 'repos': [], 'cats': [], 'tags': [], 'not_tags': [], 'uids': [],
            'after': '', 'before': '', 'has': [], 'not_has': [], 'fields': [], 'aliases': [], 'desc': [],
-           'desc_has': []}
+           'desc_has': [], 'files': [], 'not_files': [], 'texts': [], 'not_texts': []}
     for tok in TOKEN_RE.findall(q or ''):
         neg = tok.startswith('-') and len(tok) > 1
         t = tok[1:] if neg else tok
@@ -661,6 +687,10 @@ def parse_query(q):
                 out['desc_has'].append((_desc_key(value.lower()), neg))
             elif key == 'has':
                 out['not_has' if neg else 'has'].append(value)
+            elif key == 'file':                        # a file by its name or path inside the artifact (a glob too)
+                out['not_files' if neg else 'files'].append(value.lower())
+            elif key == 'text':                        # a word (a part of one, a "phrase") in the files' texts
+                out['not_texts' if neg else 'texts'].append(value.lower())
             elif _desc_key(key) is not None:
                 out['desc'].append((_desc_key(key), value.lower(), neg))
             else:
@@ -674,11 +704,13 @@ def parse_query(q):
     return out
 
 
-def _item_matches(it, pq, ui_repos, ui_cats, after, before, texts=None, skip=None):
+def _item_matches(it, pq, ui_repos, ui_cats, after, before, texts=None, skip=None, fx=None):
     """True when the catalog item holds everything the parsed query and the pickers ask for. texts: the text of
     every _desc by UID, (text, lower-cased, where its link lists start) - None when the _desc files have not been
     read (then words search the meta alone, and nothing passes a _desc qualifier). skip: (patterns, signature) of
-    browse_search_skip_keys - the words then read the values of the _desc without those keys, as in the meta."""
+    browse_search_skip_keys - the words then read the values of the _desc without those keys, as in the meta.
+    fx: what the file index found for this search ({'words': {word: {uid: files}}, 'files': {pattern: ...},
+    'texts': {word: ...}}) - a word then also matches an artifact whose files hold it; None: no file search."""
     if ui_repos and not _picked(it['repo'], it['repo_uid'], ui_repos):
         return False
     if ui_cats and not _picked(it['cat'], it['cat_uid'], ui_cats):
@@ -716,11 +748,27 @@ def _item_matches(it, pq, ui_repos, ui_cats, after, before, texts=None, skip=Non
     t = texts.get(it['uid']) if texts is not None else None
     tl, cut = (t[1], t[2]) if t else ('', 0)
     dw = _desc_words(it['uid'], t, skip[0], skip[1]) if skip is not None and t else None
+    uid = it['uid']
     for w in pq['words']:
-        if w not in hay and (w not in dw if dw is not None else tl.find(w, 0, cut) < 0):
+        if w not in hay and (w not in dw if dw is not None else tl.find(w, 0, cut) < 0) \
+                and not (fx is not None and uid in fx['words'].get(w, ())):
             return False
     for w in pq['not_words']:
-        if w in hay or (w in dw if dw is not None else tl.find(w, 0, cut) >= 0):
+        if w in hay or (w in dw if dw is not None else tl.find(w, 0, cut) >= 0) \
+                or (fx is not None and uid in fx['words'].get(w, ())):
+            return False
+    # file: and text: - the files alone (nothing passes them without the file index)
+    for p in pq['files']:
+        if fx is None or uid not in fx['files'].get(p, ()):
+            return False
+    for p in pq['not_files']:
+        if fx is not None and uid in fx['files'].get(p, ()):
+            return False
+    for w in pq['texts']:
+        if fx is None or uid not in fx['texts'].get(w, ()):
+            return False
+    for w in pq['not_texts']:
+        if fx is not None and uid in fx['texts'].get(w, ()):
             return False
     if pq['desc'] or pq['desc_has']:
         if texts is None:
@@ -790,23 +838,95 @@ def _meta_snippet(it, w):
     return ''
 
 
-def _row(it, words=None, texts=None):
-    """What the page shows of an item (no meta, no haystack)."""
+def _row(it, words=None, texts=None, fx=None, pq=None, held=()):
+    """What the page shows of an item (no meta, no haystack). With the file search (fx): the files of the artifact
+    that matched - 'files': [{'rel', 'kind': 'name' | 'text', 'best', 'snip'}], a few, ranked by how many of the
+    words each holds (the words the artifact's own meta and _desc hold - held - aside: a file need not hold those);
+    'best' = the file holds every other word: the reason the artifact was found (the page opens the artifact on it);
+    the snippet of a text hit read from the file now (the words marked by the page)."""
     r = {'uid': it['uid'], 'alias': it['alias'], 'name': it['name'], 'cat': it['cat'], 'cat_uid': it['cat_uid'],
          'repo': it['repo'], 'created': _stamp(it['created_full']), 'updated': _stamp(it['updated_full']),
          'tags': it['tags'][:12], 'migrated_to': it['meta'].get('migrated_to') or ''}
     if words:
         r['snippet'] = _snippet(it, words, texts)
+    if fx is not None and pq is not None:
+        uid = it['uid']
+        hits, seen = [], set()
+        more = False
+
+        def add(rel, kind, found, best=False):
+            nonlocal more
+            if not rel or rel in seen:
+                return
+            if len(hits) >= _fx.PER_ARTIFACT:
+                more = True
+                return
+            seen.add(rel)
+            h = {'rel': rel, 'kind': kind, 'words': found}
+            if best:
+                h['best'] = True
+            hits.append(h)
+
+        ws = [w for w in pq['words'] if w in fx['words']]
+        if ws:
+            need = [w for w in ws if w not in held]
+            scope = need or ws
+            # a file's rank: the words it holds - a whole word in its name above one in its text, either above a part
+            # of a longer word
+            count, score = {}, {}
+            for w in scope:
+                in_name, in_text = fx.get('exact', {}).get(w, ((), ()))
+                for i in fx['words'][w].get(uid, ()):
+                    count[i] = count.get(i, 0) + 1
+                    score[i] = score.get(i, 0) + (3 if i in in_name else 2 if i in in_text else 1)
+            ranked = sorted(score, key=lambda i: (-count[i], -score[i], fx['loc'][i][1].lower()))
+            # the files that hold every word, when there are some: those alone (a file that holds one of the words
+            # says little next to the one that holds them all)
+            if len(scope) > 1 and ranked and count[ranked[0]] == len(scope):
+                ranked = [i for i in ranked if count[i] == len(scope)]
+            for i in ranked:
+                found = [w for w in scope if i in fx['per'][w]]
+                kind = 'name' if all(fx['per'][w][i] == 'n' for w in found) else 'text'
+                add(fx['loc'][i][1], kind, found, best=bool(need) and count[i] == len(scope))
+        for p in pq['files']:
+            for rel, kind in fx['files'].get(p, {}).get(uid, []):
+                if kind == 'more':
+                    more = True
+                else:
+                    add(rel, 'name', [p], best=True)
+        for w in pq['texts']:
+            for rel, kind in fx['texts'].get(w, {}).get(uid, []):
+                if kind == 'more':
+                    more = True
+                else:
+                    add(rel, 'text', [w], best=not ws)
+        snipped = False
+        for h in hits:
+            found = h.pop('words')
+            # one snippet a row, of its first text hit: a file read now (on Windows the antivirus makes each read
+            # cost several ms - a page of 50 rows reads 50 files at most)
+            if h['kind'] == 'text' and it.get('path') and not snipped:
+                snipped = True
+                try:
+                    h['snip'] = _fx.snippet(it['path'], h['rel'], found + [w for w in pq['words'] + pq['texts'] if w not in found])
+                except Exception:
+                    h['snip'] = ''
+        if hits:
+            r['files'] = hits
+            if more:
+                r['files_more'] = True
     return r
 
 
-def _sort(items, sort, desc, words):
+def _sort(items, sort, desc, words, boost=None):
     """The items in the order of one sort key or several ("created,updated": by created, then by updated; "-alias":
-    names from the end): `desc` for the first key (what a reader clicked), each other key by its own direction."""
+    names from the end): `desc` for the first key (what a reader clicked), each other key by its own direction.
+    boost: {uid: 3 (a file named by every word as a whole word), 2 (a file's name or text holds every word as a whole
+    word), 1 (every word, some inside longer ones)} - the file search: those artifacts first by relevance."""
     order = _sort_keys(sort) or ['updated']
     if order[0].lstrip('-') == 'relevance' and words:
-        return sorted(items, key=lambda it: (_score(it, words), it['updated_full'] or it['created_full']),
-                      reverse=True)
+        return sorted(items, key=lambda it: ((boost or {}).get(it['uid'], 0), _score(it, words),
+                                             it['updated_full'] or it['created_full']), reverse=True)
     keys = {
         'alias': lambda it: it['alias_l'],
         'cat': lambda it: (it['cat'].lower(), it['alias_l']),
@@ -1343,9 +1463,11 @@ def _desktop():
                                                                os.environ.get('WAYLAND_DISPLAY'))
 
 
-def _open_cmd(what, path, cfg):
+def _open_cmd(what, path, cfg, file=None):
     """The command that opens path in the file manager, a shell or Far -> (argv, error). The folder is also the
-    working directory of the program, so a program that takes no folder argument still starts there."""
+    working directory of the program, so a program that takes no folder argument still starts there. file: a file
+    inside path the window opens on (2026-11-12, a file the search found) - Far with its cursor on it, Explorer and
+    Finder with it selected; path is then the file's folder."""
     if not _desktop():
         return None, 'this server has no desktop to open a window on (no DISPLAY)'
     term = str(cfg.get('browse_terminal') or os.environ.get('CMETA_TERMINAL') or '').strip()
@@ -1354,13 +1476,16 @@ def _open_cmd(what, path, cfg):
         if not far:
             return None, ('Far Manager was not found: put it on PATH, or set browse_far in the cserver config '
                           '(far2l on macOS and Linux)')
-        return ([far] if wrapper else [far, path]), ''     # a wrapper starts in the folder, without arguments
+        # Far given a file opens its folder with the cursor on it; a wrapper starts in the folder, without arguments
+        return ([far] if wrapper else [far, file or path]), ''
     if os.name == 'nt':
         if what == 'folder':
-            return ['explorer', path], ''
+            return (['explorer', '/select,', file] if file else ['explorer', path]), ''
         return [term or os.environ.get('COMSPEC') or 'cmd.exe'], ''
     if sys.platform == 'darwin':
-        return (['open', path] if what == 'folder' else ['open', '-a', term or 'Terminal', path]), ''
+        if what == 'folder':
+            return (['open', '-R', file] if file else ['open', path]), ''
+        return ['open', '-a', term or 'Terminal', path], ''
     if what == 'folder':
         x = shutil.which('xdg-open') or shutil.which('gio')
         if not x:
@@ -1377,6 +1502,11 @@ def _launch(argv, cwd):
     """Start a program in cwd and do not wait: a console of its own on Windows (cmd and Far draw there), a session
     of its own elsewhere, so it outlives the server and never shares its input and output."""
     if os.name == 'nt':
+        if argv[0] == 'explorer' and len(argv) == 3:
+            # a file selected in its folder: explorer reads /select,"<path>" from its own command line - one string,
+            # the path quoted after the comma (a list would quote the comma with it)
+            subprocess.Popen('explorer /select,"%s"' % argv[2], cwd=cwd, close_fds=True)
+            return
         if argv[0] == 'explorer':
             os.startfile(argv[1])
             return
@@ -1653,12 +1783,15 @@ class Category(InitCategory):
         ui_cats = _list(params.get('cats'))
         after = str(params.get('after') or pq['after'] or '').strip()
         before = str(params.get('before') or pq['before'] or '').strip()
+        # the file search (2026-11-12): with the switches, the plain words also look into the files' names and
+        # texts; file: and text: always do - what the index found for each word, once per search
+        fx, fsearch = self._file_search(pq, params, cfg)
         # what the category picker does not narrow: the Browse view lists every category with how many of its
         # artifacts the rest of the query keeps (words, repositories, dates), so a reader prunes by picking one
-        wide = [it for it in items if _item_matches(it, pq, ui_repos, [], after, before, texts, skip)] if ui_cats else None
+        wide = [it for it in items if _item_matches(it, pq, ui_repos, [], after, before, texts, skip, fx)] if ui_cats else None
         found = [it for it in (wide if wide is not None else items)
-                 if _item_matches(it, pq, [], ui_cats, '', '', texts, skip)] if ui_cats else \
-            [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before, texts, skip)]
+                 if _item_matches(it, pq, [], ui_cats, '', '', texts, skip, fx)] if ui_cats else \
+            [it for it in items if _item_matches(it, pq, ui_repos, ui_cats, after, before, texts, skip, fx)]
         # a bare query lists by name (a reader browsing a category expects its artifacts in order), words by
         # relevance; a category may declare its own order (work items: the newest first) - the server's
         # browse_category_sort, else the category's meta (browse_sort)
@@ -1670,23 +1803,204 @@ class Category(InitCategory):
         spec = _sort_keys(sort) or ['updated']
         first = spec[0].lstrip('-')
         desc = str(params.get('dir') or ('desc' if _key_desc(spec[0]) else 'asc')) == 'desc'
-        found = _sort(found, sort, desc, pq['words'])
+        # the artifacts with a file that holds every word come first by relevance (the note one searched for): a file
+        # named by all the words as whole words, then a file whose name or text holds them all as whole words, then a
+        # file that holds them all, some inside longer words
+        boost = None
+        if fx is not None and fx.get('per') and len(pq['words']) > 1:
+            common = exact = named = None
+            for w in pq['words']:
+                ids = set(fx['per'].get(w, {}))
+                in_name, in_text = fx['exact'].get(w, (set(), set()))
+                common = ids if common is None else common & ids
+                exact = (in_name | in_text) if exact is None else exact & (in_name | in_text)
+                named = set(in_name) if named is None else named & in_name
+            boost = {}
+            for tier, ids in ((1, common), (2, exact), (3, named)):
+                boost.update({fx['loc'][i][0]: tier for i in (ids or ()) if i in fx['loc']})
+        found = _sort(found, sort, desc, pq['words'], boost)
         limit = _int(params.get('limit'), PAGE_DEFAULT, 1, LIMIT_MAX)
         offset = _int(params.get('offset'), 0, 0)
         page = found[offset:offset + limit]
+        rows = []
+        for it in page:
+            # the words the artifact's own meta and _desc hold: its files need not hold them (_row ranks the files)
+            held = ()
+            if fx is not None and pq['words']:
+                t = texts.get(it['uid']) if texts is not None else None
+                tl, cut = (t[1], t[2]) if t else ('', 0)
+                dw = _desc_words(it['uid'], t, skip[0], skip[1]) if skip is not None and t else None
+                held = {w for w in pq['words'] if w in it['hay'] or (w in dw if dw is not None else tl.find(w, 0, cut) >= 0)}
+            rows.append(_row(it, pq['words'], texts, fx, pq, held))
         out = {'total': len(found), 'offset': offset, 'limit': limit, 'sort': first, 'sort_keys': _sort_keys(sort),
-               'dir': 'desc' if desc else 'asc', 'rows': [_row(it, pq['words'], texts) for it in page],
+               'dir': 'desc' if desc else 'asc', 'rows': rows,
                'of': len(items), 'ms': int((time.monotonic() - t0) * 1000), 'catalog': self._catalog_info(),
-               'descs': {'asked': asked, 'searched': texts is not None, 'count': len(texts or {})}}
+               'descs': {'asked': asked, 'searched': texts is not None, 'count': len(texts or {})},
+               'file_search': fsearch}
         if str(params.get('facets', '1')).lower() not in ('0', 'no', 'false'):
             out['facets'] = _facets(found)
             toc = Counter(it['cat'] for it in (wide if wide is not None else found))
             out['toc'] = sorted(toc.items(), key=lambda x: x[0].lower())
-        notices = self._hidden_notices(pq, found, cfg)
+        notices = self._hidden_notices(pq, found, cfg) + list(fsearch.get('notices') or [])
         if notices:
             out['notices'] = notices
         out['_found'] = found
         return out
+
+    # ------------------------------------------------------------ the file search (2026-11-12)
+    def _files_dir(self):
+        """The folder of result::local:cserver-browse-files (the index of the files; permanent, as the state of the
+        named syncs), created on first use: '' when it cannot be had. Asked once per process and workspace."""
+        key = getattr(self.cm.repos, 'index_path', '')
+        if _fdisk['key'] != key:
+            _fdisk.update(key=key, dir='', error='')
+        if _fdisk['dir'] and os.path.isdir(_fdisk['dir']):
+            return _fdisk['dir']
+        try:
+            r = self.cm.access({'category': self._uses('result', FILES_RESULT_CATEGORY), 'command': 'get',
+                                'arg1': 'local:' + _fx.RESULT_ALIAS, 'tags': list(_fx.RESULT_TAGS), 'con': False,
+                                'meta': {'name': _fx.RESULT_NAME, 'permanent': True, 'tags': list(_fx.RESULT_TAGS),
+                                         'generator': dict(CACHE_GENERATOR)}})
+            path = (r.get('artifact') or {}).get('path', '') if r.get('return', 1) == 0 else ''
+            _fdisk['error'] = '' if path else 'result::%s: %s' % (_fx.RESULT_ALIAS, r.get('error', 'not available'))
+        except Exception as e:
+            path = ''
+            _fdisk['error'] = 'result::%s: %s: %s' % (_fx.RESULT_ALIAS, type(e).__name__, e)
+        _fdisk['dir'] = path if path and os.path.isdir(path) else ''
+        return _fdisk['dir']
+
+    def _file_index_items(self, cfg, fs):
+        """The artifacts the file index covers: the catalog without the hidden categories (the keys and secrets) and
+        without the skipped ones (fs['skip_cats']) - every repository (the pickers and hide_repos narrow a search,
+        never the index)."""
+        cat = self._catalog()
+        hidden = self._hidden_categories(cfg)
+        skip = set(fs['skip_cats']) | set(_fx.NEVER_CATEGORIES)
+        out = []
+        for it in cat['items']:
+            c = it['cat'].lower()
+            if c in skip or _matches_any(c, hidden) or _matches_any(it['cat_uid'].lower(), hidden):
+                continue
+            if not it.get('path') or _in_engine(it['path']):      # the engine's own repository: code, not the user's files
+                continue
+            out.append({'uid': it['uid'], 'cat': it['cat'], 'repo': it['repo'], 'path': it['path']})
+        return out
+
+    def _file_index_start(self, cfg=None, mode=None, dirty_uids=None):
+        """The file index built, swept or refreshed in the background, as the settings say: the server's start
+        (once per process: a sweep, the whole build when there is none), a change of cMeta's own index (follow: the
+        artifacts of the categories read again), a routine sweep (the refresh setting in minutes), or what the
+        caller asks (mode). -> (the settings or None when off, the thread or None)."""
+        cfg = self._cserver_config() if cfg is None else cfg
+        fs = _fx.settings(cfg)
+        if fs is None:
+            return None, None
+        folder = self._files_dir()
+        if not folder:
+            return fs, None
+        cat = self._catalog()
+        want = mode
+        if want is None:
+            # by itself, as the settings say - and never a build from nothing (the user, 2026-11-12: the Refresh
+            # button or the command line builds the first index; `start` or a number of minutes do it too)
+            usable = _fx.usable(_fx.db_path(folder), fs['sig'])
+            if fs['refresh'] == 'start' and not _fx.started_once():
+                want = 'sweep'                             # a missing index is built whole by the sweep
+            elif _fx.due(fs):
+                want = 'sweep'
+            elif fs['follow'] and usable and _fstate['catalog_stamp'] not in (None, cat['stamp']):
+                # cMeta's index changed since the last look: the artifacts of the categories it read again
+                reread = _catalog.get('dirty')
+                dirty_uids = [it['uid'] for it in cat['items'] if reread is None or it['cat'] in reread]
+                want = 'partial'
+        _fstate['catalog_stamp'] = cat['stamp']
+        if want is None:
+            return fs, None
+        return fs, _fx.request(folder, self._file_index_items(cfg, fs), fs, mode=want, dirty_uids=dirty_uids)
+
+    def _file_search(self, pq, params, cfg):
+        """What the file index found for this search: {'words', 'files', 'texts'} of {word: {uid: [(rel, kind)]}},
+        or None when nothing was asked of it; and what the page says of the file search (its switches, its state,
+        the notices)."""
+        fs = _fx.settings(cfg)
+        names_on = _flag(params.get('names'), False)
+        texts_on = _flag(params.get('texts'), False)
+        terms = bool(pq['files'] or pq['not_files'] or pq['texts'] or pq['not_texts'])
+        need = terms or ((names_on or texts_on) and bool(pq['words'] or pq['not_words']))
+        info = {'on': fs is not None, 'names': names_on, 'texts': texts_on, 'used': False, 'ms': 0, 'notices': []}
+        if not need:
+            return None, info
+        if fs is None:
+            info['notices'].append('file names and contents are not searched here: browse_file_search in the cserver '
+                                   'config turns the file index on (the Settings page has it)')
+            return None, info
+        self._file_index_start(cfg)
+        q = _fx.Query(self._files_dir())
+        if not q.ready:
+            st = _fx.status(self._files_dir(), fs)
+            info['notices'].append(self._file_index_notice(st, building=True))
+            return None, info
+        # words: {word: {uid: [file ids]}} - which artifacts' files hold each plain word (the match), per: {word: {file
+        # id: 'n' | 't'}}, loc: {file id: (uid, rel)} - which files, for the rows (_row ranks an artifact's files by how
+        # many of the words each holds: the file that holds them all first)
+        fx = {'words': {}, 'files': {}, 'texts': {}, 'per': {}, 'loc': {}, 'exact': {}}
+        try:
+            if names_on or texts_on:
+                per = {w: q.ids_with(w, names=names_on, texts=texts_on) for w in pq['words'] + pq['not_words']}
+                # the files that hold a word as a whole word rank above those that hold it inside a longer one
+                fx['exact'] = {w: q.exact_ids(w, names=names_on, texts=texts_on) for w in pq['words']}
+                every = set()
+                for d in per.values():
+                    every |= set(d)
+                loc = q.locate(every)
+                for w, d in per.items():
+                    by = {}
+                    for i in d:
+                        if i in loc:
+                            by.setdefault(loc[i][0], []).append(i)
+                    fx['words'][w] = by
+                fx['per'], fx['loc'] = per, loc
+            for p in pq['files'] + pq['not_files']:
+                fx['files'][p] = q.uids_with_file(p)
+            for w in pq['texts'] + pq['not_texts']:
+                fx['texts'][w] = q.uids_with(w, names=False, texts=True)
+            info.update(used=True, ms=q.ms, capped=list(q.terms_capped))
+            if q.terms_capped:
+                info['notices'].append('a part of a word stands for too many words (%s: the %d most frequent were searched) - '
+                                       'a longer part finds the rest' % (', '.join(q.terms_capped[:3]), _fx.VOCAB_MAX))
+        finally:
+            q.close()
+        st = _fx.status(self._files_dir(), fs)
+        if st.get('building') or not st.get('ready'):
+            info['notices'].append(self._file_index_notice(st, building=True))
+        return fx, info
+
+    @staticmethod
+    def _file_index_notice(st, building=False):
+        if st.get('error') and not st.get('building'):
+            return 'the file index: ' + str(st['error'])
+        if st.get('building'):
+            phase = st.get('phase') or st.get('db_phase') or ''
+            what = {'names': 'listing the files', 'texts': 'reading the texts', 'sweep': 'looking for changes'}.get(phase, 'building')
+            n, t = st.get('done') or 0, st.get('total') or 0
+            return 'the file index is %s (%s of %s)%s' % (what, '{:,}'.format(n), '{:,}'.format(t),
+                                                         ' - the files indexed so far answer' if st.get('ready') else ' - nothing of the files answers yet')
+        if not st.get('ready'):
+            return ('the file index is not built yet' + (' (its settings changed)' if st.get('settings_changed') else '')
+                    + ' - refresh builds it (minutes the first time; the files are listed first, then their texts read)')
+        return ''
+
+    def _file_index_status(self, cfg=None):
+        cfg = self._cserver_config() if cfg is None else cfg
+        fs = _fx.settings(cfg)
+        folder = self._files_dir() if fs is not None else ''
+        st = _fx.status(folder, fs) if folder else {'on': fs is not None, 'ready': False, 'error': _fdisk.get('error', '')}
+        st['on'] = fs is not None
+        st['notice'] = self._file_index_notice(st, building=True) if fs is not None else \
+            'file names and contents are not searched here (browse_file_search in the cserver config turns the index on)'
+        if fs is not None:
+            st['settings'] = {k: fs[k] for k in ('skip_cats', 'skip_dirs', 'text', 'max_kb', 'depth', 'refresh', 'minutes', 'follow')}
+        return st
 
     def _catalog_info(self):
         # reread: the categories read again at the last build (-1: every one - the first build, a reload)
@@ -2203,6 +2517,16 @@ class Category(InitCategory):
         misc (the real peer address, no proxy header, and a Host that names this machine)."""
         return bool((misc or {}).get('client_local'))
 
+    def _file_index_manage(self, misc, cfg):
+        """Who may refresh, rebuild or clear the file index and read its statistics (which name the files and folders
+        of every repository): a browser on the server's own machine; a person a host names (misc.file_index_manage:
+        the owners and admins of a site that signs its readers in - every other reader searches the index without
+        seeing beyond the repositories they may read); or everyone the server lets in when the cserver config opens
+        the file browser to them (browse_files: yes - a personal server)."""
+        if self._client_local(misc) or (misc or {}).get('file_index_manage') is True:
+            return True
+        return str(cfg.get('browse_files') or '').strip().lower() in ('yes', 'on', 'true', '1', 'all')
+
     def _files_on(self, misc, cfg):
         """The file browser: the cserver config decides (browse_files yes / no); without a word from it, a host that
         signs its readers in may open it for them (misc.browse_files, with the scope of each request hiding what
@@ -2223,8 +2547,10 @@ class Category(InitCategory):
             return False
         return self._client_local(misc)
 
-    def _open(self, uid, what, misc, cfg, dry=False):
-        """Open the folder of an artifact this page shows in the file manager, a shell or Far, on this machine."""
+    def _open(self, uid, what, misc, cfg, dry=False, rel=None):
+        """Open the folder of an artifact this page shows in the file manager, a shell or Far, on this machine - at a
+        file inside it when rel names one (the file a search found: Far's cursor on it, selected in Explorer / Finder,
+        a shell in its folder)."""
         if not self._open_on(misc, cfg):
             return {'error': 'opening folders is for a browser on the server\'s own machine (browse_open in the '
                              'cserver config can turn it off there too)'}
@@ -2241,12 +2567,22 @@ class Category(InitCategory):
         path = os.path.realpath(it['path'])
         if not os.path.isdir(path):
             return {'error': 'the folder of this artifact is missing'}
-        argv, err = _open_cmd(what, path, cfg)
+        file = None
+        rel = str(rel or '').replace('\\', '/').strip('/')
+        if rel:
+            parts = rel.split('/')
+            full = os.path.realpath(os.path.join(path, *parts))
+            # a file inside the artifact, not a key, not in a folder of keys: else the artifact's folder, as before
+            if (not any(p in ('', '.', '..') for p in parts) and full.startswith(path.rstrip('\\/') + os.sep)
+                    and os.path.isfile(full) and not SECRET_FILE_RE.search(parts[-1])
+                    and not any(SECRET_DIR_RE.search(p) for p in parts[:-1])):
+                file, path = full, os.path.dirname(full)
+        argv, err = _open_cmd(what, path, cfg, file)
         if argv is None:
             return {'error': err}
         if not dry:
             _launch(argv, path)
-        return {'opened': what, 'path': path, 'cmd': argv, 'dry': bool(dry)}
+        return {'opened': what, 'path': path, 'file': file or '', 'cmd': argv, 'dry': bool(dry)}
 
     # ------------------------------------------------------------ the editor
     def _edit_on(self, misc, cfg):
@@ -2902,12 +3238,41 @@ class Category(InitCategory):
                     out = self._options()
                     self._conn_start()                 # start reading the connections as the page opens
                     out['index'] = _conn_status()
+                    self._file_index_start()           # and the file index: its sweep at the server's start, what cMeta changed
+                    out['file_index'] = self._file_index_status()
                 elif na == 'reload':
                     self._catalog(force=True)
                     _desc_cache.clear()
                     out = self._options()
                     self._conn_start(force=True)       # re-reads only the _desc files that changed
                     out['index'] = _conn_status()
+                    self._file_index_start()           # the file index follows cMeta's own changes (a sweep is the Refresh button's)
+                    out['file_index'] = self._file_index_status()
+                elif na == 'file_index':               # the file search (2026-11-12): its state; Refresh / rebuild / clear
+                    cfg = self._cserver_config()
+                    what = str(query.get('do') or '').strip().lower()
+                    if what in ('sweep', 'rebuild', 'clear') and not self._file_index_manage(misc, cfg):
+                        out = {'error': 'the file index is refreshed by the owners of this server (or from a browser on '
+                                        'its own machine)'}
+                    elif what == 'clear':
+                        n = _fx.clear(self._files_dir()) if _fx.settings(cfg) is not None else 0
+                        out = self._file_index_status(cfg)
+                        out['cleared'] = n
+                    else:
+                        if what in ('sweep', 'rebuild'):
+                            self._file_index_start(cfg, mode=what)
+                        else:
+                            self._file_index_start(cfg)
+                        out = self._file_index_status(cfg)
+                elif na == 'file_stats':               # the Statistics dialog: what the index holds, from the database alone
+                    cfg = self._cserver_config()
+                    fs = _fx.settings(cfg)
+                    if not self._file_index_manage(misc, cfg):
+                        # they name the files and folders of every repository, the hidden ones too
+                        out = {'error': 'the statistics of the file index are for the owners of this server'}
+                    else:
+                        out = _fx.stats(self._files_dir()) if fs is not None and self._files_dir() else {'ready': False}
+                        out['on'] = fs is not None
                 elif na == 'index':
                     self._conn_start()
                     out = _conn_status()
@@ -2962,7 +3327,7 @@ class Category(InitCategory):
                     out = self._templates()
                 elif na == 'open':
                     out = self._open(query.get('uid'), query.get('what'), misc, self._cserver_config(),
-                                     dry=_flag(query.get('dry'), False))
+                                     dry=_flag(query.get('dry'), False), rel=query.get('rel'))
                 else:
                     out = {'error': 'unknown native_action %r' % na}
                 return {'return': 0, 'json': out}
@@ -2998,6 +3363,10 @@ class Category(InitCategory):
             open_on = self._open_on(misc, cfg)
             config = {'api_url': urls.get('url', '?'), 'url_server': urls.get('url_server') or '/',
                       'dark_mode': bool(dark), 'version': version, 'local': local, 'title': title,
+                      # inside a host's shell (the cPlatform, a site of one's own): the shell paints the window - the
+                      # page keeps to its box in dark mode (its band over the window painted over the shell's menu,
+                      # 2026-11-12) and never colours the body
+                      'hosted': bool((misc or {}).get('ctuning_server') or (misc or {}).get('hosted')),
                       'files': self._files_on(misc, cfg),
                       # who may write here: True, False, or the repositories (patterns) of the viewer's grant
                       'edit': self._edit_on(misc, cfg),
@@ -3014,6 +3383,9 @@ class Category(InitCategory):
                       'graph_url': str((misc or {}).get('graph_url') or ''),
                       # what the pickers go back to (Clear) and leave out of the address: the unticked repositories
                       'untick': {'repos': untick},
+                      # the file search (2026-11-12): the two switches beside the search box, the Refresh and
+                      # Statistics buttons; refresh / rebuild from a browser on the server's own machine
+                      'file_search': {'on': _fx.settings(cfg) is not None, 'manage': self._file_index_manage(misc, cfg)},
                       'state': state, 'notice': notice}
             with open(os.path.join(path_to_files, 'index.html'), encoding='utf-8') as f:
                 body = f.read()
@@ -3034,8 +3406,72 @@ class Category(InitCategory):
             return self.cm.error('cserver.browse: %s: %s' % (type(e).__name__, e))
 
     # ------------------------------------------------------------ cli
+    def files_(self, ctx, sweep=False, rebuild=False, clear=False, wait=False, as_json=False, stats=False):
+        """The file search of /browse (2026-11-12): the state of the index of the files' names and texts, and its
+        upkeep - a sweep (every folder's time, every text file's size and time: what changed outside cMeta), a
+        rebuild from nothing, the index removed; --wait waits for the pass to end (a script, a test). --stats: what
+        the index holds (the categories, the kinds of files, the biggest folders), as the page's Statistics shows.
+
+            cx cserver.browse files
+            cx cserver.browse files --sweep --wait
+            cx cserver.browse files --rebuild
+            cx cserver.browse files --clear
+            cx cserver.browse files --stats
+        """
+        cfg = self._cserver_config()
+        fs = _fx.settings(cfg)
+        if fs is None:
+            print('the file search is off here: browse_file_search: yes in the cserver config turns it on '
+                  '(cx config set cserver --meta.browse_file_search=yes; the Settings page has it)')
+            return {'return': 0, 'on': False}
+        if clear:
+            n = _fx.clear(self._files_dir())
+            print('the file index removed (%d file(s)); the next start of the server builds it anew' % n)
+            return {'return': 0, 'cleared': n}
+        th = None
+        if sweep or rebuild:
+            fs, th = self._file_index_start(cfg, mode='rebuild' if rebuild else 'sweep')
+        elif wait:                                  # a pass running (started by a page) is waited for; none is started
+            fs, th = self._file_index_start(cfg)
+            th = th or _fx.running()
+        if wait and th is not None:
+            while th.is_alive():
+                th.join(1)
+                st = self._file_index_status(cfg)
+                if ctx['control'].get('con') and st.get('building'):
+                    print('  %s' % st.get('notice', ''), flush=True)
+        st = self._file_index_status(cfg)
+        if stats:
+            st['stats'] = _fx.stats(self._files_dir())
+        if as_json:
+            print(json.dumps(st, indent=2, ensure_ascii=False, default=str))
+            return {'return': 0, 'status': st}
+        print('file index: %s' % ('ready' if st.get('ready') else 'not ready'))
+        print('  %s' % st['db'])
+        print('  %s files in %s folders of %s artifacts; %s texts; %s on disk; built %s%s' % (
+            '{:,}'.format(st.get('files', 0)), '{:,}'.format(st.get('dirs', 0)), '{:,}'.format(st.get('arts', 0)),
+            '{:,}'.format(st.get('texts', 0)), _size(st.get('size', 0)), st.get('built') or '-',
+            ' (the last pass: %s s for the names, %s s for the texts)' % (st.get('names_s'), st.get('texts_s')) if st.get('names_s') else ''))
+        if st.get('building'):
+            print('  ' + st.get('notice', ''))
+        if st.get('error'):
+            print('  error: %s' % st['error'])
+        s = st.get('settings') or {}
+        print('  settings: refresh %s%s, follow cMeta changes %s; skipped categories %s; skipped folders %s; texts of %s; %s KB; depth %s' % (
+            s.get('refresh'), (' (%s min)' % s.get('minutes')) if s.get('refresh') == 'minutes' else '',
+            'yes' if s.get('follow') else 'no', ', '.join(s.get('skip_cats') or []) or 'none',
+            ', '.join(s.get('skip_dirs') or []) or 'none', ', '.join(s.get('text') or []), s.get('max_kb'), s.get('depth')))
+        if stats and st['stats'].get('ready'):
+            x = st['stats']
+            print('\n  %-34s %6s %8s %9s %7s' % ('category', 'arts', 'files', 'size', 'texts'))
+            for c in x['categories'][:40]:
+                print('  %-34s %6d %8d %9s %7d' % (c['cat'][:34], c['arts'], c['files'], _size(c['bytes']), c['texts']))
+            print('\n  extensions: ' + ', '.join('%s %d' % (e['ext'], e['files']) for e in x['exts'][:30]))
+            print('  !AI: ' + ', '.join('%s %d' % (a['part'], a['files']) for a in x['ai']))
+        return {'return': 0, 'status': st}
+
     def query_(self, ctx, arg1='', q='', repos='', cats='', after='', before='', sort='', dir='', limit=20,
-               as_json=False):
+               as_json=False, names=False, texts=False):
         """Search the artifacts of every plugged repository, as the /browse page does ("search" itself is
         a global alias of find, so this command is called query).
 
@@ -3051,9 +3487,12 @@ class Category(InitCategory):
             dir: asc or desc
             limit: how many rows to print (default 20)
             as_json: print the JSON the page reads instead of a table
+            names: the plain words also search the names of the files inside the artifacts (the file index)
+            texts: ... and their texts (file:<name or glob> and text:<words> do without the switches)
         """
         r = self._search({'q': q or arg1 or '', 'repos': repos, 'cats': cats, 'after': after, 'before': before,
-                          'sort': sort, 'dir': dir, 'limit': limit, 'facets': '1' if as_json else '0'})
+                          'sort': sort, 'dir': dir, 'limit': limit, 'facets': '1' if as_json else '0',
+                          'names': '1' if names else '', 'texts': '1' if texts else ''})
         r.pop('_found', None)
         if as_json:
             print(json.dumps(r, indent=2, ensure_ascii=False))
@@ -3065,6 +3504,10 @@ class Category(InitCategory):
             for x in rows:
                 print('%-*s  %-*s  %-16s  %s' % (w_alias, x['alias'][:w_alias], w_cat, x['cat'][:w_cat],
                                                  x['updated'] or x['created'], x['repo']))
+                for f in x.get('files') or []:          # the files that matched (the file search)
+                    print('%*s  in %s%s' % (w_alias, '', f['rel'], (': ' + f['snip'][:120]) if f.get('snip') else ''))
         print('\n%d of %d artifacts match (%d ms); %d shown, sorted by %s' %
               (r['total'], r['of'], r['ms'], len(rows), r['sort']))
+        for n in r.get('notices') or []:
+            print('note: ' + n)
         return {'return': 0, 'total': r['total'], 'rows': rows}

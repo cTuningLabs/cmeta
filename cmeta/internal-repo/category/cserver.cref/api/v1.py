@@ -736,6 +736,9 @@ class Category(InitCategory):
         config = {'browse_url': browse_url, 'cref_url': self._cref_url, 'uid': uid, 'cref': short,
                   'open': bool(misc.get('client_local')) and tech, 'focus_url': browse_url + ('&' if '?' in browse_url else '?') + 'view=graph&repos=*&focus=' + _q(node, ':'),
                   'files': bool(a.get('files')) and tech and 'files' not in hide, 'file': rel if rel and not shown else '',
+                  # the file the address names (a file the search found, 2026-11-12): the Files open on it, its
+                  # folders unfolded, the file highlighted - whether its text is shown above or opened below
+                  'focus': rel or '',
                   # "+ Similar": a new artifact of this category, in this repository, with these tags (a viewer who may write)
                   'create': bool(a.get('can_create')) and tech,
                   # "Move to" (2026-11-11): into another repository, for a viewer who may write here
@@ -830,7 +833,7 @@ CSS = """
 .cxr-tree{list-style:none;margin:6px 0;padding:0;font-size:13px}.cxr-tree ul{list-style:none;margin:0;padding-left:18px}
 .cxr-tree li{padding:1px 0}.cxr-tree .dir>span.nm{font-weight:600;cursor:pointer}.cxr-tree .dir>span.nm:before{content:'\\25BE ';color:var(--muted);font-size:11px}
 .cxr-tree .dir.closed>span.nm:before{content:'\\25B8 '}.cxr-tree .dir.closed>ul{display:none}
-.cxr-tree .file>a{cursor:pointer}.cxr-tree .file.on>a{font-weight:600}.cxr-tree .sz{color:var(--muted);font-size:11.5px;margin-left:6px}
+.cxr-tree .file>a{cursor:pointer}.cxr-tree .file.on>a{font-weight:600}.cxr-tree .file.hit{background:rgba(255,200,40,.28);border-radius:4px;padding-left:4px;margin-left:-4px}.cxr-tree .sz{color:var(--muted);font-size:11.5px;margin-left:6px}
 .cxr-tree .why{color:var(--muted);font-size:12px;margin-left:8px;font-style:italic}
 .cxr-fview{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}.cxr-fhead{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;margin-bottom:4px;overflow-wrap:anywhere}
 .cxr-fview img{max-width:100%;border:1px solid var(--line);border-radius:6px}.cxr-fview iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -1037,8 +1040,8 @@ JS = """<script>
   // the open buttons: a browser on the server's own machine
   var ob=document.getElementById('cxr-open');
   if(ob&&C.open){ob.hidden=false;var msg=h('span','msg');[['folder','Open folder','Open this folder in the file manager'],['shell','Shell','A terminal in this folder'],['far','Far','Far Manager in this folder']].forEach(function(w){
-    var bt=h('button','cxr-btn',w[1]);bt.type='button';bt.title=w[2];bt.addEventListener('click',function(){msg.className='msg';msg.textContent='opening...';
-      api('open',{uid:C.uid,what:w[0]}).then(function(){msg.textContent=w[1]+' opened on this machine';}).catch(function(e){msg.className='msg bad';msg.textContent=e.message;});});
+    var bt=h('button','cxr-btn',w[1]);bt.type='button';bt.title=w[2]+(C.focus?' - at '+C.focus:'');bt.addEventListener('click',function(){msg.className='msg';msg.textContent='opening...';
+      api('open',{uid:C.uid,what:w[0],rel:C.focus||''}).then(function(){msg.textContent=w[1]+' opened on this machine';}).catch(function(e){msg.className='msg bad';msg.textContent=e.message;});});
     ob.appendChild(bt);});ob.appendChild(msg);}
   // "Move to" (2026-11-11): the dialog of cserver.browse's move.js; after the move (and its Undo) the repository the
   // page names, at the top and in the facts, is the new one - no reload, so that the Undo stays at hand
@@ -1117,6 +1120,8 @@ JS = """<script>
         node.files.forEach(function(f){var li=h('li','file');li.setAttribute('data-rel',f.rel);var a=h('a',null,f.rel.split('/').pop());a.href='#';a.addEventListener('click',function(e){e.preventDefault();openFile(f.rel,li);});li.appendChild(a);li.appendChild(h('span','sz',size(f.size)));
           if(j.edit&&!/^_(cmeta|desc)\\./i.test(f.rel))li.appendChild(del(f.rel,'file'));if(f.rel===C.file)setTimeout(function(){openFile(f.rel,li);},0);ul.appendChild(li);});}
       var tree=h('ul','cxr-tree');draw(root,0,tree,'');body.appendChild(tree);
+      if(C.focus){var hit=null;tree.querySelectorAll('li.file').forEach(function(x){if(x.getAttribute('data-rel')===C.focus)hit=x;});
+        if(hit){hit.classList.add('on','hit');hit.title='the file the address names';var up=hit.parentElement;while(up&&up!==tree){if(up.tagName==='LI')up.classList.remove('closed');up=up.parentElement;}}}
       (j.can_add||[]).forEach(function(n){var ad=h('button','cxr-copy sm','+ '+n);ad.type='button';ad.title='Create '+n+' in this artifact';ad.addEventListener('click',function(){editFile({rel:n,text:'',stamp:''},null);});body.appendChild(ad);});
       if(pendingEdit){var g=pendingEdit;pendingEdit=null;g();}
       if(C.file&&!j.files.some(function(f){return f.rel===C.file;}))openFile(C.file,null);
@@ -1127,6 +1132,6 @@ JS = """<script>
       if(loaded){go();}else{pendingEdit=go;load();}}
     document.querySelectorAll('.cxr-edit').forEach(function(x){x.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();openEditor(x.getAttribute('data-rel'),x.getAttribute('data-new')==='1');});});
     fd.addEventListener('toggle',function(){if(fd.open)load();});
-    if(C.file){fd.open=true;load();}}
+    if(C.file||C.focus){fd.open=true;load();}}
 })();
 </script>"""

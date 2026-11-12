@@ -27,12 +27,16 @@
 }
 
 /* The engine cserver has no theme of its own: in dark mode the page paints its own background up to the edges of
-   the viewport (box-shadow + clip-path) instead of touching the host's <body>; on cPlatform it matches the host. */
-#cbr.dark {
-  background: var(--cbr-bg);
+   the viewport (box-shadow + clip-path) instead of touching the host's <body>. Inside a host's shell (.hosted: the
+   cPlatform, a site of one's own) that band painted over the shell's menu (2026-11-12): there the shell paints the
+   window and the page keeps to its box. */
+#cbr.dark:not(.hosted) {
   box-shadow: 0 0 0 100vmax var(--cbr-bg);
   clip-path: inset(0 -100vmax);
   min-height: 100vh;
+}
+#cbr.dark {
+  background: var(--cbr-bg);
   --cbr-bg: #14161a;
   --cbr-fg: #e8eaee;
   --cbr-muted: #9aa1ad;
@@ -139,6 +143,37 @@
 .cbr-r-name { color: var(--cbr-fg); margin-left: 8px; font-size: 13px; }
 .cbr-r-meta { color: var(--cbr-muted); font-size: 12.5px; margin-top: 2px; }
 .cbr-r-snip { color: var(--cbr-fg); font-size: 12.5px; margin-top: 3px; opacity: .85; overflow-wrap: anywhere; }
+/* the file search (2026-11-12): the row of switches under the pickers, the files a row matched, the dialogs */
+.cbr-files-row { margin-top: 2px; }
+.cbr-files-label { color: var(--cbr-muted); }
+.cbr-switch { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--cbr-fg); }
+.cbr-switch input { margin: 0; }
+.cbr-files-state { color: var(--cbr-muted); font-size: 12.5px; }
+.cbr-files-bar { display: inline-block; width: 140px; height: 7px; border: 1px solid var(--cbr-line); border-radius: 4px; overflow: hidden;
+  vertical-align: middle; background: var(--cbr-code); }
+.cbr-files-bar i { display: block; height: 100%; width: 0; background: var(--cbr-accent); transition: width .4s; }
+.cbr-files-state.busy::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px;
+  border: 2px solid var(--cbr-accent); border-right-color: transparent; border-radius: 50%; animation: cbr-spin .8s linear infinite; }
+@keyframes cbr-spin { to { transform: rotate(360deg); } }
+.cbr-r-files { font-size: 12.5px; margin: 4px 0 2px 20px; color: var(--cbr-muted); overflow-wrap: anywhere; }
+.cbr-r-filelist { list-style: disc; margin: 1px 0 0; padding-left: 18px; }
+.cbr-r-filelist li { margin: 1px 0; }
+.cbr-r-filelist li::marker { color: var(--cbr-muted); }
+.cbr-r-filelist .cbr-r-snip { margin-top: 1px; }
+.cbr-r-more { list-style: none; margin-left: -2px; }
+.cbr-r-fopen { margin-left: 8px; padding: 0 6px; font-size: 11px; line-height: 16px; vertical-align: 1px; }
+.cbr-r-file { color: var(--cbr-accent); text-decoration: none; }
+.cbr-r-file:hover { text-decoration: underline; }
+.cbr-r-file.text::before { content: '≡ '; opacity: .7; }
+.cbr-r-file.best { font-weight: 600; }
+.cbr-files-dialog { margin: 8px 0 0; padding: 10px 14px; border: 1px solid var(--cbr-line); border-radius: 8px; background: var(--cbr-code);
+  font-size: 13px; max-height: 70vh; overflow: auto; }
+.cbr-files-dialog h3 { margin: 10px 0 4px; font-size: 13px; }
+.cbr-files-dialog table { border-collapse: collapse; }
+.cbr-files-dialog td, .cbr-files-dialog th { padding: 2px 12px 2px 0; text-align: left; font-size: 12.5px; white-space: nowrap; }
+.cbr-files-dialog td.n, .cbr-files-dialog th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.cbr-files-dialog .cbr-dialog-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.cbr-files-dialog .cbr-dialog-bar b { font-size: 13.5px; }
 #cbr mark { background: rgba(237, 161, 0, .30); color: inherit; padding: 0 1px; border-radius: 2px; }
 .cbr-chip { display: inline-block; background: var(--cbr-chip); border-radius: 10px; padding: 1px 7px; margin: 3px 4px 0 0;
   font-size: 11.5px; color: var(--cbr-fg); cursor: pointer; border: 0; }

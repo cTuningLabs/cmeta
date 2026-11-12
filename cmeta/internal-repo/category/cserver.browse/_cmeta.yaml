@@ -31,6 +31,7 @@ uses_categories:
   category: category,dd9ea50e7f76467f
   config: config,cc6bfe174be847ed
   repo: repo,f4f792ab40c7498f
+  result: result,6567e4df4d04488a
 last_update_timestamp: '2026-10-05T15:12:08.494273+00:00'
 last_generator:
   method: agent

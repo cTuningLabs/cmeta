@@ -139,9 +139,13 @@ def test_words_read_the_values_of_the_meta_not_its_keys_and_skip_the_authorship(
     def found(q):
         return aliases(search(cm, q=q, cats='log', sort='alias'))
 
+    # a UID is searched too (a part of one pasted finds it) and a random one is hexadecimal: "ada" is in about one
+    # in 300 - such an artifact is found by its UID (the CI of 2026-11-12 drew one for paper-c)
+    by_uid = [r['alias'] for r in search(cm, q='', cats='log', sort='alias')['rows'] if 'ada' in r['uid']]
+
     # the name finds the artifacts ABOUT the person, not those carrying the authorship; the fixture gpu-costs (owner) too
     assert found('lovelace') == ['gpu-costs', 'paper-b']
-    assert found('ada') == ['gpu-costs', 'paper-b', 'paper-c']
+    assert found('ada') == sorted(set(['gpu-costs', 'paper-b', 'paper-c'] + by_uid))
     # a key's name is no longer a word (zzkeyonly, author_uoa); a value under a skipped key is not searched (ckq1),
     # a value under another key is (zzvalue), a note is (zzmachine)
     assert found('zzkeyonly') == [] and found('author_uoa') == [] and found('ckq1') == []
@@ -157,7 +161,7 @@ def test_words_read_the_values_of_the_meta_not_its_keys_and_skip_the_authorship(
     assert found('has:control') == ['paper-a'] and found('has:zzkeyonly') == ['paper-a']     # (copyright: every artifact's default)
     # the snippet of a hit: never a skipped key (paper-c: the note, not the copyright)
     row = next(r for r in search(cm, q='ada', cats='log')['rows'] if r['alias'] == 'paper-c')
-    assert row['snippet'].startswith('notes:'), row['snippet']
+    assert row['snippet'].startswith('notes:') or ('ada' in c and row['snippet'].startswith('artifact:')), row['snippet']
     # the config: its own list (owner too), then none, then back to the default - each at the next search
     r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'meta': {'browse_search_skip_keys': 'copyright,owner'}, 'con': False})
     assert r['return'] == 0, r

@@ -2,6 +2,42 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.41.0
+- **/browse searches the files inside the artifacts: `browse_file_search: yes`.** An index of the names of every
+  file inside the artifacts of the machine (every repository, every category but the keys and secrets, the
+  repositories themselves and a skip list of machine output - `browse_file_search_skip_categories`: tmp, cache, log,
+  state, result, website, category, config - and the folders of `browse_file_search_skip_folders`: .git, .venv,
+  node_modules, site-packages ...; dot-entries and symlinks never) and of the texts of the readable kinds
+  (`browse_file_search_text`: markdown, text, yaml, json, csv, mail, html, scripts, and docx / pptx / xlsx through
+  their XML - the first `browse_file_search_max_kb` KB, 256 by default; `browse_file_search_depth`, 10), kept in
+  the result artifact `local:cserver-browse-files` (SQLite with FTS5, in the local repository: each machine builds
+  its own; never a cache artifact). Two switches beside the search box, **file names** and **file contents**: the
+  plain words of a query then also match an artifact whose files hold them - a part of a word inside longer words
+  (`dash` finds dashboard: the word is looked up in the index's vocabulary, the terms found searched as one query;
+  measured on a home of 25,000 text files: what a substring index finds, at a fifth of its size), `*` and `?` inside
+  a word, a `"phrase"` of whole words, `-word`. `file:<name or glob>` (a file or folder by a part of its name or a
+  glob on its path - any kind of file, by its name) and `text:<words>` work without the switches. Each row names
+  the files that matched - the files that hold every word first, and those alone when there are some (the words the
+  artifact's own meta holds aside); such an artifact ranks first (a file named by the words, then a file holding them
+  as whole words, then inside longer words) - with a snippet of a text hit; the row's title and each file open the
+  artifact's page on that file (its text shown, the Files expanded on it, the file highlighted), and Far / Folder /
+  Shell open at the file (Far's cursor on it, selected in Explorer or Finder). The page's
+  **refresh** (or `cx cserver.browse files --sweep`) builds the index the first time and sweeps it afterwards (every
+  folder's time, every text file's size and time: what changed outside cMeta), in the background, the page saying
+  how far it is and when the index was last made; `browse_file_search_refresh` makes the server do it by itself at
+  its start or every so many minutes (never, by default); an artifact added, moved or deleted through cMeta is
+  followed by itself (`browse_file_search_follow`). **statistics** shows what the index holds: the categories, the repositories, the
+  kinds of files, the biggest folders and files, the `!AI` parts, the depths. `cx cserver.browse files` (--sweep,
+  --rebuild, --clear, --wait, --stats), `cx cserver.browse query ... --names --texts`. Off by default; `hide_repos`
+  and the pickers narrow a search, never the index: on a host that signs its readers in, each searches the files of
+  what they may read, and the refresh, the rebuild and the statistics are for a browser on the server's own machine,
+  for those the host names (`file_index_manage` in `misc`) or for everyone with `browse_files: yes` (a personal
+  server). The keys are declared for /settings and /cmeta.configs.
+- **A page inside a host's shell keeps to its box in dark mode.** /browse painted its dark background out to the
+  window's edges (a shadow clipped to its own height) - right on the bare engine cserver, but inside a shell (the
+  cPlatform, a site of one's own) that band covered the shell's menu. A host that says `hosted` (or
+  `ctuning_server`) in `misc` gets a page that leaves the window to the shell and never colours the body.
+
 ## 0.40.0
 - **The cserver's sign-in in two steps (MFA): `login_mfa: yes`.** With a password and `login_email` (and the SMTP keys)
   set, the password comes first - it opens a half sign-in for 15 minutes and mails a six-digit code - and only the

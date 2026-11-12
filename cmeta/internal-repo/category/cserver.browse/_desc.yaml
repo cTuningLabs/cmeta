@@ -31,6 +31,49 @@ configs:
           unset = a browser on the server's own machine, or what a host grants a signed-in reader
         type: yes/no
         default: this machine's browser only
+      browse_file_search:
+        desc: yes = the file search - an index of the names of every file inside the artifacts of this machine and of the
+          texts of the readable kinds (result::local:cserver-browse-files, built by the server in the background) - the
+          switches "file names" / "file contents" of /browse and the terms file:<name or glob> and text:<words>; no or
+          unset = off (a hosted server keeps it off)
+        type: yes/no
+        default: 'no'
+      browse_file_search_skip_categories:
+        desc: the categories the file index leaves out (aliases, comma-separated; none = no category) - machine output
+          rather than the user's files, and cMeta's own definitions and settings; the categories of keys and secrets
+          and the repositories (repo) are never indexed, whatever this says
+        type: list
+        default: tmp,cache,log,state,result,website,category,config
+      browse_file_search_skip_folders:
+        desc: the folders the file index never enters, by name, at any depth inside an artifact (comma-separated; none = no
+          folder); dot-folders, symlinks and the folders of keys and secrets are left out anyway
+        type: list
+        default: .git,.venv,venv,node_modules,__pycache__,site-packages,.pytest_cache,.mypy_cache,.ruff_cache,.idea,.vscode,dist,build
+      browse_file_search_text:
+        desc: the kinds of files (extensions, comma-separated) whose text goes into the index - the kinds Python reads
+          without a library; docx, pptx and xlsx through their XML; every other kind is found by its name alone
+        type: list
+        default: md,txt,rst,yaml,yml,json,csv,tsv,eml,html,htm,tex,py,sh,bat,ps1,ipynb,docx,pptx,xlsx
+      browse_file_search_max_kb:
+        desc: how much of a file's text goes into the index (its first KB)
+        type: int
+        default: 256
+      browse_file_search_depth:
+        desc: how deep inside an artifact the index looks (0 = its top folder only)
+        type: int
+        default: 10
+      browse_file_search_refresh:
+        desc: when the index looks by itself for files added, removed or changed outside cMeta (every folder's time,
+          every text file's size and time) - never = only the Refresh button of /browse and cx cserver.browse files
+          --sweep (they build the first index too); start = once, when the server starts (a page first opens); or a
+          number of minutes between two sweeps
+        default: never
+        example: start
+      browse_file_search_follow:
+        desc: yes = an artifact added, moved or deleted through cMeta is indexed (or dropped) by itself, as soon as a
+          page notices the change of the index; no = at the next refresh only
+        type: yes/no
+        default: 'yes'
       browse_open:
         desc: no = no Open folder / Shell / Far buttons; unset = for a browser on the server's own machine
         type: yes/no
