@@ -160,8 +160,10 @@ def _create(path, sig):
     con.execute('create table meta(key text primary key, value text)')
     con.execute('create table arts(uid text primary key, cat text, repo text, root text, seen integer)')
     con.execute('create table dirs(id integer primary key, uid text, rel text, mtime_ns integer, seen integer, unique(uid, rel))')
-    con.execute('create table files(id integer primary key, uid text, dir_id integer, rel text, name text, ext text, '
-                'size integer, mtime_ns integer, state integer, seen integer, unique(uid, rel))')
+    # AUTOINCREMENT: an id is never given again - on an SQLite without contentless_delete the word rows of a file
+    # gone or changed stay behind under its old id, unseen as long as no other file gets that id
+    con.execute('create table files(id integer primary key autoincrement, uid text, dir_id integer, rel text, name text, '
+                'ext text, size integer, mtime_ns integer, state integer, seen integer, unique(uid, rel))')
     con.execute('create index files_dir on files(dir_id)')
     con.execute('create index files_state on files(state)')
     con.execute('create index files_ext on files(ext)')
@@ -417,9 +419,9 @@ class _Build:
             except OSError:
                 changed = False                          # gone: the folder's time dropped it above, or will
             if changed:
+                fid = self.forget_text(fid)
                 self.con.execute('update files set size = ?, mtime_ns = ?, state = 3 where id = ?',
                                  (int(st.st_size), int(st.st_mtime_ns), fid))
-                self.forget_text(fid)
             if n % 500 == 0:
                 self.con.execute('commit')
                 self.con.execute('begin')
@@ -474,7 +476,7 @@ class _Build:
                 else:
                     fid, old_size, old_mtime, state = row[1], row[2], row[3], row[4]
                     if state in (1, 2) and (old_size != size or old_mtime != mtime_ns_f):
-                        self.forget_text(fid)
+                        fid = self.forget_text(fid)
                         state = 3
                     elif state == 3 and kind == 0:
                         state = 0
@@ -500,14 +502,28 @@ class _Build:
                 self.drop_dir(sid)
 
     def drop_file(self, fid):
-        self.forget_text(fid)
         if self.deletable:                          # a contentless_delete table: a plain delete by rowid
+            self.con.execute('delete from texts where rowid = ?', (fid,))
             self.con.execute('delete from names where rowid = ?', (fid,))
-        self.con.execute('delete from files where id = ?', (fid,))
+        self.con.execute('delete from files where id = ?', (fid,))     # (else its rows stay, unseen: see _create)
 
     def forget_text(self, fid):
+        """The old text of a changed file out of the answers -> the file's id from now on. A contentless_delete table
+        deletes its row; an older SQLite cannot delete a contentless row without its text (SQLite before 3.43, the
+        Python 3.9 of python.org among them), so the file gets a new id - never given before (AUTOINCREMENT) - and its
+        name anew: the old rows stay behind, unseen (every answer joins the files table), until a rebuild."""
         if self.deletable:
             self.con.execute('delete from texts where rowid = ?', (fid,))
+            return fid
+        row = self.con.execute('select uid, dir_id, rel, name, ext, size, mtime_ns, state, seen from files where id = ?',
+                               (fid,)).fetchone()
+        if row is None:
+            return fid
+        self.con.execute('delete from files where id = ?', (fid,))
+        new = self.con.execute('insert into files(uid, dir_id, rel, name, ext, size, mtime_ns, state, seen) '
+                               'values (?, ?, ?, ?, ?, ?, ?, ?, ?)', row).lastrowid
+        self.con.execute('insert into names(rowid, words) values (?, ?)', (new, _words_of(row[2])))
+        return new
 
     def drop_dir(self, did):
         rel = self.con.execute('select uid, rel from dirs where id = ?', (did,)).fetchone()

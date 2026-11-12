@@ -395,3 +395,58 @@ def test_the_build_lock_between_processes(tmp_path):
     finally:
         b.close()
     assert time.time() - os.path.getmtime(str(lock)) < 60
+
+
+def test_an_sqlite_that_cannot_delete_word_rows(tmp_path, monkeypatch):
+    """An SQLite before 3.43 (the Python 3.9 of python.org: 3.37) has no contentless_delete: the word rows of a file
+    cannot be deleted. A file changed outside cMeta gets a new id - its old words no longer find it, its new ones do
+    (the CI of 2026-11-12 found the old words still finding it on Windows); a file deleted is no longer found and its
+    id is never given to a new file."""
+    fx = _files_index()
+
+    def plain(con, name, column):                   # what such an SQLite makes (_fts_create's fallback)
+        con.execute("create virtual table %s using fts5(%s, content='', tokenize='unicode61 remove_diacritics 2')"
+                    % (name, column))
+        return False
+
+    monkeypatch.setattr(fx, '_fts_create', plain)
+    root = str(tmp_path / 'art')
+    put(root, 'notes.txt', 'the invoice of the month')
+    put(root, 'plan.md', 'a plan of the quarter')
+    put(root, 'zz/last.md', 'zzlast words')
+    folder = str(tmp_path / 'index')
+    os.makedirs(folder)
+    s = fx.settings({'browse_file_search': 'yes'})
+    items = [{'uid': 'f' * 16, 'cat': 'memo', 'repo': 'local', 'path': root}]
+
+    def found(word):
+        q = fx.Query(folder)
+        try:
+            return sorted(rel for _, rel in q.locate(q.ids_with(word, names=False, texts=True)).values())
+        finally:
+            q.close()
+
+    def touch(*paths):
+        t = time.time()
+        for p in paths:
+            os.utime(p, (t, t))
+
+    fx._pass(folder, items, s, set(), 'rebuild')
+    q = fx.Query(folder)
+    assert fx._meta(q.con)['deletable'] == '0'
+    q.close()
+    assert found('invoice') == ['notes.txt'] and found('quarter') == ['plan.md'] and found('zzlast') == ['zz/last.md']
+
+    # a text changed outside cMeta, a file deleted: a sweep
+    touch(put(root, 'notes.txt', 'the receipt of the year'))
+    os.remove(os.path.join(root, 'zz', 'last.md'))
+    touch(os.path.join(root, 'zz'))
+    fx._pass(folder, items, s, set(), 'sweep')
+    assert found('invoice') == [] and found('receipt') == ['notes.txt']
+    assert found('zzlast') == [] and found('quarter') == ['plan.md']
+
+    # a new file afterwards: a new id, not the deleted file's (whose words stay behind, unseen)
+    put(root, 'zz/new.md', 'fresh words')
+    touch(os.path.join(root, 'zz'))
+    fx._pass(folder, items, s, set(), 'sweep')
+    assert found('fresh') == ['zz/new.md'] and found('zzlast') == [] and found('invoice') == []
