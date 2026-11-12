@@ -70,6 +70,12 @@ def server(tmp_path, monkeypatch):
     spec.loader.exec_module(app_module)
     try:
         with TestClient(app_module.app) as client:
+            # the e-mailed codes in this test's own folder: on Linux the engine's workers come from one forkserver
+            # started with the first test's environment, so the config artifact (and the codes file beside it) they
+            # find would be the first test's - and its "one code a minute" would refuse the mails of the next tests
+            own = tmp_path / 'cserver-config'
+            own.mkdir()
+            app_module.cfg_path = str(own)
             app_module.cfg.clear()
             app_module.cfg.update({'password_sha256': hashlib.sha256(PASSWORD.encode('utf-8')).hexdigest(),
                                    'login_email': 'me@example.com', 'login_mfa': 'yes', 'password_allow_local': 'no',
