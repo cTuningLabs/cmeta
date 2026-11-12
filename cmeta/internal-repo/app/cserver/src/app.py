@@ -170,6 +170,34 @@ async def test_cmeta_repos():
     cfg = r['config_cmeta']
     cfg_path = (r.get('artifact') or {}).get('path', '') or ''      # the folder: the e-mailed login codes live there
 
+    await _resolve_cfg_paths()
+
+
+# The keys of the config that name a file and may name it as {{{cRef}}}/<path> (a file of a secret artifact): the
+# same config line then works on every machine, wherever the artifact lives there.
+CFG_PATHS = ('login_smtp_password_file',)
+
+
+def _cfg_path(key):
+    """A path of the config as text; a list is joined back (the command line splits a cRef's comma into a list)."""
+    v = cfg.get(key)
+    if isinstance(v, (list, tuple)):
+        v = ','.join(str(x).strip() for x in v)
+    return '' if v is None else str(v).strip()
+
+
+async def _resolve_cfg_paths():
+    """Finds the {{{cRef}}}/<path> of the path keys once, at startup; one not found stays as written (its use says so)."""
+    for key in CFG_PATHS:
+        value = _cfg_path(key)
+        if '{{{' not in value:
+            continue
+        r = await cm.access({'category': 'utils,234ce5e3262e4d52', 'command': 'smart_find_by_cid', 'arg1': value})
+        if r['return'] == 0 and r.get('path'):
+            cfg[key] = r['path']
+        else:
+            print('cMeta warning: cserver: %s %s not found (%s)' % (key, value, r.get('error', 'no path')))
+
 ##################################################################################################
 # One shared password in front of every page (optional)
 #
@@ -203,12 +231,23 @@ async def test_cmeta_repos():
 #   cx config set cserver --meta.login_code_minutes=10                # how long a code is good for (10)
 #   cx config set cserver --meta.login_smtp_from=...                  # the sender (the user by default)
 #   cx config set cserver --meta.login_smtp_password_file=<path>      # the password read from a file instead
+#   cx config set cserver --meta.login_smtp_password_file="{{{secret::<alias>,<UID>}}}/files/password"
+#                                                                     # ... or from a file of a secret artifact,
+#                                                                     # found at startup on whichever machine
 #
 # Port 465 means TLS from the start, any other port STARTTLS (login_smtp_starttls=no turns it off). The login page
 # then shows the masked address, a "Send a code" button and the code field; a code is six digits, one per minute
 # per address, five tries, kept hashed with its expiry in `login-codes.json` of the cserver config artifact (the
 # workers share it through that file). A password set as well stays a second way in. Same caveats as the password:
 # clear text unless HTTPS or an overlay network such as Tailscale carries it.
+#
+# Both, one after the other (MFA) - the password first, then a code it mails:
+#
+#   cx config set cserver --meta.login_mfa=yes          # with a password and login_email (and the SMTP keys) set
+#
+# The right password opens a half sign-in (15 minutes) and mails the code to the address (with several, a button
+# each); only the code then opens the pages, for as long as the password's tick says (a week, else 12 hours). No code
+# is mailed or taken before the password; a session from before with one way in is asked again.
 
 LOGIN_PATH = '/_cserver_login'
 
@@ -268,6 +307,31 @@ def _gate_on():
     return bool(_password_sha256() or _login_emails())
 
 
+# Both ways in, one after the other (2026-11-12, the user: "MFA after password for cserver ... send email to a register
+# user (me) asking for a code, and will stay connected for a given amount of time (7 days), and will prevent password
+# guesses"): login_mfa: yes, with a password AND login_email set. The right password opens a half sign-in (MFA_STEP
+# seconds) and mails the code; only the code then opens the gate, for the time the password's tick says (a week, else
+# 12 hours). A code is never mailed before the password (nobody can make the server mail), a session that has one way
+# in only (from before) is asked again, and the failures of both count against the same address (password_max_attempts).
+MFA_STEP = 15 * 60
+
+
+def _mfa_on():
+    """Whether this server asks for the password and then a code mailed (login_mfa, with both set)."""
+    return _cfg_bool('login_mfa', False) and bool(_password_sha256()) and bool(_login_emails())
+
+
+def _same(given, expected):
+    """A value of the session cookie (written by whoever holds the cookie) against the one expected, in constant time
+    and as bytes - compare_digest refuses a text that is not ASCII, and a doctored cookie must not break the gate."""
+    return bool(given) and bool(expected) and hmac.compare_digest(str(given).encode('utf-8'), str(expected).encode('utf-8'))
+
+
+def _mfa_half(request, wanted):
+    """Whether this browser gave the right password a moment ago (the half sign-in of MFA)."""
+    return _same(request.session.get('mfa_pass'), wanted) and not _past(request.session.get('mfa_until'))
+
+
 def _mask_email(email):
     """g***@example.com: enough to recognise the address on the login page, not enough to copy it."""
     name, _, domain = email.partition('@')
@@ -315,36 +379,79 @@ def _codes_write(codes):
     os.replace(tmp, path)
 
 
-def _send_code(email):
-    """Makes a six-digit code for the address, keeps its hash with the expiry, sends it; one per minute."""
-    codes = _codes_read()
-    entry = codes.get(email) or {}
-    if not _past(entry.get('sent_at'), 60):
-        raise RuntimeError('a code was sent less than a minute ago: look in the mailbox, or wait a moment')
-    code = '%06d' % secrets.randbelow(1000000)
-    minutes = max(1, _cfg_int('login_code_minutes', 10))
-    codes[email] = {'hash': _email_token(email + ':' + code), 'until': _later(minutes * 60), 'tries': 0, 'sent_at': time.time()}
-    _codes_write(codes)
+def _send_code(email, asked_from='', mfa=False):
+    """Makes a six-digit code for the address, keeps its hash with the expiry, sends it; one per minute. The mail
+    names the machine and the address that asked; with MFA it says that the password was typed right.
 
-    import smtplib
-    from email.message import EmailMessage
+    The settings and the SMTP password are read first, and a mail that fails gives the minute back: a retry after a
+    fix is not told to wait."""
     host = _cfg_str('login_smtp_host')
     if not host:
         raise RuntimeError('login_smtp_host is not set in the cserver config')
     port = _cfg_int('login_smtp_port', 587)
     user = _cfg_str('login_smtp_user')
     password = _cfg_str('login_smtp_password')
-    if not password and _cfg_str('login_smtp_password_file'):
-        with open(_cfg_str('login_smtp_password_file'), encoding='utf-8') as f:
+    if not password and _cfg_path('login_smtp_password_file'):
+        path = _cfg_path('login_smtp_password_file')
+        if '{{{' in path:
+            raise RuntimeError('login_smtp_password_file %s was not found when the server started' % path)
+        with open(path, encoding='utf-8') as f:
             password = f.read().strip()
-    sender = _cfg_str('login_smtp_from') or user or ('cserver@' + socket.gethostname())
+
+    codes = _codes_read()
+    entry = codes.get(email) or {}
+    if not _past(entry.get('sent_at'), 60):
+        raise RuntimeError('a code was sent less than a minute ago: look in the mailbox, or wait a moment')
+    code = '%06d' % secrets.randbelow(1000000)
+    minutes = max(1, _cfg_int('login_code_minutes', 10))
+    sent_at = time.time()
+    codes[email] = {'hash': _email_token(email + ':' + code), 'until': _later(minutes * 60), 'tries': 0, 'sent_at': sent_at}
+    _codes_write(codes)
+
+    try:
+        _mail_code(host, port, user, password, email, code, minutes, asked_from, mfa)
+    except Exception:
+        codes = _codes_read()
+        if (codes.get(email) or {}).get('sent_at') == sent_at:
+            if entry:
+                codes[email] = entry
+            else:
+                codes.pop(email, None)
+            _codes_write(codes)
+        raise
+
+
+def _mail_code(host, port, user, password, email, code, minutes, asked_from='', mfa=False):
+    """The mail with the code, through the SMTP server of the config."""
+    import smtplib
+    from email.message import EmailMessage
+    machine = socket.gethostname()
+    sender = _cfg_str('login_smtp_from') or user or ('cserver@' + machine)
     realm = _cfg_str('password_realm') or 'cMeta server'
     msg = EmailMessage()
-    msg['Subject'] = '%s: your code %s' % (realm, code)
+    msg['Subject'] = '%s: your code %s (%s)' % (realm, code, machine)
     msg['From'] = sender
     msg['To'] = email
-    msg.set_content('Your code for %s is %s.\n\nIt is good for %d minutes. If you did not ask for it, ignore this message.\n'
-                    % (realm, code, minutes))
+    asked = 'It is good for %d minutes. It was asked from %s.' % (minutes, asked_from or 'an unknown address')
+    if mfa:
+        # under MFA the code goes out only after the right password: a code nobody asked for means the password leaked
+        warning = ('It was sent because the password of this server was typed right. If that was not you, someone else '
+                   'knows the password: change it (cx utils hash_password, then cx config set cserver '
+                   '--meta.password_sha256=...).')
+    else:
+        warning = 'If you did not ask for it, ignore this message.'
+
+    # the code on a line of its own, an empty line before and after it; bold and large where the mail reader shows HTML
+    msg.set_content('Your code for %s on %s:\n\n    %s\n\n%s\n\n%s\n' % (realm, machine, code, asked, warning))
+    e = html_escaper.escape
+    msg.add_alternative(
+        '<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,'
+        'sans-serif;font-size:15px;line-height:1.5;color:#14161a">'
+        '<p>Your code for <b>%s</b> on <b>%s</b>:</p>'
+        '<p style="margin:24px 0;font-size:32px;font-weight:700;letter-spacing:6px;'
+        'font-family:Consolas,Menlo,\'DejaVu Sans Mono\',monospace">%s</p>'
+        '<p>%s</p><p style="color:#6b7180">%s</p></body></html>\n'
+        % (e(realm), e(machine), code, e(asked), e(warning)), subtype='html')
     timeout = max(5, _cfg_int('login_smtp_timeout', 30))
     if port == 465:
         server = smtplib.SMTP_SSL(host, port, timeout=timeout)
@@ -382,13 +489,18 @@ def _check_code(email, given):
 
 
 def _session_open(request, wanted):
-    """Whether the session cookie opens the gate: the password's token, or a code login that has not run out."""
+    """Whether the session cookie opens the gate: the password's token, or a code login that has not run out - with
+    MFA (login_mfa), both, given one after the other."""
     auth = request.session.get('auth')
-    if auth and wanted and auth == wanted:
+    token = request.session.get('auth_email')
+    by_password = _same(auth, wanted)
+    by_code = bool(token) and any(_same(token, _email_token(e)) for e in _login_emails())
+    if _mfa_on():
+        return by_password and by_code and not _past(request.session.get('auth_until'))
+    if by_password:
         until = request.session.get('auth_until')
         return until is None or not _past(until)
-    token = request.session.get('auth_email')
-    if token and any(hmac.compare_digest(token, _email_token(e)) for e in _login_emails()):
+    if by_code:
         return not _past(request.session.get('auth_until'))
     return False
 
@@ -525,40 +637,53 @@ def _days_text(seconds):
     return '%d hour%s' % (hours, '' if hours == 1 else 's')
 
 
-def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUTHORIZED, sent_to=None, ok=False):
+def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUTHORIZED, sent_to=None, ok=False, mfa=0):
     """A self-contained prompt: no assets to fetch, so it renders before anything else is authorised.
 
     With login_email set: the masked address(es) each with a "Send a code" button, then - once sent - the code
     field; with a password set: the password field (both when both are set). `sent_to` is the index of the address
-    a code has just gone to; `ok` colours the message as a notice rather than an error.
+    a code has just gone to; `ok` colours the message as a notice rather than an error. With MFA (login_mfa), `mfa`
+    is the step: 1 the password alone, 2 the code alone (after the password).
     """
     realm = _cfg_str('password_realm') or 'cMeta server'
     note = ('<p class="msg%s">%s</p>' % (' ok' if ok else '', html_escaper.escape(message))) if message else ''
-    emails = _login_emails()
+    emails = _login_emails() if mfa != 1 else []
     hidden_next = '<input type="hidden" name="next" value="%s">' % html_escaper.escape(next_url, quote=True)
+    # every form says what it is doing while the server answers (data-busy): its buttons turn gray, a spinner and that
+    # line below them - a mail can take seconds
     parts = []
     if emails:
         if sent_to is not None and 0 <= sent_to < len(emails):
-            parts.append('<form method="post" action="%s">%s<input type="hidden" name="email" value="%d">'
+            parts.append('<form method="post" action="%s" data-busy="Checking the code ...">%s<input type="hidden" name="email" value="%d">'
                          '<p>The code sent to <b>%s</b>:</p>'
                          '<input type="text" name="code" placeholder="6 digits" inputmode="numeric" pattern="[0-9]{6}" '
                          'autocomplete="one-time-code" autofocus required>'
                          '<button type="submit">Open</button></form>'
                          % (LOGIN_PATH, hidden_next, sent_to, html_escaper.escape(_mask_email(emails[sent_to]))))
-        buttons = ''.join('<button type="submit" name="send" value="%d"%s>%s a code to %s</button>'
+        buttons = ''.join('<button type="submit" name="send" value="%d"%s data-busy="Sending the code to %s ...">%s a code to %s</button>'
                           % (i, ' class="second"' if (sent_to is not None or i) else '',
+                             html_escaper.escape(_mask_email(e), quote=True),
                              'Send again' if sent_to == i else 'Send', html_escaper.escape(_mask_email(e)))
                           for i, e in enumerate(emails))
-        parts.append('<form method="post" action="%s">%s%s</form>' % (LOGIN_PATH, hidden_next, buttons))
-    if _password_sha256():
-        parts.append('<form method="post" action="%s">%s%s'
+        parts.append('<form method="post" action="%s" data-busy="Sending the code by e-mail ...">%s%s</form>'
+                     % (LOGIN_PATH, hidden_next, buttons))
+    if _password_sha256() and mfa != 2:
+        parts.append('<form method="post" action="%s" data-busy="%s">%s%s'
                      '<input type="password" name="password" placeholder="Password" autocomplete="current-password"%s required>'
                      '<label class="keep"><input type="checkbox" name="keep" value="1" checked> Keep me signed in for %s (12 hours otherwise)</label>'
-                     '<button type="submit"%s>Open</button></form>'
-                     % (LOGIN_PATH, hidden_next, '<p class="or">or the password</p>' if emails else '',
-                        '' if emails else ' autofocus', _days_text(session_max_age), ' class="second"' if emails else ''))
-    lead = ('This server asks for a code sent by e-mail' + (' or its password' if _password_sha256() else '')
-            if emails else 'This server asks for a password') + ' before showing its pages.'
+                     '<button type="submit"%s>%s</button></form>'
+                     % (LOGIN_PATH,
+                        'Checking the password, then sending the code by e-mail ...' if mfa == 1 else 'Checking the password ...',
+                        hidden_next, '<p class="or">or the password</p>' if emails else '',
+                        '' if emails else ' autofocus', _days_text(session_max_age), ' class="second"' if emails else '',
+                        'Next: a code by e-mail' if mfa == 1 else 'Open'))
+    if mfa == 1:
+        lead = 'This server asks for its password, then for a code it sends by e-mail, before showing its pages.'
+    elif mfa == 2:
+        lead = 'The password is right. The code sent by e-mail finishes the sign-in.'
+    else:
+        lead = ('This server asks for a code sent by e-mail' + (' or its password' if _password_sha256() else '')
+                if emails else 'This server asks for a password') + ' before showing its pages.'
     body = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -586,6 +711,11 @@ def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUT
  button:hover {background:#4a0ca4;}
  button.second {background:#fff; color:#5c0fc9; border:1px solid #d7dbe3;}
  button.second:hover {background:#f4f5f8;}
+ button.busy, button.busy:hover {background:#b8bdc7; color:#fff; border-color:transparent; cursor:progress; pointer-events:none;}
+ p.wait {display:flex; align-items:center; gap:10px; margin:12px 0 0; font-size:13.5px; color:#6b7180;}
+ .spin {flex:none; width:16px; height:16px; border:2px solid #d7dbe3; border-top-color:#5c0fc9; border-radius:50%%;
+        animation:spin .8s linear infinite;}
+ @keyframes spin {to {transform:rotate(360deg);}}
  @media (prefers-color-scheme: dark) {
    body {background:#101216; color:#e8eaee;}
    main {background:#1b1e24; border-color:#2c3038; box-shadow:none;}
@@ -595,6 +725,9 @@ def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUT
    input[type=password], input[type=text] {background:#14161a; border-color:#343a44; color:#e8eaee;}
    button {background:#7c4dff;}
    button.second {background:#1b1e24; color:#c9b6ff; border-color:#343a44;}
+   button.busy, button.busy:hover {background:#4a4f5a; color:#c3c8d2;}
+   p.wait {color:#9aa1ad;}
+   .spin {border-color:#343a44; border-top-color:#c9b6ff;}
  }
 </style></head>
 <body>
@@ -604,6 +737,30 @@ def _login_page(request, next_url, message='', status_code=status.HTTP_401_UNAUT
   %(note)s
   %(forms)s
  </main>
+<script>
+// While the server answers (a mail can take seconds): the form's buttons gray, a spinner and what is being done; a
+// second click sends nothing more. Not "disabled": a disabled button would leave its name and value out of the form.
+document.querySelectorAll('form[data-busy]').forEach(function (f) {
+  f.addEventListener('submit', function (e) {
+    if (f.dataset.sending) { e.preventDefault(); return; }
+    f.dataset.sending = '1';
+    f.querySelectorAll('button').forEach(function (b) { b.classList.add('busy'); b.setAttribute('aria-disabled', 'true'); });
+    var w = document.createElement('p');
+    w.className = 'wait';
+    w.setAttribute('role', 'status');
+    w.appendChild(document.createElement('span')).className = 'spin';
+    w.appendChild(document.createTextNode((e.submitter && e.submitter.dataset.busy) || f.dataset.busy));
+    f.appendChild(w);
+  });
+});
+// back to this page from the history: as it was, ready again
+window.addEventListener('pageshow', function (e) {
+  if (!e.persisted) return;
+  document.querySelectorAll('form').forEach(function (f) { delete f.dataset.sending; });
+  document.querySelectorAll('button.busy').forEach(function (b) { b.classList.remove('busy'); b.removeAttribute('aria-disabled'); });
+  document.querySelectorAll('p.wait').forEach(function (w) { w.remove(); });
+});
+</script>
 </body></html>
 """ % {'realm': html_escaper.escape(realm), 'lead': html_escaper.escape(lead), 'note': note, 'forms': ''.join(parts)}
     return HTMLResponse(content=body, status_code=status_code)
@@ -661,43 +818,78 @@ async def password_gate(request: Request, call_next):
                 return None
             return i if 0 <= i < len(emails) else None
 
-        # "Send a code": the address by its index, never the address itself from the form
+        mfa = _mfa_on()
+        half = mfa and _mfa_half(request, wanted)
+
+        async def mail(i, said=''):
+            """The code sent to the address of index i -> the page with the code field (or why it was not sent)."""
+            asked_from = _peer_ip(request)
+            if _via_proxy(request):
+                asked_from += ' (forwarded for %s)' % (_forwarded_ip(request) or 'an address not given')
+            try:
+                await asyncio.to_thread(_send_code, emails[i], asked_from, mfa)
+            except Exception as e:
+                return _login_page(request, next_url, (said + ' ' if said else '') + 'The code could not be sent: %s' % e,
+                                   mfa=2 if mfa else 0)
+            if mfa:
+                request.session['mfa_sent'] = i
+            return _login_page(request, next_url, (said + ' ' if said else '') + 'A code was sent to %s - it is good for %d minutes.'
+                               % (_mask_email(emails[i]), max(1, _cfg_int('login_code_minutes', 10))), sent_to=i, ok=True,
+                               mfa=2 if mfa else 0)
+
+        # "Send a code": the address by its index, never the address itself from the form; with MFA only after the
+        # password (nobody can make the server mail)
         if emails and form.get('send', '') != '':
+            if mfa and not half:
+                return _login_page(request, next_url, 'The password first.', mfa=1)
             i = index_of('send')
             if i is None:
-                return _login_page(request, next_url, 'No such address.')
-            try:
-                await asyncio.to_thread(_send_code, emails[i])
-            except Exception as e:
-                return _login_page(request, next_url, 'The code could not be sent: %s' % e)
-            return _login_page(request, next_url, 'A code was sent to %s - it is good for %d minutes.'
-                               % (_mask_email(emails[i]), max(1, _cfg_int('login_code_minutes', 10))), sent_to=i, ok=True)
+                return _login_page(request, next_url, 'No such address.', mfa=2 if mfa else 0)
+            return await mail(i)
 
-        # the code
+        # the code; with MFA it finishes the sign-in the password began
         if emails and form.get('code', '') != '':
+            if mfa and not half:
+                return _login_page(request, next_url, 'The password first - the code comes after it.', mfa=1)
             i = index_of('email')
             given = str(form.get('code', '') or '')
             if i is not None and given.strip().isdigit() and _check_code(emails[i], given):
                 _login_failures.pop(ip, None)
-                request.session.pop('auth', None)
                 request.session['auth_email'] = _email_token(emails[i])
-                request.session['auth_until'] = _later(max(1, _cfg_int('login_days', 30)) * 86400)
+                if mfa:
+                    keep = bool(request.session.get('mfa_keep'))
+                    request.session['auth'] = wanted
+                    request.session['auth_until'] = _later(session_max_age if keep else min(session_max_age, 12 * 3600))
+                    for k in ('mfa_pass', 'mfa_until', 'mfa_keep', 'mfa_sent'):
+                        request.session.pop(k, None)
+                else:
+                    request.session.pop('auth', None)
+                    request.session['auth_until'] = _later(max(1, _cfg_int('login_days', 30)) * 86400)
                 return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
             _login_failures[ip] = [fails + 1, since or now]
-            return _login_page(request, next_url, 'Wrong or expired code.', sent_to=i)
+            return _login_page(request, next_url, 'Wrong or expired code.', sent_to=i, mfa=2 if mfa else 0)
 
-        # the password
+        # the password; with MFA it opens the half sign-in and mails the code
         given = str(form.get('password', '') or '')
         if digest and hmac.compare_digest(hashlib.sha256(given.encode('utf-8')).hexdigest(), digest):
             _login_failures.pop(ip, None)
+            keep = str(form.get('keep', '') or '') != ''              # the tick "Keep me signed in": a week (session_max_age), else 12 hours
+            if mfa:
+                for k in ('auth', 'auth_email', 'auth_until'):
+                    request.session.pop(k, None)
+                request.session['mfa_pass'] = wanted
+                request.session['mfa_until'] = _later(MFA_STEP)
+                request.session['mfa_keep'] = keep
+                if len(emails) == 1:
+                    return await mail(0, 'The password is right.')
+                return _login_page(request, next_url, 'The password is right - now a code by e-mail.', ok=True, mfa=2)
             request.session.pop('auth_email', None)
             request.session['auth'] = wanted
-            keep = str(form.get('keep', '') or '') != ''              # the tick "Keep me signed in": a week (session_max_age), else 12 hours
             request.session['auth_until'] = _later(session_max_age if keep else min(session_max_age, 12 * 3600))
             return RedirectResponse(url=next_url, status_code=status.HTTP_303_SEE_OTHER)
 
         _login_failures[ip] = [fails + 1, since or now]
-        return _login_page(request, next_url, 'Wrong password.' if digest else 'Ask for a code first.')
+        return _login_page(request, next_url, 'Wrong password.' if digest else 'Ask for a code first.', mfa=1 if mfa else 0)
 
     # already in, or exempt
     if _session_open(request, wanted):
@@ -725,6 +917,12 @@ async def password_gate(request: Request, call_next):
     next_url = request.url.path
     if request.url.query:
         next_url += '?' + request.url.query
+    if _mfa_on():
+        # the password first; a browser that gave it a moment ago is at the code (the address it went to)
+        if _mfa_half(request, wanted):
+            sent = request.session.get('mfa_sent')
+            return _login_page(request, next_url, mfa=2, sent_to=sent if isinstance(sent, int) else None)
+        return _login_page(request, next_url, mfa=1)
     return _login_page(request, next_url)
 
 
@@ -758,6 +956,35 @@ def _default_page():
     """The page "/" shows, without slashes ('' for the plain welcome page)."""
     page = _cfg_str('default_page', '/projects').strip('/')
     return '' if page.lower() in ('', 'none', 'off', 'no', 'false') else page
+
+
+def _page_header(request, task, title=''):
+    """The bar above every page (2026-11-12, the user: "a simple header similar to what I see on labs.ctuning.ai ...
+    collapsed menu on the left ... Neuron that will let me go home ... the current project title (maybe with
+    hierarchy x.y.z) and on the right the background switch and settings ... configurable ... on by default"): what
+    templates/header.html draws - None when page_header of the config says no (read at startup, as the other keys).
+    The page's place: the parts of its name before the last (my.dashboard -> my), then its own title."""
+    if not _cfg_bool('page_header', True):
+        return None
+    home = str(request.url_for('home'))
+    static_dir = os.path.join(os.path.dirname(script_path), 'static')
+
+    def asset(rel):
+        # a new URL for each edit of the file: no browser keeps an old copy
+        try:
+            return '%sstatic/%s?v=%d' % (home, rel, int(os.path.getmtime(os.path.join(static_dir, *rel.split('/')))))
+        except OSError:
+            return '%sstatic/%s' % (home, rel)
+
+    task = str(task or '').strip('/')
+    is_home = not task or task == _default_page()
+    parts = [] if is_home else [x for x in task.split('.') if x]
+    crumbs = [{'name': x, 'prefix': '.'.join(parts[:i + 1]) + '.'} for i, x in enumerate(parts[:-1])]
+    return {'home': home, 'page': '' if is_home else task, 'is_home': is_home,
+            'title': 'Home' if is_home else (str(title or '').strip() or (parts[-1] if parts else task)),
+            'crumbs': crumbs, 'settings': home + 'settings', 'projects': home + 'projects/?native_action=projects',
+            'view': home + 'projects/?native_action=view',          # the home page's customized view: its sections
+            'neuron': asset('images/neuron.png'), 'css': asset('css/cmeta_header.css'), 'js': asset('js/cmeta_header.js')}
 
 
 def _welcome(request):
@@ -970,7 +1197,8 @@ async def _serve_page(
         if force_json:
             return JSONResponse(content = r)
 
-        html_meta = {"message": r['error'], 'request': request}
+        # the bar above an error page too: a way back home and to the other pages
+        html_meta = {"message": r['error'], 'request': request, 'cmeta_header': _page_header(request, task, 'error')}
         return templates.TemplateResponse(request, 'error.html', html_meta, status_code = 200)
 
     if 'json' in r:
@@ -979,6 +1207,9 @@ async def _serve_page(
     html_meta = r.get('html_meta',{})
 
     html_meta['request'] = request
+    # the bar above the page, unless the page asks for none (no_page_header: a page that fills the window itself)
+    if not html_meta.get('no_page_header'):
+        html_meta['cmeta_header'] = _page_header(request, task, html_meta.get('page_title', ''))
 
     if force_json:
         return JSONResponse(content = cm.utils.common.safe_serialize_json(r))

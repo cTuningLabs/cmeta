@@ -2,6 +2,64 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (after 0.39.1)
+- **The cserver's sign-in in two steps (MFA): `login_mfa: yes`.** With a password and `login_email` (and the SMTP keys)
+  set, the password comes first - it opens a half sign-in for 15 minutes and mails a six-digit code - and only the
+  code then opens the pages, for as long as the password's tick says (a week, else 12 hours). No code is mailed or
+  taken before the password (nobody can make the server mail), a session from before with one way in is asked again,
+  and the failures of both count against the same address (`password_max_attempts`, `password_lockout_min`). Off by
+  default: the password or the code alone, as before. A value of the session cookie is compared as bytes, so that a
+  doctored cookie cannot break the gate. The mail names the machine and the address that asked, and under MFA says
+  that the password was typed right (a code nobody asked for means someone else knows it). `login_smtp_password_file`
+  may be a `{{{secret::<alias>,<UID>}}}/files/token` - a file of a secret artifact, found at startup on whichever
+  machine (a cRef split at its comma by the command line is joined back). A mail that fails no longer counts as the
+  address's one code a minute.
+- **A bar above every page of the cserver.** On the left a menu of all pages - the home page's own list, read when
+  the menu first opens, filtered as you type (a word ending with a dot, `my.`, keeps the pages whose name starts so),
+  Enter or the arrows to open one, Esc to close - then the neuron to the home page and where the page is: the parts of
+  its name, then its own title (`cMeta › my › dashboard`; a part opens the menu on its sibling pages). On the
+  right the light / dark switch every page shares (`cmeta.theme`: the page turns with it, and the bar with a page's own
+  switch) and Settings. It scrolls with the page (a page's own sticky bars stay where they are), fits a phone, and is
+  above an error page too. `page_header: no` in the cserver config (read at startup; on /settings) keeps the pages as
+  they were; a page that fills the window itself can ask for none (`no_page_header` in its html_meta). The neuron
+  says Home (on the home page nothing follows it). Under the menu's filter, a **Customized** switch - the same as
+  the home page's, kept in the browser - groups the pages in the sections of the home page's customized view, in
+  their order, then the pages none of them names. The package now carries the `*.png` and `*.svg` files of the
+  internal repository (the bar's neuron was the first: a PyPI install would have shown a broken image).
+- **`/browse`: favourite categories.** A ★ Favourites picker left of Categories: the categories starred in the
+  Categories picker (a star beside each count; its tick stays as it is), one click browses a category alone - with
+  "+ new" there for a viewer who may write - and a star again takes it out of the Favourites alone. Kept in the
+  server's config, `browse_favourite_categories` (the same on every device; their order on /settings); starring is for
+  a viewer who may write everything, from a page of this server.
+- **`/browse`: Hot tags.** A row above the Tags of the facets with the tags of `browse_hot_tags` (the cserver config:
+  the same on every device, on /settings too): one click narrows the search by a tag, again takes it out; each shows
+  how many of the results have it (grey at none, still clickable - the row stays when nothing is found). A viewer who
+  may write edits them there: "edit" gives each a rename (✎) and a delete (✕), "+ tag" adds (commas between several),
+  each change saved at once.
+- **`/browse`: "clear tags".** The tags a search narrows by (picked from the facets) show first in the Tags row, each
+  with its × to take it out, and "clear tags" takes them all out - the category, the repositories, the dates and the
+  other words stay.
+- **Sizes 1000-based**: the file sizes of `/browse` read kB, MB, GB (1000 bytes to the kB), as every size cMeta prints.
+- **Tags edited one by one** on the page of an artifact (`/cref/`) and in the detail panel of `/browse`: "edit tags"
+  gives each tag a rename (✎) and a delete (✕), "+ tag" adds one (commas between several), "as text" is the field of
+  before (reorder, paste a list); each change is saved at once; "done" draws the page again with what changed (Esc
+  leaves a box, Enter saves it). An artifact without tags opens the box of a new one at once.
+- **`/browse`: Ctrl-click opens an artifact in a new tab.** The name of an artifact in the Search list and in the
+  Browse table is a real link to its page (`/cref/<cRef>`): Ctrl-click (Cmd-click on a Mac), Shift-click, the middle
+  button and "Open link in new tab" work as on any link, and do the same anywhere else on the row. A plain click still
+  opens the artifact in the same tab. The links of the detail panel (connections, AI uses) open the other artifact
+  in the panel on a plain click, and its page in a new tab on Ctrl-click.
+- **"Move to": an artifact into another repository from `/browse` and from its page.** A Move button on every row of
+  the Search list and the Browse table, "Move to another repository ..." in the detail panel and "Move to ..." on the
+  artifact page (`/cref/`), for a viewer who may write. One dialog (`files/js/move.js`, shared by both pages) lists
+  the repositories this viewer may write to - every plugged one, empty ones included, but the artifact's own, the
+  engine's and repositories of secrets - with a filter and the last one used picked; the server (`move` /
+  `move_targets` of `cserver.browse`) renames the folder in one step on the same disk, so a folder in use (a shell,
+  Far, an AI session in it) is refused and nothing changes, refuses another disk (that move would be a copy and a
+  deletion: `cx <category> move` does it), reindexes the artifact by its UID and puts the folder back if that fails.
+  The name, the UID and the files stay, so every cRef keeps working; a note at the bottom offers Undo (the same move
+  back). The engine's own repository is never a source or a target.
+
 ## 0.39.1
 - **The words of a search read the values of the meta, never its key names, and leave the authorship out.** A
   name found every artifact, since every `_cmeta` carries it in `copyright`, `authors` and `generator.by`; and the

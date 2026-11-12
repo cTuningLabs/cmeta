@@ -568,10 +568,11 @@ class Category(InitCategory):
         H = []
         H.append('<div class="cxr-top"><a class="cxr-back" id="cxr-back" href="#" hidden>&larr; Back</a>'
                  '<span class="cxr-crumb"><a href="%s" title="Every artifact of this category">%s</a> &middot; '
-                 '<a href="%s" title="Every artifact of this repository">%s</a></span><span class="cxr-actions">'
+                 '<a data-cxr-repo="1" href="%s" title="Every artifact of this repository">%s</a></span><span class="cxr-actions">'
                  '<a href="%s" title="This artifact in the knowledge browser">Browser</a> &middot; '
                  '<a href="%s" title="This artifact and its connections, drawn">Graph</a>%s'
                  ' <button type="button" class="cxr-copy" id="cxr-new" hidden title="A new artifact of this category, in this repository, with these tags">+ Similar</button>'
+                 ' <button type="button" class="cxr-copy" id="cxr-move" hidden title="Move it to another repository: same name, same UID, same files">Move to ...</button>'
                  ' <button type="button" class="cxr-copy" id="cxr-theme" title="Dark / light (kept in this browser)">&#9680;</button></span></div>'
                  % (browse_link(view='browse', cats=cat), _esc(cat),
                     browse_link(view='browse', repos=row.get('repo') or ''), _esc(row.get('repo') or '(registry)'),
@@ -704,7 +705,7 @@ class Category(InitCategory):
                 browse_link(view='browse', cats=cat), _esc(cat),
                 (' <a class="cxr-muted" href="%s" title="The category itself: its definition">(definition)</a>'
                  % _esc(self._cref_url + 'category::%s,%s' % (cat, a['category']['uid']))) if a.get('category') else '')))
-            rows_html.append(('Repository', '<a href="%s" title="Every artifact of this repository">%s</a>' % (
+            rows_html.append(('Repository', '<a data-cxr-repo="1" href="%s" title="Every artifact of this repository">%s</a>' % (
                 browse_link(view='browse', repos=row.get('repo') or ''), _esc(row.get('repo') or '(registry)'))))
             if origin.get('url'):
                 rows_html.append(('Origin', '<a href="%s" target="_blank" rel="noopener" title="%s">%s%s</a> &#8599;' % (
@@ -737,6 +738,8 @@ class Category(InitCategory):
                   'files': bool(a.get('files')) and tech and 'files' not in hide, 'file': rel if rel and not shown else '',
                   # "+ Similar": a new artifact of this category, in this repository, with these tags (a viewer who may write)
                   'create': bool(a.get('can_create')) and tech,
+                  # "Move to" (2026-11-11): into another repository, for a viewer who may write here
+                  'move': bool(a.get('edit')) and tech,
                   'new': {'cat': cat, 'repo': row.get('repo') or '', 'tags': list(row.get('tags') or [])}}
         return self._page(dark, title, '\n'.join(H), config=config, extra_head=page_head)
 
@@ -761,7 +764,7 @@ class Category(InitCategory):
         hosted = bool(getattr(self, '_hosted', False))
         html_body = '<div id="cxr" class="cxr%s"%s>%s%s</div>%s%s' % (
             ' cxr-dark' if dark else '', ' data-hosted="1"' if hosted else '', THEME_JS, body,
-            '<script>var CXR_CONFIG = %s;</script><script>%s</script><script>%s</script>' % (_js(dict(config or {}, hosted=hosted)), HL_JS, PICKER_JS), JS)
+            '<script>var CXR_CONFIG = %s;</script><script>%s</script><script>%s</script><script>%s</script>' % (_js(dict(config or {}, hosted=hosted)), HL_JS, PICKER_JS, MOVE_JS), JS)
         return {'return': 0, 'html_meta': {'html': html_body, 'page_title': title,
                                             'page_extra_style': '<meta name="viewport" content="width=device-width, initial-scale=1">\n<style>%s</style>\n%s' % (css, extra_head or '')}}
 
@@ -783,6 +786,12 @@ try:
         PICKER_JS = _f.read()
 except OSError:
     PICKER_JS = ''
+# The dialog of "Move to" (2026-11-11), shared with cserver.browse the same way: its files/js/move.js
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'cserver.browse', 'files', 'js', 'move.js'), encoding='utf-8') as _f:
+        MOVE_JS = _f.read()
+except OSError:
+    MOVE_JS = ''
 
 CSS = """
 .cxr{--fg:#14161a;--muted:#6b7280;--accent:#2a78d6;--line:#e5e7eb;--soft:#f6f7f9;color:var(--fg);max-width:1180px;margin:0 auto;padding:12px 16px 48px;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -854,6 +863,12 @@ CSS = """
 .cxr.cxr-dark{--cmp-bg:#1f242e;--cmp-soft:rgba(57,135,229,.22)}
 .cxr-tagform{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;margin-left:6px;vertical-align:middle}.cxr-tagform input{min-width:280px;font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--fg)}
 .cxr-dark .cxr-tagform input{background:#1f242e}
+.cxr-tags-editing{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.cxr-tagedit{display:inline-flex;align-items:center;gap:1px;padding:1px 3px 1px 9px}
+.cxr-tagbtn{border:0;background:none;color:var(--muted);font:inherit;font-size:12px;line-height:1;padding:2px 4px;border-radius:999px;cursor:pointer}
+.cxr-tagbtn:hover{background:var(--line);color:var(--fg)}.cxr-tagbtn.cxr-tagdel:hover{background:#d64545;color:#fff}
+.cxr-taginput{font:inherit;font-size:12.5px;padding:2px 8px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--fg);min-width:150px}
+.cxr-taginput.wide{min-width:320px;border-radius:6px}.cxr-dark .cxr-taginput{background:#1f242e}
 .cxr-flash{margin:6px 0 8px;padding:6px 10px;border-left:3px solid #0a7a3f;background:var(--soft);font-size:13px;overflow-wrap:anywhere}.cxr-flash.bad{border-left-color:#b42318}
 .cxr-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(92vw,720px);padding:8px 14px;border-radius:8px;background:#14161a;color:#fff;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .15s;z-index:50;overflow-wrap:anywhere}
 .cxr-dark .cxr-toast{background:#e8eaee;color:#14161a}.cxr-toast.on{opacity:1}.cxr-toast.bad{background:#b42318;color:#fff}
@@ -984,18 +999,38 @@ JS = """<script>
     cmetaPicker(f,{api:api,self:C.uid,key:key,submit:function(all){msg.textContent='';
       return api('link',{uid:C.uid,key:key,add:all.join(';'),both:both?'1':''}).then(function(r){if(!(r.changes||[]).length){msg.textContent=said(r).join('; ');return true;}again(box,said(r));})
         .catch(function(er){msg.textContent=er.message;return true;});}});});
-  // the tags (2026-11-10): "edit tags" opens a field with all of them in order (commas or spaces between them) - add, remove,
-  // reorder -, Save writes them through cserver.browse's tags action, the page is drawn again with what changed
+  // the tags (2026-11-12, the user: "add cross (to delete) and edit (to rename) for each tag and a button to add new tag"):
+  // "edit tags" turns each chip into one with a rename and a delete, "+ tag" adds one (commas between several), "as text"
+  // is the field of before (reorder, paste a list); each change is saved at once through cserver.browse's tags action;
+  // "done" draws the page again with what changed (Esc leaves a box, Enter saves it)
   var tb=document.getElementById('cxr-tags-edit'),tagsBox=document.getElementById('cxr-tags');
-  if(tb&&tagsBox){tb.addEventListener('click',function(){if(tagsBox.querySelector('.cxr-tagform'))return;var cur=[];try{cur=JSON.parse(tagsBox.getAttribute('data-tags')||'[]');}catch(e){cur=[];}
-    var f=h('form','cxr-tagform'),inp=document.createElement('input'),sv=h('button','cxr-btn','Save'),cn=h('button','cxr-copy sm','cancel'),msg=h('span','cxr-emsg');
-    inp.type='text';inp.value=cur.join(', ');inp.placeholder='the tags, in order - commas or spaces between them';inp.setAttribute('aria-label','The tags');inp.spellcheck=false;
-    sv.type='submit';cn.type='button';f.appendChild(inp);f.appendChild(sv);f.appendChild(cn);f.appendChild(msg);tagsBox.appendChild(f);tb.hidden=true;inp.focus();
-    cn.addEventListener('click',function(){f.remove();tb.hidden=false;});
-    f.addEventListener('submit',function(e){e.preventDefault();msg.textContent='';sv.disabled=true;
-      api('tags',{uid:C.uid,tags:inp.value}).then(function(r){if(!r.changed){sv.disabled=false;msg.textContent='nothing changed';return;}
-        again('tags',['tags: '+((r.tags||[]).join(', ')||'none')+(r.old&&r.old.length?' (were '+r.old.join(', ')+')':'')]);})
-        .catch(function(er){sv.disabled=false;msg.textContent=er.message;});});});}
+  if(tb&&tagsBox){
+    var tags0=[];try{tags0=JSON.parse(tagsBox.getAttribute('data-tags')||'[]');}catch(e){tags0=[];}
+    var tagsNow=tags0.slice(),tagsBusy=false,tagsMsg=h('span','cxr-emsg');
+    var tagUniq=function(list){var out=[];list.forEach(function(x){x=String(x||'').trim();if(x&&out.indexOf(x)<0)out.push(x);});return out;};
+    var tagSplit=function(v){return tagUniq(String(v||'').split(','));};
+    var tagSave=function(next,what){if(tagsBusy)return;tagsBusy=true;tagsMsg.textContent='saving ...';
+      api('tags',{uid:C.uid,tags:tagUniq(next)}).then(function(r){tagsBusy=false;tagsNow=(r.tags||tagUniq(next)).slice();tagsMsg.textContent=r.changed?what:'nothing changed';tagsDraw();})
+        .catch(function(er){tagsBusy=false;tagsMsg.textContent=er.message;});};
+    var tagInput=function(value,place,ok){var inp=document.createElement('input');inp.type='text';inp.className='cxr-taginput';inp.value=value||'';inp.placeholder=place;inp.spellcheck=false;inp.setAttribute('aria-label',place);
+      inp.addEventListener('keydown',function(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();tagsDraw();}else if(e.key==='Enter'){e.preventDefault();ok(inp.value);}});
+      return inp;};
+    var tagsDraw=function(){tagsBox.innerHTML='';tagsBox.setAttribute('data-tags',JSON.stringify(tagsNow));tagsBox.classList.add('cxr-tags-editing');
+      tagsNow.forEach(function(t,i){var c=h('span','cxr-chip cxr-tagedit'),rn=h('button','cxr-tagbtn','✎'),rm=h('button','cxr-tagbtn cxr-tagdel','✕');
+        rn.type='button';rm.type='button';rn.title='Rename '+t;rm.title='Delete the tag '+t;rn.setAttribute('aria-label','Rename '+t);rm.setAttribute('aria-label','Delete '+t);
+        rn.addEventListener('click',function(){var inp=tagInput(t,'the new name of '+t,function(v){var parts=tagSplit(v);if(!parts.length||(parts.length===1&&parts[0]===t)){tagsDraw();return;}
+          tagSave(tagsNow.slice(0,i).concat(parts,tagsNow.slice(i+1)),'renamed '+t+' to '+parts.join(', '));});c.replaceWith(inp);inp.focus();inp.select();});
+        rm.addEventListener('click',function(){tagSave(tagsNow.filter(function(x,j){return j!==i;}),'deleted '+t);});
+        c.appendChild(h('span','cxr-tagtext',t));c.appendChild(rn);c.appendChild(rm);tagsBox.appendChild(c);});
+      var add=h('button','cxr-copy sm cxr-tagadd','+ tag'),txt=h('button','cxr-copy sm','as text'),done=h('button','cxr-btn','done');add.type='button';txt.type='button';done.type='button';
+      add.title='A new tag (commas between several)';txt.title='All the tags as one text: reorder them, paste a list';done.title='The page drawn again with the tags as they are now';
+      add.addEventListener('click',function(){var inp=tagInput('','a new tag (commas: several)',function(v){var parts=tagSplit(v);if(!parts.length){tagsDraw();return;}tagSave(tagsNow.concat(parts),'added '+parts.join(', '));});tagsBox.insertBefore(inp,add);inp.focus();});
+      txt.addEventListener('click',function(){var inp=tagInput(tagsNow.join(', '),'the tags, in order - commas between them',function(v){tagSave(tagSplit(String(v).split(' ').join(',')),'the tags written as given');});
+        inp.classList.add('wide');tagsBox.insertBefore(inp,add);inp.focus();inp.select();});
+      done.addEventListener('click',function(){if(JSON.stringify(tagsNow)===JSON.stringify(tags0)){location.reload();return;}
+        again('tags',['tags: '+(tagsNow.join(', ')||'none')+(tags0.length?' (were '+tags0.join(', ')+')':'')]);});
+      tagsBox.appendChild(add);tagsBox.appendChild(txt);tagsBox.appendChild(done);tagsBox.appendChild(tagsMsg);};
+    tb.addEventListener('click',function(){tagsDraw();if(!tagsNow.length){var a=tagsBox.querySelector('.cxr-tagadd');if(a)a.click();}});}
   // the depth of the focused graph
   var sel=document.getElementById('cxr-depth'),fo=document.getElementById('cxr-focus');
   if(sel&&fo){sel.addEventListener('change',function(){fo.href=C.focus_url+(sel.value&&sel.value!=='2'?'&depth='+sel.value:'');});}
@@ -1005,6 +1040,14 @@ JS = """<script>
     var bt=h('button','cxr-btn',w[1]);bt.type='button';bt.title=w[2];bt.addEventListener('click',function(){msg.className='msg';msg.textContent='opening...';
       api('open',{uid:C.uid,what:w[0]}).then(function(){msg.textContent=w[1]+' opened on this machine';}).catch(function(e){msg.className='msg bad';msg.textContent=e.message;});});
     ob.appendChild(bt);});ob.appendChild(msg);}
+  // "Move to" (2026-11-11): the dialog of cserver.browse's move.js; after the move (and its Undo) the repository the
+  // page names, at the top and in the facts, is the new one - no reload, so that the Undo stays at hand
+  var mvb=document.getElementById('cxr-move');
+  if(mvb&&C.move&&window.cmetaMove){mvb.hidden=false;mvb.addEventListener('click',function(){
+    cmetaMove({api:api,uid:C.uid,dark:!!document.querySelector('.cxr-dark'),done:function(out){
+      var u=C.browse_url||'/browse';u+=(u.indexOf('?')>=0?'&':'?')+'view=browse&repos='+encodeURIComponent(out.to);
+      document.querySelectorAll('[data-cxr-repo]').forEach(function(a){a.textContent=out.to;a.setAttribute('href',u);});
+      if(C.new)C.new.repo=out.to;}});});}
   // "+ Similar" (2026-11-03): a new artifact of this category - its name, its tags (these ones), its repository (this one first) -
   // made by the category's own "add" on the server (a dated category puts the day in front), then its page opens
   var nb=document.getElementById('cxr-new');

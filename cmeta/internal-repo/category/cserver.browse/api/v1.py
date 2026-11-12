@@ -103,6 +103,13 @@ whole through ?native_action=tags (uid, tags: a list, or a text with commas or s
 add, remove, reorder) by the category's own update with replace_lists, for a viewer who may write to the artifact,
 from a page of this server - the artifact page edits them the same way.
 
+"Move to" (2026-11-11): ?native_action=move_targets (uid) lists the repositories a viewer may move an artifact to
+(every plugged one this viewer may write to, empty ones included - not its own, not the engine's, not a repository
+of secrets) and ?native_action=move (uid, repo) moves it there as it is: its folder renamed in one step on the same
+disk (a folder in use is refused, nothing changes; another disk is refused), reindexed by its UID, put back if that
+fails. The dialog of files/js/move.js serves the rows and the panel of this page and the artifact page; Undo is the
+same move back.
+
 These keys of the cserver config apply (cx config set cserver --meta.<key>=<value>):
     hide_repos                repositories left out (aliases or fnmatch patterns) - the same key as /projects
     browse_hide_categories    categories left out; by default anything matching *crypt*, *secret* or
@@ -142,6 +149,7 @@ created, then by updated; "-alias": by name from the end (dated names: the lates
 
 import base64
 import datetime
+import errno
 import fnmatch
 import hashlib
 import html
@@ -183,6 +191,16 @@ TOKEN_RE = re.compile(r'-?[^\s"]*"[^"]*"|\S+')
 USES_RE = re.compile(r'^(.+),([0-9a-fA-F]{16})$')      # a `uses:` value: <alias>,<UID>
 BRACES_RE = re.compile(r'^\{\{\{(.+?)\}\}\}(?:/.*)?$')   # {{{<cRef>}}} as written in a text, a path after it or not
 EDIT_NEW = ('_desc.yaml', 'README.md')               # the files the editor may create at the top of an artifact without one
+
+# The engine's own repository (internal-repo, three folders up from this file): Move takes nothing into or out of it
+INTERNAL_ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..'))
+
+
+def _in_engine(path):
+    """Whether a folder is the engine's own repository or inside it."""
+    p = os.path.normcase(os.path.realpath(path or ''))
+    root = os.path.normcase(INTERNAL_ROOT)
+    return p == root or p.startswith(root.rstrip('\\/') + os.sep)
 
 # The file browser: what it never shows - folders named like a key store, files that look like key material
 SECRET_DIR_RE = re.compile(r'crypt|secret|credential', re.I)
@@ -2402,6 +2420,126 @@ class Category(InitCategory):
         return {'created': final, 'uid': uid, 'cat': cat_alias, 'cat_uid': cat_uid, 'repo': repo_alias,
                 'cref': '%s,%s::%s,%s' % (cat_alias, cat_uid, final, uid), 'warnings': warnings}
 
+    def _move_targets(self, uid, misc, cfg):
+        """Where an artifact may be moved by this viewer (the dialog of "Move to"): the repositories this page shows
+        and the viewer may write to, with how many artifacts each holds - not the artifact's own, not the engine's."""
+        it = self._item(uid)
+        if it is None:
+            return {'error': 'artifact %s is not in the index of this server' % uid}
+        why = self._edit_refused(it, misc, cfg)
+        if why:
+            return {'error': why}
+        on = self._edit_on(misc, cfg)
+        hidden = _patterns(cfg.get('hide_repos'))
+        counts = dict(self._options().get('repos') or [])
+        r = self.cm.access({'category': 'repo', 'command': 'find', 'arg1': '*', 'con': False})
+        repos = []
+        for a in (r.get('artifacts') or []) if r.get('return', 1) == 0 else []:
+            alias = str(a['cmeta_ref_parts'].get('artifact_alias') or '')
+            uid = str(a['cmeta_ref_parts'].get('artifact_uid') or '')
+            if not alias or alias == it['repo'] or (a.get('cmeta') or {}).get('secrets') or _matches_any(alias, hidden) \
+                    or _in_engine(a.get('path')):
+                continue
+            if on is not True and not (_matches_any(alias, on) or _matches_any(uid, on)):
+                continue
+            repos.append([alias, counts.get(alias, 0)])
+        repos.sort(key=lambda x: x[0].lower())
+        return {'repos': repos, 'from': it['repo'], 'name': '%s::%s' % (it['cat'], it['alias'])}
+
+    def _move(self, uid, repo, misc, cfg):
+        """An artifact moved into another repository as it is - its folder, alias, UID and files (2026-11-11, the user:
+        "add a 'move to' button to move it to another repo ... and when I click on cref too ... in a user-friendly
+        way"). The folder is renamed in one step on the same disk: on Windows a folder in use (a shell, Far, an AI
+        session in it) cannot be renamed, and then nothing at all changes; another disk is refused (the move would be
+        a copy and a deletion - cx <category> move does that). Then the artifact is reindexed by its UID, so the index
+        follows the folder; if that fails, the folder goes back. For a viewer who may write to both repositories; the
+        page offers Undo (the same move back). One line of the server's log."""
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        it = self._item(uid)
+        if it is None:
+            return {'error': 'artifact %s is not in the index of this server' % uid}
+        why = self._edit_refused(it, misc, cfg)
+        if why:
+            return {'error': why}
+        name = '%s::%s' % (it['cat'], it['alias'])
+        repo = str(repo or '').strip()
+        if not repo or repo == '(registry)':
+            return {'error': 'name the repository to move %s to' % name}
+
+        r = self.cm.access({'category': 'repo', 'command': 'find', 'arg1': repo, 'con': False})
+        found = [a for a in ((r.get('artifacts') or []) if r.get('return', 1) == 0 else [])
+                 if repo.lower() in (str(a['cmeta_ref_parts'].get('artifact_alias') or '').lower(),
+                                     str(a['cmeta_ref_parts'].get('artifact_uid') or '').lower())]
+        if len(found) != 1:
+            return {'error': 'no repository %s on this server' % repo if not found else
+                             '%d repositories are called %s: name one by its UID' % (len(found), repo)}
+        t = found[0]
+        to_alias = str(t['cmeta_ref_parts'].get('artifact_alias') or repo)
+        to_uid = str(t['cmeta_ref_parts'].get('artifact_uid') or '').lower()
+        sub = str((t.get('cmeta') or {}).get('subdir') or '').strip()
+        root = os.path.normpath(os.path.join(t.get('path') or '', sub) if sub else (t.get('path') or ''))
+        if to_uid and to_uid == str(it.get('repo_uid') or '').lower():
+            return {'error': '%s is in %s already' % (name, to_alias)}
+        on = self._edit_on(misc, cfg)
+        if on is not True and not (_matches_any(to_alias, on) or _matches_any(to_uid, on)):
+            return {'error': 'you may not write to the repository %s' % to_alias}
+        repos = self.cm.repos
+        if _matches_any(to_alias, _patterns(cfg.get('hide_repos'))) or \
+                (getattr(repos, 'hidden_repos', ()) and repos.repo_hidden(None, alias=to_alias, uid=to_uid)):
+            return {'error': 'the repository %s is not one this page shows' % to_alias}
+        src = os.path.normpath(it['path'] or '')
+        if _in_engine(root) or _in_engine(src) or _in_engine(t.get('path')):
+            return {'error': 'the engine\'s own repository: nothing is moved into or out of it'}
+
+        # the folder as cMeta lays an artifact out: <repository>/<category>/<folder> (another layout: cx moves it)
+        cat = it['cat']
+        if not os.path.isdir(src) or os.path.basename(os.path.dirname(src)).lower() != cat.lower():
+            return {'error': '%s: its folder is not <repository>/%s/<name> - move it with cx %s move' % (name, cat, cat)}
+        dst_dir = os.path.join(root, cat)
+        dst = os.path.join(dst_dir, os.path.basename(src))
+        if os.path.exists(dst):
+            return {'error': '%s: %s holds a folder of that name already' % (name, to_alias)}
+        try:
+            same_disk = os.stat(src).st_dev == os.stat(root).st_dev
+        except OSError as e:
+            return {'error': '%s: %s' % (name, e)}
+        if not same_disk:
+            return {'error': '%s: %s is on another disk - the move would be a copy and a deletion: use cx %s move %s %s:' %
+                             (name, to_alias, cat, it['alias'], to_alias)}
+
+        made_dir = not os.path.isdir(dst_dir)
+        try:
+            os.makedirs(dst_dir, exist_ok=True)
+            os.rename(src, dst)
+        except OSError as e:
+            if made_dir:
+                try:
+                    os.rmdir(dst_dir)
+                except OSError:
+                    pass
+            busy = isinstance(e, PermissionError) or getattr(e, 'errno', None) in (errno.EACCES, errno.EBUSY)
+            return {'error': '%s: %s - nothing was moved' % (name, 'its folder is in use (a shell, Far or an AI session '
+                                                                   'in it?)' if busy else e)}
+
+        where = '%s,%s' % (cat, it['cat_uid'])
+        r = self.cm.access({'category': where, 'command': 'reindex', 'arg1': it['uid'], 'con': False})
+        if r.get('return', 1) > 0:
+            try:
+                os.rename(dst, src)
+                self.cm.access({'category': where, 'command': 'reindex', 'arg1': it['uid'], 'con': False})
+                back = 'the folder was put back'
+            except OSError as e:
+                back = 'the folder is in %s now (%s)' % (dst, e)
+            return {'error': '%s: the index could not follow the move (%s): %s' % (name, r.get('error', ''), back)}
+
+        from_alias = it['repo']
+        self._catalog(force=True)
+        _desc_cache.clear()
+        print('cMeta info: cserver.browse: %s moved %s from %s to %s' % (self._who(misc), name, from_alias, to_alias))
+        return {'moved': it['alias'], 'uid': it['uid'], 'cat': cat, 'from': from_alias, 'to': to_alias,
+                'cref': '%s,%s::%s,%s' % (cat, it['cat_uid'], it['alias'], it['uid'])}
+
     def _save(self, uid, rel, text, stamp, misc, cfg):
         """Write a text file of an artifact the page shows with the editor's text, checked by the file's name,
         when the viewer may (browse_edit, the host's grant), the request came from a page of this server, and
@@ -2558,6 +2696,67 @@ class Category(InitCategory):
             return []
         j = (r.get('json') or {}) if r.get('return', 1) == 0 else {}
         return list(j.get('texts') or [])
+
+    def _favourite(self, cat, on, misc, cfg):
+        """A category added to or taken out of the favourites (2026-11-12, the user: "Favourite categories ... just list
+        hot categories that we will star in Categories ... if we click on any in Favourite category, it will start
+        browsing just that category and allow to add a new artifact there"): browse_favourite_categories of the cserver
+        config, in the order starred (the same on every device; reordered on /settings) - for a viewer who may write
+        everything here, from a page of this server -> {'favourites'} or {'error'}."""
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        if self._edit_on(misc, cfg) is not True:
+            return {'error': 'the favourites are kept in the server\'s config: for a viewer who may write everything here '
+                             '(browse_edit in the cserver config)'}
+        cat = str(cat or '').strip()
+        if not re.match(r'^[A-Za-z0-9_][A-Za-z0-9_.@-]*$', cat):
+            return {'error': 'cat: the name of a category is expected'}
+        favs = _list(cfg.get('browse_favourite_categories'))
+        new = (favs + [cat]) if on and cat not in favs else [x for x in favs if x != cat] if not on else favs
+        if new == favs:
+            return {'favourites': favs, 'changed': False}
+        r = self.cm.access({'category': self._uses('config', 'config,cc6bfe174be847ed'), 'command': 'set', 'arg1': 'cserver',
+                            'con': False, 'meta': {'browse_favourite_categories': new}})
+        if r.get('return', 1) > 0:
+            return {'error': 'the favourites could not be saved: %s' % r.get('error', '?')}
+        saved = _list(self._cserver_config().get('browse_favourite_categories'))
+        if saved != new:
+            return {'error': 'the favourites were not saved as given (the config holds %s)' % ', '.join(saved)}
+        print('cMeta info: cserver.browse: %s %s the favourite categories' % (cat, 'added to' if on else 'taken out of'))
+        return {'favourites': saved, 'changed': True}
+
+    def _hot_tags(self, tags, misc, cfg):
+        """The hot tags written, in their order (2026-11-12, the user: "add Hot tags to cserver.browse on top of tags ...
+        add/edit/remove them there ... a set of hot tags to search"): browse_hot_tags of the cserver config (the same on
+        every device; on /settings too) - for a viewer who may write everything here, from a page of this server ->
+        {'hot_tags', 'changed'} or {'error'}."""
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        if self._edit_on(misc, cfg) is not True:
+            return {'error': 'the hot tags are kept in the server\'s config: for a viewer who may write everything here '
+                             '(browse_edit in the cserver config)'}
+        raw = [str(x) for x in tags] if isinstance(tags, (list, tuple)) else str(tags or '').split(',')
+        new = []
+        for x in raw:
+            x = x.strip()
+            if not x:
+                continue
+            if len(x) > 80 or re.search(r'[,\x00-\x1f]', x):
+                return {'error': 'a hot tag is a tag: no comma, at most 80 characters (%r)' % x[:40]}
+            if x not in new:
+                new.append(x)
+        old = _list(cfg.get('browse_hot_tags'))
+        if new == old:
+            return {'hot_tags': old, 'changed': False}
+        r = self.cm.access({'category': self._uses('config', 'config,cc6bfe174be847ed'), 'command': 'set', 'arg1': 'cserver',
+                            'con': False, 'meta': {'browse_hot_tags': new}})
+        if r.get('return', 1) > 0:
+            return {'error': 'the hot tags could not be saved: %s' % r.get('error', '?')}
+        saved = _list(self._cserver_config().get('browse_hot_tags'))
+        if saved != new:
+            return {'error': 'the hot tags were not saved as given (the config holds %s)' % ', '.join(saved)}
+        print('cMeta info: cserver.browse: the hot tags are %s' % (', '.join(saved) or 'none'))
+        return {'hot_tags': saved, 'changed': True}
 
     def _set_tags(self, uid, tags, misc, cfg):
         """The tags of an artifact set, as given (2026-11-10, the user: "edit/update/move/delete tags in both full and
@@ -2726,6 +2925,10 @@ class Category(InitCategory):
                         out['texts'] = self._texts_of(query.get('uid'), urls, misc)
                 elif na == 'tags':                 # the tags of an artifact set (2026-11-10: the panel and the artifact page)
                     out = self._set_tags(query.get('uid'), query.get('tags'), misc, self._cserver_config())
+                elif na == 'favourite':            # a category starred or not (2026-11-12): the Favourites picker
+                    out = self._favourite(query.get('cat'), _flag(query.get('on'), True), misc, self._cserver_config())
+                elif na == 'hot_tags':             # the hot tags written (2026-11-12): the row above the Tags
+                    out = self._hot_tags(query.get('tags'), misc, self._cserver_config())
                 elif na == 'graph':
                     out = self._graph(query)
                 elif na in ('files', 'file'):
@@ -2748,6 +2951,10 @@ class Category(InitCategory):
                 elif na == 'create':
                     out = self._create(query.get('cat'), query.get('repo'), query.get('alias'), query.get('tags'),
                                        misc, self._cserver_config(), dt=query.get('dt'))
+                elif na == 'move':                 # an artifact into another repository (2026-11-11; Undo: the move back)
+                    out = self._move(query.get('uid'), query.get('repo'), misc, self._cserver_config())
+                elif na == 'move_targets':         # the repositories the dialog of "Move to" offers
+                    out = self._move_targets(query.get('uid'), misc, self._cserver_config())
                 elif na == 'link':                 # connections / ai_uses of an artifact: add names, remove one
                     out = self._link(query.get('uid'), query.get('key'), query.get('add'), query.get('remove'), misc,
                                      self._cserver_config(), both=_flag(query.get('both'), False))
@@ -2794,6 +3001,11 @@ class Category(InitCategory):
                       'files': self._files_on(misc, cfg),
                       # who may write here: True, False, or the repositories (patterns) of the viewer's grant
                       'edit': self._edit_on(misc, cfg),
+                      # the favourite categories (2026-11-12): the Favourites picker; star them: a viewer who may write all
+                      'favourites': _list(cfg.get('browse_favourite_categories')),
+                      # the hot tags (2026-11-12): the row above the Tags; written by the same viewer
+                      'hot_tags': _list(cfg.get('browse_hot_tags')),
+                      'star': self._edit_on(misc, cfg) is True,
                       'open': _open_buttons(cfg) if open_on else {},
                       'graph': {'max_nodes': GRAPH_DEFAULT, 'max': GRAPH_MAX, 'depth_max': DEPTH_MAX},
                       # where the page of one artifact is served (a host's /cref/, else this server's), and the
@@ -2813,6 +3025,7 @@ class Category(InitCategory):
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/graph.js') +
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/hl.js') +      # the file viewer's colouring
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/picker.js') +  # the picker of the lists
+                '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/move.js') +    # the dialog of Move to
                 '<script src="%s" defer></script>\n' % _asset(path_to_files, url_files, 'js/browse.js')
             )
             return {'return': 0, 'html_meta': {'html': body, 'page_title': title,

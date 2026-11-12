@@ -1,0 +1,40 @@
+<!-- The bar above every page (2026-11-12; page_header of the cserver config, on unless it says no): the menu of all
+     pages, the neuron to the home page, where the page is, the theme every page shares, Settings -->
+<header class="cmh" id="cmh" data-page="{{ cmeta_header.page }}" data-home="{{ cmeta_header.home }}"
+        data-is-home="{{ '1' if cmeta_header.is_home else '0' }}" data-projects="{{ cmeta_header.projects }}"
+        data-view="{{ cmeta_header.view }}">
+  <button type="button" class="cmh-btn" id="cmh-menu" aria-label="All pages" aria-haspopup="dialog"
+          aria-expanded="false" aria-controls="cmh-drawer" title="All pages of this server">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+  </button>
+  <a class="cmh-brand" href="{{ cmeta_header.home }}" title="Home - every page of this server">
+    <img src="{{ cmeta_header.neuron }}" alt=""><span>Home</span>
+  </a>
+  <nav class="cmh-crumbs" aria-label="Where you are">
+    {%- if not cmeta_header.is_home %}
+    {%- for c in cmeta_header.crumbs %}
+    <span class="cmh-sep{{ ' cmh-mid' if not loop.first else '' }}" aria-hidden="true">›</span><span class="cmh-crumb" data-prefix="{{ c.prefix }}" title="The pages {{ c.prefix }}* - in the menu">{{ c.name }}</span>
+    {%- endfor %}
+    <span class="cmh-sep" aria-hidden="true">›</span><span class="cmh-now" title="{{ '/' ~ cmeta_header.page }}">{{ cmeta_header.title }}</span>
+    {%- endif %}
+  </nav>
+  <div class="cmh-right">
+    <button type="button" class="cmh-btn" id="cmh-theme" aria-label="Light or dark theme" title="Light / dark - every page of this server">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor"/></svg>
+    </button>
+    <a class="cmh-btn cmh-settings" href="{{ cmeta_header.settings }}" title="Settings - every config key of this server, a switch or a field each">
+      <span class="cmh-gear" aria-hidden="true">&#9881;</span><span>Settings</span>
+    </a>
+  </div>
+</header>
+<div class="cmh-back" id="cmh-back" hidden></div>
+<div class="cmh-drawer" id="cmh-drawer" role="dialog" aria-label="All pages" hidden>
+  <div class="cmh-dhead">
+    <input type="search" class="cmh-filter" id="cmh-filter" placeholder="Filter the pages ..." aria-label="Filter the pages" autocomplete="off" spellcheck="false">
+    <button type="button" class="cmh-btn" id="cmh-close" aria-label="Close" title="Close (Esc)">&#10005;</button>
+  </div>
+  <label class="cmh-custom" title="The sections of the home page's customized view, in their order (the same switch as on the home page)">
+    <input type="checkbox" id="cmh-custom"><span class="cmh-switch" aria-hidden="true"></span><span>Customized</span><small>as the home page groups them</small>
+  </label>
+  <div class="cmh-list" id="cmh-list"><div class="cmh-note">Reading the pages ...</div></div>
+</div>

@@ -55,6 +55,12 @@ configs:
         desc: who receives a six-digit login code by e-mail (a comma-separated list is fine); any value turns that way
           in on, beside the password
         example: you@example.com
+      login_mfa:
+        desc: yes = both ways in, one after the other - the password first (it mails the code), then the code; neither
+          alone opens a page, no code is mailed before the password; needs a password and login_email (the SMTP keys
+          too); the sign-in then lasts as the password's tick says (a week, else 12 hours)
+        type: yes/no
+        default: 'no'
       login_smtp_host:
         desc: the SMTP server that sends the codes
         example: smtp.example.com
@@ -72,8 +78,10 @@ configs:
         desc: the SMTP password (an app password)
         secret: true
       login_smtp_password_file:
-        desc: a file the SMTP password is read from instead
+        desc: a file the SMTP password is read from instead - a path, or {{{secret::<alias>,<UID>}}}/files/password (a
+          file of a secret artifact, found at startup wherever the artifact is on the machine)
         type: path
+        example: '{{{secret::my-smtp,0123456789abcdef}}}/files/password'
       login_smtp_from:
         desc: the sender of the codes
         default: the SMTP user
@@ -98,6 +106,12 @@ configs:
         desc: the page "/" shows - /projects (the cards of every page), /<page> for any other cserver.<page>, none =
           the plain welcome page
         default: /projects
+      page_header:
+        desc: yes = a bar above every page - the menu of all pages (filtered as you type), the neuron to the home page,
+          where the page is (my › dashboard), the light / dark switch every page shares, Settings; no = the pages as
+          they are
+        type: yes/no
+        default: 'yes'
       local_hosts:
         desc: the names this machine's own browser opens the server by besides localhost (its LAN or Tailscale name),
           comma-separated - a browser that opens it so counts as "on the server's machine" (files, editing, Open)

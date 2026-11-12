@@ -59,6 +59,16 @@ configs:
         desc: repositories unticked whenever an address names none - an archive left out of every view until ticked
         type: list
         example: my-archive
+      browse_hot_tags:
+        desc: the tags of the Hot tags row, above the Tags of the facets - one click prunes the search by a tag, again
+          takes it out; edited there too (rename, delete, add) by a viewer who may write
+        type: list
+        example: urgent,sla,review
+      browse_favourite_categories:
+        desc: the categories of the Favourites picker, in its order - one click browses a category alone (and adds an
+          artifact there); the star of a category in the Categories picker adds or takes it out
+        type: list
+        example: note,journal,work
       browse_category_sort:
         desc: the order of a category's artifacts when nothing else is asked - "work,note:-alias;report:created,updated"
           ("-" turns a key around, "dated" lists the names without a date first, then the newest); goes before a

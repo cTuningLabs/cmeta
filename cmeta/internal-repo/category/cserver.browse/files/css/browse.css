@@ -108,6 +108,19 @@
 .cbr-pick-list label:hover { background: var(--cbr-hover); }
 .cbr-pick-list .n { margin-left: auto; color: var(--cbr-muted); font-variant-numeric: tabular-nums; font-size: 12px; }
 .cbr-pick-list .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the favourite categories (2026-11-12): a star beside a category's count, the Favourites picker */
+.cbr-star { flex: none; border: 0; background: none; color: var(--cbr-muted); font: inherit; font-size: 15px; line-height: 1;
+  padding: 1px 4px; border-radius: 4px; cursor: pointer; }
+.cbr-star:hover { color: #d99a00; background: var(--cbr-hover); }
+.cbr-star.on { color: #e3a008; }
+.cbr-favs .cbr-pick-pop { width: 320px; }
+.cbr-fav { display: flex; align-items: center; gap: 2px; border-radius: 4px; }
+.cbr-fav:hover { background: var(--cbr-hover); }
+.cbr-fav.on { background: var(--cbr-accent-soft); }
+.cbr-fav.gone .nm { color: var(--cbr-muted); text-decoration: line-through; }
+.cbr-fav-go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 4px; border: 0; background: none;
+  color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.cbr-fav-note { margin: 6px 2px 2px; color: var(--cbr-muted); font-size: 12px; line-height: 1.45; }
 
 .cbr-help { margin: 8px 0 0; padding: 8px 12px; border: 1px solid var(--cbr-line); border-radius: 8px; background: var(--cbr-code); }
 .cbr-help td { padding: 3px 14px 3px 0; vertical-align: top; font-size: 13px; }
@@ -164,6 +177,18 @@
 .cbr-facet { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
 .cbr-facet-name { color: var(--cbr-muted); margin-right: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .cbr-facet .more { font-size: 12px; margin-left: 4px; }
+/* the tags the search narrows by, each out with its x, and "clear tags" (2026-11-12) */
+.cbr-chip.cbr-tagword { cursor: pointer; }
+.cbr-chip.cbr-tagword .x { margin-left: 2px; font-weight: 700; opacity: .7; }
+.cbr-chip.cbr-tagword:hover .x { opacity: 1; }
+.cbr-cleartags { font-size: 12px; margin: 3px 4px 0 2px; }
+.cbr-facet-sep { color: var(--cbr-line); margin: 3px 6px 0 2px; }
+/* the hot tags (2026-11-12): the row above the Tags, a warm border; at zero the chip greys, still clickable */
+.cbr-chip.cbr-hot { border: 1px solid #e3a008; background: transparent; }
+.cbr-chip.cbr-hot.on { background: #fdf3d8; color: #8a5a00; border-color: #e3a008; }
+.dark .cbr-chip.cbr-hot.on, .cbr.dark .cbr-chip.cbr-hot.on { background: #3a2f12; color: #f2c14e; }
+.cbr-chip.cbr-hot.zero { opacity: .5; }
+.cbr-hotedit { font-size: 12px; margin: 3px 4px 0 2px; }
 .cbr-tablewrap { overflow-x: auto; }
 .cbr-table.one-cat td.cat, .cbr-table.one-cat th[data-sort="cat"] { display: none; }
 .cbr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -325,6 +350,17 @@
   background: var(--cbr-card); color: var(--cbr-fg); outline: none; }
 .cbr-ladd input:focus { border-color: var(--cbr-accent); box-shadow: 0 0 0 3px var(--cbr-accent-soft); }
 .cbr-lmsg { font-size: 12px; }
+/* the tags edited one by one (2026-11-12): a rename and a delete on each chip, "+ tag", "as text", "done" */
+.cbr-tags-editing { gap: 4px; }
+.cbr-chip.cbr-tagedit { display: inline-flex; align-items: center; gap: 1px; padding: 1px 3px 1px 8px; cursor: default; }
+.cbr-tagbtn { border: 0; background: none; color: var(--cbr-muted); font: inherit; font-size: 12px; line-height: 1; padding: 2px 4px;
+  border-radius: 999px; cursor: pointer; }
+.cbr-tagbtn:hover { background: var(--cbr-line); color: var(--cbr-fg); }
+.cbr-tagbtn.cbr-tagdel:hover { background: #d64545; color: #fff; }
+.cbr-taginput { font: inherit; font-size: 12.5px; padding: 2px 8px; min-width: 150px; border: 1px solid var(--cbr-line); border-radius: 999px;
+  background: var(--cbr-card); color: var(--cbr-fg); }
+.cbr-taginput.wide { min-width: 300px; border-radius: 6px; }
+.cbr-taginput:focus { outline: none; border-color: var(--cbr-accent); box-shadow: 0 0 0 3px var(--cbr-accent-soft); }
 .cbr-lx { margin-left: 6px; }
 .cbr-lx:hover { color: #b42318; border-color: #b42318; }
 .cbr-links { list-style: none; padding: 0; margin: 0; font-size: 13px; max-height: 260px; overflow: auto; }
