@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (after 0.40.0)
+## 0.41.0
 - **/browse searches the files inside the artifacts: `browse_file_search: yes`.** An index of the names of every
   file inside the artifacts of the machine (every repository, every category but the keys and secrets, the
   repositories themselves and a skip list of machine output - `browse_file_search_skip_categories`: tmp, cache, log,
