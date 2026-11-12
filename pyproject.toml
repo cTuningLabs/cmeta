@@ -118,6 +118,8 @@ exclude = ["tests*", "*.tests", "*.tests.*", "cmeta.tests*"]
     "internal-repo/**/*.sh",
     "internal-repo/**/*.txt",
     "internal-repo/**/*.ico",
+    "internal-repo/**/*.png",
+    "internal-repo/**/*.svg",
     "internal-repo/**/*.js",
     "internal-repo/**/*.html",
     "internal-repo/**/*.css",

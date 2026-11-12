@@ -1,0 +1,115 @@
+/*
+   The bar above every page of the cMeta server (2026-11-12, the user: "a simple header similar to what I see on
+   labs.ctuning.ai ... collapsed menu on the left ... Neuron that will let me go home ... the current project title
+   (maybe with hierarchy x.y.z) and on the right the background switch and settings"): the menu of all pages, home,
+   where the page is, the theme, Settings. Its own colours, light and dark (the theme every page shares,
+   cmeta.theme); it scrolls with the page, so a page's own sticky bars stay where they are. Every class starts with
+   cmh- so that no page's styles reach it. page_header: no in the cserver config turns it off.
+*/
+
+.cmh, .cmh-drawer {
+  --cmh-bg: #ffffff; --cmh-ink: #1c1e21; --cmh-muted: #667085; --cmh-line: #e4e7ef; --cmh-hover: #f1f3f8;
+  --cmh-accent: #2f5fd0; --cmh-tint: #e9effc;
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--cmh-ink); text-align: left;
+}
+.cmh.cmh-dark, .cmh-drawer.cmh-dark {
+  --cmh-bg: #161a21; --cmh-ink: #e8eaee; --cmh-muted: #9aa3b2; --cmh-line: #2c323d; --cmh-hover: #232a36;
+  --cmh-accent: #6b9cf2; --cmh-tint: #1c2a45;
+}
+.cmh *, .cmh-drawer * { box-sizing: border-box; }
+
+/* the bar */
+.cmh {
+  position: relative; z-index: 30; display: flex; align-items: center; gap: 6px;
+  height: 46px; padding: 0 12px; box-sizing: border-box;
+  background: var(--cmh-bg); border-bottom: 1px solid var(--cmh-line);
+}
+.cmh-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none;
+  height: 34px; min-width: 34px; padding: 0 8px; margin: 0;
+  border: 0; border-radius: 8px; background: transparent; color: var(--cmh-ink) !important;
+  font: inherit; text-decoration: none !important; cursor: pointer;
+}
+.cmh-btn:hover, .cmh-btn[aria-expanded="true"] { background: var(--cmh-hover); }
+.cmh-btn:focus-visible, .cmh-brand:focus-visible, .cmh-item:focus-visible { outline: 2px solid var(--cmh-accent); outline-offset: 1px; }
+.cmh-gear { font-size: 18px; line-height: 1; }
+
+.cmh-brand {
+  display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 3px 6px 3px 3px; border-radius: 8px;
+  color: var(--cmh-ink) !important; text-decoration: none !important; font-weight: 650; font-size: 15.5px;
+}
+.cmh-brand:hover { background: var(--cmh-hover); }
+.cmh-brand img { width: 28px; height: 28px; display: block; }
+
+.cmh-crumbs {
+  display: flex; align-items: center; gap: 5px; min-width: 0; flex: 1 1 auto;
+  overflow: hidden; white-space: nowrap; color: var(--cmh-muted);
+}
+.cmh-sep { opacity: .55; flex: none; }
+.cmh-crumb { flex: none; padding: 2px 5px; border-radius: 6px; cursor: pointer; }
+.cmh-crumb:hover { color: var(--cmh-ink); background: var(--cmh-hover); }
+.cmh-now { min-width: 0; color: var(--cmh-ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; padding: 2px 3px; }
+
+.cmh-right { margin-left: auto; display: flex; align-items: center; gap: 2px; flex: none; }
+
+/* a phone: the neuron, the page's title, the two buttons */
+@media (max-width: 640px) {
+  .cmh { padding: 0 6px; }
+  .cmh-brand span, .cmh-settings span, .cmh-crumb, .cmh-sep.cmh-mid { display: none; }
+}
+
+/* the menu: every page of the server, filtered as you type */
+.cmh-back { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0, 0, 0, .28); }
+.cmh-drawer {
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 2147482001; width: min(390px, 92vw);
+  display: flex; flex-direction: column;
+  background: var(--cmh-bg); border-right: 1px solid var(--cmh-line); box-shadow: 4px 0 26px rgba(0, 0, 0, .2);
+}
+.cmh-back[hidden], .cmh-drawer[hidden] { display: none !important; }
+.cmh-dhead { display: flex; align-items: center; gap: 6px; padding: 10px; border-bottom: 1px solid var(--cmh-line); }
+.cmh-dhead .cmh-brand { font-size: 14.5px; }
+.cmh-filter {
+  flex: 1; min-width: 0; height: 34px; padding: 0 10px; margin: 0;
+  border: 1px solid var(--cmh-line); border-radius: 8px; background: var(--cmh-bg); color: var(--cmh-ink); font: inherit;
+}
+.cmh-filter:focus { outline: 2px solid var(--cmh-accent); outline-offset: -1px; }
+.cmh-list { flex: 1; overflow: auto; padding: 6px; }
+.cmh-item {
+  display: block; padding: 7px 9px; border-radius: 8px;
+  color: var(--cmh-ink) !important; text-decoration: none !important;
+}
+.cmh-item:hover, .cmh-item.cmh-sel { background: var(--cmh-hover); }
+.cmh-item.cmh-here { background: var(--cmh-tint); }
+.cmh-item b { font-weight: 600; }
+.cmh-item small { margin-left: 6px; color: var(--cmh-muted); font-size: 12px; }
+.cmh-item span {
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--cmh-muted); font-size: 12.5px;
+}
+.cmh-note { padding: 12px 10px; color: var(--cmh-muted); }
+.cmh-count { padding: 4px 10px 8px; color: var(--cmh-muted); font-size: 12px; }
+.cmh-item.cmh-missing b { color: var(--cmh-muted); text-decoration: line-through; }
+
+/* Customized: the home page's sections (2026-11-12, the user: "add toggle customization to the menu ... after search") */
+.cmh-custom {
+  display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 12px; cursor: pointer;
+  border-bottom: 1px solid var(--cmh-line); color: var(--cmh-ink); user-select: none;
+}
+.cmh-custom input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.cmh-switch {
+  position: relative; flex: none; width: 34px; height: 20px; border-radius: 999px;
+  background: var(--cmh-line); transition: background .15s;
+}
+.cmh-switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: left .15s;
+}
+.cmh-custom input:checked + .cmh-switch { background: var(--cmh-accent); }
+.cmh-custom input:checked + .cmh-switch::after { left: 16px; }
+.cmh-custom input:focus-visible + .cmh-switch { outline: 2px solid var(--cmh-accent); outline-offset: 2px; }
+.cmh-custom small { margin-left: auto; color: var(--cmh-muted); font-size: 12px; }
+.cmh-group {
+  margin: 10px 9px 3px; color: var(--cmh-muted); font-size: 11.5px; font-weight: 650;
+  text-transform: uppercase; letter-spacing: .06em;
+}

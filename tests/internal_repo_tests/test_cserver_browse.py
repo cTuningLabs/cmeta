@@ -1187,3 +1187,97 @@ def test_the_detail_carries_the_texts_and_sets_the_tags(cm):
         f.write(b'\x89PNG\r\n\x1a\n' + b'\x00' * 20)
     html = cref_page(cm, 'log::panel-a,%s/pic.png' % a, BOTH)           # not a text: the file browser opens it
     assert '"file": "pic.png"' in html, html[-3000:]
+
+
+def test_moving_an_artifact_to_another_repository(cm):
+    """Move to (2026-11-11): an artifact into another repository as it is - its folder renamed in one step, the index
+    following it by its UID, Undo the same move back; who may, where to, and a folder in use refused untouched."""
+    r = cm.access({'category': 'repo', 'command': 'init', 'arg1': 'other', 'con': False})
+    assert r['return'] == 0, r
+    uid, path = make(cm, 'to-move', tags=['movable'])
+    readme = os.path.join(path, 'README.md')
+    with open(readme, 'w', encoding='utf-8') as f:
+        f.write('kept as it is\n')
+
+    def move(misc, **q):
+        return web(cm, misc, native_action='move', uid=uid, **q)['json']
+
+    # who may, and where to
+    assert 'page of this server' in move(LOCAL, repo='other')['error']
+    assert 'error' in move({'same_origin': True}, repo='other')                        # a browser elsewhere, no grant
+    assert 'no repository' in move(BOTH, repo='no-such-repo')['error']
+    assert 'already' in move(BOTH, repo='local')['error']
+    assert 'error' in move(BOTH, repo='(registry)')
+    assert 'may not write to the repository other' in move({'same_origin': True, 'browse_edit': ['loc*']}, repo='other')['error']
+    t = web(cm, BOTH, native_action='move_targets', uid=uid)['json']
+    assert t['from'] == 'local' and t['name'] == 'log::to-move', t
+    names = [x[0] for x in t['repos']]
+    assert 'other' in names and 'local' not in names and 'internal' not in names and '(registry)' not in names, names
+    assert 'error' in web(cm, {'same_origin': True}, native_action='move_targets', uid=uid)['json']
+
+    # the move: the folder with its files in the other repository, the index and the page's catalog follow at once
+    out = move(BOTH, repo='other')
+    assert out['moved'] == 'to-move' and out['from'] == 'local' and out['to'] == 'other' and out['uid'] == uid, out
+    assert not os.path.exists(path)
+    moved = os.path.join(str(cm.home_path), 'repos', 'other', 'log', 'to-move')
+    with open(os.path.join(moved, 'README.md'), encoding='utf-8') as f:
+        assert f.read() == 'kept as it is\n'
+    found = cm.access({'category': 'log', 'command': 'find', 'arg1': 'to-move', 'con': False})['artifacts']
+    assert [(a['cmeta_ref_parts']['artifact_uid'], a['cmeta_ref_parts']['repo_alias']) for a in found] == [(uid, 'other')]
+    assert web(cm, BOTH, native_action='artifact', uid=uid)['json']['row']['repo'] == 'other'
+    assert [x['repo'] for x in search(cm, q='tag:movable')['rows']] == ['other']
+
+    # Undo: the same move back
+    back = move(BOTH, repo='local')
+    assert back['from'] == 'other' and back['to'] == 'local' and os.path.isdir(path) and not os.path.exists(moved), back
+    assert web(cm, BOTH, native_action='artifact', uid=uid)['json']['row']['repo'] == 'local'
+
+    # the engine's own repository: nothing goes in
+    assert 'error' in move(BOTH, repo='internal')
+
+    # a folder in use (Windows: a file open in it) cannot be renamed: refused, nothing changed
+    if os.name == 'nt':
+        with open(os.path.join(path, 'busy.txt'), 'w', encoding='utf-8') as f:
+            f.write('open')
+            f.flush()
+            out = move(BOTH, repo='other')
+        assert 'in use' in out['error'] and 'nothing was moved' in out['error'], out
+        assert os.path.isdir(path) and not os.path.exists(moved)
+        assert web(cm, BOTH, native_action='artifact', uid=uid)['json']['row']['repo'] == 'local'
+
+
+def test_favourite_categories(cm):
+    """The Favourites picker (2026-11-12): categories starred in the Categories picker, kept in the server's config
+    (browse_favourite_categories, in the order starred) - by a viewer who may write everything, from a page of this
+    server; the page is told them, and whether this viewer may star."""
+    def fav(misc, cat, on='yes'):
+        return web(cm, misc, native_action='favourite', cat=cat, on=on)['json']
+
+    assert 'page of this server' in fav(LOCAL, 'log')['error']                  # a page of another site
+    assert 'may write' in fav({'same_origin': True}, 'log')['error']           # a browser elsewhere, no browse_edit
+    assert 'name of a category' in fav(BOTH, '../x')['error']
+    assert fav(BOTH, 'log') == {'favourites': ['log'], 'changed': True}
+    assert fav(BOTH, 'work')['favourites'] == ['log', 'work']                   # in the order starred
+    assert fav(BOTH, 'log')['changed'] is False                                 # once is enough
+    r = cm.access({'category': 'config', 'command': 'read', 'arg1': 'cserver', 'con': False})
+    assert r['config_cmeta']['browse_favourite_categories'] == ['log', 'work']
+    c = page_config(web(cm, LOCAL))
+    assert c['favourites'] == ['log', 'work'] and c['star'] is True
+    assert page_config(web(cm, None))['star'] is False                         # a browser elsewhere sees, never stars
+    assert fav(BOTH, 'log', on='no')['favourites'] == ['work']                  # unstarred: out of the Favourites alone
+    assert fav(BOTH, 'work', on='no')['favourites'] == []
+
+
+def test_hot_tags(cm):
+    """The Hot tags row (2026-11-12): a set of tags kept in the server's config (browse_hot_tags, in their order) -
+    written by a viewer who may write everything, from a page of this server; the page is told them."""
+    def hot(misc, tags):
+        return web(cm, misc, native_action='hot_tags', tags=tags)['json']
+
+    assert 'page of this server' in hot(LOCAL, ['sla'])['error']
+    assert 'may write' in hot({'same_origin': True}, ['sla'])['error']
+    assert 'no comma' in hot(BOTH, ['a,b'])['error']
+    assert hot(BOTH, ['urgent', 'sla', 'urgent', ' ']) == {'hot_tags': ['urgent', 'sla'], 'changed': True}
+    assert hot(BOTH, 'urgent, sla')['changed'] is False                         # a text with commas works too
+    assert page_config(web(cm, LOCAL))['hot_tags'] == ['urgent', 'sla']
+    assert hot(BOTH, [])['hot_tags'] == []

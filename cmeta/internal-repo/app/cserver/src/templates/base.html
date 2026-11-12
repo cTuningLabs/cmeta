@@ -12,6 +12,24 @@
 
   <meta name="author" content="Grigori Fursin">
 
+  {% if cmeta_header %}
+  <!-- The bar above the page (page_header of the cserver config, 2026-11-12): its styles, and a hook before any
+       script of the page - a page that sets the shared theme (cmeta.theme, its own switch) tells the bar at once -->
+  <link rel="stylesheet" href="{{ cmeta_header.css }}">
+  <script>
+    (function () {
+      try {
+        var set = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key, value) {
+          var out = set.apply(this, arguments);
+          if (key === 'cmeta.theme' && window.cmetaHeaderTheme) { window.cmetaHeaderTheme(String(value)); }
+          return out;
+        };
+      } catch (e) { /* the bar follows the theme at the next load */ }
+    })();
+  </script>
+  {% endif %}
+
   {% block extrastyle %}
      {{ page_extra_style|safe }}
   {% endblock %}
@@ -83,10 +101,14 @@
  <!------------------------------------------------------------------------------>
  <body>
 
+ {% if cmeta_header %}{% include 'header.html' %}{% endif %}
+
  {% block content %}
  {% endblock %}
 
  <footer class="cmeta-footer">Powered by <a href="https://cTuning.ai/project/cmeta" target="_blank" rel="noopener" title="The cMeta project on cTuning.ai">cMeta{% if cmeta_version %} v{{ cmeta_version }}{% endif %}</a></footer>
+
+ {% if cmeta_header %}<script src="{{ cmeta_header.js }}"></script>{% endif %}
 
  </body>
 </html>

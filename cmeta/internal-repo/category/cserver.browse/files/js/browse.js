@@ -90,6 +90,22 @@
     return (CFG.cref_url || ((CFG.url_server || '/') + 'cref/')) + encodeURI(cat + '::' + alias + ',' + uid) +
            (rel ? '/' + rel.split('/').map(encodeURIComponent).join('/') : '');
   }
+
+  // A click that asks for a new tab or window (Ctrl / Cmd / Shift, or the middle button), which a link handles itself
+  // (2026-11-11, the user: "I can't use Ctrl-click to open this artifact in a new page")
+  function newTabClick(e) { return !!(e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1); }
+
+  // A row that opens an artifact: its name is a real link (Ctrl-click, the middle button and "Open link in new tab"
+  // work there), and a click elsewhere on the row does the same - in this tab, or in a new one when asked
+  function rowLink(row, url) {
+    function go(e) {
+      if (e.target.closest('a, button, input, select, textarea')) return;
+      if (newTabClick(e)) { e.preventDefault(); window.open(url, '_blank', 'noopener'); }
+      else if (e.type === 'click') window.location.href = url;
+    }
+    row.addEventListener('click', go);
+    row.addEventListener('auxclick', function (e) { if (e.button === 1) go(e); });
+  }
   // this page with another state (a category, a repository, the graph of one artifact): the same address, new keys
   function pageUrl(changes) {
     var u = new URL(window.location.href);
@@ -146,10 +162,11 @@
   function on(v, dflt) { return v === '' || v == null ? dflt : v !== '0'; }
   function num(n) { return Number(n || 0).toLocaleString('en-US'); }
   function msText(ms) { return ms >= 1000 ? (ms / 1000).toFixed(1) + ' s' : Math.round(ms) + ' ms'; }
-  function fmtSize(n) {
-    if (n < 1024) return n + ' B';
-    if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
-    return (n / 1048576).toFixed(1) + ' MB';
+  function fmtSize(n) {                  // 1000-based, as every size of cMeta (2026-11-12)
+    if (n < 1000) return n + ' B';
+    if (n < 1e6) return (n / 1e3).toFixed(n < 1e4 ? 1 : 0) + ' kB';
+    if (n < 1e9) return (n / 1e6).toFixed(1) + ' MB';
+    return (n / 1e9).toFixed(1) + ' GB';
   }
   function qs(o) {
     return Object.keys(o).filter(function (k) { return o[k] !== '' && o[k] != null; })
@@ -215,6 +232,20 @@
   }
   function addToQuery(tok) {
     if ((' ' + st.q + ' ').indexOf(' ' + tok + ' ') < 0) st.q = (st.q ? st.q + ' ' : '') + tok;
+    $('cbr-q').value = st.q;
+    run();
+  }
+  // the tag words of the query - tag:x, -tag:x, a quoted value too - and taking some out again, the rest kept
+  // (2026-11-12, the user: "clear my selection of tags and start from new tags" without clearing the category)
+  function tagWords() {
+    var out = [], re = /(^|\s)(-?tag:("[^"]*"|\S+))/g, m;
+    while ((m = re.exec(st.q))) out.push(m[2]);
+    return out;
+  }
+  function dropFromQuery(words) {
+    var q = ' ' + st.q + ' ';
+    words.forEach(function (w) { q = q.split(' ' + w + ' ').join(' '); });
+    st.q = q.replace(/\s+/g, ' ').trim();
     $('cbr-q').value = st.q;
     run();
   }
@@ -332,7 +363,10 @@
           pickerLabel(kind);
           scheduleRun();
         });
-        box.appendChild(h('label', {}, cb, h('span', {class: 'nm', title: x[0]}, x[0]), h('span', {class: 'n'}, String(x[1]))));
+        var row = h('label', {}, cb, h('span', {class: 'nm', title: x[0]}, x[0]), h('span', {class: 'n'}, String(x[1])));
+        // a category's star (2026-11-12): in the Favourites picker or not - its tick here stays as it is
+        if (kind === 'cats' && CFG.star) row.appendChild(starButton(x[0]));
+        box.appendChild(row);
       });
     }
     filter.addEventListener('input', render);
@@ -359,6 +393,83 @@
   }
   function closePickers() {
     root.querySelectorAll('.cbr-pick-pop').forEach(function (p) { p.hidden = true; });
+  }
+
+  /* ------------------------------------------------------------------ the favourite categories */
+  // (2026-11-12, the user: "Favourite categories ... list hot categories that we will star in Categories ... if we
+  // click on any in Favourite category, it will start browsing just that category and allow to add a new artifact
+  // there"): browse_favourite_categories of the server's config - the same on every device - starred in the Categories
+  // picker (its tick untouched), one click in the Favourites picker browses one alone (+ new there when this viewer
+  // may write); a star again takes it out of the Favourites alone
+  function favourites() { return (CFG.favourites || []).slice(); }
+  var favBusy = false;
+  function starButton(name) {
+    var b = h('button', {type: 'button', class: 'cbr-star'});
+    function paint() {
+      var on = favourites().indexOf(name) >= 0;
+      b.classList.toggle('on', on);
+      b.textContent = on ? '★' : '☆';
+      b.title = on ? name + ' is a favourite - click: not any more (it stays here)' : 'A favourite: ' + name + ' in ★ Favourites, one click away';
+    }
+    paint();
+    b.addEventListener('click', function (e) {
+      e.preventDefault();                          // inside the row's label: never its tick
+      e.stopPropagation();
+      toggleFavourite(name, paint);
+    });
+    return b;
+  }
+  function toggleFavourite(name, done) {
+    if (favBusy) return;
+    favBusy = true;
+    var on = favourites().indexOf(name) < 0;
+    call('favourite', {cat: name, on: on ? 'yes' : 'no'}, null).then(function (j) {
+      CFG.favourites = j.favourites || [];
+      buildFavourites();
+      if (done) done();
+    }).catch(function (e) {
+      showError('The favourites: ' + (e && e.message || e));
+    }).finally(function () { favBusy = false; });
+  }
+  function buildFavourites() {
+    var wrap = root.querySelector('.cbr-pick[data-kind="favs"]');
+    if (!wrap) return;
+    var btn = wrap.querySelector('.cbr-pick-btn'), pop = wrap.querySelector('.cbr-pick-pop');
+    var list = favourites(), counts = {};
+    ((options && options.cats) || []).forEach(function (x) { counts[x[0]] = x[1]; });
+    btn.innerHTML = '&#9733; Favourites' + (list.length ? ': <b>' + list.length + '</b>' : '') + ' &#9662;';
+    btn.title = list.length ? 'Your favourite categories - one click browses one alone:\n' + list.join('\n')
+                            : 'No favourite category yet: star one in Categories';
+    btn.classList.toggle('set', list.indexOf(st.cats) >= 0);
+    pop.innerHTML = '';
+    if (!list.length) {
+      pop.appendChild(h('div', {class: 'cbr-fav-note'}, CFG.star
+        ? 'No favourite yet. Open Categories and click the ☆ of a category: it shows here, one click away - Categories keeps it as it is.'
+        : 'No favourite category on this server yet (a viewer who may write here stars them in Categories).'));
+    } else {
+      var box = h('div', {class: 'cbr-pick-list'});
+      list.forEach(function (name) {
+        var here = Object.prototype.hasOwnProperty.call(counts, name);
+        var go = h('button', {type: 'button', class: 'cbr-fav-go',
+                              title: here ? 'Browse ' + name + ' alone' + (CFG.edit ? ' - and add an artifact there (+ new)' : '')
+                                          : name + ': not in the repositories plugged here'},
+                   h('span', {class: 'nm'}, name), h('span', {class: 'n'}, here ? num(counts[name]) : '-'));
+        go.addEventListener('click', function () { closePickers(); pickCategory(name); });
+        var row = h('div', {class: 'cbr-fav' + (st.cats === name ? ' on' : '') + (here ? '' : ' gone')}, go);
+        if (CFG.star) row.appendChild(starButton(name));
+        box.appendChild(row);
+      });
+      pop.appendChild(box);
+      if (CFG.star) {
+        pop.appendChild(h('div', {class: 'cbr-fav-note'}, 'More: the ☆ of a category in Categories. Their order: ',
+          h('a', {href: (CFG.url_server || '/') + 'settings', title: 'browse_favourite_categories of the cserver config'}, '/settings'), '.'));
+      }
+    }
+    btn.onclick = function () {
+      var open = pop.hidden;
+      closePickers();
+      pop.hidden = !open;
+    };
   }
 
   /* ------------------------------------------------------------------ run a query */
@@ -435,13 +546,14 @@
     ol.innerHTML = '';
     $('cbr-search-hint').hidden = true;
     last.rows.forEach(function (r) {
-      var title = h('button', {type: 'button', class: 'cbr-r-title', html: hl(r.alias)});
-      title.addEventListener('click', function () { window.location.href = crefUrl(r.cat, r.alias, r.uid); });
+      var url = crefUrl(r.cat, r.alias, r.uid);
+      var title = h('a', {class: 'cbr-r-title', href: url, html: hl(r.alias)});
       var li = h('li', {}, title);
+      rowLink(li, url);
       if (r.name && r.name !== r.alias) li.appendChild(h('span', {class: 'cbr-r-name', html: hl(r.name)}));
       if (r.migrated_to) li.appendChild(h('span', {class: 'cbr-badge', title: 'migrated to ' + r.migrated_to}, 'migrated'));
       var when = r.updated ? 'updated ' + r.updated : (r.created ? 'created ' + r.created : '');
-      li.appendChild(h('div', {class: 'cbr-r-meta'}, [r.cat, r.repo || '(registry)', when].filter(Boolean).join(' · '), rowOpen(r.uid)));
+      li.appendChild(h('div', {class: 'cbr-r-meta'}, [r.cat, r.repo || '(registry)', when].filter(Boolean).join(' · '), rowOpen(r)));
       if (r.snippet) li.appendChild(h('div', {class: 'cbr-r-snip', html: hl(r.snippet)}));
       if (r.tags && r.tags.length) {
         var tg = h('div');
@@ -556,6 +668,7 @@
     st.dir = '';
     pickerLabel('cats');
     if (options) buildPicker('cats');
+    buildFavourites();
     if (st.view !== 'browse') setView('browse'); else run();
   }
   function renderCatHead() {
@@ -695,13 +808,16 @@
     $('cbr-table').classList.toggle('one-cat', !!st.cats);
     COLS.forEach(function (c) { $('cbr-table').classList.toggle('no-' + c, !colOn(c)); });
     last.rows.forEach(function (r) {
-      var a = h('td', {class: 'alias', html: hl(r.alias) + (r.name && r.name !== r.alias ? '<span class="nm">' + hl(r.name) + '</span>' : '') +
-                       (r.migrated_to ? '<span class="cbr-badge">migrated</span>' : '')});
+      var url = crefUrl(r.cat, r.alias, r.uid);
+      var a = h('td', {class: 'alias'});
+      a.appendChild(h('a', {class: 'cbr-a', href: url, html: hl(r.alias)}));
+      if (r.name && r.name !== r.alias) a.appendChild(h('span', {class: 'nm', html: hl(r.name)}));
+      if (r.migrated_to) a.appendChild(h('span', {class: 'cbr-badge'}, 'migrated'));
       var tags = h('td', {class: 'tags'});
       (r.tags || []).slice(0, 6).forEach(function (t) { tags.appendChild(chip(t)); });
       var tr = h('tr', {}, a, h('td', {class: 'cat'}, r.cat), h('td', {class: 'repo'}, r.repo || '(registry)'), tags,
-                 h('td', {class: 'when'}, r.created), h('td', {class: 'when updated'}, r.updated), h('td', {class: 'acts'}, rowOpen(r.uid)));
-      tr.addEventListener('click', function () { window.location.href = crefUrl(r.cat, r.alias, r.uid); });
+                 h('td', {class: 'when'}, r.created), h('td', {class: 'when updated'}, r.updated), h('td', {class: 'acts'}, rowOpen(r)));
+      rowLink(tr, url);
       tb.appendChild(tr);
     });
     if (!last.rows.length) tb.appendChild(h('tr', {}, h('td', {colspan: '7', class: 'cbr-muted'}, 'Nothing matches.')));
@@ -716,15 +832,131 @@
     renderFacets();
     pager('browse');
   }
+  // the hot tags (2026-11-12, the user: "Hot tags to cserver.browse on top of tags ... add/edit/remove them there ...
+  // a set of hot tags to search"): browse_hot_tags of the server's config - the same on every device, on /settings
+  // too -, the row above the Tags: one click prunes the search by a tag, again takes it out, each with the number of
+  // the results that have it; a viewer who may write edits them here - a rename and a delete on each, "+ tag" (commas:
+  // several), each change saved at once, "done"
+  var hotEditing = false, hotBusy = false, hotSaid = '';
+  function hotRow(counts) {
+    var list = (CFG.hot_tags || []).slice();
+    if (!list.length && !CFG.star) return null;
+    var applied = tagWords();
+    var sec = h('div', {class: 'cbr-facet cbr-hotrow'}, h('span', {class: 'cbr-facet-name'}, 'Hot tags:'));
+    function save(next, what) {
+      if (hotBusy) return;
+      hotBusy = true;
+      call('hot_tags', {tags: next}, null).then(function (r) {
+        CFG.hot_tags = r.hot_tags || [];
+        hotSaid = r.changed ? what : 'nothing changed';
+      }).catch(function (e) { hotSaid = e.message; })
+        .finally(function () { hotBusy = false; renderFacets(); });
+    }
+    function box(value, place, ok) {
+      var inp = h('input', {type: 'text', class: 'cbr-taginput', 'aria-label': place, spellcheck: 'false', placeholder: place});
+      inp.value = value || '';
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renderFacets(); }
+        else if (e.key === 'Enter') { e.preventDefault(); ok(inp.value); }
+      });
+      return inp;
+    }
+    function split(v) {
+      var out = [];
+      String(v || '').split(',').forEach(function (x) { x = x.trim(); if (x && out.indexOf(x) < 0) out.push(x); });
+      return out;
+    }
+    list.forEach(function (t, i) {
+      if (hotEditing) {
+        var c = h('span', {class: 'cbr-chip cbr-tagedit cbr-hot'}, h('span', {class: 'cbr-tagtext'}, t));
+        var rn = h('button', {type: 'button', class: 'cbr-tagbtn', title: 'Rename the hot tag ' + t, 'aria-label': 'Rename ' + t}, '✎');
+        var rm = h('button', {type: 'button', class: 'cbr-tagbtn cbr-tagdel', title: 'Not a hot tag any more: ' + t, 'aria-label': 'Delete ' + t}, '✕');
+        rn.addEventListener('click', function () {
+          var inp = box(t, 'the new name of ' + t, function (v) {
+            var parts = split(v);
+            if (!parts.length || (parts.length === 1 && parts[0] === t)) { renderFacets(); return; }
+            save(list.slice(0, i).concat(parts, list.slice(i + 1)), 'renamed ' + t + ' to ' + parts.join(', '));
+          });
+          c.replaceWith(inp);
+          inp.focus();
+          inp.select();
+        });
+        rm.addEventListener('click', function () { save(list.filter(function (x, j) { return j !== i; }), 'deleted ' + t); });
+        c.appendChild(rn);
+        c.appendChild(rm);
+        sec.appendChild(c);
+        return;
+      }
+      var word = 'tag:' + quoteIf(t), on = applied.indexOf(word) >= 0, n = counts[t] || 0;
+      var b = h('button', {type: 'button', class: 'cbr-chip cbr-hot' + (on ? ' on' : '') + (n || on ? '' : ' zero'),
+                           title: on ? word + ' narrows the search - click to take it out'
+                                     : num(n) + ' of these results have the tag ' + t + ' - click to narrow'},
+                t + ' ', h('span', {class: 'n'}, on ? '×' : String(n)));
+      b.addEventListener('click', function () { if (on) dropFromQuery([word]); else addToQuery(word); });
+      sec.appendChild(b);
+    });
+    if (CFG.star) {
+      if (!hotEditing) {
+        var eb = h('button', {type: 'button', class: 'cbr-link cbr-hotedit', title: 'Add, rename or delete the hot tags'},
+                   list.length ? 'edit' : '+ hot tags');
+        eb.addEventListener('click', function () {
+          hotEditing = true;
+          hotSaid = '';
+          renderFacets();
+          var a = $('cbr-facets').querySelector('.cbr-hotadd');      // none yet: the box of a new one at once
+          if (!list.length && a) a.click();
+        });
+        sec.appendChild(eb);
+      } else {
+        var add = h('button', {type: 'button', class: 'cbr-mini cbr-hotadd', title: 'A new hot tag (commas between several)'}, '+ tag');
+        add.addEventListener('click', function () {
+          var inp = box('', 'a new hot tag (commas: several)', function (v) {
+            var parts = split(v);
+            if (!parts.length) { renderFacets(); return; }
+            save(list.concat(parts), 'added ' + parts.join(', '));
+          });
+          sec.insertBefore(inp, add);
+          inp.focus();
+        });
+        var done = h('button', {type: 'button', class: 'cbr-mini', title: 'The hot tags as they are now'}, 'done');
+        done.addEventListener('click', function () { hotEditing = false; hotSaid = ''; renderFacets(); });
+        sec.appendChild(add);
+        sec.appendChild(done);
+        if (hotSaid) sec.appendChild(h('span', {class: 'cbr-muted cbr-lmsg'}, hotSaid));
+      }
+    }
+    return sec;
+  }
   function renderFacets() {
     var box = $('cbr-facets');
     box.innerHTML = '';
-    if (!last.facets) return;
+    // (no facets - nothing found -: still the hot tags and the tags applied, so that a tag can be taken out again)
+    var facets = last.facets || {};
+    var counts = {};
+    (facets.tag || []).forEach(function (x) { counts[x[0]] = x[1]; });
+    var hot = hotRow(counts);
+    if (hot) box.appendChild(hot);
     FACETS.forEach(function (f) {
-      var vals = last.facets[f[0]] || [];
+      var vals = facets[f[0]] || [];
+      var applied = f[0] === 'tag' ? tagWords() : [];
       if (f[0] === 'repo' && vals.length < 2) return;
-      if (!vals.length) return;
+      if (!vals.length && !applied.length) return;
       var sec = h('div', {class: 'cbr-facet'}, h('span', {class: 'cbr-facet-name'}, f[1] + ':'));
+      // the tags the query narrows by: each one out with its x, all of them with "clear tags" - the category, the
+      // repositories, the dates and the other words stay
+      if (applied.length) {
+        applied.forEach(function (w) {
+          var c = h('button', {type: 'button', class: 'cbr-chip on cbr-tagword', title: w + ' - click to take it out'}, w + ' ',
+                    h('span', {class: 'x', 'aria-hidden': 'true'}, '×'));
+          c.addEventListener('click', function () { dropFromQuery([w]); });
+          sec.appendChild(c);
+        });
+        var clr = h('button', {type: 'button', class: 'cbr-link cbr-cleartags',
+                               title: 'Take every tag out of the search - the category and the rest stay'}, 'clear tags');
+        clr.addEventListener('click', function () { dropFromQuery(tagWords()); });
+        sec.appendChild(clr);
+        if (vals.length) sec.appendChild(h('span', {class: 'cbr-facet-sep', 'aria-hidden': 'true'}, '|'));
+      }
       var lim = facetOpen[f[0]] ? vals.length : 8;
       vals.slice(0, lim).forEach(function (x) {
         var b = h('button', {type: 'button', class: 'cbr-chip', title: f[1] + ' ' + x[0] + ': ' + num(x[1]) + ' - click to narrow'},
@@ -804,6 +1036,11 @@
       });
       box.appendChild(facts);
       if (CFG.open && OPEN.some(function (w) { return CFG.open[w[0]]; })) box.appendChild(openBar(d.row.uid));
+      if (d.edit && window.cmetaMove) {               // "Move to" (2026-11-11): into another repository, Undo after
+        var mvb = h('button', {type: 'button', class: 'cbr-btn cbr-d-move', title: 'Move it to another repository: same name, same UID, same files'}, 'Move to another repository ...');
+        mvb.addEventListener('click', function () { openMove(d.row.uid); });
+        box.appendChild(h('div', {class: 'cbr-d-open'}, mvb));
+      }
       if (d.row.migrated_to) {
         var m = h('p', {}, 'Migrated to ');
         if (d.migrated_to_uid) {
@@ -914,8 +1151,10 @@
               ['shell', 'Shell', 'A terminal in this folder'],
               ['far', 'Far', 'Far Manager in this folder']];
   // The same buttons on every row of a list (2026-11-03): short, after the artifact; a row's click opens the
-  // artifact, a button's does not. What happened shows in a notice that fades.
-  function rowOpen(uid) {
+  // artifact, a button's does not. What happened shows in a notice that fades. Since 2026-11-11 also Move, for a
+  // viewer who may write (the dialog of move.js lists where it may go).
+  function rowOpen(r) {
+    var uid = r.uid;
     var box = h('span', {class: 'cbr-row-open'});
     OPEN.forEach(function (w) {
       if (!CFG.open || !CFG.open[w[0]]) return;
@@ -928,7 +1167,24 @@
       });
       box.appendChild(b);
     });
+    if (CFG.edit && window.cmetaMove) {
+      var mv = h('button', {type: 'button', class: 'cbr-mini cbr-move', title: 'Move it to another repository (same name, same UID)'}, 'Move');
+      mv.addEventListener('click', function (e) { e.stopPropagation(); openMove(uid); });
+      box.appendChild(mv);
+    }
     return box;
+  }
+  // "Move to" (2026-11-11): the dialog of move.js; after the move (and after its Undo) the list is read again and the
+  // detail panel of the artifact, when it is open, too
+  function openMove(uid) {
+    window.cmetaMove({
+      api: function (action, params) { return call(action, params, null); },
+      uid: uid, dark: root.classList.contains('dark'),
+      done: function () {
+        run(true);
+        if (st.uid === uid) openDetail(uid);
+      }
+    });
   }
   // The tags and updated columns of the Browse list: off by default, so that the list stays compact; the boxes of its
   // header turn them on, and the browser remembers them
@@ -995,8 +1251,8 @@
         ul.appendChild(h('li', {class: 'missing', title: 'not shown by this server'}, refOf ? refOf(c) : c.alias));
         return;
       }
-      var a = h('a', {href: '#', title: refOf ? refOf(c) : c.alias}, c.alias);
-      a.addEventListener('click', function (e) { e.preventDefault(); openDetail(c.uid); });
+      var a = h('a', {href: c.cat ? crefUrl(c.cat, c.alias, c.uid) : '#', title: refOf ? refOf(c) : c.alias}, c.alias);
+      a.addEventListener('click', function (e) { if (newTabClick(e) && c.cat) return; e.preventDefault(); openDetail(c.uid); });
       ul.appendChild(h('li', {}, a, h('span', {class: 'cbr-muted'}, '  ' + c.cat + (c.uses ? ' · uses it' : '') +
         (c.ai ? ' · its AI reads this one' : ''))));
     });
@@ -1019,8 +1275,8 @@
       var li = h('li');
       if (c.found === false) li.appendChild(h('span', {class: 'missing', title: 'not shown by this server'}, c.alias || c.cref));
       else {
-        var a = h('a', {href: '#', title: c.cref || c.alias}, c.alias);
-        a.addEventListener('click', function (e) { e.preventDefault(); openDetail(c.uid); });
+        var a = h('a', {href: c.cat ? crefUrl(c.cat, c.alias, c.uid) : '#', title: c.cref || c.alias}, c.alias);
+        a.addEventListener('click', function (e) { if (newTabClick(e) && c.cat) return; e.preventDefault(); openDetail(c.uid); });
         li.appendChild(a);
         li.appendChild(h('span', {class: 'cbr-muted'}, '  ' + (c.cat || '')));
       }
@@ -1085,30 +1341,110 @@
       else toast(rel + ': ' + (j.truncated ? 'too large to edit here' : 'not editable here'), true);
     }).catch(function (e) { toast(e.message, true); });
   }
-  // the tags of the detail (2026-11-10): the chips, and for a viewer who may write "edit tags" - a field with all of
-  // them in order (commas or spaces between them: add, remove, reorder), Save through the tags action
+  // the tags of the detail: the chips; for a viewer who may write, "edit tags" (2026-11-12, the user: "add cross (to
+  // delete) and edit (to rename) for each tag and a button to add new tag") turns each chip into one with a rename and
+  // a delete, "+ tag" adds one (commas between several), "as text" is the field of before (reorder, paste a list) -
+  // each change saved at once through the tags action; "done" draws the detail again (Esc leaves a box, Enter saves it)
   function tagsRow(d) {
     var tg = h('div', {class: 'cbr-d-tags'});
-    (d.row.tags || []).forEach(function (t) { tg.appendChild(chip(t)); });
-    if (!d.edit) return tg;
-    var eb = h('button', {type: 'button', class: 'cbr-mini cbr-d-tags-edit', title: 'Add, remove or reorder the tags'}, (d.row.tags || []).length ? 'edit tags' : '+ tags');
-    eb.addEventListener('click', function () {
-      if (tg.querySelector('form')) return;
-      var inp = h('input', {type: 'text', 'aria-label': 'The tags', spellcheck: 'false', placeholder: 'the tags, in order - commas or spaces between them'});
-      inp.value = (d.row.tags || []).join(', ');
-      var f = h('form', {class: 'cbr-ladd', autocomplete: 'off'}, inp, h('button', {type: 'submit', class: 'cbr-mini'}, 'Save'));
-      var cn = h('button', {type: 'button', class: 'cbr-mini'}, 'cancel'), msg = h('span', {class: 'cbr-muted cbr-lmsg'});
-      cn.addEventListener('click', function () { f.remove(); eb.hidden = false; });
-      f.appendChild(cn); f.appendChild(msg);
-      f.addEventListener('submit', function (e) {
-        e.preventDefault();
-        call('tags', {uid: d.row.uid, tags: inp.value}, 'saving the tags')
-          .then(function (r) { if (!r.changed) { msg.textContent = 'nothing changed'; return; } detailFlash = {uid: d.row.uid, text: 'tags: ' + ((r.tags || []).join(', ') || 'none')}; openDetail(d.row.uid); })
-          .catch(function (er) { msg.textContent = er.message; });
+    var tags = (d.row.tags || []).slice(), first = tags.slice(), editing = false, busy = false;
+    var msg = h('span', {class: 'cbr-muted cbr-lmsg'});
+    function uniq(list) {
+      var out = [];
+      list.forEach(function (x) { x = String(x || '').trim(); if (x && out.indexOf(x) < 0) out.push(x); });
+      return out;
+    }
+    function split(v) { return uniq(String(v || '').split(',')); }
+    function save(next, what) {
+      if (busy) return;
+      busy = true;
+      msg.textContent = 'saving ...';
+      call('tags', {uid: d.row.uid, tags: uniq(next)}, null).then(function (r) {
+        busy = false;
+        tags = (r.tags || uniq(next)).slice();
+        d.row.tags = tags.slice();
+        msg.textContent = r.changed ? what : 'nothing changed';
+        draw();
+      }).catch(function (er) { busy = false; msg.textContent = er.message; });
+    }
+    function box(value, place, ok) {
+      var inp = h('input', {type: 'text', class: 'cbr-taginput', 'aria-label': place, spellcheck: 'false', placeholder: place});
+      inp.value = value || '';
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); draw(); }
+        else if (e.key === 'Enter') { e.preventDefault(); ok(inp.value); }
       });
-      tg.appendChild(f); eb.hidden = true; inp.focus();
-    });
-    tg.appendChild(eb);
+      return inp;
+    }
+    function draw() {
+      tg.innerHTML = '';
+      tg.classList.toggle('cbr-tags-editing', editing);
+      tags.forEach(function (t, i) {
+        if (!editing) { tg.appendChild(chip(t)); return; }
+        var c = h('span', {class: 'cbr-chip cbr-tagedit'}, h('span', {class: 'cbr-tagtext'}, t));
+        var rn = h('button', {type: 'button', class: 'cbr-tagbtn', title: 'Rename ' + t, 'aria-label': 'Rename ' + t}, '✎');
+        var rm = h('button', {type: 'button', class: 'cbr-tagbtn cbr-tagdel', title: 'Delete the tag ' + t, 'aria-label': 'Delete ' + t}, '✕');
+        rn.addEventListener('click', function () {
+          var inp = box(t, 'the new name of ' + t, function (v) {
+            var parts = split(v);
+            if (!parts.length || (parts.length === 1 && parts[0] === t)) { draw(); return; }
+            save(tags.slice(0, i).concat(parts, tags.slice(i + 1)), 'renamed ' + t + ' to ' + parts.join(', '));
+          });
+          c.replaceWith(inp);
+          inp.focus();
+          inp.select();
+        });
+        rm.addEventListener('click', function () { save(tags.filter(function (x, j) { return j !== i; }), 'deleted ' + t); });
+        c.appendChild(rn);
+        c.appendChild(rm);
+        tg.appendChild(c);
+      });
+      if (!d.edit) return;
+      if (!editing) {
+        var eb = h('button', {type: 'button', class: 'cbr-mini cbr-d-tags-edit', title: 'Rename, delete or add tags'}, tags.length ? 'edit tags' : '+ tags');
+        eb.addEventListener('click', function () {
+          editing = true;
+          draw();
+          var a = tg.querySelector('.cbr-tagadd');                  // no tag yet: the box of a new one at once
+          if (!tags.length && a) a.click();
+        });
+        tg.appendChild(eb);
+        return;
+      }
+      var add = h('button', {type: 'button', class: 'cbr-mini cbr-tagadd', title: 'A new tag (commas between several)'}, '+ tag');
+      add.addEventListener('click', function () {
+        var inp = box('', 'a new tag (commas: several)', function (v) {
+          var parts = split(v);
+          if (!parts.length) { draw(); return; }
+          save(tags.concat(parts), 'added ' + parts.join(', '));
+        });
+        tg.insertBefore(inp, add);
+        inp.focus();
+      });
+      var txt = h('button', {type: 'button', class: 'cbr-link', title: 'All the tags as one text: reorder them, paste a list'}, 'as text');
+      txt.addEventListener('click', function () {
+        var inp = box(tags.join(', '), 'the tags, in order - commas between them', function (v) {
+          save(split(String(v).split(' ').join(',')), 'the tags written as given');
+        });
+        inp.classList.add('wide');
+        tg.insertBefore(inp, add);
+        inp.focus();
+        inp.select();
+      });
+      var done = h('button', {type: 'button', class: 'cbr-mini', title: 'The detail drawn again with the tags as they are now'}, 'done');
+      done.addEventListener('click', function () {
+        editing = false;
+        if (JSON.stringify(tags) !== JSON.stringify(first)) {
+          detailFlash = {uid: d.row.uid, text: 'tags: ' + (tags.join(', ') || 'none')};
+          openDetail(d.row.uid);             // the table and the panel with the new tags
+        } else draw();
+      });
+      tg.appendChild(add);
+      tg.appendChild(txt);
+      tg.appendChild(done);
+      tg.appendChild(msg);
+    }
+    draw();
     return tg;
   }
 
@@ -1325,6 +1661,7 @@
           st.focus = '';
           pickerLabel('cats');
           if (options) buildPicker('cats');
+          buildFavourites();
           run();
         }
       },
@@ -1545,6 +1882,7 @@
       $('cbr-q').value = ''; $('cbr-after').value = ''; $('cbr-before').value = '';
       pickerLabel('repos'); pickerLabel('cats');
       if (options) { buildPicker('repos'); buildPicker('cats'); }
+      buildFavourites();
       run();
     });
     // the category index: its filter box and the fold of every group
@@ -1569,6 +1907,7 @@
         subtitle(o);
         buildPicker('repos');
         buildPicker('cats');
+        buildFavourites();
         run();
       }).catch(function (e) { showError(e.message); });
     });
@@ -1584,12 +1923,14 @@
     });
     pickerLabel('repos');
     pickerLabel('cats');
+    buildFavourites();
     var wantUid = st.uid, wantFile = st.file;
     call('options', {}, 'loading the index').then(function (o) {
       options = o;
       subtitle(o);
       buildPicker('repos');
       buildPicker('cats');
+      buildFavourites();
       setView(st.view);
       if (wantUid) openDetail(wantUid, wantFile);
       if (CFG.notice) showError(CFG.notice);   // a cref= that names nothing this server shows
