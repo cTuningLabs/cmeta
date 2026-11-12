@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (after 0.39.1)
+## 0.40.0
 - **The cserver's sign-in in two steps (MFA): `login_mfa: yes`.** With a password and `login_email` (and the SMTP keys)
   set, the password comes first - it opens a half sign-in for 15 minutes and mails a six-digit code - and only the
   code then opens the pages, for as long as the password's tick says (a week, else 12 hours). No code is mailed or
