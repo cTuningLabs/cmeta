@@ -116,13 +116,24 @@ def settings(cfg):
         except ValueError:
             refresh = 'never'
     follow = str(cfg.get('browse_file_search_follow') or 'yes').strip().lower() not in ('no', 'false', '0', 'off')
+    # the keys and secrets (the categories and folders named like them, the key-like files): never read, unless the
+    # machine says yes - a personal machine of one user who wants to find them too (2026-11-13); even then the
+    # contents of key-like files are never read, only their names
+    secrets = str(cfg.get('browse_file_search_secrets') or 'no').strip().lower() in ('yes', 'on', 'true', '1')
     s = {'skip_cats': [x.lower() for x in lst('browse_file_search_skip_categories', DEFAULT_SKIP_CATEGORIES)],
+         'repos': [x.lower() for x in lst('browse_file_search_repos', [])],
+         'skip_repos': [x.lower() for x in lst('browse_file_search_skip_repos', [])],
+         'secrets': secrets,
          'skip_dirs': [x.lower() for x in lst('browse_file_search_skip_folders', DEFAULT_SKIP_FOLDERS)],
          'text': [x.lower().lstrip('.') for x in lst('browse_file_search_text', DEFAULT_TEXT)],
          'max_kb': num('browse_file_search_max_kb', DEFAULT_MAX_KB, 1, 65536),
          'depth': num('browse_file_search_depth', DEFAULT_DEPTH, 0, 64),
          'refresh': refresh, 'minutes': minutes, 'follow': follow}
-    s['sig'] = json.dumps({k: s[k] for k in ('skip_cats', 'skip_dirs', 'text', 'max_kb', 'depth')}, sort_keys=True)
+    # what changes the files read inside the artifacts rebuilds the index (a refresh lists only changed folders); the
+    # repositories do not (a refresh adds and drops whole artifacts); the keys and secrets count only when on, so an
+    # index made before them keeps its signature
+    keys = ('skip_cats', 'skip_dirs', 'text', 'max_kb', 'depth') + (('secrets',) if secrets else ())
+    s['sig'] = json.dumps({k: s[k] for k in keys}, sort_keys=True)
     return s
 
 
@@ -279,10 +290,10 @@ def _reserved(name):
     return name.split('.')[0].lower() in RESERVED
 
 
-def _list_dir(folder, skip_dirs, top=False):
-    """One folder listed: (files: [(name, size, mtime_ns)], subfolders: [name]) - dot-entries, the folders of keys and
-    secrets, the skip list, symlinks and key-like files left out; at the top of an artifact its meta files too (the
-    search of the artifacts reads them already). None when it cannot be read."""
+def _list_dir(folder, skip_dirs, top=False, secrets=False):
+    """One folder listed: (files: [(name, size, mtime_ns)], subfolders: [name]) - dot-entries, the skip list and
+    symlinks left out, and the folders of keys and secrets and the key-like files unless secrets; at the top of an
+    artifact its meta files too (the search of the artifacts reads them already). None when it cannot be read."""
     try:
         with os.scandir(folder) as it:
             entries = list(it)
@@ -295,11 +306,11 @@ def _list_dir(folder, skip_dirs, top=False):
             continue
         try:
             if e.is_dir(follow_symlinks=False):
-                if name.lower() in skip_dirs or SECRET_DIR_RE.search(name):
+                if name.lower() in skip_dirs or (not secrets and SECRET_DIR_RE.search(name)):
                     continue
                 subs.append(name)
                 continue
-            if not e.is_file(follow_symlinks=False) or SECRET_FILE_RE.search(name):
+            if not e.is_file(follow_symlinks=False) or (not secrets and SECRET_FILE_RE.search(name)):
                 continue
             st = e.stat(follow_symlinks=False)
         except OSError:
@@ -442,7 +453,7 @@ class _Build:
         while stack:
             rel, did, depth = stack.pop()
             full = os.path.join(root, *rel.split('/')) if rel else root
-            got = _list_dir(full, self.s['skip_dirs'], top=not rel)
+            got = _list_dir(full, self.s['skip_dirs'], top=not rel, secrets=self.s.get('secrets', False))
             if got is None:
                 if did is not None:
                     self.drop_dir(did)
@@ -465,7 +476,7 @@ class _Build:
                 seen_names.add(name)
                 frel = rel + '/' + name if rel else name
                 ext = _ext(name)
-                kind = 0 if (ext not in self.text_exts or _reserved(name)) else 3
+                kind = 0 if (ext not in self.text_exts or _reserved(name) or SECRET_FILE_RE.search(name)) else 3
                 row = known.get(name)
                 if row is None:
                     self.con.execute('insert or replace into files(uid, dir_id, rel, name, ext, size, mtime_ns, state, seen) '

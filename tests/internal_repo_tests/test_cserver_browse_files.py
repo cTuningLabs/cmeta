@@ -170,6 +170,101 @@ def test_the_index_is_built_and_the_words_look_into_the_files(cm, home):
     assert aliases(search(cm, q='private', names='1')) == []
 
 
+def cats_in_index(cm):
+    r = cm.access({'category': 'cserver.browse', 'command': 'files', 'stats': True, 'con': False})
+    assert r['return'] == 0, r
+    return {c['cat'] for c in r['status']['stats'].get('categories', [])}
+
+
+def secrets_home(cm, home):
+    """A secret category (as a repository of secrets has), a folder named like keys inside an artifact of the user's,
+    key-like files; /browse set to list everything to its owner (browse_hide_categories: none - a personal server)."""
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'con': False,
+                   'meta': {'browse_hide_categories': 'none'}})
+    assert r['return'] == 0, r
+    r = cm.access({'category': 'category', 'command': 'create', 'arg1': 'local:secret', 'con': False})
+    assert r['return'] == 0, r
+    _, p5 = make(cm, 'server-env', category='secret')
+    put(p5, '_info.md', 'zzpasswordplace of the server')
+    put(home['keys'], 'zzkeynotes.md', 'zzkeyword inside')
+    put(home['plan'], 'crypt/zzcryptnote.md', 'zzcryptword of the plan')
+    put(home['plan'], 'zzdeploy_token.txt', 'zztokenvalue')
+    put(home['plan'], 'id_zzsshfile', 'zzprivatekeybody')
+    web(cm, native_action='reload')
+
+
+def found(cm, q, cats='secret,my.crypt,memo'):
+    return aliases(web(cm, LOCAL, native_action='search', q=q, texts='1', names='1', cats=cats)['json'])
+
+
+def test_keys_and_secrets_never_enter_the_index_by_default_whatever_browse_lists(cm, home):
+    """browse_hide_categories decides what /browse LISTS - a personal server may list the keys to its owner ("none",
+    a personal server's setting); what the file index reads is its own setting: by default the keys and secrets
+    never (the categories, the folders named like them, the key-like files) - such a server's index held the secret
+    category's file names
+    and one text until 2026-11-13, when the index followed browse_hide_categories alone."""
+    secrets_home(cm, home)
+    build(cm)
+    cats = cats_in_index(cm)
+    assert 'my.crypt' not in cats and 'secret' not in cats, cats
+    # the owner still sees them listed (what "none" asks), but nothing of their files is searched
+    assert 'server-env' in aliases(web(cm, LOCAL, native_action='search', q='server-env', cats='secret')['json'])
+    for q in ('zzpasswordplace', 'zzkeyword', 'zzkeynotes', 'zzcryptnote', 'zzcryptword', 'zzdeploy', 'zzsshfile'):
+        assert found(cm, q) == [], q
+
+
+def test_a_personal_machine_finds_its_keys_and_secrets_too(cm, home):
+    """browse_file_search_secrets: yes (a user, 2026-11-13: "I am the only user here and would like to find my own crypt
+    files via search"): the
+    categories and folders of keys and secrets are read like the rest, the key-like files by their names only - their
+    contents never (a key has no words worth finding; it would only be copied into the index)."""
+    secrets_home(cm, home)
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'con': False,
+                   'meta': {'browse_file_search_secrets': 'yes'}})
+    assert r['return'] == 0, r
+    st = build(cm)
+    assert st['settings']['secrets'] is True
+    cats = cats_in_index(cm)
+    assert {'my.crypt', 'secret', 'memo'} <= cats, cats
+    assert found(cm, 'zzpasswordplace') == ['server-env']            # the text of a note in a secret artifact
+    assert found(cm, 'zzkeyword') == ['keys'] and found(cm, 'zzkeynotes') == ['keys']
+    assert found(cm, 'zzcryptnote') == ['plan-2025'] and found(cm, 'zzcryptword') == ['plan-2025']   # a folder "crypt"
+    assert found(cm, 'zzdeploy') == ['plan-2025'] and found(cm, 'zzsshfile') == ['plan-2025']       # key-like: by name
+    assert found(cm, 'zztokenvalue') == [] and found(cm, 'zzprivatekeybody') == []                   # never their contents
+    # and off again: a rebuild drops them (the setting changes what is read inside the artifacts)
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'con': False,
+                   'meta': {'browse_file_search_secrets': 'no'}})
+    assert r['return'] == 0, r
+    build(cm)
+    assert 'secret' not in cats_in_index(cm) and found(cm, 'zzcryptnote') == [] and found(cm, 'zzdeploy') == []
+
+
+def test_the_repositories_of_the_index(cm, home):
+    """The repositories whose files are indexed, per machine: browse_file_search_repos (only these),
+    browse_file_search_skip_repos (never these - the private ones of a shared site), and never those the server hides
+    from every page (hide_repos); the artifacts themselves are still found by their meta wherever the pages show them."""
+    build(cm)
+    assert memo(cm) == (3, 7, 6)
+    for meta, want in (({'browse_file_search_skip_repos': 'loc*'}, (0, 0, 0)),
+                       ({'browse_file_search_skip_repos': '', 'browse_file_search_repos': 'other-repo'}, (0, 0, 0)),
+                       ({'browse_file_search_repos': 'local'}, (3, 7, 6)),
+                       ({'hide_repos': 'local'}, (0, 0, 0))):
+        r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'con': False, 'meta': meta})
+        assert r['return'] == 0, r
+        build(cm)
+        assert memo(cm) == want, (meta, memo(cm))
+    st = cm.access({'category': 'cserver.browse', 'command': 'files', 'con': False})['status']
+    assert st['settings']['repos'] == ['local'] and st['settings']['skip_repos'] == []
+    # skipped from the files, the artifact itself is still found by its meta
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'cserver', 'con': False,
+                   'meta': {'hide_repos': '', 'browse_file_search_repos': '', 'browse_file_search_skip_repos': 'local'}})
+    assert r['return'] == 0, r
+    build(cm)
+    assert memo(cm) == (0, 0, 0)
+    assert aliases(search(cm, q='plan-2025')) == ['plan-2025']
+    assert aliases(search(cm, q='dash', texts='1')) == []
+
+
 def test_the_file_that_holds_every_word_is_named_first_and_ranks_its_artifact(cm, home):
     """2026-11-12, the user's search "ChatGPT B300 Rubin Vera": the artifact was found, its row named files that held
     one of the words, never the note itself. Now a row names the files that hold every word (the words the artifact's

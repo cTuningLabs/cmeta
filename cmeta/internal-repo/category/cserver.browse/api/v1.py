@@ -1870,16 +1870,28 @@ class Category(InitCategory):
         return _fdisk['dir']
 
     def _file_index_items(self, cfg, fs):
-        """The artifacts the file index covers: the catalog without the hidden categories (the keys and secrets) and
-        without the skipped ones (fs['skip_cats']) - every repository (the pickers and hide_repos narrow a search,
-        never the index)."""
+        """The artifacts the file index covers: what the pages may show, narrowed by the index's own lists - never the
+        repositories the server hides (hide_repos) or the categories /browse hides (browse_hide_categories); never the
+        categories of keys and secrets unless browse_file_search_secrets says yes (whatever /browse lists: a personal
+        server's browse_hide_categories none let the secret category in, 2026-11-13); then only the repositories of
+        browse_file_search_repos when it names some, never those of browse_file_search_skip_repos, never the
+        categories of browse_file_search_skip_categories. The scope of one request (a signed-in reader's repositories)
+        narrows a search, never the index."""
         cat = self._catalog()
-        hidden = self._hidden_categories(cfg)
+        hidden = list(self._hidden_categories(cfg))
+        if not fs.get('secrets'):
+            hidden += list(SECRET_CATEGORIES)
+        hide_repos = _patterns(cfg.get('hide_repos')) + list(fs.get('skip_repos') or [])
+        only_repos = list(fs.get('repos') or [])
         skip = set(fs['skip_cats']) | set(_fx.NEVER_CATEGORIES)
         out = []
         for it in cat['items']:
             c = it['cat'].lower()
             if c in skip or _matches_any(c, hidden) or _matches_any(it['cat_uid'].lower(), hidden):
+                continue
+            repo = it.get('repo') or ''
+            if (hide_repos and repo and _matches_any(repo, hide_repos)) or \
+                    (only_repos and not (repo and _matches_any(repo, only_repos))):
                 continue
             if not it.get('path') or _in_engine(it['path']):      # the engine's own repository: code, not the user's files
                 continue
@@ -1999,7 +2011,8 @@ class Category(InitCategory):
         st['notice'] = self._file_index_notice(st, building=True) if fs is not None else \
             'file names and contents are not searched here (browse_file_search in the cserver config turns the index on)'
         if fs is not None:
-            st['settings'] = {k: fs[k] for k in ('skip_cats', 'skip_dirs', 'text', 'max_kb', 'depth', 'refresh', 'minutes', 'follow')}
+            st['settings'] = {k: fs[k] for k in ('repos', 'skip_repos', 'secrets', 'skip_cats', 'skip_dirs', 'text', 'max_kb',
+                                                 'depth', 'refresh', 'minutes', 'follow')}
         return st
 
     def _catalog_info(self):
@@ -3457,9 +3470,13 @@ class Category(InitCategory):
         if st.get('error'):
             print('  error: %s' % st['error'])
         s = st.get('settings') or {}
-        print('  settings: refresh %s%s, follow cMeta changes %s; skipped categories %s; skipped folders %s; texts of %s; %s KB; depth %s' % (
+        print('  settings: refresh %s%s, follow cMeta changes %s; repositories %s%s (and none the server hides); keys and '
+              'secrets %s; skipped categories %s; skipped folders %s; texts of %s; %s KB; depth %s' % (
             s.get('refresh'), (' (%s min)' % s.get('minutes')) if s.get('refresh') == 'minutes' else '',
-            'yes' if s.get('follow') else 'no', ', '.join(s.get('skip_cats') or []) or 'none',
+            'yes' if s.get('follow') else 'no', ', '.join(s.get('repos') or []) or 'all',
+            ('; skipped repositories ' + ', '.join(s.get('skip_repos'))) if s.get('skip_repos') else '',
+            'read (names only for key-like files)' if s.get('secrets') else 'never read',
+            ', '.join(s.get('skip_cats') or []) or 'none',
             ', '.join(s.get('skip_dirs') or []) or 'none', ', '.join(s.get('text') or []), s.get('max_kb'), s.get('depth')))
         if stats and st['stats'].get('ready'):
             x = st['stats']
