@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (after 0.41.0)
+## 0.41.1
 - **The file index of /browse: what it reads, set per machine.** `browse_file_search_repos` (only these
   repositories) and `browse_file_search_skip_repos` (never these - the private ones of a shared site, for one) choose
   the repositories whose files are indexed; their artifacts are still found by their meta wherever the pages show
