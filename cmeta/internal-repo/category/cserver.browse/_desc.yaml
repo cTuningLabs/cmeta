@@ -38,15 +38,35 @@ configs:
           unset = off (a hosted server keeps it off)
         type: yes/no
         default: 'no'
+      browse_file_search_repos:
+        desc: the repositories the file index reads (aliases or fnmatch patterns, comma-separated); unset or all = every
+          repository the pages may show - never those the server hides (hide_repos), whatever this says
+        type: list
+        example: my-notes,my-archive
+      browse_file_search_skip_repos:
+        desc: repositories whose files the file index never reads (aliases or fnmatch patterns, comma-separated) - the
+          private ones of a shared site, for one; their artifacts are still found by their meta wherever the pages show
+          them. The repositories the server hides (hide_repos) are never read anyway
+        type: list
+        example: my-private-repo
+      browse_file_search_secrets:
+        desc: yes = the file index reads the keys and secrets too - the categories and the folders named like *crypt*,
+          *secret* or *credential*, and the key-like files (id_*, *.pem, *.key, tokens, passwords ...), these by their
+          names only, never their contents - for a personal machine of one user who wants to find them; no or unset =
+          never (a shared site keeps it so). The categories /browse hides (browse_hide_categories) are not read either way
+        type: yes/no
+        default: 'no'
       browse_file_search_skip_categories:
         desc: the categories the file index leaves out (aliases, comma-separated; none = no category) - machine output
-          rather than the user's files, and cMeta's own definitions and settings; the categories of keys and secrets
-          and the repositories (repo) are never indexed, whatever this says
+          rather than the user's files, and cMeta's own definitions and settings; the repositories themselves (repo),
+          the categories /browse hides and those of keys and secrets (unless browse_file_search_secrets) are never
+          indexed, whatever this says
         type: list
         default: tmp,cache,log,state,result,website,category,config
       browse_file_search_skip_folders:
         desc: the folders the file index never enters, by name, at any depth inside an artifact (comma-separated; none = no
-          folder); dot-folders, symlinks and the folders of keys and secrets are left out anyway
+          folder); dot-folders and symlinks are left out anyway, the folders of keys and secrets unless
+          browse_file_search_secrets
         type: list
         default: .git,.venv,venv,node_modules,__pycache__,site-packages,.pytest_cache,.mypy_cache,.ruff_cache,.idea,.vscode,dist,build
       browse_file_search_text:

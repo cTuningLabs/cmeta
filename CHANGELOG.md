@@ -2,6 +2,19 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.41.1
+- **The file index of /browse: what it reads, set per machine.** `browse_file_search_repos` (only these
+  repositories) and `browse_file_search_skip_repos` (never these - the private ones of a shared site, for one) choose
+  the repositories whose files are indexed; their artifacts are still found by their meta wherever the pages show
+  them. The repositories the server hides from every page (`hide_repos`) and the categories /browse hides
+  (`browse_hide_categories`) are never read. **The keys and secrets** - the categories and folders named `*crypt*`,
+  `*secret*` or `*credential*`, and the key-like files (`id_*`, `*.pem`, `*.key`, tokens, passwords ...) - are read only
+  where `browse_file_search_secrets: yes` (a personal machine of one user who wants to find them; the key-like files by
+  their names, never their contents); until now the categories followed `browse_hide_categories` alone, so a server
+  that lists everything to its owner (`none`) had its secret categories indexed by default. Turning the setting on or
+  off rebuilds the index at the next refresh; the repository lists need no rebuild (a refresh adds and drops whole
+  artifacts). `cx cserver.browse files` names the repositories and the secrets setting.
+
 ## 0.41.0
 - **/browse searches the files inside the artifacts: `browse_file_search: yes`.** An index of the names of every
   file inside the artifacts of the machine (every repository, every category but the keys and secrets, the
