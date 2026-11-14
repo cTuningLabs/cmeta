@@ -2,6 +2,30 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV
+- **`cx repo pull` fails at the end with the repositories it could not update.** Every repository is still tried -
+  a failure never stops the others -, and when one could not be updated (local changes in the way, a conflict, a
+  diverged branch, no network or key) the command now fails after the reindex with their list
+  (`1 of 16 repositories not updated: <alias> (git pull: exit code 1) - the other 15 went through`, exit code 1); each
+  failure is also told when it happens. Until now a failed `git pull` printed one warning line among the output and
+  the command answered success, so a clone stuck behind local changes could stay unseen through several updates of a
+  fleet. A clone with nothing to pull from - no remote, a detached HEAD (pinned at a commit or a tag), a branch
+  without an upstream, a remote without any commit yet - is not a failure: an info line says why. A failed
+  `--checkout` of several repositories no longer stops the ones after it either (one repository keeps its own
+  error, as before). The Python answer lists them: `failed` and `nothing_to_pull`.
+- **`cx repo pull --identity=<identity>`: a clone with a git identity of its own.** The identity is the alias of a
+  secret of kind git or ssh (the `secret` category of cMeta AOps: the name and e-mail, the transport key, the signing
+  key - asked through `cx secret settings`), a cMeta reference `<category>::<artifact>/<key file>` to a key kept inside
+  an artifact, or a path to a key file. The clone runs with that key (`GIT_SSH_COMMAND`), the settings are written into
+  the clone's own git configuration (`git config --local`: `core.sshCommand` with `IdentitiesOnly`, `user.name`,
+  `user.email`, the signing keys), so every later pull, fetch, push and commit in it - by cx or by the person - uses
+  the identity without being told again; the identity's name is kept in the repository's registration on this machine
+  (`repos.json`, never in the shared `_cmr.yaml`) and `cx repo status` prints it. On an existing clone,
+  `cx repo pull <alias> --identity=...` applies the identity before the pull. An identity belongs to one repository: a
+  pull of every repository, or a pattern that matches several, refuses it. A wrong identity is refused before anything
+  is cloned; nothing of a key's content is printed or stored. For a person with several GitHub accounts, and for
+  colleagues who clone a company's repositories with their own keys.
+
 ## 0.41.1
 - **The file index of /browse: what it reads, set per machine.** `browse_file_search_repos` (only these
   repositories) and `browse_file_search_skip_repos` (never these - the private ones of a shared site, for one) choose

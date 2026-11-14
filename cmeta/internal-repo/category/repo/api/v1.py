@@ -7,6 +7,8 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 import os
+import shutil
+import subprocess
 import sys
 from cmeta.category import InitCategory
 
@@ -63,6 +65,7 @@ class Category(InitCategory):
         hide: bool = False,  # If True, hide sensitive command output.
         skip_parent_dir_in_zip: bool = False,  # If True, skip parent directory in zip extraction.
         zip_file: str = None,  # Path to a local zip file to import.
+        identity: str = None,  # The git identity of the clone: a secret alias (cx secret, kind git or ssh), <category>::<artifact>/<key file>, or a key file path.
     ):
         """
             Clone or pull CM repository.
@@ -90,12 +93,25 @@ class Category(InitCategory):
                                 hide (bool): If True, hide sensitive command output.
                                 skip_parent_dir_in_zip (bool): If True, skip parent directory in zip extraction.
                                 zip_file (str): Path to a local zip file to import.
+                                identity (str): The git identity the clone is given and keeps: the alias of a
+                                    secret of kind git or ssh (the secret category of cmeta-aops: name, e-mail,
+                                    the transport key, the signing key), a cMeta reference
+                                    <category>::<artifact>/<file> to a key file inside an artifact, or a path to
+                                    a key file. The clone runs with that key (GIT_SSH_COMMAND), the settings are
+                                    written into the clone's own git configuration (git config --local), and the
+                                    identity's name is kept in the repository's registration on this machine
+                                    (never in the shared _cmr.yaml). On an existing clone the identity is
+                                    (re)applied before the pull. Nothing of a key's content is printed or stored.
 
             Returns:
               (CM return dict):
 
               * return (int): return code == 0 if no error and >0 if error
               * (error) (str): error string if return>0
+              * (failed) (list): the repositories an update could not update ({repo, path, error}): every
+                    repository is tried, and the command fails at the end, after the reindex, when this is not empty
+              * (nothing_to_pull) (list): the clones a pull found nothing to pull from ({repo, path, why}: no
+                    remote, a detached HEAD, a branch without an upstream, a remote without any commit yet)
 
             Raises:
                 Exception: Propagated runtime errors, if any.
@@ -117,6 +133,12 @@ class Category(InitCategory):
                 return {'return':1, 'error':'--depth must be a positive number of commits'}
         else:
             depth = None
+
+        # --identity: resolved before anything is cloned or pulled, so that a wrong name leaves nothing behind
+        r = self._git_identity(identity)
+        if r['return']>0: return r
+
+        ident_pairs, ident_env, ident_name = r['pairs'], r['env'], r['name']
 
         repos_path = self.cm.repos_path
         repos_config_path = self.cm.repos_config_path
@@ -181,6 +203,12 @@ class Category(InitCategory):
 
         add_repo_paths_to_index = []
 
+        # Each repository is tried - a failure never stops the others -, and the command fails at the end, after
+        # the reindex, naming the ones it could not update; a clone with nothing to pull from is not a failure
+        failed = []
+        nothing_to_pull = []
+        tried = 0
+
 
         ######################################################################################################################
         if repo_name is None and url is not None and url!='':
@@ -244,6 +272,11 @@ class Category(InitCategory):
             if command in ['init']:
                 return {'return':1, 'error':f'repository {arg1} already exists'}
 
+            # --identity belongs to ONE repository: never written into every clone a pull-all or a pattern finds
+            if ident_pairs and len(repo_artifacts) > 1:
+                return {'return':1, 'error':f'--identity is given to one repository: name it ({len(repo_artifacts)} match'
+                                            f'{"" if repo_name else " a pull of every repository"})'}
+
             # No name: every git repository is about to be updated. Ask first in a terminal
             # (Enter means yes); --quiet (-q), a script or a pipe goes ahead without asking
             if (repo_name is None or repo_name == '') and not status and con and \
@@ -289,6 +322,9 @@ class Category(InitCategory):
                             print ('')
                             print ('Checking repository status ...')
 
+                            if repo_meta.get('identity'):
+                                print (f'Identity: {repo_meta["identity"]} (given with cx repo pull --identity)')
+
                             cmds = ['git remote get-url origin', 'git status']
 
                             for cmd in cmds:
@@ -302,13 +338,35 @@ class Category(InitCategory):
 
 
                         else:
+                            # --identity on an existing clone: written into its configuration before the pull
+                            # or the checkout, and remembered in its registration
+                            if ident_pairs:
+                                if con:
+                                    print ('')
+                                    print (f'Setting the git identity {ident_name} in {repo_path} ...')
+
+                                r = self._git_config(repo_path, ident_pairs, con)
+                                if r['return']>0: return r
+
+                                r = self._record_identity(repos_config_path, repo_path, ident_name)
+                                if r['return']>0: return r
+
+                            tried += 1
+
                             if checkout is not None and checkout != '':
                                 if con:
                                     print ('')
                                     print (f'Checking out repository in {repo_path} ...')
 
                                 r = self._git_checkout(repo_path, checkout, depth, con)
-                                if r['return']>0: return r
+                                if r['return']>0:
+                                    # one repository: its own error at once, as always; several: the others go on
+                                    if len(repo_artifacts) == 1: return r
+
+                                    failed.append({'repo':repo_alias, 'path':repo_path, 'error':r.get('error', '')})
+
+                                    if con:
+                                        print (f'cMeta warning: the checkout failed in {repo_alias} - the other repositories go on')
 
                             else:
                                 print ('')
@@ -320,13 +378,26 @@ class Category(InitCategory):
                                 # them ("refusing to merge unrelated histories")
                                 cmd = 'git pull'
 
-                                r = utils.sys.run(cmd, work_dir=repo_path, con=con)
+                                r = utils.sys.run(cmd, work_dir=repo_path, con=con, env=ident_env)
                                 if r['return']>0: return r
 
+                                # A failed pull never stops the others: the command fails at the end with the list.
+                                # A clone with nothing to pull from (no remote, a detached HEAD, a branch without an
+                                # upstream, a remote without any commit yet) is not a failure
                                 rc = r['returncode']
                                 if rc != 0:
-                                    print (f'Warning: system command "{cmd}" failed with exit code {rc}')
-#                                    return {'return':1, 'error':f'"System command {cmd}" failed with exit code {rc}'}
+                                    why = self._nothing_to_pull(repo_path, ident_env)
+
+                                    if why:
+                                        nothing_to_pull.append({'repo':repo_alias, 'path':repo_path, 'why':why})
+
+                                        if con:
+                                            print (f'cMeta info: nothing to pull in {repo_alias}: {why}')
+                                    else:
+                                        failed.append({'repo':repo_alias, 'path':repo_path, 'error':f'git pull: exit code {rc}'})
+
+                                        if con:
+                                            print (f'cMeta warning: "{cmd}" failed in {repo_alias} with exit code {rc} - the other repositories go on')
 
 
                             add_repo_paths_to_index.append(repo_path)
@@ -446,12 +517,22 @@ class Category(InitCategory):
                         print (f'Cloning repository in {path} ...')
 
                     xcon = False if hide else con
-                    r = utils.sys.run(cmd, con=xcon)
+                    r = utils.sys.run(cmd, con=xcon, env=ident_env)
                     if r['return']>0: return r
 
                     rc = r['returncode']
                     if rc != 0:
                         return {'return':1, 'error':f'System command "{cmd}" failed with exit code {rc}'}
+
+                    # --identity: kept by the clone itself (git config --local), so that every later pull, fetch
+                    # and commit in it uses it without being told again
+                    if ident_pairs:
+                        if con:
+                            print ('')
+                            print (f'Setting the git identity {ident_name} in {path} ...')
+
+                        r = self._git_config(path, ident_pairs, con)
+                        if r['return']>0: return r
 
                     if checkout_after_clone:
                         if con:
@@ -520,6 +601,10 @@ class Category(InitCategory):
                 repo_updated = False
 
                 repo_meta_to_index = {'method':method}
+
+                # the identity's name travels with the registration of this machine, never with _cmr.yaml
+                if ident_name and method == 'git':
+                    repo_meta_to_index['identity'] = ident_name
 
                 if os.path.isfile(repo_meta_desc_path):
                     r = utils.files.safe_read_file(repo_meta_desc_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
@@ -659,7 +744,73 @@ class Category(InitCategory):
             r = self.cm.repos.index(clean=False, con=con, verbose=verbose, add_repo_paths = add_repo_paths_to_index)
             if r['return']>0: return r
 
+        # Every repository was tried: the command fails now if any of them could not be updated, naming each
+        if len(failed) > 0:
+            names = ', '.join(f"{x['repo']} ({x['error']})" for x in failed)
+
+            error = f'{len(failed)} of {tried} repositories not updated: {names}'
+            if tried > len(failed):
+                error += f' - the other {tried - len(failed)} went through'
+
+            return {'return':1, 'error':error, 'failed':failed, 'nothing_to_pull':nothing_to_pull}
+
+        if len(nothing_to_pull) > 0:
+            return {'return':0, 'nothing_to_pull':nothing_to_pull}
+
         return {'return':0}
+
+
+    ###############################################################################################
+    def _nothing_to_pull(
+        self,
+        repo_path: str,  # The clone whose "git pull" failed.
+        env: dict = None,  # The environment of the clone's identity (GIT_SSH_COMMAND), if any.
+    ):
+        """
+            Why a clone whose "git pull" failed had nothing to pull from - it has no remote, its HEAD is detached (a
+            clone pinned at a commit or a tag), its branch has no upstream, or its remote has no commit yet (an
+            empty repository just made) -, or '' when the failure is a real one: local changes in the way, a
+            conflict, a diverged branch, no network or no key. Asked only after a failed pull, so a pull that
+            works costs nothing more; the remote is asked (git ls-remote) only for a clone without any commit.
+
+            Args:
+                repo_path (str): The clone.
+                env (dict): The environment of the clone's identity (GIT_SSH_COMMAND), if any.
+
+            Returns:
+                str: The reason, or '' for a real failure.
+        """
+
+        run_env = dict(os.environ, **env) if env else None
+
+        def git(*args):
+            try:
+                p = subprocess.run(['git', *args], cwd=repo_path, capture_output=True, stdin=subprocess.DEVNULL,
+                                   env=run_env, timeout=60)
+            except (OSError, subprocess.SubprocessError):
+                return 1, ''
+
+            return p.returncode, p.stdout.decode('utf-8', 'replace').strip()
+
+        rc, remotes = git('remote')
+        if rc == 0 and remotes == '':
+            return 'it has no remote'
+
+        rc, branch = git('symbolic-ref', '-q', '--short', 'HEAD')
+        if rc != 0 or branch == '':
+            return 'its HEAD is detached (pinned at a commit or a tag)'
+
+        rc, remote = git('config', '--get', f'branch.{branch}.remote')
+        if rc != 0 or remote == '':
+            return f'its branch {branch} has no upstream'
+
+        rc, _ = git('rev-parse', '-q', '--verify', 'HEAD')
+        if rc != 0:
+            rc, heads = git('ls-remote', '--heads', remote)
+            if rc == 0 and heads == '':
+                return 'its remote has no commits yet'
+
+        return ''
 
 
     ###############################################################################################
@@ -680,6 +831,160 @@ class Category(InitCategory):
         import re
 
         return re.fullmatch(r'[0-9a-fA-F]{7,40}', ref or '') is not None
+
+
+    ###############################################################################################
+    def _git_identity(
+        self,
+        identity: str,  # A secret alias, <category>::<artifact>/<key file>, or a key file path.
+    ):
+        """
+            Resolve the git identity given with --identity: the git settings as (key, value) pairs - user.name,
+            user.email, core.sshCommand, the signing keys: paths and names, never a key's content -, the
+            environment of the clone (GIT_SSH_COMMAND from the transport key) and the name kept for the
+            repository. Three forms: the alias of a secret of kind git or ssh (the secret category of cmeta-aops,
+            when it is plugged), a cMeta reference <category>::<artifact>/<file> to a key file inside an artifact,
+            or a path to a key file (~ and environment variables expanded). Resolved before anything is cloned,
+            so that a wrong name leaves nothing behind.
+
+            Args:
+                identity (str): The identity as given (None or '' = none).
+
+            Returns:
+                dict: return (int), error (str), pairs (list of [key, value]), env (dict), name (str).
+        """
+
+        identity = str(identity or '').strip()
+
+        if identity == '':
+            return {'return':0, 'pairs':[], 'env':{}, 'name':''}
+
+        def ssh_command(key_path):
+            return f'ssh -i "{os.path.abspath(key_path).replace(os.sep, "/")}" -o IdentitiesOnly=yes'
+
+        pairs = []
+
+        if '::' in identity:
+            # A key file inside an artifact: <category>::<artifact>/<file>
+            i = identity.find('::')
+            j = identity.find('/', i)
+            if j < 0:
+                return {'return':1, 'error':f'--identity "{identity}" must be <category>::<artifact>/<key file in the artifact>, a secret alias or a key file'}
+
+            cref, rel = identity[:j], identity[j+1:]
+
+            r = self.cm.access({'category':'utils', 'command':'find_by_cid', 'arg1':cref, 'con':False})
+            arts = r.get('artifacts', []) if r.get('return', 1) == 0 else []
+            if len(arts) != 1:
+                return {'return':1, 'error':f'--identity "{identity}": the artifact "{cref}" ' +
+                                            ('is not on this machine' if len(arts) == 0 else f'resolves to {len(arts)} artifacts')}
+
+            key_path = os.path.join(arts[0]['path'], *rel.split('/'))
+            if not os.path.isfile(key_path):
+                return {'return':1, 'error':f'--identity "{identity}": the key file {key_path} does not exist'}
+
+            pairs = [['core.sshCommand', ssh_command(key_path)]]
+
+        else:
+            key_path = os.path.expanduser(os.path.expandvars(identity))
+
+            if os.path.isfile(key_path):
+                # A key file
+                pairs = [['core.sshCommand', ssh_command(key_path)]]
+
+            else:
+                # The alias of a secret (cmeta-aops): its git settings - paths and names only
+                r = self.cm.access({'category':'secret', 'command':'settings', 'arg1':identity, 'con':False})
+                if r.get('return', 1) > 0:
+                    why = str(r.get('error', '') or '')
+                    if 'category "secret" not found' in why:
+                        why = ('a secret alias needs the secret category of cMeta AOps: cx repo pull cmeta-aops; a key file '
+                               'or <category>::<artifact>/<key file> works without it')
+                    return {'return':1, 'error':f'--identity "{identity}" is neither a key file nor a secret of that name' + (f' ({why})' if why else '')}
+
+                pairs = [list(p) for p in (r.get('pairs') or [])]
+                if len(pairs) == 0:
+                    return {'return':1, 'error':f'--identity "{identity}": the secret gives no git settings'}
+
+        env = {}
+        for k, v in pairs:
+            if k == 'core.sshCommand':
+                env['GIT_SSH_COMMAND'] = v
+
+        return {'return':0, 'pairs':pairs, 'env':env, 'name':identity}
+
+
+    ###############################################################################################
+    def _git_config(
+        self,
+        repo_path: str,  # Path to the git clone.
+        pairs: list,  # The (key, value) pairs of the identity.
+        con: bool = False,  # If True, print what is set.
+    ):
+        """
+            Write a git identity into a clone's own configuration (git config --local), so that every later pull,
+            fetch, push and commit in it - by cx or by the person - uses it without being told again. Prints keys,
+            names and paths, never a key's content.
+
+            Args:
+                repo_path (str): Path to the git clone.
+                pairs (list): The (key, value) pairs.
+                con (bool): If True, print what is set.
+
+            Returns:
+                dict: return (int), error (str).
+        """
+
+        git = shutil.which('git')
+        if not git:
+            return {'return':1, 'error':'git is not found'}
+
+        for k, v in pairs:
+            p = subprocess.run([git, '-C', repo_path, 'config', '--local', str(k), str(v)], stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+            if p.returncode != 0:
+                return {'return':1, 'error':f'git config {k} failed in {repo_path}: {p.stderr.decode("utf-8", "replace").strip()}'}
+
+            if con:
+                print (f'  {k} = {v}')
+
+        return {'return':0}
+
+
+    ###############################################################################################
+    def _record_identity(
+        self,
+        repos_config_path: str,  # The registration file of the repositories (repos.json).
+        repo_path: str,  # The registered path of the repository.
+        name: str,  # The identity as given.
+    ):
+        """
+            Keep the identity's name in the repository's registration (repos.json - this machine's, never the
+            shared _cmr.yaml), so that the index and "cx repo status" say which identity a clone uses.
+
+            Args:
+                repos_config_path (str): The registration file.
+                repo_path (str): The registered path.
+                name (str): The identity's name.
+
+            Returns:
+                dict: return (int), error (str).
+        """
+
+        r = utils.files.safe_read_file(repos_config_path, lock=True, keep_locked=True, fail_on_error=self.fail_on_error, logger=self.logger)
+        if r['return']>0: return r
+
+        repos_paths = r['data']
+        file_lock = r['file_lock']
+
+        entry = repos_paths.get(repo_path)
+        if entry is None:
+            return utils.files.unlock_path(repos_config_path, file_lock=file_lock, fail_on_error=self.fail_on_error, logger=self.logger)
+
+        entry.setdefault('meta', {})['identity'] = name
+
+        return utils.files.safe_write_file(repos_config_path, repos_paths, file_lock=file_lock, atomic=True,
+                                           fail_on_error=self.fail_on_error, logger=self.logger, sort_keys=False)
 
 
     ###############################################################################################

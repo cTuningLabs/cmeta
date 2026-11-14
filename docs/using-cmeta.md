@@ -932,6 +932,26 @@ The same flag works for `cx repo clone`. `pull` does not pass `--depth` on to `g
 already keeps a shallow clone shallow, while `git pull --depth` would cut the history under your
 local commits, and git then refuses to merge them.
 
+**A clone with a git identity of its own (`--identity`).** A person with several GitHub accounts, or a
+colleague who clones a company's repositories with their own key, gives the clone its identity once:
+
+```bash
+cx repo pull <git-url> --identity=git-work                              # the alias of a secret of kind git or ssh (cx secret)
+cx repo pull <git-url> --identity=my-vault::ssh-work/2026/id_ed25519    # a key file kept inside an artifact
+cx repo pull <git-url> --identity=~/.ssh/id_ed25519_work                # a key file
+cx repo pull <alias> --identity=git-work                                # an existing clone: applied before the pull
+cx repo status <alias>                                                  # prints the identity
+```
+
+The clone runs with that key (`GIT_SSH_COMMAND`), and the settings are written into the clone's own git
+configuration (`git config --local`: `core.sshCommand` with `IdentitiesOnly`, and for a git secret also
+`user.name`, `user.email` and the signing keys), so every later pull, fetch, push and commit in that clone -
+by cx or by you - uses the identity without being told again. The identity's name is kept in the
+repository's registration of this machine (`repos.json`), never in the shared `_cmr.yaml`; nothing of a
+key's content is printed or stored. A wrong identity is refused before anything is cloned, and so is an
+identity given to a pull of every repository or to a pattern that matches several. The secret form needs
+the `secret` category of cMeta AOps (`cx secret settings <alias>` shows the settings it gives).
+
 **A cMeta repo inside another project (`--subdir`).** A project that is not a cMeta repository can
 carry one in a sub-folder, without touching the rest of its tree. The first time, `--subdir` writes
 `subdir: <dir>` into a new `_cmr.yaml` at the project root, and artifacts then live in `<dir>/`:
@@ -1008,7 +1028,8 @@ cx repo list                     # list registered repos (unsorted, insertion or
 cx repo find <alias-or-uid>      # find a repo by alias/UID
 cx repo status <alias>           # git status + remote URL for git-backed repos
 cx repo pull <alias>             # git pull; also refreshes the index
-cx repo pull                     # every git-backed repo, the same way (asks first; -q does not ask)
+cx repo pull                     # every git-backed repo, the same way (asks first; -q does not ask); one that
+                                 # cannot be updated never stops the others - the command fails at the end, naming it
 cx repo update <alias>           # same as pull
 cx repo checkout <alias> <ref>   # git checkout branch/tag/commit
 cx repo space <alias>            # disk usage for the repo

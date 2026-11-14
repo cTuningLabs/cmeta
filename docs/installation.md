@@ -193,6 +193,12 @@ cx repo pull                             # every repository fetched with git: gi
 cx repo pull cmeta-aops                  # one, by the name it was fetched with or by its alias (ctuninglabs@cmeta-aops)
 ```
 
+A repository that cannot be updated (local changes in the way, a conflict, no network
+or key) never stops the others: `cx repo pull` goes through every one, then fails at
+the end with the list of those it could not update (exit code 1). A clone with
+nothing to pull from - no remote, a detached HEAD, a branch without an upstream, a
+remote without any commit yet - is not a failure.
+
 A repository fetched as a zip (`cx repo get cmeta://<name>`) has no history to
 pull: remove it with `cx repo delete <alias>` (this deletes the local copy,
 including any local changes) and get it again — or get the git clone instead.
