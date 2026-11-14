@@ -174,8 +174,8 @@ repositories) into these commands.
 **A specific version**, to pin or to go back:
 
 ```bash
-uv tool install --force --with pip "cmeta[server]==0.41.1"
-pip install "cmeta==0.41.1"
+uv tool install --force --with pip "cmeta[server]==0.42.0"
+pip install "cmeta==0.42.0"
 ```
 
 **Moving an install from git to PyPI** (or back) is a reinstall from the other
@@ -192,6 +192,12 @@ cx repo list                             # what is plugged in
 cx repo pull                             # every repository fetched with git: git pull + reindex each (asks first; -q does not ask)
 cx repo pull cmeta-aops                  # one, by the name it was fetched with or by its alias (ctuninglabs@cmeta-aops)
 ```
+
+A repository that cannot be updated (local changes in the way, a conflict, no network
+or key) never stops the others: `cx repo pull` goes through every one, then fails at
+the end with the list of those it could not update (exit code 1). A clone with
+nothing to pull from - no remote, a detached HEAD, a branch without an upstream, a
+remote without any commit yet - is not a failure.
 
 A repository fetched as a zip (`cx repo get cmeta://<name>`) has no history to
 pull: remove it with `cx repo delete <alias>` (this deletes the local copy,

@@ -175,6 +175,7 @@ cx repo get cmeta://<name>                       # default cTuning zip mirror
 cx repo get <alias> --url=https://github.com/<org>/<repo>
 cx repo get <alias> --url=<git-url> --checkout=main
 cx repo get <alias> --url=<git-url> --depth=1 --checkout=<branch>  # shallow: no older history
+cx repo pull <git-url> --identity=<secret alias | <cat>::<art>/<key file> | key file>  # a clone with its own git identity, kept by the clone
 cx repo get <alias> --path=<local-path> --local  # register an existing folder
 cx repo pull <alias>
 cx repo status <alias>
