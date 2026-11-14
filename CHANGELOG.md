@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV
+## 0.42.0
 - **`cx repo pull` fails at the end with the repositories it could not update.** Every repository is still tried -
   a failure never stops the others -, and when one could not be updated (local changes in the way, a conflict, a
   diverged branch, no network or key) the command now fails after the reindex with their list
