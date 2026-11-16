@@ -14,6 +14,18 @@ Functions
 
 .. autofunction:: cmeta.utils.net.download
 
+.. autofunction:: cmeta.utils.net.hf_fetch
+
+.. autofunction:: cmeta.utils.net.hf_files
+
+.. autofunction:: cmeta.utils.net.hf_get
+
+.. autofunction:: cmeta.utils.net.hf_repo
+
+.. autofunction:: cmeta.utils.net.hf_sync
+
+.. autofunction:: cmeta.utils.net.hf_token
+
 .. autofunction:: cmeta.utils.net.port_free
 
 .. autofunction:: cmeta.utils.net.tailscale_ipv4
@@ -22,6 +34,14 @@ Functions
 
 Constants
 ---------
+
+.. autodata:: cmeta.utils.net.HF_API_KIND
+
+.. autodata:: cmeta.utils.net.HF_ENDPOINT
+
+.. autodata:: cmeta.utils.net.HF_RECORD
+
+.. autodata:: cmeta.utils.net.HF_URL_PREFIX
 
 .. autodata:: cmeta.utils.net.RESUME_RECORD_SUFFIX
 
