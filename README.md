@@ -500,6 +500,7 @@ cx repo get <alias> --url=https://github.com/<org>/<repo>
 cx repo get <alias> --url=<git-url> --checkout=main
 cx repo get <alias> --url=<zip-url>            # zip is auto-detected
 cx repo get <alias> --path=<local-path> --local
+cx repo pull hf://<owner>/<name>               # a repository kept on the Hugging Face Hub, by its API (no git-lfs; --identity=<token secret> for a private one)
 cx repo list                                   # see what's plugged in
 cx repo unplug <alias>                         # detach without deleting
 ```

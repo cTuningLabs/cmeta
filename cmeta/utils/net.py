@@ -666,6 +666,266 @@ def port_free(
     return out
 
 ##################################################################################################
+# Repositories of the Hugging Face Hub by its HTTP API alone - no git, no git-lfs, no package: the files of a
+# repository at a revision with their digests, one file downloaded and checked, a folder kept in step with a
+# repository (cx repo pull hf://<owner>/<name>), the token of this machine.
+
+HF_ENDPOINT = 'https://huggingface.co'
+HF_RECORD = '.cmeta-hf.json'                 # in a synced folder: the repository, the revision, every file's digest
+HF_API_KIND = {'dataset': 'datasets', 'model': 'models', 'space': 'spaces'}
+HF_URL_PREFIX = {'dataset': 'datasets/', 'model': '', 'space': 'spaces/'}
+
+
+def hf_token():
+    """
+        The token of this machine for the Hub: HF_TOKEN (or HUGGING_FACE_HUB_TOKEN) of the environment, else what
+        "hf auth login" kept (HF_TOKEN_PATH, HF_HOME/token, ~/.cache/huggingface/token). None without one.
+    """
+    for var in ('HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN'):
+        value = os.environ.get(var, '').strip()
+        if value:
+            return value
+    paths = []
+    if os.environ.get('HF_TOKEN_PATH'):
+        paths.append(os.environ['HF_TOKEN_PATH'])
+    if os.environ.get('HF_HOME'):
+        paths.append(os.path.join(os.environ['HF_HOME'], 'token'))
+    paths.append(os.path.join(os.path.expanduser('~'), '.cache', 'huggingface', 'token'))
+    for p in paths:
+        try:
+            with open(p, encoding = 'utf-8') as f:
+                value = f.read().strip()
+        except OSError:
+            continue
+        if value:
+            return value
+    return None
+
+
+def hf_repo(spec):
+    """
+        A repository of the Hub named as hf://<owner>/<name> (a dataset), hf://datasets|models|spaces/<owner>/<name>,
+        hf://<owner>/<name>@<revision>, or its page https://huggingface.co/[datasets/|spaces/]<owner>/<name>
+        [/tree/<revision>...]: {'type', 'id', 'revision'} - None for a text that is none of these.
+    """
+    text = str(spec or '').strip()
+    if text.startswith('hf://'):
+        rest, repo_type = text[5:], 'dataset'
+    elif text.startswith(HF_ENDPOINT + '/'):
+        rest, repo_type = text[len(HF_ENDPOINT) + 1:], 'model'
+    else:
+        return None
+    parts = [p for p in rest.split('?')[0].split('#')[0].split('/') if p]
+    if parts and parts[0] in HF_API_KIND.values():
+        repo_type, parts = parts[0][:-1], parts[1:]
+    if len(parts) < 2:
+        return None
+    owner, name = parts[0], parts[1]
+    revision = None
+    if len(parts) >= 4 and parts[2] in ('tree', 'blob', 'resolve', 'commit', 'commits'):
+        revision = parts[3]
+    elif '@' in name:
+        name, revision = name.split('@', 1)
+    if not owner or not name:
+        return None
+    return {'type': repo_type, 'id': f'{owner}/{name}', 'revision': revision or 'main'}
+
+
+def _hf_opener(token):
+    """An opener that sends the token to the Hub and not to the host a download is redirected to (a CDN refuses it)."""
+    import urllib.request
+
+    class _Redirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            new = super().redirect_request(req, fp, code, msg, headers, newurl)
+            if new is not None and req.host != new.host:
+                new.remove_header('Authorization')
+            return new
+
+    return urllib.request.build_opener(_Redirect())
+
+
+def hf_get(url, token = None, timeout = 120, to_file = None):
+    """
+        GET of the Hub: the JSON answer ('data') and the headers, or the bytes written to to_file (chunk by chunk,
+        'sha256' and 'sha1_blob' of them: the digests a repository names). An error says what the status means.
+    """
+    import hashlib
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(url, headers = {'User-Agent': 'cmeta', 'Accept': '*/*'})
+    if token:
+        req.add_header('Authorization', 'Bearer ' + token)
+    try:
+        with _hf_opener(token).open(req, timeout = timeout) as resp:
+            headers = {k.lower(): v for k, v in resp.headers.items()}
+            if to_file is None:
+                return {'return': 0, 'data': json.loads(resp.read().decode('utf-8')), 'headers': headers}
+            size = 0
+            sha256 = hashlib.sha256()
+            chunks = []
+            os.makedirs(os.path.dirname(to_file) or '.', exist_ok = True)
+            with open(to_file, 'wb') as f:
+                while True:
+                    chunk = resp.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    sha256.update(chunk)
+                    size += len(chunk)
+                    if size <= (64 << 20):
+                        chunks.append(chunk)         # the git blob digest needs the size first: small files only
+            blob = None
+            if size <= (64 << 20):
+                h = hashlib.sha1(b'blob ' + str(size).encode('ascii') + b'\0')
+                for chunk in chunks:
+                    h.update(chunk)
+                blob = h.hexdigest()
+            return {'return': 0, 'size': size, 'sha256': sha256.hexdigest(), 'sha1_blob': blob, 'headers': headers}
+    except urllib.error.HTTPError as e:
+        why = {401: 'a token is needed (cx tool run hf -- auth login, or HF_TOKEN) or the one given is wrong',
+               403: 'no access: a gated repository needs an accepted request, a private one the token of a member',
+               404: 'no such repository, revision or file'}.get(e.code, '')
+        return _error(f'{url}: HTTP {e.code}' + (f' - {why}' if why else ''))
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return _error(f'{url}: {e}')
+
+
+def hf_files(repo_id, repo_type = 'dataset', revision = 'main', token = None):
+    """
+        The files of a repository of the Hub at a revision - [{path, size, oid, lfs}]: oid is the git blob SHA-1 of a
+        file kept in git, lfs {oid: its SHA-256, size} for one stored with LFS/Xet - and 'sha', the commit.
+    """
+    from urllib.parse import quote
+
+    base = f'{HF_ENDPOINT}/api/{HF_API_KIND.get(repo_type, "datasets")}/{repo_id}'
+    r = hf_get(f'{base}/revision/{quote(revision, safe = "")}', token)
+    if r['return'] > 0: return r
+    sha = r['data'].get('sha')
+    files = []
+    url = f'{base}/tree/{quote(revision, safe = "")}?recursive=true&expand=false'
+    while url:
+        r = hf_get(url, token)
+        if r['return'] > 0: return r
+        for x in r['data'] if isinstance(r['data'], list) else []:
+            if x.get('type') == 'file':
+                files.append({'path': x['path'], 'size': x.get('size'), 'oid': x.get('oid'), 'lfs': x.get('lfs')})
+        m = re.search(r'<([^>]+)>;\s*rel="next"', r['headers'].get('link') or '')
+        url = m.group(1) if m else None
+    return {'return': 0, 'files': files, 'sha': sha}
+
+
+def hf_fetch(repo_id, repo_type, revision, path, dest, token = None, expected = None):
+    """
+        One file of a repository of the Hub into dest, written beside it first and compared with what the
+        repository says of it (expected: its record of hf_files - the SHA-256 of a file stored with LFS, the git
+        blob SHA-1 of another).
+    """
+    from urllib.parse import quote
+
+    url = f'{HF_ENDPOINT}/{HF_URL_PREFIX.get(repo_type, "datasets/")}{repo_id}/resolve/{quote(revision, safe = "")}/{quote(path)}'
+    part = dest + '.cmeta-part'
+    r = hf_get(url, token, timeout = 3600, to_file = part)
+    if r['return'] > 0:
+        try:
+            os.remove(part)
+        except OSError:
+            pass
+        return r
+    if expected:
+        lfs = expected.get('lfs') if isinstance(expected.get('lfs'), dict) else None
+        wanted = (lfs or {}).get('oid') if lfs else expected.get('oid')
+        got = r['sha256'] if lfs else r['sha1_blob']
+        if wanted and got and wanted != got:
+            os.remove(part)
+            return _error(f'{path}: the file downloaded has the digest {got}, the repository says {wanted}')
+    os.replace(part, dest)
+    return {'return': 0, 'size': r['size']}
+
+
+def hf_sync(repo_id, repo_type = 'dataset', revision = 'main', folder = '.', token = None, con = False, workers = 8):
+    """
+        A folder made or kept in step with a repository of the Hub at a revision: the files that changed since the
+        last time (the record .cmeta-hf.json in the folder - the repository, the revision, every file's digest)
+        downloaded and checked, the files the repository no longer has removed (only those the record knows: what
+        was added in the folder stays), the record written. Returns what changed.
+    """
+    import concurrent.futures
+    import time
+
+    folder = os.path.abspath(folder)
+    record_path = os.path.join(folder, HF_RECORD)
+    old = {}
+    if os.path.isfile(record_path):
+        try:
+            with open(record_path, encoding = 'utf-8') as f:
+                old = json.load(f)
+        except (OSError, ValueError):
+            old = {}
+
+    r = hf_files(repo_id, repo_type, revision, token)
+    if r['return'] > 0: return r
+    files, sha = r['files'], r['sha']
+
+    def digest_of(x):
+        lfs = x.get('lfs') if isinstance(x.get('lfs'), dict) else None
+        return (lfs or {}).get('oid') or x.get('oid')
+
+    root = os.path.realpath(folder)
+    for x in files:
+        p = os.path.realpath(os.path.join(folder, x['path']))
+        if not p.startswith(root + os.sep):
+            return _error(f'{repo_id}: the path "{x["path"]}" leaves the folder - refused')
+
+    known = old.get('files') if isinstance(old.get('files'), dict) else {}
+    todo = [x for x in files if known.get(x['path']) != digest_of(x) or not os.path.isfile(os.path.join(folder, x['path']))]
+    now = {x['path'] for x in files}
+    gone = [p for p in known if p not in now and os.path.isfile(os.path.join(folder, p))]
+
+    total = sum(x.get('size') or 0 for x in todo)
+    if con and todo:
+        print (f'cMeta info: {repo_id} ({repo_type}, {revision}): {len(todo)} of {len(files)} files to download ({total / 1e6:.1f} MB)')
+
+    done = [0]
+    errors = []
+
+    def fetch(x):
+        rr = hf_fetch(repo_id, repo_type, revision, x['path'], os.path.join(folder, x['path']), token, expected = x)
+        if rr['return'] > 0:
+            errors.append(rr['error'])
+        return rr
+
+    started = time.monotonic()
+    with concurrent.futures.ThreadPoolExecutor(max_workers = max(1, workers)) as pool:
+        for n, _ in enumerate(pool.map(fetch, todo), 1):
+            done[0] = n
+            if con and (n % 50 == 0 or n == len(todo)):
+                print (f'cMeta info: {n}/{len(todo)} files, {time.monotonic() - started:.0f} s')
+            if errors:
+                break
+    if errors:
+        return _error(f'{repo_id}: {len(errors)} file(s) could not be fetched: {errors[0]}')
+
+    for p in gone:
+        os.remove(os.path.join(folder, p))
+        d = os.path.dirname(os.path.join(folder, p))
+        while d and d != root and os.path.isdir(d) and not os.listdir(d):
+            os.rmdir(d)
+            d = os.path.dirname(d)
+
+    record = {'repo': repo_id, 'type': repo_type, 'revision': revision, 'commit': sha,
+              'synced': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+              'files': {x['path']: digest_of(x) for x in files}}
+    os.makedirs(folder, exist_ok = True)
+    with open(record_path, 'w', encoding = 'utf-8') as f:
+        json.dump(record, f, indent = 1, sort_keys = True)
+        f.write('\n')
+
+    return {'return': 0, 'downloaded': len(todo), 'removed': len(gone), 'files': len(files), 'commit': sha,
+            'bytes': total, 'seconds': time.monotonic() - started}
+
+##################################################################################################
 if __name__ == '__main__':
     # A launcher's questions (the cserver app's _run.bat / _run.sh): tailscale_ipv4 - the address alone on stdout
     # (--param.host=tailscale); port_free <host> <port> - nothing while no server listens there (before a start).

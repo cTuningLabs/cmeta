@@ -952,6 +952,32 @@ key's content is printed or stored. A wrong identity is refused before anything 
 identity given to a pull of every repository or to a pattern that matches several. The secret form needs
 the `secret` category of cMeta AOps (`cx secret settings <alias>` shows the settings it gives).
 
+**A repository of the Hugging Face Hub (`hf://`).** A cMeta repository kept as a dataset (or a model, a
+space) of the Hub is pulled by the Hub's API, with nothing but the standard library: no git, no git-lfs,
+no `hf` CLI, no package. The files of the revision are fetched in parallel, each checked against the
+digest the Hub names; the folder is `repos/hf-<owner>@<name>`, and `.cmeta-hf.json` in it records what
+was fetched, so that the next pull takes the changes alone (what the repository dropped is removed, what
+was added locally stays):
+
+```bash
+cx repo pull hf://ctuning/cmeta-repo-ck-legacy-program-output           # a dataset of the Hub (the default kind)
+cx repo pull hf://models/<owner>/<name>@<branch or tag>                   # a model, at a revision
+cx repo pull https://huggingface.co/datasets/<owner>/<name>/tree/dev      # the page's address works too
+cx repo pull <alias>                                                     # later: the changes alone
+cx repo status <alias>                                                   # the repository, revision, commit, when it was synced
+```
+
+A public repository needs no token. A private or gated one takes the token of the machine (`HF_TOKEN`,
+or the file `hf auth login` writes), or - better - an identity of its own with `--identity`, kept and
+reused as for a git clone: the alias of a token secret (`cx secret`; its value is opened inside
+`cx secret call` at the fetch and never returned or stored), `<category>::<artifact>/<token file>`, or
+a token file. A repository of the Hub is pushed to with the `upload-to-hf` task of cMeta AOps.
+
+```bash
+cx repo pull hf://ctuning/cmeta-repo-ctuning-midatasets --identity=my-hf-token              # a token secret
+cx repo pull hf://<owner>/<private> --identity=my-vault::hub-tokens/read.token              # a token file in an artifact
+```
+
 **A cMeta repo inside another project (`--subdir`).** A project that is not a cMeta repository can
 carry one in a sub-folder, without touching the rest of its tree. The first time, `--subdir` writes
 `subdir: <dir>` into a new `_cmr.yaml` at the project root, and artifacts then live in `<dir>/`:

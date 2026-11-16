@@ -665,6 +665,155 @@ def flush_input():
 
     return
 
+###################################################################################################
+def read_hidden(
+        prompt: str = 'Password: ',  # The text before the input.
+        mask: str = '*',             # What is shown for each character ('' shows nothing).
+        stream = None,               # Where the prompt and the mask go (default: the standard output).
+        getch = None,                # A function that returns the next character (for tests; default: the console's).
+    ):
+    """
+        Read a password, a token or a key from the console, showing a mask character for every character
+        typed or pasted (getpass shows nothing): Backspace takes the last character away, Escape or Ctrl-U
+        takes everything away to start again, Enter ends, Ctrl-C stops. Without a console (the input is a
+        pipe or a file) the value is read as a line and nothing is shown, as getpass does. The standard
+        library alone: msvcrt on Windows, termios on Linux and macOS.
+
+        Args:
+            prompt (str): The text before the input.
+            mask (str): What is shown for each character; '' shows nothing.
+            stream: Where the prompt and the mask go; the standard output when None.
+            getch: A function that returns the next character; the console's when None (tests give one).
+        Returns:
+            str: What was typed, without the final newline.
+        Raises:
+            KeyboardInterrupt: Ctrl-C.
+            EOFError: The input ended before a line (Ctrl-D on an empty input, a pipe at its end).
+    """
+    import sys
+
+    out = stream if stream is not None else sys.stdout
+
+    def show(text):
+        out.write(text)
+        out.flush()
+
+    if getch is None:
+        if not (hasattr(sys.stdin, 'isatty') and sys.stdin.isatty()):
+            # No console (a pipe, a file): a line, nothing shown
+            show(prompt)
+            line = sys.stdin.readline()
+            if line == '':
+                show('\n')
+                raise EOFError('the input ended before a line')
+            show('\n')
+            return line.rstrip('\r\n')
+        reader = _console_reader()
+        if reader is None:
+            # A Python without msvcrt / termios (the modules getpass itself is built on): getpass's prompt,
+            # nothing shown, every character kept
+            import getpass
+            return getpass.getpass(prompt, stream = stream)
+        getch, console = reader
+    else:
+        import contextlib
+        console = contextlib.nullcontext()
+
+    chars = []
+    show(prompt)
+    with console:
+        while True:
+            ch = getch()
+            if ch in ('\r', '\n'):
+                break
+            if ch == '\x03':
+                show('\n')
+                raise KeyboardInterrupt
+            if ch == '' or (ch == '\x04' and not chars):
+                show('\n')
+                raise EOFError('the input ended before a line')
+            if ch in ('\x08', '\x7f'):                     # Backspace: the last character away
+                if chars:
+                    chars.pop()
+                    if mask:
+                        show('\b \b' * len(mask))
+                continue
+            if ch in ('\x1b', '\x15'):                     # Escape or Ctrl-U: everything away
+                if mask and chars:
+                    show('\b \b' * (len(mask) * len(chars)))
+                chars.clear()
+                continue
+            if ch == '\x00' or ch < ' ':                   # a special key or another control character: dropped
+                continue
+            chars.append(ch)
+            if mask:
+                show(mask)
+    show('\n')
+    return ''.join(chars)
+
+
+def _console_reader():
+    """
+        The console's next-character function and the context that puts the console in the mode it needs:
+        getwch on Windows (a special key's two codes dropped); on Linux and macOS cbreak mode on the standard
+        input (no echo, no line buffering, Ctrl-C still a signal), one UTF-8 character per call, an escape
+        sequence (an arrow key) dropped as a whole - a lone Escape stays Escape.
+    """
+    import contextlib
+    import sys
+
+    if os.name == 'nt':
+        try:
+            import msvcrt                                  # part of every Python on Windows
+        except ImportError:
+            return None
+
+        def getch():
+            ch = msvcrt.getwch()
+            if ch in ('\x00', '\xe0'):                     # a special key: its code follows
+                msvcrt.getwch()
+                return '\x00'
+            return ch
+
+        return getch, contextlib.nullcontext()
+
+    try:
+        import select
+        import termios                                     # part of every Python on Linux and macOS
+        import tty
+    except ImportError:                                    # a Python built without them: no masked reading
+        return None
+
+    fd = sys.stdin.fileno()
+
+    @contextlib.contextmanager
+    def cbreak():
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            yield
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def pending(seconds):
+        return bool(select.select([fd], [], [], seconds)[0])
+
+    def getch():
+        first = os.read(fd, 1)
+        if first == b'':
+            return ''
+        b = first[0]
+        more = 0 if b < 0x80 else 1 if b < 0xE0 else 2 if b < 0xF0 else 3
+        data = first + b''.join(os.read(fd, 1) for _ in range(more))
+        ch = data.decode('utf-8', 'replace')
+        if ch == '\x1b' and pending(0.05):                 # an escape sequence: dropped as a whole
+            while pending(0.02):
+                os.read(fd, 1)
+            return '\x00'
+        return ch
+
+    return getch, cbreak()
+
 ############################################################
 def no_window_flags():
     """
