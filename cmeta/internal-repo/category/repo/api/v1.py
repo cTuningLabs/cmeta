@@ -6,6 +6,7 @@ cMeta author and developer: (C) 2025-2026 Grigori Fursin
 See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -65,7 +66,7 @@ class Category(InitCategory):
         hide: bool = False,  # If True, hide sensitive command output.
         skip_parent_dir_in_zip: bool = False,  # If True, skip parent directory in zip extraction.
         zip_file: str = None,  # Path to a local zip file to import.
-        identity: str = None,  # The git identity of the clone: a secret alias (cx secret, kind git or ssh), <category>::<artifact>/<key file>, or a key file path.
+        identity: str = None,  # The identity of the clone: a secret alias (cx secret: kind git or ssh for a git clone, a token for hf://), <category>::<artifact>/<key or token file>, or the file's path.
     ):
         """
             Clone or pull CM repository.
@@ -102,6 +103,12 @@ class Category(InitCategory):
                                     identity's name is kept in the repository's registration on this machine
                                     (never in the shared _cmr.yaml). On an existing clone the identity is
                                     (re)applied before the pull. Nothing of a key's content is printed or stored.
+                                    For a repository of the Hugging Face Hub (hf://<owner>/<name>, or a clone
+                                    pulled from it), the identity is where its access token comes from: the alias
+                                    of a token secret (its value opened by cx secret call at the fetch, never
+                                    returned), <category>::<artifact>/<token file>, or a token file; without it,
+                                    the token of this machine (HF_TOKEN, the hf login) when there is one. The
+                                    name is kept the same way and used by every later pull of that clone.
 
             Returns:
               (CM return dict):
@@ -134,11 +141,10 @@ class Category(InitCategory):
         else:
             depth = None
 
-        # --identity: resolved before anything is cloned or pulled, so that a wrong name leaves nothing behind
-        r = self._git_identity(identity)
-        if r['return']>0: return r
-
-        ident_pairs, ident_env, ident_name = r['pairs'], r['env'], r['name']
+        # --identity: resolved below, once the repository is known - as a git identity, or as the token of a
+        # repository of the Hugging Face Hub - and before anything is cloned or pulled, so that a wrong name
+        # leaves nothing behind
+        ident_pairs, ident_env, ident_name, ident_hf = [], {}, '', None
 
         repos_path = self.cm.repos_path
         repos_config_path = self.cm.repos_config_path
@@ -180,7 +186,7 @@ class Category(InitCategory):
 
                 url += '.zip'
 
-            elif arg1 is not None and not (arg1.startswith('https://') or arg1.startswith('git@')):
+            elif arg1 is not None and not (arg1.startswith('https://') or arg1.startswith('git@') or arg1.startswith('hf://')):
                 repo_name = arg1
             else:
                 url = arg1
@@ -265,6 +271,26 @@ class Category(InitCategory):
                 repo_artifacts = r.get('artifacts',[])
 
         ######################################################################################################################
+        # --identity, resolved before anything is cloned or pulled (a wrong name leaves nothing behind): the token
+        # of a repository of the Hugging Face Hub (an hf:// URL, or a clone pulled from the Hub), else a git identity
+        if identity is not None and str(identity).strip() != '':
+            hub = bool(url and utils.net.hf_repo(url))
+            if not hub and len(repo_artifacts) == 1:
+                a = repo_artifacts[0]
+                hub = (a.get('cmeta') or {}).get('method') == 'hf' or \
+                      os.path.isfile(os.path.join(a.get('path', ''), utils.net.HF_RECORD))
+            if hub:
+                r = self._hf_identity(identity)
+                if r['return']>0: return r
+
+                ident_hf, ident_name = r['source'], r['name']
+            else:
+                r = self._git_identity(identity)
+                if r['return']>0: return r
+
+                ident_pairs, ident_env, ident_name = r['pairs'], r['env'], r['name']
+
+        ######################################################################################################################
         if len(repo_artifacts)>0:
             # If some rep   os are already registered
             # try to update them (pull/checkout/branch if git)
@@ -273,7 +299,7 @@ class Category(InitCategory):
                 return {'return':1, 'error':f'repository {arg1} already exists'}
 
             # --identity belongs to ONE repository: never written into every clone a pull-all or a pattern finds
-            if ident_pairs and len(repo_artifacts) > 1:
+            if ident_name and len(repo_artifacts) > 1:
                 return {'return':1, 'error':f'--identity is given to one repository: name it ({len(repo_artifacts)} match'
                                             f'{"" if repo_name else " a pull of every repository"})'}
 
@@ -306,6 +332,8 @@ class Category(InitCategory):
                 repo_uid= repo_cmeta_ref_parts['artifact_uid']
 
                 xmethod = repo_meta.get('method')
+                if not xmethod and os.path.isfile(os.path.join(repo_path, utils.net.HF_RECORD)):
+                    xmethod = 'hf'              # pulled from the Hugging Face Hub (the index tells git clones alone)
 
                 if repo_path not in repos_paths:
                     caller = ctx.get('origin',{}).get('cli',{}).get('caller','')
@@ -315,6 +343,58 @@ class Category(InitCategory):
                     if con:
                         print ('='*80)
                         print (f'{repo_alias} ({repo_uid}): {repo_path}')
+
+                    if xmethod == 'hf':
+                        # A repository of the Hugging Face Hub: brought up to date by its API from the record the
+                        # first pull left in the folder (.cmeta-hf.json); --checkout takes another revision
+                        tried += 1
+                        hf_record = {}
+                        try:
+                            with open(os.path.join(repo_path, utils.net.HF_RECORD), encoding = 'utf-8') as f:
+                                hf_record = json.load(f)
+                        except (OSError, ValueError):
+                            pass
+                        if not hf_record.get('repo'):
+                            failed.append({'repo':repo_alias, 'path':repo_path, 'error':f'no {utils.net.HF_RECORD} in the folder: which repository of the Hub it came from is not known - pull it again with its hf:// name into a new folder'})
+                            continue
+                        if status:
+                            print ('')
+                            print (f'Hugging Face: {hf_record.get("type", "dataset")} {hf_record["repo"]}, revision {hf_record.get("revision", "main")}, commit {str(hf_record.get("commit") or "")[:8]}, synced {hf_record.get("synced", "?")}')
+                            if repo_meta.get('identity'):
+                                print (f'Identity: {repo_meta["identity"]} (given with cx repo pull --identity)')
+                            continue
+
+                        # --identity on an existing clone: remembered in its registration, used by this pull and the
+                        # next ones; without it, the identity the clone was given before
+                        source = ident_hf
+                        if ident_name:
+                            r = self._record_identity(repos_config_path, repo_path, ident_name)
+                            if r['return']>0: return r
+                        elif repo_meta.get('identity'):
+                            r = self._hf_identity(repo_meta['identity'])
+                            if r['return']>0:
+                                failed.append({'repo':repo_alias, 'path':repo_path, 'error':r.get('error', '')})
+                                continue
+                            source = r['source']
+
+                        r = self._hf_pull(ctx, source, hf_record['repo'], hf_record.get('type', 'dataset'),
+                                          checkout or hf_record.get('revision', 'main'), repo_path, con)
+                        if r['return'] > 0:
+                            failed.append({'repo':repo_alias, 'path':repo_path, 'error':r.get('error', '')})
+                            continue
+                        if r['downloaded'] == 0 and r['removed'] == 0:
+                            nothing_to_pull.append({'repo':repo_alias, 'path':repo_path, 'why':'up to date'})
+                        if con:
+                            print (f'cMeta info: {hf_record["repo"]}: {r["files"]} files, {r["downloaded"]} downloaded, {r["removed"]} removed (commit {str(r.get("commit") or "")[:8]})')
+                        if r['removed'] > 0:
+                            # An artifact the repository dropped keeps its record in an incremental index: the
+                            # repository is indexed again from its folder
+                            rr = self.cm.access({'category':'repo', 'command':'reindex', 'arg1':repo_path, 'con':False})
+                            if rr['return']>0: return rr
+                        else:
+                            add_repo_paths_to_index.append(repo_path)
+                            reindex = True
+                        continue
 
                     if xmethod == 'git':
 
@@ -486,6 +566,8 @@ class Category(InitCategory):
             if not method and url:
                 if url.endswith('.zip'):
                     method = 'zip'
+                elif utils.net.hf_repo(url):
+                    method = 'hf'               # a repository of the Hugging Face Hub, by its API (no git, no git-lfs)
                 else:
                     method = 'git'
 
@@ -575,6 +657,19 @@ class Category(InitCategory):
                     r = utils.files.unzip(full_path_to_zip_file, path=path, overwrite=False, clean=True, fail_on_error = self.fail_on_error)
                     if r['return'] >0: return r
 
+                elif method == 'hf':
+                    # A repository of the Hugging Face Hub: its files at the revision (--checkout) by the Hub's API,
+                    # each checked against the digest the Hub names; the record .cmeta-hf.json in the folder keeps
+                    # what was fetched, so that the next pull takes the changes alone
+                    hf = utils.net.hf_repo(url)
+                    r = self._hf_pull(ctx, ident_hf, hf['id'], hf['type'], checkout or hf['revision'], path, con)
+                    if r['return'] > 0:
+                        self.cm.utils.files.is_dir_empty(path, clean=True)
+                        return r
+                    if con:
+                        print (f'cMeta info: {hf["id"]} ({hf["type"]}, {checkout or hf["revision"]}, commit {str(r.get("commit") or "")[:8]}): '
+                               f'{r["files"]} files, {r["downloaded"]} downloaded ({r["bytes"] / 1e6:.1f} MB) in {r["seconds"]:.0f} s')
+
                 elif method == 'local':
                     if con:
                         print ('')
@@ -603,7 +698,7 @@ class Category(InitCategory):
                 repo_meta_to_index = {'method':method}
 
                 # the identity's name travels with the registration of this machine, never with _cmr.yaml
-                if ident_name and method == 'git':
+                if ident_name and method in ('git', 'hf'):
                     repo_meta_to_index['identity'] = ident_name
 
                 if os.path.isfile(repo_meta_desc_path):
@@ -831,6 +926,116 @@ class Category(InitCategory):
         import re
 
         return re.fullmatch(r'[0-9a-fA-F]{7,40}', ref or '') is not None
+
+
+    ###############################################################################################
+    def _hf_identity(
+        self,
+        identity: str,  # A secret alias, <category>::<artifact>/<token file>, or a token file path.
+    ):
+        """
+            Resolve the identity given with --identity for a repository of the Hugging Face Hub: where its access
+            token comes from. Three forms, as for a git identity: the alias of a token secret (the secret category
+            of cmeta-aops, when it is plugged: the value is opened by "cx secret call" at the fetch, inside that
+            call, and never kept or returned), a cMeta reference <category>::<artifact>/<file> to a file that holds
+            the token inside an artifact, or a path to such a file (~ and environment variables expanded; its first
+            non-empty line is the token). Resolved before anything is fetched, so that a wrong name leaves nothing
+            behind; the token itself is read when the repository is fetched.
+
+            Args:
+                identity (str): The identity as given (None or '' = none).
+
+            Returns:
+                dict: return (int), error (str), source (dict: {'file': path} or {'secret': alias}, None for
+                    no identity), name (str).
+        """
+
+        identity = str(identity or '').strip()
+
+        if identity == '':
+            return {'return':0, 'source':None, 'name':''}
+
+        if '::' in identity:
+            # A token file inside an artifact: <category>::<artifact>/<file>
+            i = identity.find('::')
+            j = identity.find('/', i)
+            if j < 0:
+                return {'return':1, 'error':f'--identity "{identity}" must be <category>::<artifact>/<token file in the artifact>, a secret alias or a token file'}
+
+            cref, rel = identity[:j], identity[j+1:]
+
+            r = self.cm.access({'category':'utils', 'command':'find_by_cid', 'arg1':cref, 'con':False})
+            arts = r.get('artifacts', []) if r.get('return', 1) == 0 else []
+            if len(arts) != 1:
+                return {'return':1, 'error':f'--identity "{identity}": the artifact "{cref}" ' +
+                                            ('is not on this machine' if len(arts) == 0 else f'resolves to {len(arts)} artifacts')}
+
+            token_path = os.path.join(arts[0]['path'], *rel.split('/'))
+            if not os.path.isfile(token_path):
+                return {'return':1, 'error':f'--identity "{identity}": the token file {token_path} does not exist'}
+
+            return {'return':0, 'source':{'file':token_path}, 'name':identity}
+
+        token_path = os.path.expanduser(os.path.expandvars(identity))
+
+        if os.path.isfile(token_path):
+            # A token file
+            return {'return':0, 'source':{'file':token_path}, 'name':identity}
+
+        # The alias of a token secret (cmeta-aops): it must be there - its value is opened at the fetch
+        r = self.cm.access({'category':'secret', 'command':'find', 'arg1':identity, 'con':False})
+        arts = r.get('artifacts', []) if r.get('return', 1) == 0 else []
+        if len(arts) == 0:
+            why = str(r.get('error', '') or '')
+            if 'category "secret" not found' in why:
+                why = ('a secret alias needs the secret category of cMeta AOps: cx repo pull cmeta-aops; a token file '
+                       'or <category>::<artifact>/<token file> works without it')
+            return {'return':1, 'error':f'--identity "{identity}" is neither a token file nor a secret of that name' + (f' ({why})' if why else '')}
+        if len(arts) > 1:
+            return {'return':1, 'error':f'--identity "{identity}" matches {len(arts)} secrets: name one'}
+
+        return {'return':0, 'source':{'secret':identity}, 'name':identity}
+
+
+    ###############################################################################################
+    def _hf_pull(
+        self,
+        ctx: dict,  # cMeta context.
+        source: dict,  # Where the token comes from ({'file': path} or {'secret': alias}), or None.
+        repo_id: str,  # The repository of the Hub (<owner>/<name>).
+        repo_type: str,  # dataset, model or space.
+        revision: str,  # The branch, tag or commit.
+        folder: str,  # The folder of the clone.
+        con: bool = False,  # If True, print the progress.
+    ):
+        """
+            Bring a folder in step with a repository of the Hugging Face Hub (utils.net.hf_sync) with the token
+            of the identity: read from its token file, or opened by the secret category - "cx secret call" runs
+            the fetch inside the call that holds the value, which is never returned - and, without an identity,
+            the token of this machine (HF_TOKEN, the hf login), if any.
+
+            Returns:
+                dict: what hf_sync returns (return, error, downloaded, removed, files, commit, bytes, seconds).
+        """
+
+        def sync(token):
+            return utils.net.hf_sync(repo_id, repo_type, revision, folder, token = token, con = con)
+
+        if not source:
+            return sync(utils.net.hf_token())
+
+        if source.get('file'):
+            try:
+                with open(source['file'], encoding = 'utf-8') as f:
+                    token = next((line.strip() for line in f if line.strip()), '')
+            except OSError as e:
+                return {'return':1, 'error':f'the token file {source["file"]} cannot be read: {e}'}
+            if token == '':
+                return {'return':1, 'error':f'the token file {source["file"]} is empty'}
+            return sync(token)
+
+        return self.cm.access({'category':'secret', 'command':'call', 'arg1':source['secret'], 'func':sync,
+                               'con':con, 'quiet':ctx.get('control', {}).get('quiet', False)})
 
 
     ###############################################################################################
@@ -1371,6 +1576,11 @@ class Category(InitCategory):
         """
 
         url = arg1
+
+        # A repository of the Hugging Face Hub: hf-<owner>@<name>, as the aops datasets that point at the Hub are named
+        hf = utils.net.hf_repo(url)
+        if hf:
+            return {'return': 0, 'alias': 'hf-' + hf['id'].replace('/', '@')}
 
         # Get alias from URL
         alias = url

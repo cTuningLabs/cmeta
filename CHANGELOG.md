@@ -2,6 +2,23 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.43.0
+- **`cx repo pull hf://<owner>/<name>`: a cMeta repository kept on the Hugging Face Hub, pulled by its API.** With
+  the standard library alone - no git, no git-lfs, no `hf` CLI, no package: the files of the revision
+  (`hf://<owner>/<name>@<rev>`, `hf://models/...`, `hf://spaces/...`, or the page's address) fetched in parallel and
+  each checked against the digest the Hub names, into `repos/hf-<owner>@<name>`; `.cmeta-hf.json` in the folder
+  records what was fetched, so that `cx repo pull <alias>` takes the changes alone (what the repository dropped is
+  removed - and the repository indexed again, so that a dropped artifact leaves the index -, what was added locally
+  stays); `cx repo status` names the repository, revision, commit and the sync. A public repository needs no token;
+  a private or gated one takes the machine's (`HF_TOKEN`, the file of `hf auth login`) or, better, `--identity`: the
+  alias of a token secret (cMeta AOps: its value is opened inside `cx secret call` at the fetch and never returned or
+  stored), `<category>::<artifact>/<token file>`, or a token file - kept in the clone's registration and used by
+  every later pull, as the git identity of 0.42.0 (`cmeta.utils.net.hf_*`; 5 + 4 tests).
+- **A masked prompt for passwords and keys: `cmeta.utils.sys.read_hidden`.** A `*` per character typed, Backspace
+  takes one back, Esc (or Ctrl-U) starts over, Enter ends; with `msvcrt` on Windows and `termios` elsewhere - both
+  modules of every CPython on their platform, no dependency - and `getpass`'s plain hidden prompt where neither is
+  there or the input is not a terminal. `cx utils hash_password` asks with it; the `secret` category of cMeta AOps
+  too (6 tests).
 ## 0.42.0
 - **`cx repo pull` fails at the end with the repositories it could not update.** Every repository is still tried -
   a failure never stops the others -, and when one could not be updated (local changes in the way, a conflict, a

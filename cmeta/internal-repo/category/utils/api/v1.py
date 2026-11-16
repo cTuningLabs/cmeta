@@ -269,7 +269,6 @@ class Category(InitCategory):
                 Exception: Propagated runtime errors, if any.
         """
 
-        import getpass
         import hashlib
 
         self.logger.debug("running utils.hash_password")
@@ -281,8 +280,9 @@ class Category(InitCategory):
 
         if not from_cli:
             try:
-                password = getpass.getpass('Password: ')
-                again = getpass.getpass('Repeat: ')
+                # Typed or pasted with a mask for every character (Backspace, Escape to start again)
+                password = self.cm.utils.sys.read_hidden('Password: ')
+                again = self.cm.utils.sys.read_hidden('Repeat: ')
             except (EOFError, KeyboardInterrupt):
                 return self.cm.error('no password was given')
 
