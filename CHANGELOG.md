@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV
+## 0.43.0
 - **`cx repo pull hf://<owner>/<name>`: a cMeta repository kept on the Hugging Face Hub, pulled by its API.** With
   the standard library alone - no git, no git-lfs, no `hf` CLI, no package: the files of the revision
   (`hf://<owner>/<name>@<rev>`, `hf://models/...`, `hf://spaces/...`, or the page's address) fetched in parallel and
