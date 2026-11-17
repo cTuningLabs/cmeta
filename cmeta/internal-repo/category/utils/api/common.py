@@ -647,6 +647,117 @@ def _extract_cid_and_path(
 
     return {'cid': head + sep + artifact.strip(), 'sub_path': sub_path}
 
+###################################################################################################
+# A cRef written exactly, with the path inside its artifact after it (find_by_cid, alias cref, 2026-11-16): the cRef
+# alone, {{{cRef}}} as `cx info` prints it, or either followed by "/<path>" (or "\<path>"). Nothing is guessed - no
+# text around it, no part of the path dropped; smart_find_by_cid (smart_cref) reads those. A category or an artifact
+# name never holds "/" or "\" (folder names: names.is_valid_cmeta_alias), so the first of them ends the cRef.
+def _split_exact_cref_path(
+    text: str,  # The argument of find_by_cid (cx utils cref).
+):
+    """
+    _split_exact_cref_path function.
+
+    Splits an exact cRef from the path written after it: "fgg.person::X,<UID>/EMails/a.md" and
+    "{{{fgg.person::X,<UID>}}}/EMails/a.md" both give the cRef and "EMails/a.md"; a cRef alone gives no
+    path; "<cRef>/" alone, the artifact's own folder.
+
+    Args:
+        text (str): The argument of find_by_cid (cx utils cref).
+
+    Returns:
+        dict: {'cid', 'sub_path'} (sub_path None without a path, '' for a "/" alone after the cRef), or
+              {'error'} for what is not exact: text around a {{{cRef}}}, a path inside its braces, braces
+              left open or empty, a path of the file system in the place of a cRef.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    import re
+
+    s = text.strip()
+
+    if s.startswith('{{{'):
+        m = re.match(r'\{\{\{([^{}]*)\}\}\}(.*)$', s, re.S)
+        if m is None:
+            return {'error': '"' + s + '" opens {{{ without closing it with }}}'}
+
+        cid, after = m.group(1).strip(), m.group(2)
+
+        if cid == '':
+            return {'error': 'no cRef inside {{{}}}'}
+
+        if re.search(r'[\\/]', cid):
+            return {'error': 'write the path after the braces, {{{<cRef>}}}/<path>, not inside them: "' + s + '"'}
+
+        if after == '':
+            return {'cid': cid, 'sub_path': None}
+
+        if after[0] in '/\\':
+            return {'cid': cid, 'sub_path': after[1:]}
+
+        return {'error': 'only "/<path>" may follow {{{<cRef>}}}, not "' + after.strip() + '" - cx utils smart_cref '
+                         'reads a cRef inside other text'}
+
+    # A path of the file system is not a cRef: D:\..., D:/..., \\server\..., /..., ~/...
+    if re.match(r'[A-Za-z]:[\\/]', s) or s[:1] in ('/', '\\') or s[:2] in ('~/', '~\\'):
+        return {'error': '"' + s + '" is a path of the file system, not a cRef - cx utils smart_cref takes a path too'}
+
+    m = re.search(r'[\\/]', s)
+    if m is None:
+        return {'cid': s, 'sub_path': None}
+
+    return {'cid': s[:m.start()], 'sub_path': s[m.end():]}
+
+###################################################################################################
+def _exact_path_in_artifact(
+    root: str,  # The folder of the artifact.
+    sub_path: str,  # The path after the cRef, as _split_exact_cref_path gives it.
+):
+    """
+    _exact_path_in_artifact function.
+
+    The file or folder that sub_path names inside the artifact folder root, exactly as written: "/" and "\"
+    both separate names, empty and "." names are skipped, ".." and anything else that would lead out of
+    the artifact (another drive) is refused. Nothing is guessed: a name that does not exist is not found.
+
+    Args:
+        root (str): The folder of the artifact.
+        sub_path (str): The path after the cRef, as _split_exact_cref_path gives it.
+
+    Returns:
+        dict: {'path': the full path, or None when it does not exist, 'shown': the path with "/"}, or {'error'}.
+
+    Raises:
+        Exception: Propagated runtime errors, if any.
+    """
+    import re
+
+    names_in_path = [n for n in re.split(r'[\\/]+', sub_path) if n not in ('', '.')]
+    shown = '/'.join(names_in_path)
+
+    if '..' in names_in_path:
+        return {'error': 'the path after the cRef may not leave its artifact: "' + sub_path + '"'}
+
+    # On Windows a name with ":" is a drive ("C:", which os.path.join would start a new path with) or a stream,
+    # never a file or a folder
+    if os.name == 'nt' and any(':' in n for n in names_in_path):
+        return {'error': 'a name with ":" is not a file or folder on Windows: "' + sub_path + '"'}
+
+    base = os.path.abspath(root)
+    path = os.path.normpath(os.path.join(base, *names_in_path))
+
+    # A name with a drive ("C:") would start another path on Windows
+    try:
+        inside = os.path.normcase(os.path.commonpath([base, os.path.abspath(path)])) == os.path.normcase(base)
+    except ValueError:
+        inside = False
+
+    if not inside:
+        return {'error': 'the path after the cRef may not leave its artifact: "' + sub_path + '"'}
+
+    return {'path': path if os.path.exists(path) else None, 'shown': shown}
+
 ############################################################
 def select_artifact_(
     self,

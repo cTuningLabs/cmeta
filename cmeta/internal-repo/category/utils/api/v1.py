@@ -479,7 +479,7 @@ class Category(InitCategory):
     def find_by_cid_(
         self,
         ctx,  # cMeta context.
-        arg1 = None,  # Standard CID.
+        arg1 = None,  # A cRef (wildcards allowed) or {{{cRef}}}, either with an optional /<path> inside the artifact.
         tags = None,  # Comma-separated string or iterable of tags to match ("-tag" excludes).
         far = False,  # If True, open FAR manager in found artifact path.
         web = False,  # If True, decode web-style `cmeta:///?` CID input.
@@ -499,9 +499,18 @@ class Category(InitCategory):
         """
             Find artifacts by standard CID
 
+            The cRef is read exactly (alias cref): <category>::<artifact> with wildcards, a bare name
+            (any category), or {{{cRef}}} as `cx info` prints it - each optionally followed by "/<path>"
+            inside the artifact (a backslash works as well): fgg.person::X,<UID>/EMails/a.md,
+            {{{cRef}}}/!AI/memory.
+            The path must exist as written in an artifact found; the answer is then that path. Nothing
+            is guessed: text around the cRef is refused - smart_find_by_cid (smart_cref) reads a cRef
+            inside other text.
+
             Args:
                 ctx (dict): cMeta context.
-                arg1 (str): Standard CID.
+                arg1 (str): A cRef (wildcards allowed) or {{{cRef}}}, either optionally followed by
+                            /<path> inside the artifact.
                 tags (str): Comma-separated string or iterable of tags to match ("-tag" excludes).
                 far (bool): If True, open FAR manager in found artifact path.
                 web (bool): If True, decode web-style `cmeta:///?` CID input.
@@ -531,6 +540,10 @@ class Category(InitCategory):
                 dict: Operation result. When search_text or search_file_names was
                       given, "files" holds the full paths of every matching file
                       and those are printed instead of the artifact directories.
+                      With a path after the cRef, "path" is the first place found,
+                      "paths" every one (one per artifact that has it, the same
+                      order as "artifacts", which keeps only those), "sub_path" the
+                      path as read (with "/"); they are printed instead.
             Raises:
                 Exception: Propagated runtime errors, if any.
         """
@@ -552,9 +565,26 @@ class Category(InitCategory):
         if arg1 is None:
             arg1 = '*'
 
-        # a {{{cRef}}} as `cx info` prints it (and `cx utils cref` takes it)
-        if isinstance(arg1, str) and arg1.strip().startswith('{{{') and arg1.strip().endswith('}}}'):
-            arg1 = arg1.strip()[3:-3].strip()
+        # A cRef written exactly - alone, or {{{cRef}}} as `cx info` prints it - and the path inside its artifact that
+        # may follow it: <cRef>/<path>, {{{<cRef>}}}/<path> ("/" or "\", 2026-11-16). Nothing is guessed: text around
+        # the cRef is refused, and the path must exist as written (smart_find_by_cid reads cRefs in text)
+        sub_path = None
+
+        if isinstance(arg1, str):
+            exact = common._split_exact_cref_path(arg1)
+            if 'error' in exact:
+                return {'return':1, 'error':exact['error']}
+
+            arg1, sub_path = exact['cid'], exact['sub_path']
+
+            if sub_path is not None:
+                if '..' in re.split(r'[\\/]+', sub_path):
+                    return {'return':1, 'error':f'the path after the cRef may not leave its artifact: "{sub_path}"'}
+
+                # The path names the answer; a search inside files would name other files
+                for flag, value in (('search_text', search_text), ('search_file_names', search_file_names)):
+                    if value is not None and (len(value) > 0 if isinstance(value, (list, tuple)) else str(value).strip() != ''):
+                        return {'return':1, 'error':f'a path after the cRef and --{flag} do not go together'}
 
         if '::' not in arg1:
             arg1 = '*::' + arg1
@@ -700,20 +730,51 @@ class Category(InitCategory):
             r['artifacts'] = artifacts
             r['files'] = files
 
+        # The path after the cRef: in each artifact found that has it, exactly as written. The artifacts without it
+        # are left out of the answer, and none having it is "not found" (16), as a cRef that names nothing is
+        paths = []
+
+        if sub_path is not None:
+            having = []
+            shown = sub_path
+
+            for a in artifacts:
+                inside = common._exact_path_in_artifact(a['path'], sub_path)
+                if 'error' in inside:
+                    return {'return':1, 'error':inside['error']}
+
+                shown = inside['shown']
+
+                if inside['path'] is not None:
+                    having.append(a)
+                    paths.append(inside['path'])
+
+            if len(paths) == 0:
+                where = artifacts[0]['path'] if len(artifacts) == 1 else f'any of the {len(artifacts)} artifacts found'
+                return {'return':16, 'error':f'"{shown}" not found in {where}'}
+
+            artifacts = having
+
+            r['artifacts'] = artifacts
+            r['path'] = paths[0]
+            r['paths'] = paths
+            r['sub_path'] = shown
+
         # if no artifact found, "find" function will return error
         # we need to check >1 for ambiguity
         #
-        # Searching inside files answers with the files that matched; without
-        # a file search the artifact directories are still the answer
+        # A path after the cRef answers with that path in each artifact; searching inside files answers with the
+        # files that matched; otherwise the artifact directories are the answer
         if con:
-            for line in (files if len(files) > 0 else
+            for line in (paths if len(paths) > 0 else
+                         files if len(files) > 0 else
                          [a['path'] for a in artifacts]):
                 print (line)
 
-        path = artifacts[0]['path']
+        path = paths[0] if len(paths) > 0 else artifacts[0]['path']
 
         if far:
-            os.system(f'start far {path}')
+            os.system(f'start "" far "{path}"')
 
         return r
 

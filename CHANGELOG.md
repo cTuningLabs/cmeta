@@ -2,6 +2,18 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV
+- **`cx utils cref` takes the path inside the artifact after the cRef, exactly.** `<cRef>/<path>` and
+  `{{{<cRef>}}}/<path>` - the way memories, records and docs write a place; `\` as well as `/`, after a bare name
+  too - print that file or folder and return it in `path`, with `paths` holding one per artifact that has it (a cRef
+  with wildcards answers with the artifacts holding the path, in the same order). Nothing is guessed: the path must
+  exist as written (no part of it dropped, no extension added), `..`, another drive and a name with `:` on Windows
+  are refused, and so are text around a `{{{cRef}}}`, a path inside its braces and a path of the file system in the
+  place of a cRef - each with what to write instead; a path and `--search_text` / `--search_file_names` do not go
+  together. A cRef alone answers as before and every option goes through; `--far` opens a folder whose name holds a
+  space too. **`cx utils smart_cref`** is `smart_find_by_cid` under the same kind of name: the lenient reader of a
+  cRef inside a line of text (the longest existing part of a path, a path of the file system as it is).
+
 ## 0.43.0
 - **`cx repo pull hf://<owner>/<name>`: a cMeta repository kept on the Hugging Face Hub, pulled by its API.** With
   the standard library alone - no git, no git-lfs, no `hf` CLI, no package: the files of the revision

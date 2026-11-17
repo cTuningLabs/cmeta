@@ -633,12 +633,25 @@ It prints the path of each match (and returns them in `artifacts`). If you omit
 the argument entirely searches for `*`.
 
 `cx utils cref` is the same command under the name of what it takes — a cRef, as
-`cx info` prints it (`{{{<category>::<alias>,<UID>}}}` is accepted as it is):
+`cx info` prints it (`{{{<category>::<alias>,<UID>}}}` is accepted as it is). A
+path inside the artifact may follow the cRef, with or without the braces — the
+way memories, records and docs name a place (§6.1); `\` works as well as `/`.
+The answer is then that file or folder (`path`, and `paths` with one per
+artifact that has it):
 
 ```bash
 cx utils cref "cserver.browse"
 cx utils cref "{{{category::cserver.browse,<UID>}}}"
+cx utils cref "{{{category::cserver.browse,<UID>}}}/files/js/move.js"
+cx utils cref "category::cserver.browse/README.md"
 ```
+
+`cref` is exact: the path must exist as written (in each artifact a wildcard
+finds; those without it are left out of the answer), `..` and another drive are
+refused, and so is any text around the cRef. `cx utils smart_cref`
+(`smart_find_by_cid`) is the lenient one: it finds a cRef inside a line of
+text, takes the longest existing part of the path after it, and returns a path
+of the file system as it is.
 
 This is the tool for finding **related artifacts across categories** — the same
 alias or tag used by a task, a tool and a result, for instance — which the
@@ -652,7 +665,7 @@ per-category `find` cannot express.
 | `--ask` | Prompt for the CID interactively. |
 | `--far` | Open the first match in the FAR file manager (Windows). |
 
-`cx utils smart_find_by_cid` is the wrapped-CID variant, for pasting a cRef that
+`cx utils smart_find_by_cid` (alias `smart_cref`) is the wrapped-CID variant, for pasting a cRef that
 is embedded in surrounding text.
 
 Other frequently used `utils` commands (full list: `cx utils --help`):
@@ -662,7 +675,7 @@ Other frequently used `utils` commands (full list: `cx utils --help`):
 | `cx utils uid` / `uuid` | Generate a 16-hex cMeta UID / a UUID4. |
 | `cx utils yaml2json <file>` / `json2yaml` | Convert between YAML and JSON. |
 | `cx utils pickle2json <file>` (`pkl2json`) / `json2pickle` | Convert between pickle and JSON — handy for inspecting `index/*.pkl`. |
-| `cx utils find_by_cid <cid>` / `smart_find_by_cid` | Find artifacts by a full cRef / CID. |
+| `cx utils find_by_cid <cid>` (`cref`) / `smart_find_by_cid` (`smart_cref`) | Find artifacts by an exact cRef, with an optional `/<path>` inside / by a cRef inside text. |
 | `cx utils artifacts` | Analyse all artifacts across all categories. |
 | `cx utils copy_text_to_clipboard` / `copy_date_to_clipboard` | Clipboard helpers. |
 | `cx utils utf8sig_to_utf8 <file>` | Strip a UTF-8 BOM. |
@@ -709,12 +722,13 @@ by the relative path, not as one machine's absolute path:
 {{{<category>::<artifact alias>,<artifact UID>}}}/<relative path, forward slashes>
 
 {{{fgg.project::cMeta,5e1b787a2f2a4549}}}/cmeta/docs/using-cmeta.md
-{{{repo::fgg,ad5d4f15885b4bfb}}}/work/2026          # a repository root, or a folder of it that is no artifact
+{{{repo::fgg,ad5d4f15885b4bfb}}}/work               # a repository root, or a folder of it that is no artifact
 ```
 
 The braces stand for the artifact's folder on whichever machine reads the
-text: `cx utils find_by_cid <cRef>` resolves them (one substitution), and a
-viewer can turn them into links. Keep the artifact's `alias,UID` (a rename
+text: `cx utils cref "{{{<cRef>}}}/<path>"` prints the full path there (the
+path must exist; `cx utils cref <cRef>` alone, the folder), and a viewer can
+turn them into links. Keep the artifact's `alias,UID` (a rename
 keeps the UID). A path outside cMeta stays a full path that names its machine.
 Do not use the form inside a templated value of a `_desc.yaml` (`cmd`, `env`,
 ...): the engine's own `{{ }}` expansion would read `{{{x}}}` as a key `{x`.
