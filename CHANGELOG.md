@@ -2,6 +2,14 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV
+- **`cm.packages.get` finds a package whose module is not named as its distribution.** `python-dotenv` is imported
+  as `dotenv`: `get('python-dotenv')` failed the import, ran pip for nothing and answered "Installed ... but
+  cannot import it". Now, in `get`, `get_async` and the settings of `get_all`: `import_name=` names the module
+  outright, and without it an installed distribution's own record says what to import (`top_level.txt`, else its
+  files) - no pip run for what is installed, and the version comes from the distribution when the module carries
+  none (`Packages.import_names(name)` lists the modules). A name that imports as it is works as before.
+
 ## 0.44.0
 - **The sensitivity scope of a call: `clearance`, `allow_repos`, `write_repos` beside `hide_repos`.** For a server
   that lets people in - a site with users, an API, an agent's key - on top of everything as it was: without any of

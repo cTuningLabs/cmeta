@@ -95,12 +95,15 @@ class Packages:
     def get_version(
         self,
         module,  # Python module object.
+        name = None,  # The distribution the module came from, when its name differs from the module's (python-dotenv / dotenv).
     ):
         """
             Get version string from a Python module.
 
             Args:
                 module: Python module object.
+                name: The distribution's name, asked when neither the module nor a distribution of the module's
+                    own name says a version.
             Returns:
                 str or None: Version string if available, None otherwise.
 
@@ -109,11 +112,15 @@ class Packages:
         """
         if hasattr(module, "__version__"):
             return module.__version__
-        try:
-            from importlib.metadata import version
-            return version(module.__name__)
-        except Exception:
-            return None
+        from importlib.metadata import version
+        for candidate in (getattr(module, '__name__', None), name):
+            if not candidate:
+                continue
+            try:
+                return version(candidate)
+            except Exception:
+                pass
+        return None
 
     def poetry_to_pep440(
         self,
@@ -481,15 +488,64 @@ class Packages:
     # ------------------------------------------------------------------
     # IMPORT Helpers
     # ------------------------------------------------------------------
-    def try_import(
+    def import_names(
         self,
-        name,  # Module name to import.
+        name,  # Distribution name as pip knows it (python-dotenv).
     ):
         """
-            Try to import a Python module by name.
+            The modules an installed distribution provides, as its own record says: top_level.txt, else the
+            top-level packages and modules among its files (python-dotenv -> ['dotenv']). Empty when no
+            distribution of that name is installed.
 
             Args:
-                name: Module name to import.
+                name: Distribution name.
+            Returns:
+                list: Module names, the public ones first.
+        """
+        from importlib import metadata
+
+        try:
+            dist = metadata.distribution(name)
+        except Exception:
+            return []
+
+        names = []
+        try:
+            top = dist.read_text('top_level.txt')
+        except Exception:
+            top = None
+        for line in (top or '').splitlines():
+            if line.strip():
+                names.append(line.strip().replace('/', '.'))
+
+        if not names:
+            for f in dist.files or []:
+                parts = f.parts
+                if len(parts) >= 2 and parts[-1] == '__init__.py' and '.' not in parts[0] and parts[0] != '..':
+                    names.append(parts[0])
+                elif len(parts) == 1 and parts[0].endswith('.py'):
+                    names.append(parts[0][:-3])
+
+        seen = []
+        for n in names:
+            if n and n not in seen:
+                seen.append(n)
+
+        return [n for n in seen if not n.startswith('_')] + [n for n in seen if n.startswith('_')]
+
+    def try_import(
+        self,
+        name,  # Module name to import - or the name of a distribution (python-dotenv).
+        import_name = None,  # The module to import when it is not the name (dotenv).
+    ):
+        """
+            Try to import a Python module by name. A distribution's name that is not its module's (python-dotenv
+            is imported as dotenv) works too: with import_name, or - when the import by the name fails and a
+            distribution of that name is installed - by what its own record says it provides.
+
+            Args:
+                name: Module name to import, or a distribution's name.
+                import_name: The module's name, when it differs.
             Returns:
                 module or None: Module object if import succeeds, None if not found.
 
@@ -497,9 +553,20 @@ class Packages:
                 Exception: Propagated runtime errors, if any.
         """
         try:
-            return importlib.import_module(name)
+            return importlib.import_module(import_name or name)
         except ModuleNotFoundError:
-            return None
+            if import_name:
+                return None
+
+        for candidate in self.import_names(name):
+            if candidate == name:
+                continue
+            try:
+                return importlib.import_module(candidate)
+            except ModuleNotFoundError:
+                continue
+
+        return None
 
     # ------------------------------------------------------------------
     # Build cache key
@@ -549,6 +616,7 @@ class Packages:
         use_cache = True,  # If True, use cached results.
         allow_install = None,  # If True, allow package installation (overrides instance setting).
         con = False,  # If True, print console messages.
+        import_name = None,  # The module to import when it is not the package's name (python-dotenv: dotenv); found from the installed distribution when not given.
     ):
         """
             Get or install a Python package synchronously.
@@ -577,6 +645,8 @@ class Packages:
 
         try:
             key = self.build_cache_key(name, version, version_min, version_max, specifier, False)
+            if import_name:
+                key += f"|import={import_name}"
 
             if use_cache:
                 with self.cache_lock:
@@ -584,7 +654,7 @@ class Packages:
                         ### RETURN #############################################################
                         return {"return": 0, "package": self.cache[key]}
 
-            module = self.try_import(name)
+            module = self.try_import(name, import_name)
             installed_now = False
 
             if module is None:
@@ -594,12 +664,14 @@ class Packages:
                 # Build requirement string with version constraints
                 requirement = self.build_pip_requirement(name, version, version_min, version_max, specifier)
                 self.pip_install_sync(requirement, silent, install_args, timeout, con)
-                module = self.try_import(name)
+                importlib.invalidate_caches()
+                module = self.try_import(name, import_name)
                 if module is None:
-                    raise RuntimeError(f"Installed '{name}' but cannot import it.")
+                    raise RuntimeError(f"Installed '{name}' but cannot import it"
+                                       + (f" as '{import_name}'." if import_name else " (name its module with import_name)."))
                 installed_now = True
 
-            pkg_ver = self.get_version(module)
+            pkg_ver = self.get_version(module, name)
             if pkg_ver is None:
                 raise RuntimeError(f"Cannot determine version of '{name}'.")
 
@@ -648,6 +720,7 @@ class Packages:
         use_cache = True,  # If True, reuse cached values when available.
         allow_install = None,  # If True, allow automatic package installation.
         con = False,  # If True, print output to console.
+        import_name = None,  # The module to import when it is not the package's name (python-dotenv: dotenv); found from the installed distribution when not given.
     ):
         """
             Asynchronously resolve, optionally install, and validate a Python package.
@@ -679,6 +752,8 @@ class Packages:
 
         try:
             key = self.build_cache_key(name, version, version_min, version_max, specifier, True)
+            if import_name:
+                key += f"|import={import_name}"
 
             if use_cache:
                 with self.cache_lock:
@@ -686,7 +761,7 @@ class Packages:
                         ### RETURN #############################################################
                         return {"return": 0, "package": self.cache[key]}
 
-            module = await asyncio.to_thread(self.try_import, name)
+            module = await asyncio.to_thread(self.try_import, name, import_name)
             installed_now = False
 
             if module is None:
@@ -696,12 +771,14 @@ class Packages:
                 # Build requirement string with version constraints
                 requirement = self.build_pip_requirement(name, version, version_min, version_max, specifier)
                 await self.pip_install_async(requirement, silent, install_args, timeout, con)
-                module = await asyncio.to_thread(self.try_import, name)
+                importlib.invalidate_caches()
+                module = await asyncio.to_thread(self.try_import, name, import_name)
                 if module is None:
-                    raise RuntimeError(f"Installed '{name}' but cannot import it.")
+                    raise RuntimeError(f"Installed '{name}' but cannot import it"
+                                       + (f" as '{import_name}'." if import_name else " (name its module with import_name)."))
                 installed_now = True
 
-            pkg_ver = await asyncio.to_thread(self.get_version, module)
+            pkg_ver = await asyncio.to_thread(self.get_version, module, name)
             if pkg_ver is None:
                 raise RuntimeError(f"Cannot determine version of '{name}'.")
 
