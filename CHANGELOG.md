@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV
+## 0.44.1
 - **A repository's registry record is no longer a way around a scope (`cserver.browse`).** The record of a
   repository - an artifact of the category `repo` - has the whole repository as its folder. A request with a scope
   (`hide_repos`, a clearance) could name it (`repo::<alias>`) and, on a host that opens the file browser to its
