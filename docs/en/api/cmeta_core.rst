@@ -18,4 +18,6 @@ Classes
 Constants
 ---------
 
+.. autodata:: cmeta.core.SCOPE_KEYS
+
 .. autodata:: cmeta.core.control_params_desc

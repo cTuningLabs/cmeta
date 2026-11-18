@@ -21,6 +21,7 @@ Welcome to cMeta v0.44.0 documentation!
    guides/error-handling
    guides/async-and-concurrency
    guides/configuration
+   guides/sensitivity
    guides/cplatform
    guides/history
    guides/known-issues
