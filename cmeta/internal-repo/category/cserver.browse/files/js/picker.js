@@ -54,6 +54,8 @@
   function picker(form, opts) {
     if (!styled) { var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st); styled = true; }
     var inp = form.querySelector('input[type=text]'), btn = form.querySelector('button[type=submit]');
+    inp.setAttribute('enterkeyhint', 'enter');           // a phone's keyboard: an Enter key, not an arrow (2026-11-17)
+    inp.setAttribute('autocapitalize', 'none');
     var chips = form.querySelector('.cmp-chips'), list = form.querySelector('.cmp-list');
     if (!chips) { chips = h('span', 'cmp-chips'); form.insertBefore(chips, inp); }
     if (!list) { list = h('div', 'cmp-list'); list.hidden = true; list.setAttribute('role', 'listbox'); form.appendChild(list); }
@@ -97,10 +99,19 @@
         show();
       });
     }
-    inp.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(ask, 220); });
+    // a ";" typed on a phone's keyboard (2026-11-17: keydown names no key there) does what the key ";" does
+    inp.addEventListener('input', function () {
+      if (inp.value.indexOf(';') >= 0) {
+        var q0 = inp.value.replace(/;/g, ' ').trim();
+        inp.value = q0;
+        if (lit >= 0 && !list.hidden) { take(lit); return; }
+        if (q0.indexOf('::') > 0) { picked.push({value: q0, title: q0.replace(/,[0-9a-f]{16}(?=::|$)/gi, '')}); paint(); inp.value = ''; close(); return; }
+      }
+      clearTimeout(timer); timer = setTimeout(ask, 220);
+    });
     inp.addEventListener('keydown', function (e) {
-      var q = inp.value.trim();
-      if (e.key === ';' || (e.key === 'Enter' && ((lit >= 0 && !list.hidden) || q.indexOf('::') > 0))) {
+      var q = inp.value.trim(), enter = e.key === 'Enter' || e.keyCode === 13;
+      if (e.key === ';' || (enter && ((lit >= 0 && !list.hidden) || q.indexOf('::') > 0))) {
         e.preventDefault();
         if (lit >= 0 && !list.hidden) take(lit);
         else if (q.indexOf('::') > 0) { picked.push({value: q, title: q.replace(/,[0-9a-f]{16}(?=::|$)/gi, '')}); paint(); inp.value = ''; close(); }

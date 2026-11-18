@@ -120,4 +120,5 @@ The full rule is `AGENTS.md` §5.0; in short:
 - Skills in `.claude/skills/<name>/SKILL.md`: `add-plugin`, `add-cserver-plugin`
   (a `cserver.*` category that renders a page and runs on both the internal
   `cserver` app and cPlatform), `add-repo`, `use-cmeta-cli`,
-  `use-cmeta-python`, `release-cmeta`
+  `use-cmeta-python`, `release-cmeta`, `sensitivity-and-access` (labels, the scope of a call,
+  serving people through a door - `docs/sensitivity.md`)

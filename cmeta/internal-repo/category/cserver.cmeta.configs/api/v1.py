@@ -1594,6 +1594,16 @@ class Category(InitCategory):
         outside the scope of the request that asks for it (hide_repos: its cache artifact lives in the local
         repository); the scope is applied to what is shown."""
         repos = self.cm.repos
+        # an engine with sensitivity labels: the whole scope of the request is set aside (its clearance and its
+        # write scope too - the cache artifact is written), and put back
+        if hasattr(repos, 'suspend_scope'):
+            if not repos.scoped and not repos.write_scoped:
+                return self._scan_all(force, refresh)
+            saved = repos.suspend_scope()
+            try:
+                return self._scan_all(force, refresh)
+            finally:
+                repos.pop_scope(saved)
         if not getattr(repos, 'hidden_repos', ()) or not hasattr(repos, 'pop_hidden_repos'):
             return self._scan_all(force, refresh)
         saved = repos.push_hidden_repos(None)              # None: no change - what is hidden now, to put back
@@ -1830,7 +1840,9 @@ class Category(InitCategory):
         pats = _patterns(cfg.get('hide_repos'))
         allow = _patterns(only_repos)
         repos = self.cm.repos
-        scoped = bool(getattr(repos, 'hidden_repos', ()))
+        # hidden repositories, or a clearance (an engine with sensitivity labels)
+        scoped = getattr(repos, 'scoped', None)
+        scoped = bool(getattr(repos, 'hidden_repos', ())) if scoped is None else bool(scoped)
 
         def hidden(alias, uid):
             if allow and not (_matches_any(alias, allow) or (uid and uid.lower() in allow)):

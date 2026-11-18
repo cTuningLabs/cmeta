@@ -37,6 +37,7 @@ GUIDE_FILES = [
     "error-handling.md",
     "async-and-concurrency.md",
     "configuration.md",
+    "sensitivity.md",
     "cplatform.md",
     "history.md",
     "known-issues.md",

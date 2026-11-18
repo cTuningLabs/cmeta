@@ -25,3 +25,40 @@ configs:
         desc: yes = such a zip download does not check the TLS certificate of the server (a test server only)
         type: yes/no
         default: 'no'
+
+# What the commands of the repo category mean, for people: a page that builds command lines (the cMeta CLI builder)
+# and help read it; the engine never reads it to run a command. The options themselves are described where they are
+# declared: a comment at the end of each parameter of the command's function in api/v1.py.
+
+cli_help:
+  category:
+    title: Repositories
+    one: repository
+    desc: Get the repositories that hold programs, tools and tasks, and keep them up to date
+    order: [pull, list, status, reindex, plug, unplug, unzip, zip, create, delete, scope]
+    hide: [get_alias_from_url, init, move, space, clone, checkout, get, update, find]
+
+  pull:
+    title: Get or update
+    desc: Download a repository, or bring the ones you have up to date
+    arg1: A repository (ctuninglabs@cmeta-aops), an address (https://github.com/..., hf://owner/name) - or nothing, for all of them
+    main: [checkout, identity]
+    params:
+      checkout: {example: main, choice: true}      # a choice: it changes what is pulled; shown first
+      identity: {artifact: secret}
+
+  list:
+    title: List
+    desc: The repositories of this installation
+
+  status:
+    title: Status
+    desc: What changed in the repositories since their last commit
+
+  scope:
+    title: Who reads what
+    desc: The sensitivity label of each repository, and what a call with a clearance and named grants reads and writes
+
+  reindex:
+    title: Index again
+    desc: Read a repository again after its files changed by hand

@@ -2,6 +2,82 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.44.0
+- **The sensitivity scope of a call: `clearance`, `allow_repos`, `write_repos` beside `hide_repos`.** For a server
+  that lets people in - a site with users, an API, an agent's key - on top of everything as it was: without any of
+  these keys a call finds, reads and writes exactly as before, and no existing repository needs a change.
+  **Labels.** A repository declares its sensitivity label with `sensitivity:` in its `_cmr.yaml` - `public`,
+  `general`, `confidential`, `highly-confidential`, the four labels of Microsoft 365 (`internal`, `private`, `conf`,
+  `conf-high` and `restricted` are read as synonyms) - or `personal`: what belongs to a person, above the four. **A
+  repository without a label is public** (a server sets `default_sensitivity` for the unlabelled ones it serves:
+  `general` for Microsoft 365's default marking, `personal` to show none of them); a word the engine does not know, a
+  repository of secrets without a label and the machine's own `local` repository (its logs, caches and config
+  artifacts) are above every clearance too, the engine's `internal` repository is public (the categories live
+  there). An artifact may raise its own label with `sensitivity:` in its `_cmeta`, never lower it. A label edited in
+  `_cmr.yaml` counts at the next call, without a reindex.
+  **Reading.** A call with a `clearance` (a control key of `cm.access`, a flag of every command:
+  `--clearance=general`) does not find, list or read the repositories and the artifacts labelled above it; a
+  repository named in `allow_repos` is read whatever its label - a named grant, the way to another person's personal
+  repository -, though never an artifact that raised its own label above the clearance; `hide_repos` wins over both.
+  The clearance `personal` is the server owner's: it reads everything on the server (every person's personal
+  repositories included) - for the owner alone; a word that is no clearance is refused, never read as everything.
+  A nested call only narrows: a wider clearance, a grant or a lower default asked inside a cleared call count for
+  nothing.
+  **Writing.** `write_repos` names the only repositories the call may write into (`none` = no write at all), and a
+  repository hidden from the call is never written into: create, update, delete, move and copy are refused before
+  anything is touched. A connection is a write on both sides (`--connect` needs the other artifact's repository
+  too; `--ct` writes this side only), and under a clearance a link between labels is written on the higher side
+  only - the name of an artifact never lands in one labelled below it -, a move or a copy never lowers an artifact's
+  label, and a call with a write scope manages no repository (`cx repo pull`, `create`, `unzip`, `unplug`, `delete`).
+  **The machine's settings** are read and kept by the code that serves a call, whatever its scope: a call into the
+  `config` category that carries none of these keys itself (made by a category or a page, never the request a
+  server forwards for a person) runs with the scope set aside; `cm.repos.suspend_scope()` does the same for a
+  server's own bookkeeping.
+  **For a server.** `cmeta.repos.scope_for(record, default_sensitivity=...)` turns a person's record (`clearance`,
+  `repos: {alias: none | read | write}`) and the site's default label into those keys - what a page, an API or an
+  agent's key passes with every request it makes for that person; `cm.repos.scope_table(scope)` and **`cx repo
+  scope --clearance=... --allow_repos=... --write_repos=...`** say for every repository its label and whether such a
+  call reads it and writes into it, and why - for a page of users and their rights. `/browse` and the configs page
+  follow the clearance of their request; the page's saves, new artifacts, moves, renames, deletions and links ask
+  the write scope of the request beside its own grant (`browse_edit`), and its own bookkeeping in `local` (the
+  trash, the file index) is done with the scope set aside.
+  Measured on a home of 4,800 artifacts: no difference without a scope or with `hide_repos`; a clearance costs one
+  file status per repository per request (about 0.3 ms for 18 repositories).
+  The new guide **[Sensitivity and access: cMeta for organisations](docs/sensitivity.md)** says it from the
+  beginning: what to label, what a server keeps per person and passes per request, what a person gets, the rules of
+  writes and of organising repositories; the agent skill `.claude/skills/sensitivity-and-access` the same for AI
+  agents.
+- **Tags typed on a phone.** On Android the keyboard of a field of tags showed an arrow instead of Enter, and the arrow
+  only moved on, so a tag typed on the artifact page or in /browse's panel never got in. Those fields now ask the
+  keyboard for an Enter key (`enterkeyhint`), take an Enter a phone's keyboard reports by its key code alone, and keep
+  what a field holds when it is left; the fields of the lists (connections, AI uses) read a typed `;` from the text
+  itself (a phone's keyboard names no key for it).
+- **The home page reads tags written as one text.** A page category whose `_cmeta` holds its tags as one text with
+  commas (`tags: cserver,web,fgg`) had every letter taken for a tag on its card; the text is now split at its commas.
+- **The artifact page renames and deletes an artifact.** Beside "Move to ...", **Rename ...** gives an artifact a new
+  name - its folder renamed in one step where it is: the same UID, files and repository, so a cRef that carries the UID
+  keeps working; the dialog shows the new cRef as one types - and the page opens at its new cRef with Undo (the name it
+  had). **Delete ...** asks first, in a red dialog whose button stays grey until "Yes, I am sure" is switched on; the
+  artifact's folder then goes into the trash of this machine (`tmp::local:cserver-browse-trash`, or the `cache` category
+  where a home has no `tmp`), one folder per deletion with a note of where it was, and its record leaves the index; the
+  page is replaced by a note with Undo, which puts the folder back and indexes it again. The rules of "Move to": a
+  viewer who may write to the artifact (a browser on the server's own machine, `browse_edit`, or a host's grant), a
+  request from a page of this server, never keys or secrets, never the engine's own repository; a folder in use (a
+  shell, Far or an AI session in it) is refused with nothing changed, and so is another disk than the trash's, a
+  permanent artifact (`permanent: true`) and a name another artifact of the category has. The actions are /browse's
+  (`rename`, `delete_artifact`, `undelete_artifact`) and the dialogs are in its `files/js/move.js` (`cmetaRename`,
+  `cmetaDelete`) for the other pages to use.
+- **`cx utils cref` takes the path inside the artifact after the cRef, exactly.** `<cRef>/<path>` and
+  `{{{<cRef>}}}/<path>` - the way memories, records and docs write a place; `\` as well as `/`, after a bare name
+  too - print that file or folder and return it in `path`, with `paths` holding one per artifact that has it (a cRef
+  with wildcards answers with the artifacts holding the path, in the same order). Nothing is guessed: the path must
+  exist as written (no part of it dropped, no extension added), `..`, another drive and a name with `:` on Windows
+  are refused, and so are text around a `{{{cRef}}}`, a path inside its braces and a path of the file system in the
+  place of a cRef - each with what to write instead; a path and `--search_text` / `--search_file_names` do not go
+  together. A cRef alone answers as before and every option goes through; `--far` opens a folder whose name holds a
+  space too. **`cx utils smart_cref`** is `smart_find_by_cid` under the same kind of name: the lenient reader of a
+  cRef inside a line of text (the longest existing part of a path, a path of the file system as it is).
+
 ## 0.43.0
 - **`cx repo pull hf://<owner>/<name>`: a cMeta repository kept on the Hugging Face Hub, pulled by its API.** With
   the standard library alone - no git, no git-lfs, no `hf` CLI, no package: the files of the revision

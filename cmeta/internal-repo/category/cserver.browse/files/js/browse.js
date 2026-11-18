@@ -70,6 +70,26 @@
     }
     return e;
   }
+  // a box of the editors of tags (the hot tags, the tags of an artifact): Enter keeps what it holds, Esc leaves it
+  // (cancel: draws again). 2026-11-17, the user, on Android: "I don't see Enter on the keyboard but sign Right that is
+  // not pressing enter" - the phone's keyboard asked for an Enter key (enterkeyhint), keyCode 13 taken for one, and
+  // what the box holds kept when it is left (the arrow leaves it)
+  function tagBox(value, place, ok, cancel) {
+    var inp = h('input', {type: 'text', class: 'cbr-taginput', 'aria-label': place, spellcheck: 'false', placeholder: place,
+                          enterkeyhint: 'enter', autocapitalize: 'none', autocomplete: 'off'});
+    inp.value = value || '';
+    var done = false;
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done = true; cancel(); }
+      else if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); done = true; ok(inp.value); }
+    });
+    inp.addEventListener('blur', function () {
+      if (done || !inp.isConnected || inp.value.trim() === String(value || '').trim()) return;
+      done = true;
+      ok(inp.value);
+    });
+    return inp;
+  }
   function quoteIf(v) { return /[\s"]/.test(v) ? '"' + v.replace(/"/g, '') + '"' : v; }
 
   // A location written in a text as {{{<category>::<alias>,<UID>}}}/<path> (how memories, records and docs name a
@@ -912,13 +932,7 @@
         .finally(function () { hotBusy = false; renderFacets(); });
     }
     function box(value, place, ok) {
-      var inp = h('input', {type: 'text', class: 'cbr-taginput', 'aria-label': place, spellcheck: 'false', placeholder: place});
-      inp.value = value || '';
-      inp.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renderFacets(); }
-        else if (e.key === 'Enter') { e.preventDefault(); ok(inp.value); }
-      });
-      return inp;
+      return tagBox(value, place, ok, renderFacets);
     }
     function split(v) {
       var out = [];
@@ -1430,13 +1444,7 @@
       }).catch(function (er) { busy = false; msg.textContent = er.message; });
     }
     function box(value, place, ok) {
-      var inp = h('input', {type: 'text', class: 'cbr-taginput', 'aria-label': place, spellcheck: 'false', placeholder: place});
-      inp.value = value || '';
-      inp.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); draw(); }
-        else if (e.key === 'Enter') { e.preventDefault(); ok(inp.value); }
-      });
-      return inp;
+      return tagBox(value, place, ok, draw);
     }
     function draw() {
       tg.innerHTML = '';

@@ -24,6 +24,8 @@ from .version import __version__
 
 control_params_desc = config.params_desc + config.params_command2_desc + config.params_command_desc + config.params_init_desc
 
+from .repos import SCOPE_KEYS
+
 class CMeta:
     """A common meta system to manage and reuse common artifacts and their automations."""
     
@@ -365,6 +367,21 @@ class CMeta:
         return {'return':0}
 
     ###################################################################################################
+    def _config_call(
+        self,
+        request,  # The request of a call.
+    ):
+        """Whether a request is a call into the engine's config category (by its alias or its UID)."""
+        category = request.get('category') if isinstance(request, dict) else None
+        if not isinstance(category, str):
+            return False
+
+        alias, _, uid = category.partition(',')
+        alias, uid = alias.strip().lower(), uid.strip().lower()
+        config_uid = self.cfg['category_config_uid']
+
+        return uid == config_uid if uid else alias in ('config', config_uid)
+
     def access(
         self,
         request: Dict[str, Any],  # Dictionary containing the request data
@@ -373,14 +390,26 @@ class CMeta:
             Access common meta framework in a unified way
 
             Args:
-                request (Dict[str, Any]): Dictionary containing the request data. The control key `hide_repos`
-                    (aliases, UIDs or patterns of repositories, comma-separated or a list) narrows the scope of
-                    this call and of every call it makes: the artifacts of those repositories are not found,
-                    listed or read until the call returns - a server applies it per request, for what a
-                    signed-in person may not see. The repositories stay registered (the repo category lists
-                    them); only their contents are hidden. The scope is per call on this CMeta object: a
-                    process that serves several callers at once gives each its own CMeta (the workers of
-                    CMetaAsync have one each).
+                request (Dict[str, Any]): Dictionary containing the request data. The control keys of the scope
+                    narrow this call and every call it makes, until it returns - a server applies them per
+                    request, for what a signed-in person may see and do:
+                    `hide_repos` (aliases, UIDs or patterns of repositories, comma-separated or a list): the
+                    artifacts of those repositories are not found, listed or read (the repositories stay
+                    registered; only their contents are hidden);
+                    `clearance` (public, general, confidential, highly-confidential; personal - the server
+                    owner's - reads everything): the repositories labelled
+                    above it (sensitivity in their _cmr.yaml; none = public, or `default_sensitivity`) and the
+                    artifacts labelled above it themselves (sensitivity in their _cmeta) are hidden the same way -
+                    a nested call never widens it;
+                    `allow_repos`: repositories read whatever their label (a named grant);
+                    `write_repos`: the only repositories the call may write into (create, update, delete, move;
+                    'none' = no write at all) - a hidden repository is never written into.
+                    The scope applies to what a call asks for. The machine's settings are read and kept by the
+                    code that serves it: a call into the config category that carries none of these keys itself
+                    (made by the code of a category or of a page, never the request a server forwards for a
+                    person) runs with the scope set aside, where a clearance or a write scope holds.
+                    The scope is per call on this CMeta object: a process that serves several callers at once
+                    gives each its own CMeta (the workers of CMetaAsync have one each).
             Returns:
                 Dictionary with {"return": 0, ...} for success or {"return": >0, "error": "error text"} for errors
 
@@ -388,15 +417,35 @@ class CMeta:
                 Exception: Propagated runtime errors, if any.
         """
 
-        hide = request.get('hide_repos', None) if isinstance(request, dict) else None
-        if hide is None or hide == '' or hide == []:
+        scope = {}
+        if isinstance(request, dict):
+            for key in SCOPE_KEYS:
+                value = request.get(key, None)
+                if value is not None and value != '' and value != []:
+                    scope[key] = value
+
+        if not scope:
+            # The machine's settings under a clearance or a write scope: read (and a missing config artifact
+            # made) by the code that serves the call, whatever the scope of the call
+            repos = self.repos
+            if (repos.clearance is not None or repos.write_scoped) and self._config_call(request):
+                saved = repos.suspend_scope()
+                try:
+                    return self._access(request)
+                finally:
+                    repos.pop_scope(saved)
+
             return self._access(request)
 
-        saved = self.repos.push_hidden_repos(hide)
+        try:
+            saved = self.repos.push_scope(**scope)
+        except ValueError as e:
+            return {'return':1, 'error':str(e)}
+
         try:
             return self._access(request)
         finally:
-            self.repos.pop_hidden_repos(saved)
+            self.repos.pop_scope(saved)
 
     ###################################################################################################
     def _note_host_memory(self):

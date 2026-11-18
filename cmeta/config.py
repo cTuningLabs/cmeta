@@ -121,6 +121,14 @@ params_command2_desc = [
   # every call it makes (a server applies it per request: what a signed-in person may not see). The repositories
   # stay registered and listed by "cx repo ls"; only their contents are hidden.
   {'key':'hide_repos', 'aliases':['hide-repos'], 'types':[str,list], 'desc': 'Hide the artifacts of these repositories (aliases, UIDs or patterns, comma-separated) from this call and every call it makes' },
+  # The sensitivity scope of one call (a server passes it per person): the labels a repository declares with
+  # "sensitivity:" in its _cmr.yaml and an artifact with "sensitivity:" in its _cmeta - public, general,
+  # confidential, highly-confidential (Microsoft 365's; internal, private, conf, conf-high, restricted are read too),
+  # personal (the server owner's: everything)
+  {'key':'clearance', 'desc': 'The highest sensitivity label this call reads (public, general, confidential, highly-confidential; personal = everything, the server owner\'s): the repositories and artifacts labelled above it are hidden from this call and every call it makes' },
+  {'key':'allow_repos', 'aliases':['allow-repos'], 'types':[str,list], 'desc': 'Repositories read whatever their sensitivity label (aliases, UIDs or patterns, comma-separated): a grant above the clearance' },
+  {'key':'write_repos', 'aliases':['write-repos'], 'types':[str,list], 'desc': 'The only repositories this call and every call it makes may write into (aliases, UIDs or patterns, comma-separated; none = no write at all)' },
+  {'key':'default_sensitivity', 'aliases':['default-sensitivity'], 'desc': 'The label of a repository that declares none, when a clearance applies (public by default: the labels are an extra an organisation adds repository by repository)' },
 ]
 
 params_command3_desc = [

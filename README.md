@@ -372,6 +372,7 @@ a summary of it.
 | [Error handling](docs/error-handling.md) | The return-dict contract, soft errors (code 16), raising errors, and debugging with `fail_on_error` in an IDE. |
 | [Async & concurrency](docs/async-and-concurrency.md) | `CMeta` vs `CMetaAsync`, parallel calls, FastAPI, and the safety guards for a shared `<CMETA_HOME>`. |
 | [Working with configs](docs/configuration.md) | The `config` category and how categories and apps read their settings. |
+| [Sensitivity and access](docs/sensitivity.md) | **cMeta for organisations**: labels on repositories, a record per person, the scope a server passes per request, `cx repo scope`. |
 | [cTuning.ai platform](docs/cplatform.md) | Connecting cMeta to the hosted platform API. |
 | [History & background](docs/history.md) | Lineage (CK → CM/CMX → cMeta), related publications, how to cite. |
 
@@ -530,7 +531,8 @@ Concise, portable **how-to-use-cMeta** references for reuse in downstream
 repos: [`use-cmeta-python`](.claude/skills/use-cmeta-python/SKILL.md) and
 [`use-cmeta-cli`](.claude/skills/use-cmeta-cli/SKILL.md) skills — cover
 `access()`, `ctx` (including AI-agent context threading), base commands,
-helpers under `cm.utils`, `cm.packages`, and CLI conventions.
+helpers under `cm.utils`, `cm.packages`, and CLI conventions. For servers that let people in:
+[`sensitivity-and-access`](.claude/skills/sensitivity-and-access/SKILL.md) - labels, the scope of a call, `cx repo scope`.
 
 ### 6. Resolving categories & artifacts
 

@@ -136,6 +136,8 @@ cx config set default --meta.cserver_url=http://my-laptop:8004   # where that se
 cx utils find_by_cid "cserver*::*"       # everything in categories starting with 'cserver'
 cx utils find_by_cid "*::*" --tags=demo  # ...and filter by tags
 cx utils cref "cserver*::*"              # the same command under the name of what it takes (a cRef)
+cx utils cref "{{{work::x,<UID>}}}/notes.md"   # a path inside the artifact, exactly as written (or work::x,<UID>/notes.md)
+cx utils smart_cref "see {{{work::x,<UID>}}}"  # smart_find_by_cid: a cRef found inside a line of text
 ```
 
 Prints the path of each match. Handy flags: `--tags=`, `--skip_non_indexed`

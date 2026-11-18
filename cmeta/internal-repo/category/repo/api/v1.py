@@ -141,6 +141,11 @@ class Category(InitCategory):
         else:
             depth = None
 
+        # The scope of this call: one that may write into some repositories only manages none (a status reads)
+        if not status:
+            why = self.cm.repos.managing_refused()
+            if why: return {'return':1, 'error':why}
+
         # --identity: resolved below, once the repository is known - as a git identity, or as the token of a
         # repository of the Hugging Face Hub - and before anything is cloned or pulled, so that a wrong name
         # leaves nothing behind
@@ -1396,6 +1401,10 @@ class Category(InitCategory):
         con = ctx.get('control',{}).get('con', False)
         verbose = ctx.get('control',{}).get('verbose', False)
 
+        # The scope of this call: one that may write into some repositories only unplugs or deletes none
+        why = self.cm.repos.managing_refused()
+        if why: return {'return':1, 'error':why}
+
         unplug = params.get('unplug', False)
 
         # Check if some repos exists
@@ -1779,6 +1788,10 @@ class Category(InitCategory):
 
         ctx = params.get('ctx', {}) or {}
         con = ctx.get('control', {}).get('con', False)
+
+        # The scope of this call: one that may write into some repositories only unzips none
+        why = self.cm.repos.managing_refused()
+        if why: return {'return':1, 'error':why}
 
         zip_file = params.get('arg1')
         if zip_file is None or zip_file == '':
@@ -2219,6 +2232,53 @@ class Category(InitCategory):
                 print (f'Reindexed the repository in "{unindexed_path}" (it was registered and not in the index)')
 
         return {'return':0, 'artifacts': repo_artifacts, 'paths': paths}
+
+    ###############################################################################################
+    def scope(
+        self,
+        params,  # Input parameters dictionary.
+    ):
+        """
+            What the scope of a call means for every repository: its sensitivity label, and whether a call with
+            this clearance and these named grants reads it and writes into it - cx repo scope --clearance=general
+            --allow_repos=... --write_repos=... shows what a person with such a record gets; without the keys:
+            the labels of the repositories. It names every repository - a server shows it to administrators.
+
+            Args:
+                params: Input parameters dictionary.
+            Returns:
+                dict: {'return': 0, 'repos': [...]} - one record per repository (Repos.scope_table).
+            Raises:
+                Exception: Propagated runtime errors, if any.
+        """
+
+        ctx = params['ctx']
+        con = ctx.get('control',{}).get('con', False)
+
+        repos = self.cm.repos
+        rows = repos.scope_table()
+
+        if con:
+            words = {'open': '', 'clearance': 'within the clearance', 'granted': 'above the clearance, granted by name',
+                     'label': 'above the clearance', 'denied': 'hidden by name'}
+            sources = {'label': '', 'secrets': ' (secrets)', 'local': ' (this machine)', 'engine': ' (the engine)',
+                       'default': ' (no label)'}
+
+            table = [('REPOSITORY', 'SENSITIVITY', 'READ', 'WRITE', '')]
+            for row in rows:
+                table.append((str(row['alias'] or row['uid']), row['sensitivity'] + sources.get(row['from'], ''),
+                              'yes' if row['read'] else '-', 'yes' if row['write'] else '-', words.get(row['why'], '')))
+
+            widths = [max(len(line[i]) for line in table) for i in range(4)]
+            for line in table:
+                print (('  '.join(line[i].ljust(widths[i]) for i in range(4)) + ('  ' + line[4] if line[4] else '')).rstrip())
+
+            if not repos.scoped and not repos.write_scoped:
+                print ('')
+                print ('No scope: every repository is read and written, as from a shell (add --clearance=..., '
+                       '--allow_repos=..., --write_repos=... to see what such a call gets).')
+
+        return {'return':0, 'repos': rows}
 
     ###############################################################################################
     def space(

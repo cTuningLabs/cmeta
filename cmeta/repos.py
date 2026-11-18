@@ -17,7 +17,181 @@ import fnmatch
 import time
 
 from . import utils
+
 from .utils.common import _error
+
+# The sensitivity labels of information: a repository declares its own with "sensitivity:" in its _cmr.yaml, an
+# artifact may raise its own with "sensitivity:" in its _cmeta (never lower it), and a door (a server's page, an API,
+# an agent's key) gives a call a clearance - the repositories and artifacts labelled above it are not found, listed
+# or read by that call and every call it makes.
+#
+# The clearances are the four labels of Microsoft 365, which most organisations use under these or similar words
+# (internal for general, restricted for highly-confidential). "personal" is above them: what belongs to a person,
+# read through a door by the people it is granted to by name (allow_repos) - and by the clearance personal, the
+# server owner's, which reads everything on the server (every person's personal repositories too: give it to the
+# owner alone). A word the engine does not know is ranked with personal ("if unsure, the more protective one": a
+# label a newer engine adds is never read by mistake by an older one), and so is a repository of secrets (secrets:
+# true) or the machine's local repository that declares no label.
+#
+# A repository without a label is PUBLIC: the labels are an extra layer an organisation adds, repository by
+# repository, and nothing changes for the repositories that carry none, whatever clearance a call has (a server sets
+# default_sensitivity: general when it wants Microsoft 365's default marking for its unlabelled repositories). A
+# person's record without a clearance reads general - a member of the organisation.
+SENSITIVITY_LEVELS = ('public', 'general', 'confidential', 'highly-confidential')
+SENSITIVITY_SYNONYMS = {'internal': 'general', 'private': 'general', 'conf': 'confidential',
+                        'conf-high': 'highly-confidential', 'conf_high': 'highly-confidential',
+                        'highly_confidential': 'highly-confidential', 'highly confidential': 'highly-confidential',
+                        'restricted': 'highly-confidential'}
+SENSITIVITY_PERSONAL = 'personal'
+SENSITIVITY_TOP = len(SENSITIVITY_LEVELS)          # the rank of personal and of any word that is no label
+SENSITIVITY_DEFAULT = 'public'
+CLEARANCE_DEFAULT = 'general'
+
+# The keys of a request that set the scope of a call (CMeta.access): hide_repos and the sensitivity scope
+SCOPE_KEYS = ('hide_repos', 'clearance', 'allow_repos', 'write_repos', 'default_sensitivity')
+
+
+def sensitivity_rank(
+    label,  # A label as written in a _cmr.yaml or a _cmeta, any case; None or '' for no label.
+):
+    """
+        The rank of a sensitivity label: 0 public, 1 general, 2 confidential, 3 highly-confidential (a synonym -
+        internal, private, conf, conf-high, restricted - is read too), 4 personal and any other word: above every
+        clearance.
+
+        Args:
+            label: the label as written.
+        Returns:
+            int or None: the rank; None for no label.
+    """
+    word = str(label or '').strip().lower()
+    if word == '':
+        return None
+
+    word = SENSITIVITY_SYNONYMS.get(word, word)
+
+    return SENSITIVITY_LEVELS.index(word) if word in SENSITIVITY_LEVELS else SENSITIVITY_TOP
+
+
+def sensitivity_label(
+    rank,  # A rank (sensitivity_rank).
+):
+    """The label of a rank, for a message: one of SENSITIVITY_LEVELS, or personal above them."""
+    return SENSITIVITY_LEVELS[rank] if 0 <= rank < SENSITIVITY_TOP else SENSITIVITY_PERSONAL
+
+
+def clearance_rank(
+    value,  # A clearance: one of SENSITIVITY_LEVELS or a synonym, any case.
+):
+    """
+        The rank of a clearance: one of the four labels, or personal - the server owner's, which reads
+        everything (every person's personal repositories and any word that is no label included). A word that is
+        no clearance is refused, never read as "everything".
+
+        Args:
+            value: the clearance as given.
+        Returns:
+            int: the rank.
+        Raises:
+            ValueError: a word that is no clearance.
+    """
+    word = str(value or '').strip().lower()
+    word = SENSITIVITY_SYNONYMS.get(word, word)
+
+    if word == SENSITIVITY_PERSONAL:
+        return SENSITIVITY_TOP
+
+    if word not in SENSITIVITY_LEVELS:
+        raise ValueError(f'unknown clearance "{value}": one of {", ".join(SENSITIVITY_LEVELS + (SENSITIVITY_PERSONAL,))}')
+
+    return SENSITIVITY_LEVELS.index(word)
+
+
+def names_and_patterns(
+    value,  # Repositories: a comma-separated string or a list of aliases, UIDs and fnmatch patterns; None for none.
+):
+    """
+        The names (aliases, UIDs) and the fnmatch patterns of a list of repositories, lower-cased.
+
+        Args:
+            value: a comma-separated string or a list.
+        Returns:
+            tuple: (frozenset of names, tuple of patterns).
+    """
+    if isinstance(value, str):
+        value = value.split(',')
+
+    words = [str(n).strip().lower() for n in (value or []) if str(n).strip()]
+
+    return (frozenset(w for w in words if not any(c in w for c in '*?[')),
+            tuple(w for w in words if any(c in w for c in '*?[')))
+
+
+def _matches(
+    alias,  # A repository alias (lower-cased), or ''.
+    uid,  # A repository UID (lower-cased), or ''.
+    names,  # A set of names.
+    patterns,  # A tuple of fnmatch patterns.
+):
+    """Whether a repository is named by a set of names or one of the patterns (its alias or its UID)."""
+    if (alias and alias in names) or (uid and uid in names):
+        return True
+
+    for p in patterns:
+        if (alias and fnmatch.fnmatchcase(alias, p)) or (uid and fnmatch.fnmatchcase(uid, p)):
+            return True
+
+    return False
+
+
+def scope_for(
+    record,  # A person's record: {'clearance': <label>, 'repos': {<repository alias or UID>: 'none' | 'read' | 'write'}}.
+    default_sensitivity = None,  # The site's label for the repositories that declare none (general on a site of an organisation), or None: public.
+):
+    """
+        The scope keys of a cm.access call for a person's record - what a door (a server's page, an API, an
+        agent's key) adds to every request it makes for that person: the clearance (general without one;
+        personal for the server's owner alone: it reads everything), the repositories denied whatever their
+        label (hide_repos), the ones granted whatever their label (allow_repos: read or write - the way to
+        another person's personal repository), the ones the person may write into (write_repos; 'none' when
+        none), and the site's default label of the repositories that declare none. Name the repositories by
+        their UIDs where they may be renamed: a denial by an alias that changed no longer denies.
+
+        A door that renders the server's own pages adds the machine's local repository to write_repos when those
+        pages keep their state there (and stops a person's own writes into it by its own rules); a door built for
+        this engine imports this function, so that an older engine without it fails at the door's start, never open.
+
+        Args:
+            record: the person's record.
+        Returns:
+            dict: the keys to merge into a request.
+    """
+    record = record or {}
+    denied, allowed, writable = [], [], []
+
+    for name, permission in (record.get('repos') or {}).items():
+        p = str(permission or 'none').strip().lower()
+        if p in ('none', 'no', 'false', '0', ''):
+            denied.append(str(name))
+        else:
+            allowed.append(str(name))
+            if p in ('write', 'admin'):
+                writable.append(str(name))
+
+    scope = {'clearance': str(record.get('clearance') or CLEARANCE_DEFAULT)}
+
+    if denied:
+        scope['hide_repos'] = denied
+    if allowed:
+        scope['allow_repos'] = allowed
+
+    scope['write_repos'] = writable if writable else 'none'
+
+    if default_sensitivity is not None and str(default_sensitivity).strip() != '':
+        scope['default_sensitivity'] = str(default_sensitivity).strip()
+
+    return scope
+
 
 # Migration stubs followed in this process, so that each notice is printed once
 _migrated_notices = set()
@@ -100,6 +274,23 @@ class Repos:
         self._hidden_names = frozenset()
         self._hidden_patterns = ()
 
+        # The sensitivity scope of the current call (CMeta.access with clearance / allow_repos / write_repos):
+        # the clearance = the rank up to which the repositories' labels (sensitivity in _cmr.yaml) and the
+        # artifacts' own (sensitivity in _cmeta) are read - None = no clearance, everything as before; the
+        # repositories read whatever their label (a named grant); the write scopes = the repositories the call
+        # may write into, one (names, patterns) per nested scope, every one of them must allow a write - () = no
+        # write scope, every write goes through as before. The labels of the registered repositories and the
+        # verdict on each repository are kept per scope (the caches); what each _cmr.yaml said when it was last
+        # read is kept per process, by its time and size.
+        self.clearance = None
+        self._allow_names = frozenset()
+        self._allow_patterns = ()
+        self._write_scopes = ()
+        self._default_rank = SENSITIVITY_LEVELS.index(SENSITIVITY_DEFAULT)
+        self._label_cache = None
+        self._verdicts = {}
+        self._cmr_seen = {}
+
     ###################################################################################################
     def push_hidden_repos(
         self,
@@ -136,6 +327,371 @@ class Repos:
         """Restore the scope that push_hidden_repos() replaced."""
         self.hidden_repos, self._hidden_names, self._hidden_patterns = saved
 
+    ###################################################################################################
+    def push_scope(
+        self,
+        hide_repos = None,  # Repositories whose artifacts are hidden (as push_hidden_repos).
+        clearance = None,  # The highest sensitivity label read: public, general, confidential, highly-confidential (or a synonym), personal (everything).
+        allow_repos = None,  # Repositories read whatever their label (aliases, UIDs, patterns) - a named grant.
+        write_repos = None,  # The only repositories the call may write into (aliases, UIDs, patterns); 'none' = no write at all.
+        default_sensitivity = None,  # The label of a repository that declares none, when a clearance applies (public).
+    ):
+        """
+            Narrow the scope of the calls that follow, until pop_scope(saved). A nested scope only narrows: hidden
+            repositories are added, the lower clearance holds, a write scope is added (every one of them must
+            allow a write); a named grant (allow_repos) and the default label count only where no clearance
+            holds yet - a call made inside a cleared one never reads or writes more than it.
+
+            Args:
+                hide_repos, clearance, allow_repos, write_repos, default_sensitivity: the keys of the request.
+            Returns:
+                tuple: what to hand back to pop_scope() to restore the previous scope.
+            Raises:
+                ValueError: a clearance that is none of the four labels, a default label that is empty.
+        """
+        saved = (self.push_hidden_repos(hide_repos), self.clearance, self._allow_names, self._allow_patterns,
+                 self._write_scopes, self._default_rank, self._label_cache, self._verdicts)
+
+        try:
+            cleared = self.clearance is not None
+
+            if clearance is not None and str(clearance).strip() != '':
+                rank = clearance_rank(clearance)
+                self.clearance = rank if self.clearance is None else min(self.clearance, rank)
+
+            if default_sensitivity is not None and str(default_sensitivity).strip() != '':
+                rank = sensitivity_rank(default_sensitivity)
+                # inside a cleared call the default only rises
+                self._default_rank = max(self._default_rank, rank) if cleared else rank
+
+            if not cleared:
+                names, patterns = names_and_patterns(allow_repos)
+                if names or patterns:
+                    self._allow_names = self._allow_names | names
+                    self._allow_patterns = self._allow_patterns + patterns
+
+            if write_repos is not None and write_repos != '' and write_repos != []:
+                names, patterns = names_and_patterns(write_repos)
+                if names == frozenset(['none']) and not patterns:
+                    names = frozenset()
+                self._write_scopes = self._write_scopes + ((names, patterns),)
+
+            # the labels and the verdicts are worked out again for this scope
+            self._label_cache = None
+            self._verdicts = {}
+        except ValueError:
+            self.pop_scope(saved)
+            raise
+
+        return saved
+
+    def pop_scope(
+        self,
+        saved,  # What push_scope() or suspend_scope() returned.
+    ):
+        """Restore the scope that push_scope() or suspend_scope() replaced."""
+        self.pop_hidden_repos(saved[0])
+        (self.clearance, self._allow_names, self._allow_patterns, self._write_scopes,
+         self._default_rank, self._label_cache, self._verdicts) = saved[1:]
+
+    def suspend_scope(self):
+        """
+            No scope at all for the calls that follow, until pop_scope(saved): for what a server does for itself
+            inside a request it serves for a person - a model built once per process for every viewer (the scope
+            is applied to what is shown), its own state kept in the machine's local repository. Never around
+            what the person asked to read or write.
+
+            Returns:
+                tuple: what to hand back to pop_scope() to restore the scope.
+        """
+        saved = (self.push_hidden_repos(None), self.clearance, self._allow_names, self._allow_patterns,
+                 self._write_scopes, self._default_rank, self._label_cache, self._verdicts)
+
+        self.hidden_repos, self._hidden_names, self._hidden_patterns = (), frozenset(), ()
+        self.clearance = None
+        self._allow_names, self._allow_patterns = frozenset(), ()
+        self._write_scopes = ()
+        self._default_rank = SENSITIVITY_LEVELS.index(SENSITIVITY_DEFAULT)
+        self._label_cache = None
+        self._verdicts = {}
+
+        return saved
+
+    @property
+    def scoped(self):
+        """Whether the current call has a scope that hides something: hidden repositories or a clearance."""
+        return bool(self.hidden_repos) or self.clearance is not None
+
+    @property
+    def write_scoped(self):
+        """Whether the current call may write into some repositories only (write_repos)."""
+        return bool(self._write_scopes)
+
+    def _repo_label(
+        self,
+        path,  # The folder of a registered repository (where its _cmr.yaml is), or None.
+        meta,  # Its meta as the index holds it.
+    ):
+        """
+            What decides a repository's label - (sensitivity, secrets, permanent) - as its _cmr.yaml says NOW: a
+            label edited by hand counts at once, without a reindex (the index is asked when the file cannot be
+            read: a detached drive). The file is read again only when its time or size changed.
+        """
+        from_index = (meta.get('sensitivity'), bool(meta.get('secrets')), bool(meta.get('permanent')))
+
+        if not path:
+            return from_index
+
+        filename = os.path.join(path, self.cfg['repo_meta_desc'])
+
+        try:
+            st = os.stat(filename)
+        except OSError:
+            return from_index
+
+        stamp = (st.st_mtime_ns, st.st_size)
+        seen = self._cmr_seen.get(filename)
+        if seen is not None and seen[0] == stamp:
+            return seen[1]
+
+        r = utils.files.safe_read_file(filename, timeout = 0, fail_on_error = False, logger = self.logger)
+        data = r.get('data') if r.get('return', 1) == 0 else None
+        if not isinstance(data, dict):
+            return from_index
+
+        # "permanent" is the engine's own word for its internal and local repositories: taken from the index too
+        label = (data.get('sensitivity'), bool(data.get('secrets')), bool(data.get('permanent')) or from_index[2])
+        self._cmr_seen[filename] = (stamp, label)
+
+        return label
+
+    def _rank_of(
+        self,
+        uid,  # The UID of a registered repository.
+        label,  # The label its _cmr.yaml declares (sensitivity), or None.
+        secrets,  # Whether it is a repository of secrets.
+        permanent,  # Whether it is one of the engine's own (internal, local).
+    ):
+        """
+            The sensitivity rank of a repository and what decided it: ('label') its own label - a synonym read
+            too, personal and any word that is no label above every clearance -, else ('secrets') a repository of
+            secrets and ('local') the machine's own repository - its logs, caches and config artifacts are no
+            public data - are above every clearance: read under one by a named grant only; ('engine') the
+            engine's internal repository is public whatever the default, so that the categories are found by any
+            clearance; ('default') any other takes the default of the scope (public, unless default_sensitivity).
+
+            Returns:
+                tuple: (rank, 'label' | 'secrets' | 'local' | 'engine' | 'default').
+        """
+        rank = sensitivity_rank(label)
+        if rank is not None:
+            return rank, 'label'
+
+        if secrets:
+            return SENSITIVITY_TOP, 'secrets'
+
+        local_uid = str((self.cfg.get('repo_local_meta') or {}).get('artifact') or '').split(',')[-1].strip().lower()
+        if local_uid and str(uid or '').lower() == local_uid:
+            return SENSITIVITY_TOP, 'local'
+
+        if permanent:
+            return 0, 'engine'
+
+        return self._default_rank, 'default'
+
+    def scope_table(
+        self,
+        scope = None,  # The keys of a scope to report on (as scope_for() gives them), or None: the scope of the current call.
+    ):
+        """
+            What a scope means for every registered repository: its label and whether the calls of that scope
+            read it and write into it, and why - for a page of users and their rights, for `cx repo scope`. It
+            says what the engine enforces (the same functions decide), reads nothing of a repository but its
+            _cmr.yaml, and names every repository: for administrators - a door shows a person their own rows only.
+            With a scope given, the scope of the current call is set aside for the report (an administrator's page
+            reports on another person's record).
+
+            Args:
+                scope (dict): hide_repos, clearance, allow_repos, write_repos, default_sensitivity - or None.
+            Returns:
+                list of dict, by alias: {'alias', 'uid', 'path', 'label' (as written in _cmr.yaml, or None),
+                'sensitivity' (the label that counts), 'rank', 'from' ('label', 'secrets', 'local', 'engine',
+                'default'), 'read' (bool), 'write' (bool), 'why' ('open': no clearance; 'clearance': within it;
+                'granted': above it, granted by name; 'label': above it; 'denied': hidden by name)}.
+            Raises:
+                ValueError: a clearance of the scope that is none of the four labels.
+        """
+        outer = inner = None
+        if scope is not None:
+            outer = self.suspend_scope()
+            try:
+                inner = self.push_scope(**{key: scope.get(key) for key in SCOPE_KEYS})
+            except ValueError:
+                self.pop_scope(outer)
+                raise
+
+        try:
+            rows = []
+
+            r = self.find_in_index('repo', self.cfg['category_repo_uid'], scope = False)
+            for a in (r.get('artifacts') or []) if r.get('return', 1) == 0 else []:
+                parts = a.get('cmeta_ref_parts') or {}
+                alias, uid = parts.get('artifact_alias'), parts.get('artifact_uid')
+                al, ul = str(alias or '').lower(), str(uid or '').lower()
+
+                label, secrets, permanent = self._repo_label(a.get('path'), a.get('cmeta') or {})
+                rank, source = self._rank_of(uid, label, secrets, permanent)
+
+                if _matches(al, ul, self._hidden_names, self._hidden_patterns):
+                    why = 'denied'
+                elif self.clearance is None:
+                    why = 'open'
+                elif rank <= self.clearance:
+                    why = 'clearance'
+                elif _matches(al, ul, self._allow_names, self._allow_patterns):
+                    why = 'granted'
+                else:
+                    why = 'label'
+
+                rows.append({'alias': alias, 'uid': uid, 'path': a.get('path'),
+                             'label': None if label is None or str(label).strip() == '' else str(label),
+                             'sensitivity': sensitivity_label(rank), 'rank': rank, 'from': source,
+                             'read': not self.repo_hidden(None, alias = alias, uid = uid),
+                             'write': self.write_refused(alias, uid) is None, 'why': why})
+
+            rows.sort(key = lambda row: str(row['alias'] or row['uid'] or '').lower())
+
+            return rows
+        finally:
+            if scope is not None:
+                self.pop_scope(inner)
+                self.pop_scope(outer)
+
+    def repo_rank(
+        self,
+        alias = None,  # The repository alias.
+        uid = None,  # The repository UID.
+    ):
+        """
+            The sensitivity rank of a registered repository (see _rank_of): its label in _cmr.yaml, else what it
+            is - a repository of secrets and the machine's local one above every clearance, the engine's internal
+            one public - or the default of the scope (public, unless default_sensitivity).
+
+            Args:
+                alias, uid: the repository.
+            Returns:
+                int: the rank.
+        """
+        if self._label_cache is None:
+            cache = {}
+
+            r = self.find_in_index('repo', self.cfg['category_repo_uid'], scope = False)
+            for a in (r.get('artifacts') or []) if r.get('return', 1) == 0 else []:
+                parts = a.get('cmeta_ref_parts') or {}
+                label, secrets, permanent = self._repo_label(a.get('path'), a.get('cmeta') or {})
+                rank = self._rank_of(parts.get('artifact_uid'), label, secrets, permanent)[0]
+                for key in (parts.get('artifact_alias'), parts.get('artifact_uid')):
+                    if key:
+                        cache[str(key).lower()] = rank
+
+            self._label_cache = cache
+
+        a, u = str(alias or '').lower(), str(uid or '').lower()
+
+        rank = self._label_cache.get(u) if u else None
+        if rank is None and a:
+            rank = self._label_cache.get(a)
+
+        return self._default_rank if rank is None else rank
+
+    def effective_rank(
+        self,
+        cmeta_ref_parts,  # The cmeta_ref_parts of an artifact (repo_alias, repo_uid), or None.
+        cmeta = None,  # Its _cmeta (its own label), or None.
+    ):
+        """
+            The sensitivity rank an artifact has where it is: its repository's, or its own label when that is
+            higher (an artifact raises its label, never lowers it).
+
+            Args:
+                cmeta_ref_parts, cmeta: the artifact.
+            Returns:
+                int: the rank.
+        """
+        parts = cmeta_ref_parts or {}
+        rank = self.repo_rank(parts.get('repo_alias'), parts.get('repo_uid'))
+
+        own = sensitivity_rank(cmeta.get('sensitivity')) if isinstance(cmeta, dict) else None
+
+        return rank if own is None else max(rank, own)
+
+    def artifact_hidden(
+        self,
+        cmeta,  # The _cmeta of an artifact (an index record's 'cmeta').
+        alias = None,  # The alias of its repository.
+        uid = None,  # The UID of its repository.
+    ):
+        """
+            Whether an artifact's own label (sensitivity in its _cmeta) hides it from the current call: a label
+            above the clearance AND above its repository's - a label that only repeats the repository's, or is
+            below it, adds nothing (the repository decides: its label, or a named grant). A named grant lifts a
+            repository's label, never an artifact's own.
+        """
+        if self.clearance is None or not isinstance(cmeta, dict):
+            return False
+
+        own = cmeta.get('sensitivity')
+        if own is None or own == '':
+            return False
+
+        own = sensitivity_rank(own)
+
+        return own is not None and own > self.clearance and own > self.repo_rank(alias, uid)
+
+    def write_refused(
+        self,
+        alias = None,  # The repository alias.
+        uid = None,  # The repository UID.
+    ):
+        """
+            Why the scope of the current call does not allow a write into this repository: a repository hidden
+            from the call (by name, by pattern or by its label above the clearance) is never written into, and
+            every write scope of the call (write_repos) must name it. None when the write may go on - without any
+            scope every write goes through, as before.
+
+            Args:
+                alias, uid: the repository.
+            Returns:
+                str or None: the reason, or None.
+        """
+        if not self.scoped and not self._write_scopes:
+            return None
+
+        name = alias or uid or '?'
+
+        if self.scoped and self.repo_hidden(None, alias = alias, uid = uid):
+            return f'the repository "{name}" is out of the scope of this call'
+
+        a, u = str(alias or '').lower(), str(uid or '').lower()
+
+        for names, patterns in self._write_scopes:
+            if not _matches(a, u, names, patterns):
+                return (f'this call may not write into the repository "{name}"' if (names or patterns)
+                        else 'this call may write into no repository')
+
+        return None
+
+    def managing_refused(self):
+        """
+            Why the scope of the current call does not allow it to manage repositories (make, clone, pull, unzip,
+            unplug or delete one): a call that may write into some repositories only manages none. None without
+            a write scope.
+        """
+        if not self._write_scopes:
+            return None
+
+        return 'this call may write into some repositories only: it manages none (done from a shell, or by a call without a write scope)'
+
     def repo_hidden(
         self,
         cmeta_ref_parts,  # The cmeta_ref_parts of an index record (repo_alias, repo_uid) or of a repo artifact.
@@ -143,31 +699,42 @@ class Repos:
         uid = None,  # The repository UID, when the parts do not carry it.
     ):
         """
-            Whether a repository is hidden by the scope of the current call.
+            Whether a repository is hidden by the scope of the current call: named in hide_repos, or labelled
+            above the clearance and not granted by name (allow_repos). The verdict is kept per repository for the
+            scope: a search asks it once per record.
 
             Args:
                 cmeta_ref_parts: an index record's parts (its repo_alias / repo_uid) - or None with alias / uid given.
             Returns:
                 bool: True when the repository (its alias or its UID) is hidden; False without a scope.
         """
-        if not self.hidden_repos:
+        if not self.hidden_repos and self.clearance is None:
             return False
 
         if cmeta_ref_parts is not None:
             alias = cmeta_ref_parts.get('repo_alias') if alias is None else alias
             uid = cmeta_ref_parts.get('repo_uid') if uid is None else uid
 
-        alias = str(alias or '').lower()
-        uid = str(uid or '').lower()
+        key = (alias, uid)
+        verdict = self._verdicts.get(key)
+        if verdict is not None:
+            return verdict
 
-        if (alias and alias in self._hidden_names) or (uid and uid in self._hidden_names):
-            return True
+        a = str(alias or '').lower()
+        u = str(uid or '').lower()
 
-        for p in self._hidden_patterns:
-            if (alias and fnmatch.fnmatchcase(alias, p)) or (uid and fnmatch.fnmatchcase(uid, p)):
-                return True
+        if _matches(a, u, self._hidden_names, self._hidden_patterns):
+            verdict = True
+        elif self.clearance is not None and not _matches(a, u, self._allow_names, self._allow_patterns) \
+                and self.repo_rank(a, u) > self.clearance:
+            # the clearance: a repository labelled above it is hidden, unless it is granted by name
+            verdict = True
+        else:
+            verdict = False
 
-        return False
+        self._verdicts[key] = verdict
+
+        return verdict
 
     ###################################################################################################
     def init(
@@ -684,7 +1251,7 @@ class Repos:
 
         # The scope of the current call: the artifacts of the hidden repositories are left out (the repositories
         # themselves - the records of the repo category, which are inside no repository - stay listed)
-        hidden = bool(scope and self.hidden_repos)
+        hidden = bool(scope and self.scoped)
 
         # Check if prune by repos
         if repos or category_uid is not None or hidden:
@@ -705,6 +1272,13 @@ class Repos:
                     continue
 
                 if hidden and artifact_cmeta_ref_parts.get('repo_uid') and self.repo_hidden(artifact_cmeta_ref_parts):
+                    continue
+
+                # an artifact's own label above the clearance of the call (a repository's record - its _cmr.yaml -
+                # is not an artifact's: the repositories stay listed, their label hides their contents above)
+                if hidden and self.clearance is not None and artifact_cmeta_ref_parts.get('repo_uid') and \
+                        self.artifact_hidden(index[self.KEY_INDEX_UIDS][artifact_uid].get('cmeta'),
+                                             artifact_cmeta_ref_parts.get('repo_alias'), artifact_cmeta_ref_parts.get('repo_uid')):
                     continue
 
                 pruned_artifact_uids.append(artifact_uid)
@@ -793,7 +1367,7 @@ class Repos:
             repo_uid = repo_cmeta_ref_parts['artifact_uid']
 
             # The scope of the current call (hide_repos): a hidden repository is not scanned
-            if self.hidden_repos and self.repo_hidden(None, alias = repo_alias, uid = repo_uid):
+            if self.scoped and self.repo_hidden(None, alias = repo_alias, uid = repo_uid):
                 continue
 
             if category_uid in repo_meta.get('sharding_slices', {}):
@@ -811,6 +1385,10 @@ class Repos:
                 if r['return'] >0: return r
                 
                 for a in r['artifacts']:
+                    # an artifact's own label above the clearance of the call
+                    if self.clearance is not None and self.artifact_hidden(a.get('cmeta'), repo_alias, repo_uid):
+                        continue
+
                     if sharding_slices:
                         a['sharding_slices_num'] = len(sharding_slices)
 

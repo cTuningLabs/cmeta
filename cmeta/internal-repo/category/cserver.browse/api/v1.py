@@ -110,6 +110,15 @@ disk (a folder in use is refused, nothing changes; another disk is refused), rei
 fails. The dialog of files/js/move.js serves the rows and the panel of this page and the artifact page; Undo is the
 same move back.
 
+Rename and Delete (2026-11-15, the artifact page; the same rules as Move): ?native_action=rename (uid, alias) gives an
+artifact a new name - its folder renamed in one step where it is (same UID, files and repository; a folder in use is
+refused, nothing changes), reindexed by its UID, put back if that fails; not a name another artifact of the category
+has. ?native_action=delete_artifact (uid) puts its folder into the trash of this machine (tmp::local:
+cserver-browse-trash, or cache:: where a home has no tmp category) in one step on the same disk and takes its record
+out of the index - never a permanent artifact - and ?native_action=undelete_artifact (trash: the slot it answered)
+puts it back and indexes it again. The dialogs are files/js/move.js's (cmetaRename, cmetaDelete: a red question,
+"Yes, I am sure", first); Undo is the name it had, or the deletion undone.
+
 These keys of the cserver config apply (cx config set cserver --meta.<key>=<value>):
     hide_repos                repositories left out (aliases or fnmatch patterns) - the same key as /projects
     browse_hide_categories    categories left out; by default anything matching *crypt*, *secret* or
@@ -148,6 +157,7 @@ created, then by updated; "-alias": by name from the end (dated names: the lates
 """
 
 import base64
+import contextlib
 import datetime
 import errno
 import fnmatch
@@ -255,6 +265,16 @@ CACHE_NAME = 'cserver.browse: what every _desc declares (connections, uses, ai_u
 CACHE_GENERATOR = {'method': 'script', 'script': 'cserver.browse (the /browse page of the cMeta engine)'}
 CACHE_FILE = 'desc_index.pickle'
 CACHE_FORMAT = 1                 # a file of another format is ignored and rewritten
+
+# Delete and Rename of an artifact (2026-11-15): a deleted artifact's folder goes into the trash of this machine,
+# tmp::local:cserver-browse-trash (the tmp category of cmeta-aops; cache::local:cserver-browse-trash where a home has
+# none), one folder per deletion - <YYYYMMDD-HHMMSS>-<UID>/: the artifact's folder and deleted.json, where it was;
+# Undo puts it back. A new name never holds what a folder name or a cRef cannot
+TMP_CATEGORY = 'tmp,a2551f6124a34cf3'
+TRASH_ALIAS = 'cserver-browse-trash'
+TRASH_NAME = 'cserver.browse: the artifacts deleted on the pages of this server (the artifact page, /browse), one folder per deletion'
+TRASH_SLOT_RE = re.compile(r'^\d{8}-\d{6}-[0-9a-f]{16}$')
+RENAME_BAD_RE = re.compile(r'[\\/:*?"<>|,\x00-\x1f]')
 
 # Open an artifact's folder on the server's own machine
 OPEN_WHAT = ('folder', 'shell', 'far')
@@ -1080,6 +1100,35 @@ def _ai_template(it):
     return d if isinstance(d, dict) and str(d.get('alias') or '').strip() else None
 
 
+def _scoped(repos):
+    """Whether the request this page serves has a scope that hides something: hidden repositories or a clearance
+    (the engine's Repos.scoped; an engine from before the sensitivity labels has hidden repositories only)."""
+    scoped = getattr(repos, 'scoped', None)
+    return bool(getattr(repos, 'hidden_repos', ())) if scoped is None else bool(scoped)
+
+
+def _write_scope_refused(repos, alias, uid=None):
+    """Why the engine's scope of the request does not let it write into a repository (write_repos, a repository
+    hidden from it), or '' - the page's own grant (browse_edit) is asked beside it. An engine from before the write
+    scope: ''."""
+    refused = getattr(repos, 'write_refused', None)
+    return (refused(alias or None, uid or None) or '') if refused else ''
+
+
+@contextlib.contextmanager
+def _unscoped(repos):
+    """The page's own bookkeeping inside a request - its trash, the folder of its file index, in the machine's local
+    repository - with the scope of the request set aside (the engine's Repos.suspend_scope); never around what the
+    viewer asked to read or write."""
+    suspend = getattr(repos, 'suspend_scope', None)
+    saved = suspend() if suspend else None
+    try:
+        yield
+    finally:
+        if saved is not None:
+            repos.pop_scope(saved)
+
+
 def _resolve(ref, by_uid, by_key):
     """A parsed reference (cat, cat UID, alias, UID) -> the UID of a catalog artifact, or ''. The UID decides when
     there is one; a reference by alias alone needs its category."""
@@ -1668,13 +1717,16 @@ class Category(InitCategory):
         hide_repos = _patterns(cfg.get('hide_repos'))
         hide_cats = self._hidden_categories(cfg)
         repos = self.cm.repos
-        scoped = bool(getattr(repos, 'hidden_repos', ()))
+        scoped = _scoped(repos)
         if not hide_repos and not hide_cats and not scoped:
             return cat['items']
+        # an artifact's own sensitivity label above the clearance of the request (an engine that has labels)
+        own = getattr(repos, 'artifact_hidden', None) if scoped and getattr(repos, 'clearance', None) is not None else None
         return [it for it in cat['items']
                 if not (hide_repos and it['repo'] and _matches_any(it['repo'], hide_repos))
                 and not (hide_cats and _matches_any(it['cat'], hide_cats))
-                and not (scoped and it['repo_uid'] and repos.repo_hidden(None, alias=it['repo'], uid=it['repo_uid']))]
+                and not (scoped and it['repo_uid'] and repos.repo_hidden(None, alias=it['repo'], uid=it['repo_uid']))
+                and not (own and it['repo_uid'] and own(it['meta'], it['repo'], it['repo_uid']))]
 
     def _hidden_categories(self, cfg):
         """The category patterns browse_hide_categories leaves out: unset = the categories of keys and secrets
@@ -1857,10 +1909,11 @@ class Category(InitCategory):
         if _fdisk['dir'] and os.path.isdir(_fdisk['dir']):
             return _fdisk['dir']
         try:
-            r = self.cm.access({'category': self._uses('result', FILES_RESULT_CATEGORY), 'command': 'get',
-                                'arg1': 'local:' + _fx.RESULT_ALIAS, 'tags': list(_fx.RESULT_TAGS), 'con': False,
-                                'meta': {'name': _fx.RESULT_NAME, 'permanent': True, 'tags': list(_fx.RESULT_TAGS),
-                                         'generator': dict(CACHE_GENERATOR)}})
+            with _unscoped(self.cm.repos):
+                r = self.cm.access({'category': self._uses('result', FILES_RESULT_CATEGORY), 'command': 'get',
+                                    'arg1': 'local:' + _fx.RESULT_ALIAS, 'tags': list(_fx.RESULT_TAGS), 'con': False,
+                                    'meta': {'name': _fx.RESULT_NAME, 'permanent': True, 'tags': list(_fx.RESULT_TAGS),
+                                             'generator': dict(CACHE_GENERATOR)}})
             path = (r.get('artifact') or {}).get('path', '') if r.get('return', 1) == 0 else ''
             _fdisk['error'] = '' if path else 'result::%s: %s' % (_fx.RESULT_ALIAS, r.get('error', 'not available'))
         except Exception as e:
@@ -2623,6 +2676,10 @@ class Category(InitCategory):
                     'lets write (browse_edit in the cserver config changes that)')
         if on is not True and not (_matches_any(it['repo'], on) or _matches_any(it['repo_uid'], on)):
             return 'you may not write to the repository %s' % (it['repo'] or '(registry)')
+        if it['repo'] or it['repo_uid']:
+            why = _write_scope_refused(self.cm.repos, it['repo'], it['repo_uid'])
+            if why:
+                return 'you may not write to the repository %s (%s)' % (it['repo'] or it['repo_uid'], why)
         if SECRET_DIR_RE.search(it['cat']):
             return 'not editable: this artifact is in a category that holds keys or secrets'
         return ''
@@ -2737,8 +2794,11 @@ class Category(InitCategory):
         repo_alias, repo_uid = str(rp.get('artifact_alias') or repo), str(rp.get('artifact_uid') or '')
         repos = self.cm.repos
         if _matches_any(repo_alias, _patterns(cfg.get('hide_repos'))) or \
-                (getattr(repos, 'hidden_repos', ()) and repos.repo_hidden(None, alias=repo_alias, uid=repo_uid)):
+                (_scoped(repos) and repos.repo_hidden(None, alias=repo_alias, uid=repo_uid)):
             return {'error': 'the repository %s is not one this page shows' % repo_alias}
+        why = _write_scope_refused(repos, repo_alias, repo_uid)
+        if why:
+            return {'error': 'you may not write to the repository %s (%s)' % (repo_alias, why)}
         cp = exact(self.cm.access({'category': 'category', 'command': 'find', 'arg1': str(cat or '').strip(), 'con': False}), cat)
         if cp is None:
             return {'error': 'no category %s on this server' % cat}
@@ -2835,8 +2895,11 @@ class Category(InitCategory):
             return {'error': 'you may not write to the repository %s' % to_alias}
         repos = self.cm.repos
         if _matches_any(to_alias, _patterns(cfg.get('hide_repos'))) or \
-                (getattr(repos, 'hidden_repos', ()) and repos.repo_hidden(None, alias=to_alias, uid=to_uid)):
+                (_scoped(repos) and repos.repo_hidden(None, alias=to_alias, uid=to_uid)):
             return {'error': 'the repository %s is not one this page shows' % to_alias}
+        why = _write_scope_refused(repos, to_alias, to_uid)
+        if why:
+            return {'error': 'you may not write to the repository %s (%s)' % (to_alias, why)}
         src = os.path.normpath(it['path'] or '')
         if _in_engine(root) or _in_engine(src) or _in_engine(t.get('path')):
             return {'error': 'the engine\'s own repository: nothing is moved into or out of it'}
@@ -2888,6 +2951,220 @@ class Category(InitCategory):
         print('cMeta info: cserver.browse: %s moved %s from %s to %s' % (self._who(misc), name, from_alias, to_alias))
         return {'moved': it['alias'], 'uid': it['uid'], 'cat': cat, 'from': from_alias, 'to': to_alias,
                 'cref': '%s,%s::%s,%s' % (cat, it['cat_uid'], it['alias'], it['uid'])}
+
+    def _rename(self, uid, alias, misc, cfg):
+        """A new name for an artifact (2026-11-15, the user, on the artifact page: "I also don't see delete or rename -
+        can we add it there too for all (if allowed)?"): its folder renamed in one step where it is - same UID, same
+        files, same repository; on Windows a folder in use (a shell, Far, an AI session in it) cannot be renamed, and
+        then nothing at all changes -, then the artifact reindexed by its UID, the folder put back if that fails. Not
+        a name another artifact of the category has (in any repository, a case apart), not a name a folder or a cRef
+        cannot hold, not an artifact whose _cmeta holds its name (artifact: <alias>,<UID>), not in the engine's own
+        repository; for a viewer who may write to it, from a page of this server. The page offers Undo (the name it
+        had). One line of the server's log."""
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        it = self._item(uid)
+        if it is None:
+            return {'error': 'artifact %s is not in the index of this server' % uid}
+        why = self._edit_refused(it, misc, cfg)
+        if why:
+            return {'error': why}
+        cat, old = it['cat'], it['alias']
+        name = '%s::%s' % (cat, old)
+        new = str(alias or '').strip()
+        if not new or new != str(alias) or new.startswith('.') or new.endswith('.') or RENAME_BAD_RE.search(new):
+            return {'error': 'a name is needed that a folder and a cRef can hold: no / \\ : * ? " < > | or comma, no '
+                             'space at either end, no dot in front or at the end'}
+        if UID_RE.match(new):
+            return {'error': '%s: a name of 16 hexadecimal digits reads as a UID' % new}
+        out = {'renamed': new, 'from': old, 'to': new, 'uid': it['uid'], 'cat': cat, 'repo': it['repo'],
+               'cref': '%s,%s::%s,%s' % (cat, it['cat_uid'], new, it['uid']), 'changed': new != old}
+        if new == old:
+            return out
+        if ',' in str((it.get('meta') or {}).get('artifact') or ''):
+            return {'error': '%s: its _cmeta holds its name (artifact: <alias>,<UID>) - rename it with cx %s move' % (name, cat)}
+        src = os.path.normpath(it['path'] or '')
+        if _in_engine(src):
+            return {'error': 'the engine\'s own repository: nothing is renamed in it'}
+        # the folder as cMeta lays an artifact out: <repository>/<category>/<name> (another layout: cx renames it)
+        if not os.path.isdir(src) or os.path.basename(src) != old or os.path.basename(os.path.dirname(src)).lower() != cat.lower():
+            return {'error': '%s: its folder is not <repository>/%s/%s - rename it with cx %s move' % (name, cat, old, cat)}
+
+        # a name another artifact of the category has, in any repository (a case apart: one folder on Windows and macOS)
+        where = '%s,%s' % (cat, it['cat_uid'])
+        r = self.cm.access({'category': where, 'command': 'find', 'arg1': new, 'con': False})
+        for a in (r.get('artifacts') or []) if r.get('return', 1) == 0 else []:
+            p = a.get('cmeta_ref_parts') or {}
+            if str(p.get('artifact_uid') or '').lower() != it['uid'] and str(p.get('artifact_alias') or '').lower() == new.lower():
+                return {'error': '%s::%s is in %s already' % (cat, p.get('artifact_alias'), p.get('repo_alias') or '?')}
+        dst = os.path.join(os.path.dirname(src), new)
+        try:
+            same = os.path.exists(dst) and os.path.samefile(src, dst)    # a change of case only, on a disk that ignores case
+        except OSError:
+            same = False
+        if os.path.exists(dst) and not same:
+            return {'error': '%s: there is a folder %s beside it already' % (name, new)}
+
+        try:
+            os.rename(src, dst)
+        except OSError as e:
+            busy = isinstance(e, PermissionError) or getattr(e, 'errno', None) in (errno.EACCES, errno.EBUSY)
+            return {'error': '%s: %s - nothing was renamed' % (name, 'its folder is in use (a shell, Far or an AI session '
+                                                                     'in it?)' if busy else e)}
+        r = self.cm.access({'category': where, 'command': 'reindex', 'arg1': it['uid'], 'con': False})
+        if r.get('return', 1) > 0:
+            try:
+                os.rename(dst, src)
+                self.cm.access({'category': where, 'command': 'reindex', 'arg1': it['uid'], 'con': False})
+                back = 'the folder has its old name again'
+            except OSError as e:
+                back = 'the folder is %s now (%s)' % (dst, e)
+            return {'error': '%s: the index could not follow the new name (%s): %s' % (name, r.get('error', ''), back)}
+
+        self._catalog(force=True)
+        _desc_cache.clear()
+        print('cMeta info: cserver.browse: %s renamed %s to %s' % (self._who(misc), name, new))
+        return out
+
+    def _trash_root(self):
+        """The folder of this page's trash (TRASH_ALIAS of the tmp category - the one of cmeta-aops -, else of the
+        engine's own cache category: a home without cmeta-aops), made at the first deletion."""
+        last = ''
+        for cat in (TMP_CATEGORY, self._uses('cache', CACHE_CATEGORY)):
+            with _unscoped(self.cm.repos):
+                r = self.cm.access({'category': cat, 'command': 'get', 'arg1': 'local:' + TRASH_ALIAS, 'con': False,
+                                    'meta': {'name': TRASH_NAME, 'generator': dict(CACHE_GENERATOR)}})
+            if r.get('return', 1) == 0 and os.path.isdir((r.get('artifact') or {}).get('path') or ''):
+                return r['artifact']['path']
+            last = r.get('error', '')
+        raise RuntimeError('no trash for the deletions here (%s)' % last)
+
+    def _delete_artifact(self, uid, misc, cfg):
+        """An artifact deleted so that Undo can bring it back (2026-11-15, the user: "delete or rename ... for all (if
+        allowed)" - the page asks first, a red question): its folder renamed into the trash of this machine in one
+        step on the same disk (on Windows a folder in use cannot be, and then nothing at all changes; another disk is
+        refused: that would be a copy and a deletion - cx <category> delete does it), where it was written beside it
+        (deleted.json), then its record removed from the index by the engine's delete of a record whose folder has
+        gone; if that fails, the folder goes back. Not a permanent artifact (permanent: true), not one of the engine's
+        own repository, never keys or secrets; for a viewer who may write to it, from a page of this server -> {'deleted',
+        'uid', 'cat', 'repo', 'trash': the slot Undo names}. One line of the server's log."""
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        it = self._item(uid)
+        if it is None:
+            return {'error': 'artifact %s is not in the index of this server' % uid}
+        why = self._edit_refused(it, misc, cfg)
+        if why:
+            return {'error': why}
+        cat = it['cat']
+        name = '%s::%s' % (cat, it['alias'])
+        src = os.path.normpath(it['path'] or '')
+        if (it.get('meta') or {}).get('permanent'):
+            return {'error': '%s is permanent (permanent: true in its _cmeta): not deleted here' % name}
+        if _in_engine(src):
+            return {'error': 'the engine\'s own repository: nothing is deleted from it'}
+        if not os.path.isdir(src) or os.path.basename(os.path.dirname(src)).lower() != cat.lower():
+            return {'error': '%s: its folder is not <repository>/%s/<name> - delete it with cx %s delete' % (name, cat, cat)}
+        try:
+            trash = self._trash_root()
+            same_disk = os.stat(src).st_dev == os.stat(trash).st_dev
+        except (OSError, RuntimeError) as e:
+            return {'error': '%s: %s - nothing was deleted' % (name, e)}
+        if not same_disk:
+            return {'error': '%s is on another disk than the trash - the deletion would be a copy: use cx %s delete %s' %
+                             (name, cat, it['uid'])}
+
+        slot = os.path.join(trash, time.strftime('%Y%m%d-%H%M%S') + '-' + it['uid'])
+        if os.path.exists(slot):
+            return {'error': '%s: deleted a moment ago already' % name}
+        held = os.path.join(slot, os.path.basename(src))
+        try:
+            os.makedirs(slot)
+            os.rename(src, held)
+        except OSError as e:
+            try:
+                os.rmdir(slot)
+            except OSError:
+                pass
+            busy = isinstance(e, PermissionError) or getattr(e, 'errno', None) in (errno.EACCES, errno.EBUSY)
+            return {'error': '%s: %s - nothing was deleted' % (name, 'its folder is in use (a shell, Far or an AI session '
+                                                                    'in it?)' if busy else e)}
+        record = {'uid': it['uid'], 'name': name, 'cat': cat, 'cat_uid': it['cat_uid'], 'repo': it['repo'],
+                  'repo_uid': it['repo_uid'], 'path': src, 'folder': os.path.basename(src), 'by': self._who(misc),
+                  'deleted': datetime.datetime.now().astimezone().isoformat(timespec='seconds')}
+        with open(os.path.join(slot, 'deleted.json'), 'w', encoding='utf-8') as f:
+            json.dump(record, f, indent=1)
+
+        where = '%s,%s' % (cat, it['cat_uid'])
+        r = self.cm.access({'category': where, 'command': 'delete', 'arg1': it['uid'], 'force': True, 'con': False})
+        if r.get('return', 1) > 0:
+            try:
+                os.rename(held, src)
+                os.remove(os.path.join(slot, 'deleted.json'))
+                os.rmdir(slot)
+                back = 'the folder was put back'
+            except OSError as e:
+                back = 'the folder is in %s now (%s)' % (held, e)
+            return {'error': '%s: its record could not leave the index (%s): %s' % (name, r.get('error', ''), back)}
+
+        self._catalog(force=True)
+        _desc_cache.clear()
+        print('cMeta info: cserver.browse: %s deleted %s from %s (in the trash: %s)' % (self._who(misc), name, it['repo'], slot))
+        return {'deleted': it['alias'], 'uid': it['uid'], 'cat': cat, 'repo': it['repo'], 'trash': os.path.basename(slot)}
+
+    def _undelete_artifact(self, slot_name, misc, cfg):
+        """A deletion of this page undone: the folder back where it was (refused when a folder of that name is there
+        again), indexed again with its own UID by the engine (index), the trash's slot removed; if the index cannot take
+        it, the folder goes back into the trash. For a viewer who may write to its repository, from a page of this
+        server -> {'uid', 'name', 'cat', 'repo', 'cref'} or {'error'}."""
+        if not (misc or {}).get('same_origin'):
+            return {'error': 'refused: the request did not come from a page of this server'}
+        slot_name = str(slot_name or '').strip()
+        if not TRASH_SLOT_RE.match(slot_name):
+            return {'error': 'trash: the deletion to undo (<YYYYMMDD-HHMMSS>-<UID>) is expected'}
+        try:
+            slot = os.path.join(self._trash_root(), slot_name)
+            with open(os.path.join(slot, 'deleted.json'), encoding='utf-8') as f:
+                record = json.load(f)
+        except (OSError, ValueError, RuntimeError) as e:
+            return {'error': 'that deletion is not in the trash (%s)' % e}
+        name, dst = record.get('name') or slot_name, record.get('path') or ''
+        on = self._edit_on(misc, cfg)
+        if on is False or (on is not True and not (_matches_any(record.get('repo'), on) or _matches_any(record.get('repo_uid'), on))):
+            return {'error': 'you may not write to the repository %s' % (record.get('repo') or '?')}
+        why = _write_scope_refused(self.cm.repos, record.get('repo'), record.get('repo_uid'))
+        if why:
+            return {'error': 'you may not write to the repository %s (%s)' % (record.get('repo') or '?', why)}
+        held = os.path.join(slot, record.get('folder') or '')
+        if not record.get('folder') or not os.path.isdir(held):
+            return {'error': '%s: its folder is not in the trash any more' % name}
+        if not dst or os.path.exists(dst):
+            return {'error': '%s: a folder of that name is where it was again (%s) - nothing was put back' % (name, dst)}
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            os.rename(held, dst)
+        except OSError as e:
+            return {'error': '%s: %s - nothing was put back' % (name, e)}
+        where = '%s,%s' % (record.get('cat'), record.get('cat_uid')) if record.get('cat_uid') else record.get('cat')
+        r = self.cm.access({'category': where, 'command': 'index', 'con': False,
+                            'arg1': '%s:%s' % (record.get('repo_uid') or record.get('repo'), record['folder'])})
+        if r.get('return', 1) > 0:
+            try:
+                os.rename(dst, held)
+                back = 'it is in the trash again'
+            except OSError as e:
+                back = 'its folder is back at %s, not indexed (%s)' % (dst, e)
+            return {'error': '%s: the index could not take it back (%s): %s' % (name, r.get('error', ''), back)}
+        try:
+            os.remove(os.path.join(slot, 'deleted.json'))
+            os.rmdir(slot)
+        except OSError:
+            pass
+        self._catalog(force=True)
+        _desc_cache.clear()
+        print('cMeta info: cserver.browse: %s put back %s in %s' % (self._who(misc), name, record.get('repo')))
+        return {'uid': record.get('uid'), 'name': name, 'cat': record.get('cat'), 'repo': record.get('repo'),
+                'cref': '%s,%s::%s,%s' % (record.get('cat'), record.get('cat_uid'), record.get('folder'), record.get('uid'))}
 
     def _save(self, uid, rel, text, stamp, misc, cfg):
         """Write a text file of an artifact the page shows with the editor's text, checked by the file's name,
@@ -3333,6 +3610,12 @@ class Category(InitCategory):
                     out = self._move(query.get('uid'), query.get('repo'), misc, self._cserver_config())
                 elif na == 'move_targets':         # the repositories the dialog of "Move to" offers
                     out = self._move_targets(query.get('uid'), misc, self._cserver_config())
+                elif na == 'rename':               # a new name for an artifact (2026-11-15; Undo: the name it had)
+                    out = self._rename(query.get('uid'), query.get('alias'), misc, self._cserver_config())
+                elif na == 'delete_artifact':      # an artifact into the trash of this machine (2026-11-15; Undo: undelete_artifact)
+                    out = self._delete_artifact(query.get('uid'), misc, self._cserver_config())
+                elif na == 'undelete_artifact':    # a deletion undone
+                    out = self._undelete_artifact(query.get('trash'), misc, self._cserver_config())
                 elif na == 'link':                 # connections / ai_uses of an artifact: add names, remove one
                     out = self._link(query.get('uid'), query.get('key'), query.get('add'), query.get('remove'), misc,
                                      self._cserver_config(), both=_flag(query.get('both'), False))

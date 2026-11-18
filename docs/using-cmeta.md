@@ -427,6 +427,68 @@ r = cm.access({'category': 'category,dd9ea50e7f76467f',
 Every response is a dict; `return == 0` means success, anything else carries an
 `error` string.
 
+**The scope of a call.** A server's page, an API or an agent's key passes with every request what the
+person it serves may see and do; the engine applies it to that call and to every call it makes, and
+nothing is left behind when it returns:
+
+```python
+r = cm.access({'category': 'note', 'command': 'find', 'arg1': '*',
+               'hide_repos': 'secrets,drafts',        # the artifacts of these repositories are not found, listed or read
+               'clearance': 'general',               # nor those labelled above general (sensitivity: in a repository's
+                                                     # _cmr.yaml, or in an artifact's own _cmeta; no label = public)
+               'allow_repos': 'deals',               # read whatever its label: a grant above the clearance
+               'write_repos': 'notes'})              # the only repository this call may write into ('none': no write)
+```
+
+The whole story for an organisation - labels, records, what a person gets, the rules of use - is in
+[sensitivity.md](sensitivity.md). In short: the labels are the four of Microsoft 365 - `public`, `general`, `confidential`, `highly-confidential`
+(`internal`, `private`, `conf`, `conf-high`, `restricted` are read as synonyms) - and `personal`, what belongs to
+a person: above the four, read by a named grant (`allow_repos`) or by the clearance `personal` - the server
+owner's, which reads everything on the server, every person's personal repositories included (give it to the owner
+alone). A word that is no clearance is refused, never read as everything. A repository without a label is public: the
+labels are an extra an organisation adds repository by repository, and nothing changes for the repositories that
+carry none (a server sets `default_sensitivity` for the unlabelled ones it serves: `general` for the default marking
+of Microsoft 365, `personal` to show none of them). Three things are ranked with `personal` without saying so: a
+word that is no label (a typing mistake hides, never shows), a repository of secrets, and the machine's own `local`
+repository - its logs, caches and config artifacts; the engine's `internal` repository is public (the categories
+live there). An artifact raises its own label with `sensitivity:` in its `_cmeta` and never lowers it; a named
+grant lifts a repository, never such an artifact. A label edited in `_cmr.yaml` counts at the next call.
+
+What a scope holds, in one place:
+
+| | |
+|---|---|
+| read | what is labelled at or below the `clearance`, plus `allow_repos`, minus `hide_repos` (which wins) |
+| write | only into `write_repos` (`none`: nowhere), never into what the call does not read |
+| a nested call | only narrows: a wider clearance, a grant or a lower default asked inside a cleared call count for nothing |
+| a connection | a write on both sides (`--ct`: this side only); under a clearance written on the higher label's side only |
+| move, copy | under a clearance never to a lower label (reclassifying down is done from a shell) |
+| repositories | a call with a write scope manages none (`pull`, `create`, `unzip`, `unplug`, `delete`) |
+| the machine's settings | a call into `config` made by the code that serves the request (no scope keys of its own) is not scoped; the request a server forwards for a person is |
+
+The same keys are flags of every command (`cx note find '*' --clearance=general --write-repos=none`).
+`cmeta.repos.scope_for(record, default_sensitivity='general')` turns a person's record - `{'clearance': 'general',
+'repos': {'deals': 'read', 'notes': 'write', 'drafts': 'none'}}` - and the site's default label into those keys, and
+`cx repo scope` with the same flags
+(`cm.repos.scope_table(scope)` from Python) prints for every repository its label and whether such a call reads it
+and writes into it - what a page of users shows per person:
+
+```
+REPOSITORY   SENSITIVITY              READ  WRITE
+deals        confidential             yes   -      above the clearance, granted by name
+drafts       general                  -     -      hidden by name
+notes        general                  yes   yes    within the clearance
+plans        highly-confidential      -     -      above the clearance
+local        personal (this machine)  -     -      above the clearance
+```
+
+A server does its own bookkeeping inside a request - a model built once for every viewer, its state in `local` -
+between `saved = cm.repos.suspend_scope()` and `cm.repos.pop_scope(saved)`, never around what the person asked for.
+A shell on the machine passes none of the keys and sees what the machine holds: the scope is for the doors, the
+machine's own access control is for the machine. And a scope is no sandbox: a door that lets a person write into a
+repository that defines categories, tasks or pages lets that person run code - keep what people write through a door
+in repositories of data.
+
 ### 5.4 `ctx` — thread state (and AI-agent context) through nested calls
 
 Every `access()` call receives — or creates — a `ctx` dict. It's the
@@ -633,12 +695,25 @@ It prints the path of each match (and returns them in `artifacts`). If you omit
 the argument entirely searches for `*`.
 
 `cx utils cref` is the same command under the name of what it takes — a cRef, as
-`cx info` prints it (`{{{<category>::<alias>,<UID>}}}` is accepted as it is):
+`cx info` prints it (`{{{<category>::<alias>,<UID>}}}` is accepted as it is). A
+path inside the artifact may follow the cRef, with or without the braces — the
+way memories, records and docs name a place (§6.1); `\` works as well as `/`.
+The answer is then that file or folder (`path`, and `paths` with one per
+artifact that has it):
 
 ```bash
 cx utils cref "cserver.browse"
 cx utils cref "{{{category::cserver.browse,<UID>}}}"
+cx utils cref "{{{category::cserver.browse,<UID>}}}/files/js/move.js"
+cx utils cref "category::cserver.browse/README.md"
 ```
+
+`cref` is exact: the path must exist as written (in each artifact a wildcard
+finds; those without it are left out of the answer), `..` and another drive are
+refused, and so is any text around the cRef. `cx utils smart_cref`
+(`smart_find_by_cid`) is the lenient one: it finds a cRef inside a line of
+text, takes the longest existing part of the path after it, and returns a path
+of the file system as it is.
 
 This is the tool for finding **related artifacts across categories** — the same
 alias or tag used by a task, a tool and a result, for instance — which the
@@ -652,7 +727,7 @@ per-category `find` cannot express.
 | `--ask` | Prompt for the CID interactively. |
 | `--far` | Open the first match in the FAR file manager (Windows). |
 
-`cx utils smart_find_by_cid` is the wrapped-CID variant, for pasting a cRef that
+`cx utils smart_find_by_cid` (alias `smart_cref`) is the wrapped-CID variant, for pasting a cRef that
 is embedded in surrounding text.
 
 Other frequently used `utils` commands (full list: `cx utils --help`):
@@ -662,7 +737,7 @@ Other frequently used `utils` commands (full list: `cx utils --help`):
 | `cx utils uid` / `uuid` | Generate a 16-hex cMeta UID / a UUID4. |
 | `cx utils yaml2json <file>` / `json2yaml` | Convert between YAML and JSON. |
 | `cx utils pickle2json <file>` (`pkl2json`) / `json2pickle` | Convert between pickle and JSON — handy for inspecting `index/*.pkl`. |
-| `cx utils find_by_cid <cid>` / `smart_find_by_cid` | Find artifacts by a full cRef / CID. |
+| `cx utils find_by_cid <cid>` (`cref`) / `smart_find_by_cid` (`smart_cref`) | Find artifacts by an exact cRef, with an optional `/<path>` inside / by a cRef inside text. |
 | `cx utils artifacts` | Analyse all artifacts across all categories. |
 | `cx utils copy_text_to_clipboard` / `copy_date_to_clipboard` | Clipboard helpers. |
 | `cx utils utf8sig_to_utf8 <file>` | Strip a UTF-8 BOM. |
@@ -709,12 +784,13 @@ by the relative path, not as one machine's absolute path:
 {{{<category>::<artifact alias>,<artifact UID>}}}/<relative path, forward slashes>
 
 {{{fgg.project::cMeta,5e1b787a2f2a4549}}}/cmeta/docs/using-cmeta.md
-{{{repo::fgg,ad5d4f15885b4bfb}}}/work/2026          # a repository root, or a folder of it that is no artifact
+{{{repo::fgg,ad5d4f15885b4bfb}}}/work               # a repository root, or a folder of it that is no artifact
 ```
 
 The braces stand for the artifact's folder on whichever machine reads the
-text: `cx utils find_by_cid <cRef>` resolves them (one substitution), and a
-viewer can turn them into links. Keep the artifact's `alias,UID` (a rename
+text: `cx utils cref "{{{<cRef>}}}/<path>"` prints the full path there (the
+path must exist; `cx utils cref <cRef>` alone, the folder), and a viewer can
+turn them into links. Keep the artifact's `alias,UID` (a rename
 keeps the UID). A path outside cMeta stays a full path that names its machine.
 Do not use the form inside a templated value of a `_desc.yaml` (`cmd`, `env`,
 ...): the engine's own `{{ }}` expansion would read `{{{x}}}` as a key `{x`.
