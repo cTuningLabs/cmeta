@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV
+## 0.44.0
 - **The sensitivity scope of a call: `clearance`, `allow_repos`, `write_repos` beside `hide_repos`.** For a server
   that lets people in - a site with users, an API, an agent's key - on top of everything as it was: without any of
   these keys a call finds, reads and writes exactly as before, and no existing repository needs a change.
