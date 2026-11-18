@@ -35,7 +35,7 @@ cli_help:
     title: Repositories
     one: repository
     desc: Get the repositories that hold programs, tools and tasks, and keep them up to date
-    order: [pull, list, status, reindex, plug, unplug, unzip, zip, create, delete]
+    order: [pull, list, status, reindex, plug, unplug, unzip, zip, create, delete, scope]
     hide: [get_alias_from_url, init, move, space, clone, checkout, get, update, find]
 
   pull:
@@ -54,6 +54,10 @@ cli_help:
   status:
     title: Status
     desc: What changed in the repositories since their last commit
+
+  scope:
+    title: Who reads what
+    desc: The sensitivity label of each repository, and what a call with a clearance and named grants reads and writes
 
   reindex:
     title: Index again

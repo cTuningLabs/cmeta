@@ -3,6 +3,49 @@
 All notable changes to cMeta are documented here, newest first.
 
 ## DEV
+- **The sensitivity scope of a call: `clearance`, `allow_repos`, `write_repos` beside `hide_repos`.** For a server
+  that lets people in - a site with users, an API, an agent's key - on top of everything as it was: without any of
+  these keys a call finds, reads and writes exactly as before, and no existing repository needs a change.
+  **Labels.** A repository declares its sensitivity label with `sensitivity:` in its `_cmr.yaml` - `public`,
+  `general`, `confidential`, `highly-confidential`, the four labels of Microsoft 365 (`internal`, `private`, `conf`,
+  `conf-high` and `restricted` are read as synonyms) - or `personal`: what belongs to a person, above the four. **A
+  repository without a label is public** (a server sets `default_sensitivity` for the unlabelled ones it serves:
+  `general` for Microsoft 365's default marking, `personal` to show none of them); a word the engine does not know, a
+  repository of secrets without a label and the machine's own `local` repository (its logs, caches and config
+  artifacts) are above every clearance too, the engine's `internal` repository is public (the categories live
+  there). An artifact may raise its own label with `sensitivity:` in its `_cmeta`, never lower it. A label edited in
+  `_cmr.yaml` counts at the next call, without a reindex.
+  **Reading.** A call with a `clearance` (a control key of `cm.access`, a flag of every command:
+  `--clearance=general`) does not find, list or read the repositories and the artifacts labelled above it; a
+  repository named in `allow_repos` is read whatever its label - a named grant, the way to another person's personal
+  repository -, though never an artifact that raised its own label above the clearance; `hide_repos` wins over both.
+  The clearance `personal` is the server owner's: it reads everything on the server (every person's personal
+  repositories included) - for the owner alone; a word that is no clearance is refused, never read as everything.
+  A nested call only narrows: a wider clearance, a grant or a lower default asked inside a cleared call count for
+  nothing.
+  **Writing.** `write_repos` names the only repositories the call may write into (`none` = no write at all), and a
+  repository hidden from the call is never written into: create, update, delete, move and copy are refused before
+  anything is touched. A connection is a write on both sides (`--connect` needs the other artifact's repository
+  too; `--ct` writes this side only), and under a clearance a link between labels is written on the higher side
+  only - the name of an artifact never lands in one labelled below it -, a move or a copy never lowers an artifact's
+  label, and a call with a write scope manages no repository (`cx repo pull`, `create`, `unzip`, `unplug`, `delete`).
+  **The machine's settings** are read and kept by the code that serves a call, whatever its scope: a call into the
+  `config` category that carries none of these keys itself (made by a category or a page, never the request a
+  server forwards for a person) runs with the scope set aside; `cm.repos.suspend_scope()` does the same for a
+  server's own bookkeeping.
+  **For a server.** `cmeta.repos.scope_for(record, default_sensitivity=...)` turns a person's record (`clearance`,
+  `repos: {alias: none | read | write}`) and the site's default label into those keys - what a page, an API or an
+  agent's key passes with every request it makes for that person; `cm.repos.scope_table(scope)` and **`cx repo
+  scope --clearance=... --allow_repos=... --write_repos=...`** say for every repository its label and whether such a
+  call reads it and writes into it, and why - for a page of users and their rights. `/browse` and the configs page
+  follow the clearance of their request; the page's saves, new artifacts, moves, renames, deletions and links ask
+  the write scope of the request beside its own grant (`browse_edit`), and its own bookkeeping in `local` (the
+  trash, the file index) is done with the scope set aside.
+  Measured on a home of 4,800 artifacts: no difference without a scope or with `hide_repos`; a clearance costs one
+  file status per repository per request (about 0.3 ms for 18 repositories).
+  The new guide **[Sensitivity and access: cMeta for organisations](docs/sensitivity.md)** says it from the
+  beginning: what to label, what a server keeps per person and passes per request, what a person gets, the rules of
+  writes and of organising repositories.
 - **Tags typed on a phone.** On Android the keyboard of a field of tags showed an arrow instead of Enter, and the arrow
   only moved on, so a tag typed on the artifact page or in /browse's panel never got in. Those fields now ask the
   keyboard for an Enter key (`enterkeyhint`), take an Enter a phone's keyboard reports by its key code alone, and keep

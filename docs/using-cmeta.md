@@ -427,6 +427,68 @@ r = cm.access({'category': 'category,dd9ea50e7f76467f',
 Every response is a dict; `return == 0` means success, anything else carries an
 `error` string.
 
+**The scope of a call.** A server's page, an API or an agent's key passes with every request what the
+person it serves may see and do; the engine applies it to that call and to every call it makes, and
+nothing is left behind when it returns:
+
+```python
+r = cm.access({'category': 'note', 'command': 'find', 'arg1': '*',
+               'hide_repos': 'secrets,drafts',        # the artifacts of these repositories are not found, listed or read
+               'clearance': 'general',               # nor those labelled above general (sensitivity: in a repository's
+                                                     # _cmr.yaml, or in an artifact's own _cmeta; no label = public)
+               'allow_repos': 'deals',               # read whatever its label: a grant above the clearance
+               'write_repos': 'notes'})              # the only repository this call may write into ('none': no write)
+```
+
+The whole story for an organisation - labels, records, what a person gets, the rules of use - is in
+[sensitivity.md](sensitivity.md). In short: the labels are the four of Microsoft 365 - `public`, `general`, `confidential`, `highly-confidential`
+(`internal`, `private`, `conf`, `conf-high`, `restricted` are read as synonyms) - and `personal`, what belongs to
+a person: above the four, read by a named grant (`allow_repos`) or by the clearance `personal` - the server
+owner's, which reads everything on the server, every person's personal repositories included (give it to the owner
+alone). A word that is no clearance is refused, never read as everything. A repository without a label is public: the
+labels are an extra an organisation adds repository by repository, and nothing changes for the repositories that
+carry none (a server sets `default_sensitivity` for the unlabelled ones it serves: `general` for the default marking
+of Microsoft 365, `personal` to show none of them). Three things are ranked with `personal` without saying so: a
+word that is no label (a typing mistake hides, never shows), a repository of secrets, and the machine's own `local`
+repository - its logs, caches and config artifacts; the engine's `internal` repository is public (the categories
+live there). An artifact raises its own label with `sensitivity:` in its `_cmeta` and never lowers it; a named
+grant lifts a repository, never such an artifact. A label edited in `_cmr.yaml` counts at the next call.
+
+What a scope holds, in one place:
+
+| | |
+|---|---|
+| read | what is labelled at or below the `clearance`, plus `allow_repos`, minus `hide_repos` (which wins) |
+| write | only into `write_repos` (`none`: nowhere), never into what the call does not read |
+| a nested call | only narrows: a wider clearance, a grant or a lower default asked inside a cleared call count for nothing |
+| a connection | a write on both sides (`--ct`: this side only); under a clearance written on the higher label's side only |
+| move, copy | under a clearance never to a lower label (reclassifying down is done from a shell) |
+| repositories | a call with a write scope manages none (`pull`, `create`, `unzip`, `unplug`, `delete`) |
+| the machine's settings | a call into `config` made by the code that serves the request (no scope keys of its own) is not scoped; the request a server forwards for a person is |
+
+The same keys are flags of every command (`cx note find '*' --clearance=general --write-repos=none`).
+`cmeta.repos.scope_for(record, default_sensitivity='general')` turns a person's record - `{'clearance': 'general',
+'repos': {'deals': 'read', 'notes': 'write', 'drafts': 'none'}}` - and the site's default label into those keys, and
+`cx repo scope` with the same flags
+(`cm.repos.scope_table(scope)` from Python) prints for every repository its label and whether such a call reads it
+and writes into it - what a page of users shows per person:
+
+```
+REPOSITORY   SENSITIVITY              READ  WRITE
+deals        confidential             yes   -      above the clearance, granted by name
+drafts       general                  -     -      hidden by name
+notes        general                  yes   yes    within the clearance
+plans        highly-confidential      -     -      above the clearance
+local        personal (this machine)  -     -      above the clearance
+```
+
+A server does its own bookkeeping inside a request - a model built once for every viewer, its state in `local` -
+between `saved = cm.repos.suspend_scope()` and `cm.repos.pop_scope(saved)`, never around what the person asked for.
+A shell on the machine passes none of the keys and sees what the machine holds: the scope is for the doors, the
+machine's own access control is for the machine. And a scope is no sandbox: a door that lets a person write into a
+repository that defines categories, tasks or pages lets that person run code - keep what people write through a door
+in repositories of data.
+
 ### 5.4 `ctx` — thread state (and AI-agent context) through nested calls
 
 Every `access()` call receives — or creates — a `ctx` dict. It's the

@@ -157,6 +157,7 @@ created, then by updated; "-alias": by name from the end (dated names: the lates
 """
 
 import base64
+import contextlib
 import datetime
 import errno
 import fnmatch
@@ -1099,6 +1100,35 @@ def _ai_template(it):
     return d if isinstance(d, dict) and str(d.get('alias') or '').strip() else None
 
 
+def _scoped(repos):
+    """Whether the request this page serves has a scope that hides something: hidden repositories or a clearance
+    (the engine's Repos.scoped; an engine from before the sensitivity labels has hidden repositories only)."""
+    scoped = getattr(repos, 'scoped', None)
+    return bool(getattr(repos, 'hidden_repos', ())) if scoped is None else bool(scoped)
+
+
+def _write_scope_refused(repos, alias, uid=None):
+    """Why the engine's scope of the request does not let it write into a repository (write_repos, a repository
+    hidden from it), or '' - the page's own grant (browse_edit) is asked beside it. An engine from before the write
+    scope: ''."""
+    refused = getattr(repos, 'write_refused', None)
+    return (refused(alias or None, uid or None) or '') if refused else ''
+
+
+@contextlib.contextmanager
+def _unscoped(repos):
+    """The page's own bookkeeping inside a request - its trash, the folder of its file index, in the machine's local
+    repository - with the scope of the request set aside (the engine's Repos.suspend_scope); never around what the
+    viewer asked to read or write."""
+    suspend = getattr(repos, 'suspend_scope', None)
+    saved = suspend() if suspend else None
+    try:
+        yield
+    finally:
+        if saved is not None:
+            repos.pop_scope(saved)
+
+
 def _resolve(ref, by_uid, by_key):
     """A parsed reference (cat, cat UID, alias, UID) -> the UID of a catalog artifact, or ''. The UID decides when
     there is one; a reference by alias alone needs its category."""
@@ -1687,13 +1717,16 @@ class Category(InitCategory):
         hide_repos = _patterns(cfg.get('hide_repos'))
         hide_cats = self._hidden_categories(cfg)
         repos = self.cm.repos
-        scoped = bool(getattr(repos, 'hidden_repos', ()))
+        scoped = _scoped(repos)
         if not hide_repos and not hide_cats and not scoped:
             return cat['items']
+        # an artifact's own sensitivity label above the clearance of the request (an engine that has labels)
+        own = getattr(repos, 'artifact_hidden', None) if scoped and getattr(repos, 'clearance', None) is not None else None
         return [it for it in cat['items']
                 if not (hide_repos and it['repo'] and _matches_any(it['repo'], hide_repos))
                 and not (hide_cats and _matches_any(it['cat'], hide_cats))
-                and not (scoped and it['repo_uid'] and repos.repo_hidden(None, alias=it['repo'], uid=it['repo_uid']))]
+                and not (scoped and it['repo_uid'] and repos.repo_hidden(None, alias=it['repo'], uid=it['repo_uid']))
+                and not (own and it['repo_uid'] and own(it['meta'], it['repo'], it['repo_uid']))]
 
     def _hidden_categories(self, cfg):
         """The category patterns browse_hide_categories leaves out: unset = the categories of keys and secrets
@@ -1876,10 +1909,11 @@ class Category(InitCategory):
         if _fdisk['dir'] and os.path.isdir(_fdisk['dir']):
             return _fdisk['dir']
         try:
-            r = self.cm.access({'category': self._uses('result', FILES_RESULT_CATEGORY), 'command': 'get',
-                                'arg1': 'local:' + _fx.RESULT_ALIAS, 'tags': list(_fx.RESULT_TAGS), 'con': False,
-                                'meta': {'name': _fx.RESULT_NAME, 'permanent': True, 'tags': list(_fx.RESULT_TAGS),
-                                         'generator': dict(CACHE_GENERATOR)}})
+            with _unscoped(self.cm.repos):
+                r = self.cm.access({'category': self._uses('result', FILES_RESULT_CATEGORY), 'command': 'get',
+                                    'arg1': 'local:' + _fx.RESULT_ALIAS, 'tags': list(_fx.RESULT_TAGS), 'con': False,
+                                    'meta': {'name': _fx.RESULT_NAME, 'permanent': True, 'tags': list(_fx.RESULT_TAGS),
+                                             'generator': dict(CACHE_GENERATOR)}})
             path = (r.get('artifact') or {}).get('path', '') if r.get('return', 1) == 0 else ''
             _fdisk['error'] = '' if path else 'result::%s: %s' % (_fx.RESULT_ALIAS, r.get('error', 'not available'))
         except Exception as e:
@@ -2642,6 +2676,10 @@ class Category(InitCategory):
                     'lets write (browse_edit in the cserver config changes that)')
         if on is not True and not (_matches_any(it['repo'], on) or _matches_any(it['repo_uid'], on)):
             return 'you may not write to the repository %s' % (it['repo'] or '(registry)')
+        if it['repo'] or it['repo_uid']:
+            why = _write_scope_refused(self.cm.repos, it['repo'], it['repo_uid'])
+            if why:
+                return 'you may not write to the repository %s (%s)' % (it['repo'] or it['repo_uid'], why)
         if SECRET_DIR_RE.search(it['cat']):
             return 'not editable: this artifact is in a category that holds keys or secrets'
         return ''
@@ -2756,8 +2794,11 @@ class Category(InitCategory):
         repo_alias, repo_uid = str(rp.get('artifact_alias') or repo), str(rp.get('artifact_uid') or '')
         repos = self.cm.repos
         if _matches_any(repo_alias, _patterns(cfg.get('hide_repos'))) or \
-                (getattr(repos, 'hidden_repos', ()) and repos.repo_hidden(None, alias=repo_alias, uid=repo_uid)):
+                (_scoped(repos) and repos.repo_hidden(None, alias=repo_alias, uid=repo_uid)):
             return {'error': 'the repository %s is not one this page shows' % repo_alias}
+        why = _write_scope_refused(repos, repo_alias, repo_uid)
+        if why:
+            return {'error': 'you may not write to the repository %s (%s)' % (repo_alias, why)}
         cp = exact(self.cm.access({'category': 'category', 'command': 'find', 'arg1': str(cat or '').strip(), 'con': False}), cat)
         if cp is None:
             return {'error': 'no category %s on this server' % cat}
@@ -2854,8 +2895,11 @@ class Category(InitCategory):
             return {'error': 'you may not write to the repository %s' % to_alias}
         repos = self.cm.repos
         if _matches_any(to_alias, _patterns(cfg.get('hide_repos'))) or \
-                (getattr(repos, 'hidden_repos', ()) and repos.repo_hidden(None, alias=to_alias, uid=to_uid)):
+                (_scoped(repos) and repos.repo_hidden(None, alias=to_alias, uid=to_uid)):
             return {'error': 'the repository %s is not one this page shows' % to_alias}
+        why = _write_scope_refused(repos, to_alias, to_uid)
+        if why:
+            return {'error': 'you may not write to the repository %s (%s)' % (to_alias, why)}
         src = os.path.normpath(it['path'] or '')
         if _in_engine(root) or _in_engine(src) or _in_engine(t.get('path')):
             return {'error': 'the engine\'s own repository: nothing is moved into or out of it'}
@@ -2987,8 +3031,9 @@ class Category(InitCategory):
         engine's own cache category: a home without cmeta-aops), made at the first deletion."""
         last = ''
         for cat in (TMP_CATEGORY, self._uses('cache', CACHE_CATEGORY)):
-            r = self.cm.access({'category': cat, 'command': 'get', 'arg1': 'local:' + TRASH_ALIAS, 'con': False,
-                                'meta': {'name': TRASH_NAME, 'generator': dict(CACHE_GENERATOR)}})
+            with _unscoped(self.cm.repos):
+                r = self.cm.access({'category': cat, 'command': 'get', 'arg1': 'local:' + TRASH_ALIAS, 'con': False,
+                                    'meta': {'name': TRASH_NAME, 'generator': dict(CACHE_GENERATOR)}})
             if r.get('return', 1) == 0 and os.path.isdir((r.get('artifact') or {}).get('path') or ''):
                 return r['artifact']['path']
             last = r.get('error', '')
@@ -3087,6 +3132,9 @@ class Category(InitCategory):
         on = self._edit_on(misc, cfg)
         if on is False or (on is not True and not (_matches_any(record.get('repo'), on) or _matches_any(record.get('repo_uid'), on))):
             return {'error': 'you may not write to the repository %s' % (record.get('repo') or '?')}
+        why = _write_scope_refused(self.cm.repos, record.get('repo'), record.get('repo_uid'))
+        if why:
+            return {'error': 'you may not write to the repository %s (%s)' % (record.get('repo') or '?', why)}
         held = os.path.join(slot, record.get('folder') or '')
         if not record.get('folder') or not os.path.isdir(held):
             return {'error': '%s: its folder is not in the trash any more' % name}

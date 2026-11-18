@@ -240,7 +240,8 @@ def resolve_artifacts(cm, names, entries = None, missing_ok = False):
         cat,UID::alias,UID); more than one artifact for a name is an error that names them all, so the person
         picks one by its cRef. A name nothing matches is an error, or, with `missing_ok` (a name to remove: its
         artifact may be gone), comes back without a cRef.
-        Returns {'return', 'artifacts': [{'name', 'cref', 'path'}]}.
+        Returns {'return', 'artifacts': [{'name', 'cref', 'path', 'parts', 'cmeta'}]} (parts and cmeta: the
+        artifact's cmeta_ref_parts and _cmeta, for the scope of a call - None for a template's entry).
     """
     out = []
     for name in split_context_names(names) or []:
@@ -271,7 +272,8 @@ def resolve_artifacts(cm, names, entries = None, missing_ok = False):
         if len(found) > 1:
             return {'return':1, 'error': f'{what} matches several artifacts: ' +
                     ', '.join(_cref_of(a.get('cmeta_ref_parts')) for a in found) + ' - name one of them by its cRef'}
-        out.append({'name': name, 'cref': _cref_of(found[0].get('cmeta_ref_parts')), 'path': found[0].get('path')})
+        out.append({'name': name, 'cref': _cref_of(found[0].get('cmeta_ref_parts')), 'path': found[0].get('path'),
+                    'parts': found[0].get('cmeta_ref_parts'), 'cmeta': found[0].get('cmeta')})
     return {'return':0, 'artifacts':out}
 
 
@@ -854,6 +856,95 @@ class Category(InitCategory):
 
         return {'return':0, 'tags': unique_tags}
 
+    ###############################################################################################
+    def _write_refused(
+        self,
+        parts: dict,  # The cmeta_ref_parts of an artifact (repo_alias / repo_uid), or a repository's own (artifact_alias / artifact_uid).
+        what: str,  # What was about to be done ("creating an artifact", ...).
+        repo: bool = False,  # If True, parts name the repository itself.
+    ):
+        """
+            The error when the scope of this call (hide_repos, clearance, write_repos of CMeta.access) does not
+            allow a write into the repository, else None. Without a scope every write goes through, as before.
+
+            Args:
+                parts (dict): The reference parts.
+                what (str): What was about to be done.
+                repo (bool): If True, parts name the repository itself.
+
+            Returns:
+                dict or None: A cMeta error dictionary, or None when the write may go on.
+        """
+
+        parts = parts or {}
+        alias = parts.get('artifact_alias' if repo else 'repo_alias')
+        uid = parts.get('artifact_uid' if repo else 'repo_uid')
+
+        why = self.cm.repos.write_refused(alias, uid)
+        if why is None:
+            return None
+
+        return {'return':1, 'error':f'{what} refused: {why}'}
+
+    ###############################################################################################
+    def _link_refused(
+        self,
+        parts: dict,  # The cmeta_ref_parts of the artifact that is connected (its repo_alias / repo_uid).
+        cmeta: dict,  # Its _cmeta (its own label), or None.
+        plan: dict,  # The changes a create or an update asked for (_desc_plan), or None.
+    ):
+        """
+            The error when the scope of this call does not allow the connections of a plan, else None - asked
+            before anything is made or changed. The other side of --connect is a write too: its repository must
+            be one the call may write into. Under a clearance a link between sensitivity labels is written on
+            the higher side only: the cRef of an artifact (its alias is in it) never lands in an artifact
+            labelled below it. Without a scope every connection goes through, as before.
+
+            Args:
+                parts (dict): The artifact's reference parts.
+                cmeta (dict): The artifact's meta.
+                plan (dict): The plan.
+
+            Returns:
+                dict or None: A cMeta error dictionary, or None when the connections may be written.
+        """
+
+        if not plan:
+            return None
+
+        repos = self.cm.repos
+        if not repos.scoped and not repos.write_scoped:
+            return None
+
+        def lower(cref):
+            return {'return':1, 'error':f'connecting refused: a link between sensitivity labels is written on the higher side '
+                                        f'only - connect from {cref} with --ct'}
+
+        # the other side of --connect: its _desc.yaml is written too
+        for other in plan.get('others') or []:
+            op = other.get('parts') or {}
+            why = repos.write_refused(op.get('repo_alias'), op.get('repo_uid')) if op else None
+            if why:
+                return {'return':1, 'error':f'connecting both ways refused: {why} (--ct connects on this side only)'}
+
+        if repos.clearance is None:
+            return None
+
+        mine = repos.effective_rank(parts, cmeta)
+
+        # their cRef lands in this artifact
+        for item in plan.get('linked') or []:
+            if item.get('parts') and repos.effective_rank(item['parts'], item.get('cmeta')) > mine:
+                return lower(item['cref'])
+
+        # the cRef of this artifact lands in theirs
+        for other in plan.get('others') or []:
+            if other.get('op') == '+' and other.get('parts') and mine > repos.effective_rank(other['parts'], other.get('cmeta')):
+                return {'return':1, 'error':'connecting both ways refused: a link between sensitivity labels is written on the '
+                                            f'higher side only - {other["cref"]} is labelled below this artifact (--ct connects on this side only)'}
+
+        return None
+
     ############################################################
     def update_(
         self,
@@ -985,6 +1076,15 @@ class Category(InitCategory):
             plan = self._desc_plan(ctx, ai_uses if ai_uses is not None else ai, connect, connect_to, current, title)
             if plan['return']>0: return plan
         desc_changes = []
+
+        # The scope of this call: a repository it may not write into, a connection it may not make - refused
+        # before any artifact is touched
+        for artifact in artifacts:
+            r = self._write_refused(artifact.get('cmeta_ref_parts'), 'updating an artifact')
+            if r: return r
+
+            r = self._link_refused(artifact.get('cmeta_ref_parts'), artifact.get('cmeta'), plan)
+            if r: return r
 
         for artifact in artifacts:
             updated = False
@@ -1312,6 +1412,11 @@ class Category(InitCategory):
         category_cmeta = ctx['category_artifact']['cmeta']
         sharding_slices = category_cmeta.get('sharding_slices')
         no_index = category_cmeta.get('no_index', False)
+
+        # The scope of this call: a repository it may not write into - refused before any artifact is touched
+        for artifact in artifacts:
+            r = self._write_refused(artifact.get('cmeta_ref_parts'), 'deleting an artifact')
+            if r: return r
 
         for artifact in artifacts:
             artifact_path = artifact['path']
@@ -1664,6 +1769,11 @@ class Category(InitCategory):
         artifact_repo_alias = repo_cmeta_ref_parts.get('artifact_alias')
         artifact_repo_uid = repo_cmeta_ref_parts['artifact_uid']
 
+        # The scope of this call: a repository it may not write into
+        if not virtual:
+            r = self._write_refused(repo_cmeta_ref_parts, 'creating an artifact', repo = True)
+            if r: return r
+
         if not virtual:
             # Need to check detached but kept repos (such as USB)
             keep = repo_cmeta.get('keep', False)
@@ -1724,6 +1834,10 @@ class Category(InitCategory):
             plan = self._desc_plan(ctx, ai_uses if ai_uses is not None else ai, connect, connect_to, {},
                                    f'{category_alias}::{artifact_alias or artifact_uid}')
             if plan['return']>0: return plan
+
+            # The scope of this call: a connection it may not make - refused before the artifact is made
+            r = self._link_refused({'repo_alias': artifact_repo_alias, 'repo_uid': artifact_repo_uid}, meta, plan)
+            if r: return r
 
         # The folder, the meta and the record of a new artifact are made under the index lock: a full
         # reindex running meanwhile never sees a half-made artifact, two creates of one artifact at once
@@ -2060,10 +2174,11 @@ class Category(InitCategory):
             AI context (ai_uses), the connections of this artifact, and those of the artifacts --connect names
             (the other side). A name to add must name one artifact; a name to remove may name one that is gone
             (its entries are then found by what they say). A quiet run asks nothing.
-            Returns {'return', 'lists': {key: (add, drop)}, 'others': [{'op', 'cref', 'path'}], 'asked'}.
+            Returns {'return', 'lists': {key: (add, drop)}, 'others': [{'op', 'cref', 'path', 'parts', 'cmeta'}],
+            'linked': [{'cref', 'parts', 'cmeta'}] (the artifacts whose cRef this one gets), 'asked'}.
         """
         quiet = ctx.get('control', {}).get('quiet', False)
-        plan = {'return':0, 'lists':{}, 'others':[], 'asked':False}
+        plan = {'return':0, 'lists':{}, 'others':[], 'linked':[], 'asked':False}
 
         def listed(key):
             # what the artifact has under a key - None when several artifacts are asked about
@@ -2116,14 +2231,17 @@ class Category(InitCategory):
             if r['return']>0: return r
             for a in r['artifacts']:
                 adds.append(a['cref'])
+                plan['linked'].append({'cref': a['cref'], 'parts': a.get('parts'), 'cmeta': a.get('cmeta')})
                 if both:
-                    plan['others'].append({'op': '+', 'cref': a['cref'], 'path': a['path']})
+                    plan['others'].append({'op': '+', 'cref': a['cref'], 'path': a['path'],
+                                           'parts': a.get('parts'), 'cmeta': a.get('cmeta')})
             r = resolve_artifacts(self.cm, drop, missing_ok = True)
             if r['return']>0: return r
             for a in r['artifacts']:
                 drops.append(a['cref'] or a['name'])
                 if both and a['cref'] and a['path']:
-                    plan['others'].append({'op': '-', 'cref': a['cref'], 'path': a['path']})
+                    plan['others'].append({'op': '-', 'cref': a['cref'], 'path': a['path'],
+                                           'parts': a.get('parts'), 'cmeta': a.get('cmeta')})
         if adds or drops:
             plan['lists'][CONNECTIONS_KEY] = (adds, drops)
         return plan
@@ -2428,6 +2546,33 @@ class Category(InitCategory):
 
             target_repo_alias = repo_cmeta_ref_parts.get('artifact_alias')
             target_repo_uid = repo_cmeta_ref_parts['artifact_uid']
+
+        # The scope of this call: the artifacts' repositories (a move takes them out, a rename changes them) and
+        # the target repository - refused before any artifact is touched; a copy leaves its sources as they are
+        for artifact in artifacts:
+            if not copy:
+                r = self._write_refused(artifact.get('cmeta_ref_parts'), command2 + ' an artifact')
+                if r: return r
+
+        if target_repo_alias is not None or target_repo_uid is not None:
+            r = self._write_refused({'artifact_alias': target_repo_alias, 'artifact_uid': target_repo_uid},
+                                    command2 + ' into a repository', repo = True)
+            if r: return r
+
+            # Under a clearance a move or a copy never lowers an artifact's sensitivity label: reclassifying down
+            # is a decision, taken from a shell or by a call without a clearance (an owner's)
+            repos_ = self.cm.repos
+            if repos_.clearance is not None:
+                target_parts = {'repo_alias': target_repo_alias, 'repo_uid': target_repo_uid}
+                for artifact in artifacts:
+                    before = repos_.effective_rank(artifact.get('cmeta_ref_parts'), artifact.get('cmeta'))
+                    after = repos_.effective_rank(target_parts, artifact.get('cmeta'))
+                    if after < before:
+                        from .repos import sensitivity_label
+                        name = (artifact.get('cmeta_ref_parts') or {}).get('artifact_alias') or (artifact.get('cmeta_ref_parts') or {}).get('artifact_uid')
+                        return {'return':1, 'error':f'{command2} "{name}" into the repository "{target_repo_alias or target_repo_uid}" refused: '
+                                                    f'it would lower its sensitivity label from {sensitivity_label(before)} to {sensitivity_label(after)} '
+                                                    f'(done from a shell, or by a call without a clearance)'}
 
         # Iterate over artifacts
         tmp_target_uid = None

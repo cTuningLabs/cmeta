@@ -372,6 +372,7 @@ a summary of it.
 | [Error handling](docs/error-handling.md) | The return-dict contract, soft errors (code 16), raising errors, and debugging with `fail_on_error` in an IDE. |
 | [Async & concurrency](docs/async-and-concurrency.md) | `CMeta` vs `CMetaAsync`, parallel calls, FastAPI, and the safety guards for a shared `<CMETA_HOME>`. |
 | [Working with configs](docs/configuration.md) | The `config` category and how categories and apps read their settings. |
+| [Sensitivity and access](docs/sensitivity.md) | **cMeta for organisations**: labels on repositories, a record per person, the scope a server passes per request, `cx repo scope`. |
 | [cTuning.ai platform](docs/cplatform.md) | Connecting cMeta to the hosted platform API. |
 | [History & background](docs/history.md) | Lineage (CK → CM/CMX → cMeta), related publications, how to cite. |
 

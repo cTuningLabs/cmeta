@@ -16,6 +16,7 @@ Start here. These guides are the full documentation for the framework; the
 | [error-handling.md](error-handling.md) | The return-dict contract, checking results, soft errors (code 16), raising errors, and debugging with `fail_on_error` in VS Code / Visual Studio / PyCharm. |
 | [async-and-concurrency.md](async-and-concurrency.md) | Serial vs async (`CMeta` vs `CMetaAsync`), running calls in parallel, FastAPI usage, and the locking / atomic-write guards that make a shared `<CMETA_HOME>` safe. |
 | [configuration.md](configuration.md) | The `config` category in depth — how categories and apps read their settings. |
+| [sensitivity.md](sensitivity.md) | **cMeta for organisations**: sensitivity labels on repositories, a record per person, the scope a server passes with every request (`clearance`, `allow_repos`, `write_repos`), `cx repo scope`, the rules of writes and of organising repositories. |
 | [cplatform.md](cplatform.md) | Connecting cMeta to the cTuning.ai platform API and testing the connection. |
 | [history.md](history.md) | Lineage (cTuning framework → CK → CM/CMX → cMeta), related publications, and how to cite. |
 | [known-issues.md](known-issues.md) | Tracked defects and planned improvements (`KI-nnn`), with reproductions and workarounds. |
