@@ -2,6 +2,21 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.44.1
+- **A repository's registry record is no longer a way around a scope (`cserver.browse`).** The record of a
+  repository - an artifact of the category `repo` - has the whole repository as its folder. A request with a scope
+  (`hide_repos`, a clearance) could name it (`repo::<alias>`) and, on a host that opens the file browser to its
+  signed-in readers (`misc.browse_files`), list and read that repository's files through it, whatever the scope
+  hid. Now a registry record is served to a browser on the server's own machine, or on a personal server whose
+  config says `browse_files: yes` - and never under a scope: it is not resolved, not shown by a search, and gives
+  no files. Artifacts are read as before. A host with signed-in readers should upgrade.
+- **`cm.packages.get` finds a package whose module is not named as its distribution.** `python-dotenv` is imported
+  as `dotenv`: `get('python-dotenv')` failed the import, ran pip for nothing and answered "Installed ... but
+  cannot import it". Now, in `get`, `get_async` and the settings of `get_all`: `import_name=` names the module
+  outright, and without it an installed distribution's own record says what to import (`top_level.txt`, else its
+  files) - no pip run for what is installed, and the version comes from the distribution when the module carries
+  none (`Packages.import_names(name)` lists the modules). A name that imports as it is works as before.
+
 ## 0.44.0
 - **The sensitivity scope of a call: `clearance`, `allow_repos`, `write_repos` beside `hide_repos`.** For a server
   that lets people in - a site with users, an API, an agent's key - on top of everything as it was: without any of

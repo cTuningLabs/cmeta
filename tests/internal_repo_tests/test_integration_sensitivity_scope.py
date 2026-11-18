@@ -781,6 +781,53 @@ def test_the_browse_page_follows_the_clearance_of_its_request(cm):
     assert search() == ALL
 
 
+def test_the_registry_record_of_a_repository_is_not_a_way_around_the_scope(cm):
+    """The record of a repository (an artifact of the category repo) has the whole repository as its folder. It is
+    served to a browser on the server's own machine - never under a scope, and never to the readers a host opens
+    the file browser to: they read a repository through its artifacts."""
+    def page(action, scope=None, misc=None, **query):
+        r = cm.access(dict({'category': 'cserver.browse', 'command': 'web', 'con': False, 'urls': dict(URLS),
+                            'query': dict(query, native_action=action), 'misc': dict(misc or {})}, **(scope or {})))
+        assert r['return'] == 0, r
+        return r['json']
+
+    host = {'browse_files': True}                 # a site that opens the file browser to its signed-in readers
+    local = {'client_local': True}                # a browser on the server's own machine
+    conf_uid = uid_of(cm, 'conf-repo', 'repo')
+
+    # on the server's own machine the record is an artifact like another: its files are the repository's
+    out = page('resolve', None, local, cref='repo::conf-repo')
+    assert out['uid'] == conf_uid, out
+    out = page('files', None, local, uid=conf_uid)
+    assert 'error' not in out and any(f['rel'].startswith('log/conf-note/') for f in out['files']), out
+
+    # under a scope it is not there - by its cRef, by its UID, in a search - whether the scope hides the repository
+    # (a clearance below its label, hide_repos) or reads it (a clearance that covers it, the owner's)
+    for scope in ({'clearance': 'general'}, {'hide_repos': 'conf-repo'}, {'clearance': 'confidential'},
+                  {'clearance': 'personal'}):
+        for misc in (host, local):
+            out = page('resolve', scope, misc, cref='repo::conf-repo')
+            assert out['uid'] == '' and out['notice'], (scope, out)
+            for action, query in (('artifact', {}), ('files', {}), ('file', {'rel': '_cmr.yaml'}),
+                                  ('file', {'rel': 'log/conf-note/_cmeta.yaml'})):
+                out = page(action, scope, misc, uid=conf_uid, **query)
+                assert 'error' in out, (scope, action, out)
+        out = page('search', scope, host, cats='repo')
+        assert out['rows'] == [], (scope, out)
+
+    # the readers of a host get no registry record without a scope either: the file browser a host opens is for
+    # artifacts
+    out = page('resolve', None, host, cref='repo::conf-repo')
+    assert out['uid'] == '' and out['notice'], out
+    assert 'error' in page('files', None, host, uid=conf_uid)
+    assert 'error' in page('file', None, host, uid=conf_uid, rel='log/conf-note/_cmeta.yaml')
+
+    # ... while the artifacts themselves are read as before, within the scope
+    assert 'error' not in page('files', None, host, uid=uid_of(cm, 'conf-note'))
+    assert 'error' not in page('files', {'clearance': 'confidential'}, host, uid=uid_of(cm, 'conf-note'))
+    assert 'error' in page('files', {'clearance': 'general'}, host, uid=uid_of(cm, 'conf-note'))
+
+
 def test_the_browse_page_writes_within_the_scope_of_its_request(cm):
     # a signed-in reader the host lets write everywhere (browse_edit) - the engine's scope of the request narrows it
     def act(scope, action, **query):
