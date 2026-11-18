@@ -3,6 +3,26 @@
 All notable changes to cMeta are documented here, newest first.
 
 ## DEV
+- **Tags typed on a phone.** On Android the keyboard of a field of tags showed an arrow instead of Enter, and the arrow
+  only moved on, so a tag typed on the artifact page or in /browse's panel never got in. Those fields now ask the
+  keyboard for an Enter key (`enterkeyhint`), take an Enter a phone's keyboard reports by its key code alone, and keep
+  what a field holds when it is left; the fields of the lists (connections, AI uses) read a typed `;` from the text
+  itself (a phone's keyboard names no key for it).
+- **The home page reads tags written as one text.** A page category whose `_cmeta` holds its tags as one text with
+  commas (`tags: cserver,web,fgg`) had every letter taken for a tag on its card; the text is now split at its commas.
+- **The artifact page renames and deletes an artifact.** Beside "Move to ...", **Rename ...** gives an artifact a new
+  name - its folder renamed in one step where it is: the same UID, files and repository, so a cRef that carries the UID
+  keeps working; the dialog shows the new cRef as one types - and the page opens at its new cRef with Undo (the name it
+  had). **Delete ...** asks first, in a red dialog whose button stays grey until "Yes, I am sure" is switched on; the
+  artifact's folder then goes into the trash of this machine (`tmp::local:cserver-browse-trash`, or the `cache` category
+  where a home has no `tmp`), one folder per deletion with a note of where it was, and its record leaves the index; the
+  page is replaced by a note with Undo, which puts the folder back and indexes it again. The rules of "Move to": a
+  viewer who may write to the artifact (a browser on the server's own machine, `browse_edit`, or a host's grant), a
+  request from a page of this server, never keys or secrets, never the engine's own repository; a folder in use (a
+  shell, Far or an AI session in it) is refused with nothing changed, and so is another disk than the trash's, a
+  permanent artifact (`permanent: true`) and a name another artifact of the category has. The actions are /browse's
+  (`rename`, `delete_artifact`, `undelete_artifact`) and the dialogs are in its `files/js/move.js` (`cmetaRename`,
+  `cmetaDelete`) for the other pages to use.
 - **`cx utils cref` takes the path inside the artifact after the cRef, exactly.** `<cRef>/<path>` and
   `{{{<cRef>}}}/<path>` - the way memories, records and docs write a place; `\` as well as `/`, after a bare name
   too - print that file or folder and return it in `path`, with `paths` holding one per artifact that has it (a cRef

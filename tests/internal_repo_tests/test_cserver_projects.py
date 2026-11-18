@@ -117,6 +117,18 @@ def test_a_page_becomes_a_card_and_a_helper_a_footnote(cm):
     assert all('path' not in p for p in j['pages'] + j['others'])   # no local paths on the page
 
 
+def test_the_tags_of_a_page_kept_as_one_text(cm):
+    """2026-11-17: a page category whose _cmeta holds its tags as one text with commas ("cserver,web,fgg,journal") had
+    every letter taken for a tag (the cards, the dashboard's suggestions); the text is split at its commas, a list kept."""
+    for alias, tags in (('cserver.text-tags', 'cserver, web,fgg'), ('cserver.list-tags', ['cserver', 'web'])):
+        path = _add_category(cm, alias)
+        r = cm.access({'category': 'category', 'command': 'update', 'arg1': 'local:' + alias, 'meta': {'tags': tags},
+                       'con': False})
+        assert r['return'] == 0, r
+    pages = {p['alias']: p['tags'] for p in _web(cm, native_action='projects')['json']['pages'] if p['repo'] == 'local'}
+    assert pages == {'cserver.text-tags': ['cserver', 'web', 'fgg'], 'cserver.list-tags': ['cserver', 'web']}, pages
+
+
 def test_repo_filter(cm):
     _add_category(cm, 'cserver.hello')
     assert _web(cm, native_action='projects', repo='LOC')['json']['count'] == 1    # substring, any case

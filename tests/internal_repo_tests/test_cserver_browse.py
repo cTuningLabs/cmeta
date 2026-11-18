@@ -1250,6 +1250,101 @@ def test_moving_an_artifact_to_another_repository(cm):
         assert web(cm, BOTH, native_action='artifact', uid=uid)['json']['row']['repo'] == 'local'
 
 
+def test_renaming_and_deleting_an_artifact(cm):
+    """Rename and Delete (2026-11-15, the artifact page): a new name - its folder renamed where it is, the index
+    following it by its UID, Undo the name it had; a deletion - its folder into the trash of this machine (here the
+    engine's cache category: this home has no tmp category), its record out of the index, Undo putting it back; who
+    may, what is refused, a permanent artifact and a folder in use left untouched; the page offers both."""
+    uid, path = make(cm, 'to-rename', tags=['renamable'])
+    make(cm, 'taken')
+    with open(os.path.join(path, 'README.md'), 'w', encoding='utf-8') as f:
+        f.write('kept as it is\n')
+
+    def act(misc, action, **q):
+        return web(cm, misc, native_action=action, **q)['json']
+
+    def alias_of(u):
+        return web(cm, BOTH, native_action='artifact', uid=u)['json']['row']['alias']
+
+    # who may, and what a name may not be
+    assert 'page of this server' in act(LOCAL, 'rename', uid=uid, alias='renamed')['error']
+    assert 'error' in act({'same_origin': True}, 'rename', uid=uid, alias='renamed')        # a browser elsewhere, no grant
+    assert 'page of this server' in act(LOCAL, 'delete_artifact', uid=uid)['error']
+    assert 'error' in act({'same_origin': True}, 'delete_artifact', uid=uid)
+    for bad in ('a,b', 'a/b', 'x: y', '.hidden', 'end.', ' space', '0123456789abcdef', ''):
+        assert 'error' in act(BOTH, 'rename', uid=uid, alias=bad), bad
+    assert 'already' in act(BOTH, 'rename', uid=uid, alias='taken')['error']
+    assert 'already' in act(BOTH, 'rename', uid=uid, alias='TAKEN')['error']               # a case apart: one folder on Windows
+    assert act(BOTH, 'rename', uid=uid, alias='to-rename')['changed'] is False
+    assert os.path.isdir(path)
+
+    # the new name: the folder with its files, the index and the page's catalog follow at once - the same UID
+    out = act(BOTH, 'rename', uid=uid, alias='renamed')
+    assert out['from'] == 'to-rename' and out['to'] == 'renamed' and out['uid'] == uid and out['changed'], out
+    assert out['cref'].endswith('::renamed,' + uid), out
+    renamed = os.path.join(os.path.dirname(path), 'renamed')
+    assert not os.path.exists(path) and os.path.isfile(os.path.join(renamed, 'README.md'))
+    found = cm.access({'category': 'log', 'command': 'find', 'arg1': uid, 'con': False})['artifacts']
+    assert [a['cmeta_ref_parts']['artifact_alias'] for a in found] == ['renamed']
+    assert alias_of(uid) == 'renamed' and [x['alias'] for x in search(cm, q='tag:renamable')['rows']] == ['renamed']
+    # a change of case only, then Undo: the name it had
+    assert act(BOTH, 'rename', uid=uid, alias='Renamed')['to'] == 'Renamed'
+    assert 'Renamed' in os.listdir(os.path.dirname(path)) and alias_of(uid) == 'Renamed'
+    back = act(BOTH, 'rename', uid=uid, alias='to-rename')
+    assert back['to'] == 'to-rename' and os.path.isfile(os.path.join(path, 'README.md')) and alias_of(uid) == 'to-rename', back
+
+    # the deletion: the folder in the trash with where it was, the record out of the index, the page's catalog too
+    out = act(BOTH, 'delete_artifact', uid=uid)
+    assert out['deleted'] == 'to-rename' and out['uid'] == uid and out['repo'] == 'local', out
+    assert not os.path.exists(path)
+    r = cm.access({'category': 'cache', 'command': 'find', 'arg1': 'cserver-browse-trash', 'con': False})
+    assert r['return'] == 0 and len(r['artifacts']) == 1, r
+    slot = os.path.join(r['artifacts'][0]['path'], out['trash'])
+    assert os.path.isfile(os.path.join(slot, 'to-rename', 'README.md'))
+    with open(os.path.join(slot, 'deleted.json'), encoding='utf-8') as f:
+        assert json.load(f)['path'] == os.path.normpath(path)
+    assert not cm.access({'category': 'log', 'command': 'find', 'arg1': uid, 'con': False}).get('artifacts')
+    assert 'error' in web(cm, BOTH, native_action='artifact', uid=uid)['json']
+    assert search(cm, q='tag:renamable')['rows'] == []
+
+    # Undo: who may, which deletion; then the folder back where it was, indexed again, the slot gone
+    assert 'page of this server' in act(LOCAL, 'undelete_artifact', trash=out['trash'])['error']
+    assert 'trash' in act(BOTH, 'undelete_artifact', trash='../elsewhere')['error']
+    assert 'may not write' in act({'same_origin': True, 'browse_edit': ['other*']}, 'undelete_artifact', trash=out['trash'])['error']
+    back = act(BOTH, 'undelete_artifact', trash=out['trash'])
+    assert back['uid'] == uid and back['repo'] == 'local' and back['cref'].endswith('::to-rename,' + uid), back
+    assert os.path.isfile(os.path.join(path, 'README.md')) and not os.path.exists(slot)
+    assert alias_of(uid) == 'to-rename' and [x['alias'] for x in search(cm, q='tag:renamable')['rows']] == ['to-rename']
+    assert 'not in the trash' in act(BOTH, 'undelete_artifact', trash=out['trash'])['error']
+
+    # a permanent artifact is not deleted; the engine's own repository is neither renamed nor deleted from
+    uid2, path2 = make(cm, 'kept-forever', permanent=True)
+    assert 'permanent' in act(BOTH, 'delete_artifact', uid=uid2)['error'] and os.path.isdir(path2)
+    cat_uid = '14b2334988864507'                       # the category cserver.browse itself, in the engine's own repository
+    assert 'error' in act(BOTH, 'rename', uid=cat_uid, alias='other-name')
+    assert 'error' in act(BOTH, 'delete_artifact', uid=cat_uid)
+
+    # a folder in use (Windows: a file open in it) cannot be renamed or moved to the trash: refused, nothing changed
+    if os.name == 'nt':
+        with open(os.path.join(path, 'busy.txt'), 'w', encoding='utf-8') as f:
+            f.write('open')
+            f.flush()
+            r1 = act(BOTH, 'rename', uid=uid, alias='busy-name')
+            r2 = act(BOTH, 'delete_artifact', uid=uid)
+        assert 'in use' in r1['error'] and 'nothing was renamed' in r1['error'], r1
+        assert 'in use' in r2['error'] and 'nothing was deleted' in r2['error'], r2
+        assert os.path.isdir(path) and alias_of(uid) == 'to-rename'
+
+    # the artifact page offers Rename and Delete to this viewer - not to a browser elsewhere
+    def flags(misc):
+        html = cref_page(cm, 'log::to-rename', misc)
+        c = json.loads(html.split('var CXR_CONFIG = ', 1)[1].split(';</script>', 1)[0])
+        return c.get('rename'), c.get('delete'), c.get('alias'), 'id="cxr-delete"' in html
+
+    assert flags(BOTH) == (True, True, 'to-rename', True)
+    assert flags({'same_origin': True})[:2] == (False, False)
+
+
 def test_favourite_categories(cm):
     """The Favourites picker (2026-11-12): categories starred in the Categories picker, kept in the server's config
     (browse_favourite_categories, in the order starred) - by a viewer who may write everything, from a page of this

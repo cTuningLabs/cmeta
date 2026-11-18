@@ -573,6 +573,8 @@ class Category(InitCategory):
                  '<a href="%s" title="This artifact and its connections, drawn">Graph</a>%s'
                  ' <button type="button" class="cxr-copy" id="cxr-new" hidden title="A new artifact of this category, in this repository, with these tags">+ Similar</button>'
                  ' <button type="button" class="cxr-copy" id="cxr-move" hidden title="Move it to another repository: same name, same UID, same files">Move to ...</button>'
+                 ' <button type="button" class="cxr-copy" id="cxr-rename" hidden title="A new name: its folder renamed where it is - same UID, same files, same repository">Rename ...</button>'
+                 ' <button type="button" class="cxr-copy cxr-danger" id="cxr-delete" hidden title="Delete it: a red question first, then Undo">Delete ...</button>'
                  ' <button type="button" class="cxr-copy" id="cxr-theme" title="Dark / light (kept in this browser)">&#9680;</button></span></div>'
                  % (browse_link(view='browse', cats=cat), _esc(cat),
                     browse_link(view='browse', repos=row.get('repo') or ''), _esc(row.get('repo') or '(registry)'),
@@ -743,6 +745,10 @@ class Category(InitCategory):
                   'create': bool(a.get('can_create')) and tech,
                   # "Move to" (2026-11-11): into another repository, for a viewer who may write here
                   'move': bool(a.get('edit')) and tech,
+                  # Rename and Delete (2026-11-15): the same viewer, the dialogs of move.js; the name and the category
+                  # the new address is made of
+                  'rename': bool(a.get('edit')) and tech, 'delete': bool(a.get('edit')) and tech,
+                  'cat': cat, 'alias': alias, 'repo': row.get('repo') or '',
                   'new': {'cat': cat, 'repo': row.get('repo') or '', 'tags': list(row.get('tags') or [])}}
         return self._page(dark, title, '\n'.join(H), config=config, extra_head=page_head)
 
@@ -873,6 +879,11 @@ CSS = """
 .cxr-taginput{font:inherit;font-size:12.5px;padding:2px 8px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--fg);min-width:150px}
 .cxr-taginput.wide{min-width:320px;border-radius:6px}.cxr-dark .cxr-taginput{background:#1f242e}
 .cxr-flash{margin:6px 0 8px;padding:6px 10px;border-left:3px solid #0a7a3f;background:var(--soft);font-size:13px;overflow-wrap:anywhere}.cxr-flash.bad{border-left-color:#b42318}
+.cxr-flash .cxr-copy{margin-top:4px}
+.cxr-copy.cxr-danger{color:#d93036}.cxr-dark .cxr-copy.cxr-danger{color:#ff6369}.cxr-copy.cxr-danger:hover{border-color:#e5484d}
+.cxr-gone{margin:28px 0;padding:16px 18px;border:1px solid var(--line);border-left:4px solid #e5484d;border-radius:8px;background:var(--soft)}
+.cxr-gone .cxr-title{margin:0 0 6px;font-size:20px;overflow-wrap:anywhere}.cxr-gone p{margin:0 0 12px}
+.cxr-gone-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.cxr-gone-acts .msg{font-size:12px;color:var(--muted)}.cxr-gone-acts .msg.bad{color:#b4232c}
 .cxr-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(92vw,720px);padding:8px 14px;border-radius:8px;background:#14161a;color:#fff;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .15s;z-index:50;overflow-wrap:anywhere}
 .cxr-dark .cxr-toast{background:#e8eaee;color:#14161a}.cxr-toast.on{opacity:1}.cxr-toast.bad{background:#b42318;color:#fff}
 @media (max-width:860px){.cxr{padding:8px 12px 40px}.cxr-title{font-size:22px}.cxr-cols{grid-template-columns:minmax(0,1fr)}.cxr-side{position:static}}
@@ -951,8 +962,14 @@ JS = """<script>
     if(!f||f.uid!==C.uid||!(f.lines||[]).length)return;
     var d=h('div','cxr-flash'+(f.bad?' bad':''));f.lines.forEach(function(l){d.appendChild(h('div',null,l));});
     var box=null;document.querySelectorAll('details.cxr-lbox[data-box]').forEach(function(x){if(x.getAttribute('data-box')===f.where)box=x;});
-    var tech=document.querySelector('.cxr-tech'),texts=document.querySelector('.cxr-texts');
-    if(box){box.open=true;var b=box.querySelector('.cxr-lbody');b.insertBefore(d,b.firstChild);}
+    var tech=document.querySelector('.cxr-tech'),texts=document.querySelector('.cxr-texts'),ref=document.querySelector('.cxr-ref');
+    // a change that can be undone (2026-11-15: a new name) carries its Undo: the action, then the page it opens
+    if(f.undo){var ub=h('button','cxr-copy sm','Undo');ub.type='button';ub.title=f.undo.title||'';d.appendChild(ub);
+      ub.addEventListener('click',function(){ub.disabled=true;api(f.undo.action,f.undo.params).then(function(){
+        try{sessionStorage.setItem(FLASH,JSON.stringify({uid:C.uid,where:f.where,lines:[f.undo.said||'Undone']}));}catch(e){}
+        location.href=f.undo.url||location.href;}).catch(function(e){ub.disabled=false;toast(e.message,true);});});}
+    if(f.where==='title'&&ref){ref.parentNode.insertBefore(d,ref.nextSibling);}
+    else if(box){box.open=true;var b=box.querySelector('.cxr-lbody');b.insertBefore(d,b.firstChild);}
     else if(f.where==='tags'&&document.getElementById('cxr-tags')){var tg=document.getElementById('cxr-tags');tg.parentNode.insertBefore(d,tg.nextSibling);}
     else if(f.where==='tech'&&tech){tech.insertBefore(d,tech.children[1]||null);}
     else if(texts){texts.insertBefore(d,texts.firstChild);}})();
@@ -1015,8 +1032,13 @@ JS = """<script>
     var tagSave=function(next,what){if(tagsBusy)return;tagsBusy=true;tagsMsg.textContent='saving ...';
       api('tags',{uid:C.uid,tags:tagUniq(next)}).then(function(r){tagsBusy=false;tagsNow=(r.tags||tagUniq(next)).slice();tagsMsg.textContent=r.changed?what:'nothing changed';tagsDraw();})
         .catch(function(er){tagsBusy=false;tagsMsg.textContent=er.message;});};
+    // (2026-11-17, the user: "adding tags via /cref also have the same issue on Android" - the keyboard's arrow is no
+    // Enter): the phone's keyboard asked for an Enter key (enterkeyhint), keyCode 13 taken for one, what the box holds
+    // kept when it is left (the arrow leaves it), unless Esc gave it up
     var tagInput=function(value,place,ok){var inp=document.createElement('input');inp.type='text';inp.className='cxr-taginput';inp.value=value||'';inp.placeholder=place;inp.spellcheck=false;inp.setAttribute('aria-label',place);
-      inp.addEventListener('keydown',function(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();tagsDraw();}else if(e.key==='Enter'){e.preventDefault();ok(inp.value);}});
+      inp.setAttribute('enterkeyhint','enter');inp.setAttribute('autocapitalize','none');inp.setAttribute('autocomplete','off');var done=false;
+      inp.addEventListener('keydown',function(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done=true;tagsDraw();}else if(e.key==='Enter'||e.keyCode===13){e.preventDefault();done=true;ok(inp.value);}});
+      inp.addEventListener('blur',function(){if(done||!inp.isConnected||inp.value.trim()===String(value||'').trim())return;done=true;ok(inp.value);});
       return inp;};
     var tagsDraw=function(){tagsBox.innerHTML='';tagsBox.setAttribute('data-tags',JSON.stringify(tagsNow));tagsBox.classList.add('cxr-tags-editing');
       tagsNow.forEach(function(t,i){var c=h('span','cxr-chip cxr-tagedit'),rn=h('button','cxr-tagbtn','✎'),rm=h('button','cxr-tagbtn cxr-tagdel','✕');
@@ -1050,7 +1072,33 @@ JS = """<script>
     cmetaMove({api:api,uid:C.uid,dark:!!document.querySelector('.cxr-dark'),done:function(out){
       var u=C.browse_url||'/browse';u+=(u.indexOf('?')>=0?'&':'?')+'view=browse&repos='+encodeURIComponent(out.to);
       document.querySelectorAll('[data-cxr-repo]').forEach(function(a){a.textContent=out.to;a.setAttribute('href',u);});
-      if(C.new)C.new.repo=out.to;}});});}
+      if(C.new)C.new.repo=out.to;C.repo=out.to;}});});}
+  // Rename and Delete (2026-11-15, the user: "when I go to cRef for event, I also don't see delete or rename - can we add
+  // it there too for all (if allowed)?"): the dialogs of move.js. A new name opens the page at its new cRef, the message
+  // there offering Undo (the name it had); a deletion leaves a note in place of the page, with Undo (the folder back
+  // from the trash, the page drawn again)
+  function pageOf(alias){return (C.cref_url||'/cref/')+encodeURIComponent(C.cat)+'::'+encodeURIComponent(alias)+','+C.uid;}
+  var rnb=document.getElementById('cxr-rename');
+  if(rnb&&C.rename&&window.cmetaRename){rnb.hidden=false;rnb.addEventListener('click',function(){
+    cmetaRename({api:api,uid:C.uid,cat:C.cat,alias:C.alias,dark:!!document.querySelector('.cxr-dark'),done:function(out){
+      try{sessionStorage.setItem(FLASH,JSON.stringify({uid:C.uid,where:'title',lines:['Renamed: '+out.from+' \\u2192 '+out.to],
+        undo:{action:'rename',params:{uid:C.uid,alias:out.from},url:pageOf(out.from),said:'Back to its name '+out.from,title:'Give it back the name '+out.from}}));}catch(e){}
+      location.href=pageOf(out.to);}});});}
+  var dlb=document.getElementById('cxr-delete');
+  if(dlb&&C.delete&&window.cmetaDelete){dlb.hidden=false;dlb.addEventListener('click',function(){
+    cmetaDelete({api:api,uid:C.uid,name:C.cat+'::'+C.alias,repo:C.repo,dark:!!document.querySelector('.cxr-dark'),done:function(out){
+      var u=C.browse_url||'/browse';u+=(u.indexOf('?')>=0?'&':'?')+'view=browse&cats='+encodeURIComponent(C.cat);
+      var g=h('div','cxr-gone');g.appendChild(h('h1','cxr-title','Deleted: '+C.cat+'::'+C.alias));
+      g.appendChild(h('p',null,'Its folder is in the trash of this machine ('+out.trash+'), out of '+(out.repo||'its repository')+' and of the index. Undo puts it back where it was.'));
+      var row=h('div','cxr-gone-acts'),ub=h('button','cxr-btn cxr-primary','Undo');ub.type='button';
+      var bl=h('a','cxr-btn','The other '+C.cat+' artifacts');bl.href=u;row.appendChild(ub);row.appendChild(bl);g.appendChild(row);
+      var msg=h('span','msg');row.appendChild(msg);
+      ub.addEventListener('click',function(){ub.disabled=true;msg.className='msg';msg.textContent='putting it back ...';
+        api('undelete_artifact',{trash:out.trash}).then(function(r){
+          try{sessionStorage.setItem(FLASH,JSON.stringify({uid:C.uid,where:'title',lines:['Put back in '+(r.repo||'its repository')]}));}catch(e){}
+          location.reload();}).catch(function(e){ub.disabled=false;msg.className='msg bad';msg.textContent=e.message;});});
+      Array.prototype.slice.call(root.children).forEach(function(x){if(x.tagName!=='SCRIPT'&&x.tagName!=='STYLE')x.remove();});
+      root.appendChild(g);document.title='Deleted: '+C.alias;ub.focus();}});});}
   // "+ Similar" (2026-11-03): a new artifact of this category - its name, its tags (these ones), its repository (this one first) -
   // made by the category's own "add" on the server (a dated category puts the day in front), then its page opens
   var nb=document.getElementById('cxr-new');

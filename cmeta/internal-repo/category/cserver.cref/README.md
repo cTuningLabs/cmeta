@@ -42,7 +42,12 @@ cserver config, or what a host grants a signed-in reader):
   text around the list. A connection is added on this side (the other artifact lists it under "connects to it"), and
   removed from both sides where the reader may write - as `--connect=-<name>` does: the graph draws a connection
   declared on either side;
-- the `_cmeta` and the `_desc` are edited from their sections, any file from the files.
+- the `_cmeta` and the `_desc` are edited from their sections, any file from the files;
+- **Move to ...** puts the artifact into another repository, **Rename ...** gives it a new name (its folder renamed
+  where it is: the same UID, files and repository; the page opens at its new cRef, its message offering Undo) and
+  **Delete ...** deletes it after a red question ("Yes, I am sure" arms the button): its folder goes into the trash of
+  this machine (`tmp::local:cserver-browse-trash`) and its record out of the index; a note takes the place of the page,
+  with Undo (2026-11-15). The dialogs are `cserver.browse`'s `files/js/move.js`; a folder in use is never touched.
 
 The page is drawn again after each change, with what the change said.
 

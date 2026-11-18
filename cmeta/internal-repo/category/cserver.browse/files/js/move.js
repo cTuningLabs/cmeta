@@ -7,6 +7,8 @@
 
      cmetaMove({api: function (action, params) -> Promise of the answer, uid, dark, done: function (answer, undone)})
 
+   Rename and Delete (2026-11-15) are its two other dialogs - cmetaRename, cmetaDelete, below.
+
    No dependency. Authors: Grigori Fursin. */
 
 (function () {
@@ -33,7 +35,22 @@
     '.cmv-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:1001;background:#1f2430;color:#fff;border-radius:8px;' +
       'padding:9px 14px;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.3);display:flex;gap:12px;align-items:center;max-width:92vw}' +
     '.cmv-toast button{font:inherit;color:#9cc7ff;background:none;border:1px solid #4a5568;border-radius:6px;padding:2px 10px;cursor:pointer}' +
-    '.cmv-toast.cmv-bad{background:#7a1f1f}';
+    '.cmv-toast.cmv-bad{background:#7a1f1f}' +
+    // Rename and Delete (2026-11-15): the new cRef under the name; Delete a red dialog, its switch "Yes, I am sure"
+    // arms the red button
+    '.cmv-ref{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-wrap:anywhere;color:var(--fg)}' +
+    '.cmv-box.cmv-red{border-color:#e5484d;border-top:5px solid #e5484d}.cmv-red h3{color:#d93036}.cmv-dark.cmv-red h3{color:#ff6369}' +
+    '.cmv-what{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;overflow-wrap:anywhere}' +
+    '.cmv-sure{display:flex;align-items:center;gap:10px;padding:9px 11px;margin:6px 0 2px;border:1px solid rgba(229,72,77,.45);' +
+      'border-radius:9px;background:rgba(229,72,77,.07);cursor:pointer;font-weight:600;position:relative}' +
+    '.cmv-sure input{position:absolute;opacity:0;width:1px;height:1px}' +
+    '.cmv-switch{position:relative;flex:none;width:38px;height:22px;border-radius:999px;background:var(--line);transition:background .15s}' +
+    '.cmv-switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;' +
+      'box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s}' +
+    '.cmv-sure input:checked+.cmv-switch{background:#e5484d}.cmv-sure input:checked+.cmv-switch::after{left:19px}' +
+    '.cmv-sure input:focus-visible+.cmv-switch{box-shadow:0 0 0 3px rgba(229,72,77,.35)}' +
+    '.cmv-btn.cmv-del{background:#c9c9cf;border-color:#c9c9cf;color:#fff}.cmv-dark .cmv-btn.cmv-del{background:#4a4f5a;border-color:#4a4f5a}' +
+    '.cmv-btn.cmv-del.cmv-armed{background:#d93036;border-color:#d93036}';
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -178,4 +195,137 @@
   };
 
   window.cmetaMoveNote = note;
+
+  // a dialog over the page: its box, closed by Esc, Cancel or a click beside it -> {back, box, close, acts, err}
+  function dialog(o, red, keys) {
+    style();
+    var back = el('div', 'cmv-back');
+    var box = el('div', 'cmv-box' + (red ? ' cmv-red' : '') + (o.dark ? ' cmv-dark' : ''));
+    box.setAttribute('role', red ? 'alertdialog' : 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    var err = el('div', 'cmv-err');
+    err.hidden = true;
+    var acts = el('div', 'cmv-acts');
+    back.appendChild(box);
+    function close() { back.remove(); document.removeEventListener('keydown', onKey, true); }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+      if (keys) { keys(e); }
+    }
+    document.addEventListener('keydown', onKey, true);
+    back.addEventListener('mousedown', function (e) { if (e.target === back) { close(); } });
+    return { back: back, box: box, close: close, acts: acts, err: err };
+  }
+
+  /* Rename (2026-11-15, the user: "when I go to cRef for event, I also don't see delete or rename - can we add it there
+     too for all (if allowed)?"): a new name for the artifact - its folder renamed where it is, the same UID, files and
+     repository; the new cRef shows as one types; Enter or Rename renames, Esc closes. The page decides what follows
+     (the artifact page opens at the new cRef, with Undo: the name it had).
+
+       cmetaRename({api, uid, cat, alias, dark, done: function (answer)}) */
+  window.cmetaRename = function (o) {
+    var d = dialog(o, false, function (e) { if (e.key === 'Enter' && !go.disabled) { e.preventDefault(); rename(); } });
+    var title = el('h3', '', 'Rename ' + o.cat + '::' + o.alias);
+    var input = el('input', 'cmv-filter cmv-name');
+    input.type = 'text';
+    input.value = o.alias;
+    input.spellcheck = false;
+    input.setAttribute('aria-label', 'The new name');
+    var ref = el('p', 'cmv-ref');
+    var hint = el('p', 'cmv-note', 'Its folder is renamed in one step - the same UID, files and repository: a cRef that ' +
+      'carries the UID keeps working, one by the name alone needs the new name. A folder in use - a shell, Far or an AI ' +
+      'session in it - cannot be renamed: then nothing changes.');
+    var go = el('button', 'cmv-btn cmv-go', 'Rename');
+    go.type = 'button';
+    var cancel = el('button', 'cmv-btn', 'Cancel');
+    cancel.type = 'button';
+    d.acts.appendChild(cancel);
+    d.acts.appendChild(go);
+    [title, input, ref, d.err, hint, d.acts].forEach(function (x) { d.box.appendChild(x); });
+    document.body.appendChild(d.back);
+    function show() {
+      var v = input.value.trim();
+      ref.textContent = 'its new cRef: ' + o.cat + '::' + (v || '…') + ',' + o.uid;
+      go.disabled = !v || v === o.alias;
+    }
+    function rename() {
+      var v = input.value.trim();
+      if (!v || v === o.alias) { return; }
+      go.disabled = true;
+      input.disabled = true;
+      d.err.hidden = true;
+      go.textContent = 'Renaming ...';
+      o.api('rename', { uid: o.uid, alias: v }).then(function (out) {
+        if (!out || out.error) { throw new Error((out && out.error) || 'no answer'); }
+        d.close();
+        if (o.done) { o.done(out); }
+      }).catch(function (e) {
+        d.err.textContent = (e && e.message) || String(e);
+        d.err.hidden = false;
+        input.disabled = false;
+        go.textContent = 'Rename';
+        show();
+        input.focus();
+      });
+    }
+    input.addEventListener('input', show);
+    cancel.addEventListener('click', d.close);
+    go.addEventListener('click', rename);
+    show();
+    input.focus();
+    // the name after its date selected (20261120.Dinner: Dinner), else all of it
+    var m = /^\d{4}(?:[0-9a-z]{2}){0,2}[._ -]+/i.exec(o.alias);
+    input.setSelectionRange(m && m[0].length < o.alias.length ? m[0].length : 0, o.alias.length);
+  };
+
+  /* Delete (2026-11-15): a red dialog - Delete with "Yes, I am sure" switched on deletes the artifact (the server puts
+     its folder into the trash of this machine and takes it out of the index); with the switch off Delete only closes
+     the dialog, as Cancel, Esc and a click beside it do. The page decides what follows (Undo: undelete_artifact with
+     the trash slot of the answer).
+
+       cmetaDelete({api, uid, name, repo, dark, done: function (answer)}) */
+  window.cmetaDelete = function (o) {
+    var d = dialog(o, true);
+    var title = el('h3', '', 'Delete ' + o.name + '?');
+    var what = el('p', 'cmv-what', o.name + (o.repo ? ' in ' + o.repo : ''));
+    var how = el('p', '', 'Its folder leaves its repository for the trash of this machine (tmp::local:cserver-browse-trash) ' +
+      'and it leaves the index; the next sync deletes it on the other machines. Undo in the message puts it back; the ' +
+      'trash keeps it after that.');
+    var sure = el('input');
+    sure.type = 'checkbox';
+    sure.name = 'sure';
+    var label = el('label', 'cmv-sure');
+    label.appendChild(sure);
+    var sw = el('span', 'cmv-switch');
+    sw.setAttribute('aria-hidden', 'true');
+    label.appendChild(sw);
+    label.appendChild(el('span', '', 'Yes, I am sure - delete it'));
+    var go = el('button', 'cmv-btn cmv-del', 'Delete');
+    go.type = 'button';
+    var cancel = el('button', 'cmv-btn', 'Cancel');
+    cancel.type = 'button';
+    d.acts.appendChild(cancel);
+    d.acts.appendChild(go);
+    [title, what, how, label, d.err, d.acts].forEach(function (x) { d.box.appendChild(x); });
+    document.body.appendChild(d.back);
+    sure.addEventListener('change', function () { go.classList.toggle('cmv-armed', sure.checked); });
+    go.addEventListener('click', function () {
+      if (!sure.checked) { d.close(); return; }                 // not sure: back, nothing deleted
+      go.disabled = true;
+      d.err.hidden = true;
+      go.textContent = 'Deleting ...';
+      o.api('delete_artifact', { uid: o.uid }).then(function (out) {
+        if (!out || out.error) { throw new Error((out && out.error) || 'no answer'); }
+        d.close();
+        if (o.done) { o.done(out); }
+      }).catch(function (e) {
+        d.err.textContent = (e && e.message) || String(e);
+        d.err.hidden = false;
+        go.disabled = false;
+        go.textContent = 'Delete';
+      });
+    });
+    cancel.addEventListener('click', d.close);
+    sure.focus();
+  };
 })();

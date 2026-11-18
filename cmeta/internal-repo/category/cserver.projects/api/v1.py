@@ -461,7 +461,9 @@ class Category(InitCategory):
                 'repo': parts.get('repo_alias') or '',
                 'name': str(meta.get('name') or '').strip(),
                 'desc': str(meta.get('desc') or ('' if not meta.get('name') else meta.get('note') or '')).strip(),
-                'tags': [str(t) for t in (meta.get('tags') or [])],
+                # a list - or one text with commas, as some _cmeta files hold it (2026-11-17: its letters were the tags)
+                'tags': [str(t).strip() for t in (meta.get('tags') if isinstance(meta.get('tags'), (list, tuple))
+                                                  else str(meta.get('tags') or '').split(',')) if str(t).strip()],
                 'updated': str(meta.get('last_update_timestamp') or meta.get('creation_timestamp') or '')[:10],
                 'self': alias == own,
                 'card': meta.get('card', True) is not False,     # card: false - a page reached through links only
