@@ -1100,6 +1100,13 @@ def _ai_template(it):
     return d if isinstance(d, dict) and str(d.get('alias') or '').strip() else None
 
 
+def _is_registry(it):
+    """Whether a catalog item is the registry record of a repository - an artifact of the category repo. Its folder
+    is the whole repository, so it is never served as an ordinary artifact to a request that may not read
+    everything (see _visible and _registry_open)."""
+    return it.get('cat') == 'repo'
+
+
 def _scoped(repos):
     """Whether the request this page serves has a scope that hides something: hidden repositories or a clearance
     (the engine's Repos.scoped; an engine from before the sensitivity labels has hidden repositories only)."""
@@ -1722,8 +1729,13 @@ class Category(InitCategory):
             return cat['items']
         # an artifact's own sensitivity label above the clearance of the request (an engine that has labels)
         own = getattr(repos, 'artifact_hidden', None) if scoped and getattr(repos, 'clearance', None) is not None else None
+        # the registry record of a repository (its folder is the whole repository) is not an artifact of it, so the
+        # rules below would let it through: under a scope none is shown - a request that may not read everything
+        # reads a repository through its artifacts, each with its own category, label and guards - and neither is
+        # the record of a repository this server hides
         return [it for it in cat['items']
-                if not (hide_repos and it['repo'] and _matches_any(it['repo'], hide_repos))
+                if not (_is_registry(it) and (scoped or (hide_repos and _matches_any(it['alias'], hide_repos))))
+                and not (hide_repos and it['repo'] and _matches_any(it['repo'], hide_repos))
                 and not (hide_cats and _matches_any(it['cat'], hide_cats))
                 and not (scoped and it['repo_uid'] and repos.repo_hidden(None, alias=it['repo'], uid=it['repo_uid']))
                 and not (own and it['repo_uid'] and own(it['meta'], it['repo'], it['repo_uid']))]
@@ -2592,6 +2604,16 @@ class Category(InitCategory):
         if self._client_local(misc) or (misc or {}).get('file_index_manage') is True:
             return True
         return str(cfg.get('browse_files') or '').strip().lower() in ('yes', 'on', 'true', '1', 'all')
+
+    def _registry_open(self, misc, cfg):
+        """Whether the registry records of the repositories (the artifacts of the category repo: the folder of one
+        is the whole repository, so its files are every file of that repository) are served to this request: to a
+        browser on the server's own machine, or on a personal server whose config opens the file browser to
+        everyone it lets in (browse_files: yes) - and never under a scope. A host that opens the file browser to
+        its signed-in readers (misc.browse_files) does not open the registry with it."""
+        if _scoped(self.cm.repos):
+            return False
+        return self._client_local(misc) or str(cfg.get('browse_files') or '').strip().lower() in ('yes', 'on', 'true', '1', 'all')
 
     def _files_on(self, misc, cfg):
         """The file browser: the cserver config decides (browse_files yes / no); without a word from it, a host that
@@ -3521,6 +3543,11 @@ class Category(InitCategory):
         na = query.get('native_action', '')
         if na:
             try:
+                # a registry record named by its UID where the registry is not served: as if it were not there
+                if query.get('uid') and na != 'resolve':
+                    reg = self._catalog()['by_uid'].get(str(query.get('uid') or '').strip().lower())
+                    if reg is not None and _is_registry(reg) and not self._registry_open(misc, self._cserver_config()):
+                        return {'return': 0, 'json': {'error': 'artifact %s is not in the index of this server' % query.get('uid')}}
                 if na == 'search':
                     out = self._search(query)
                     out.pop('_found', None)
@@ -3568,6 +3595,10 @@ class Category(InitCategory):
                     out = _conn_status()
                 elif na == 'resolve':              # a cRef (any form the page's cref= takes) -> uid, file, notice
                     uid, rel, notice = self._resolve_cref(query.get('cref'))
+                    reg = self._catalog()['by_uid'].get(str(uid or '').lower()) if uid else None
+                    if reg is not None and _is_registry(reg) and not self._registry_open(misc, self._cserver_config()):
+                        uid, rel = '', ''
+                        notice = 'cref %s: no such artifact on this server (or it is hidden here)' % str(query.get('cref') or '').strip()
                     out = {'uid': uid, 'rel': rel, 'notice': notice}
                 elif na == 'artifact':
                     th = self._conn_start()

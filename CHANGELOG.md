@@ -3,6 +3,13 @@
 All notable changes to cMeta are documented here, newest first.
 
 ## DEV
+- **A repository's registry record is no longer a way around a scope (`cserver.browse`).** The record of a
+  repository - an artifact of the category `repo` - has the whole repository as its folder. A request with a scope
+  (`hide_repos`, a clearance) could name it (`repo::<alias>`) and, on a host that opens the file browser to its
+  signed-in readers (`misc.browse_files`), list and read that repository's files through it, whatever the scope
+  hid. Now a registry record is served to a browser on the server's own machine, or on a personal server whose
+  config says `browse_files: yes` - and never under a scope: it is not resolved, not shown by a search, and gives
+  no files. Artifacts are read as before. A host with signed-in readers should upgrade.
 - **`cm.packages.get` finds a package whose module is not named as its distribution.** `python-dotenv` is imported
   as `dotenv`: `get('python-dotenv')` failed the import, ran pip for nothing and answered "Installed ... but
   cannot import it". Now, in `get`, `get_async` and the settings of `get_all`: `import_name=` names the module
