@@ -39,7 +39,7 @@ Start here. These guides are the full documentation for the framework; the
 - [`CLAUDE.md`](../CLAUDE.md) — Claude Code specific notes.
 - [`.claude/skills/`](../.claude/skills/) — portable, reusable skills:
   `use-cmeta-python`, `use-cmeta-cli`, `add-plugin`, `add-repo`,
-  `add-cserver-plugin`.
+  `add-cserver-plugin`, `sensitivity-and-access`.
 
 ---
 

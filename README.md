@@ -531,7 +531,8 @@ Concise, portable **how-to-use-cMeta** references for reuse in downstream
 repos: [`use-cmeta-python`](.claude/skills/use-cmeta-python/SKILL.md) and
 [`use-cmeta-cli`](.claude/skills/use-cmeta-cli/SKILL.md) skills — cover
 `access()`, `ctx` (including AI-agent context threading), base commands,
-helpers under `cm.utils`, `cm.packages`, and CLI conventions.
+helpers under `cm.utils`, `cm.packages`, and CLI conventions. For servers that let people in:
+[`sensitivity-and-access`](.claude/skills/sensitivity-and-access/SKILL.md) - labels, the scope of a call, `cx repo scope`.
 
 ### 6. Resolving categories & artifacts
 

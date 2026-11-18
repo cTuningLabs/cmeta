@@ -45,7 +45,8 @@ All notable changes to cMeta are documented here, newest first.
   file status per repository per request (about 0.3 ms for 18 repositories).
   The new guide **[Sensitivity and access: cMeta for organisations](docs/sensitivity.md)** says it from the
   beginning: what to label, what a server keeps per person and passes per request, what a person gets, the rules of
-  writes and of organising repositories.
+  writes and of organising repositories; the agent skill `.claude/skills/sensitivity-and-access` the same for AI
+  agents.
 - **Tags typed on a phone.** On Android the keyboard of a field of tags showed an arrow instead of Enter, and the arrow
   only moved on, so a tag typed on the artifact page or in /browse's panel never got in. Those fields now ask the
   keyboard for an Enter key (`enterkeyhint`), take an Enter a phone's keyboard reports by its key code alone, and keep

@@ -380,4 +380,6 @@ the maintainer:
   - `add-plugin` — scaffold a new category & artifacts
   - `add-repo` — pull / init / plug content repositories
   - `release-cmeta` — release a new version (points to `docs/releasing.md`)
+  - `sensitivity-and-access` — sensitivity labels, the scope of a call (`clearance`, `allow_repos`,
+    `write_repos`), `scope_for`, `cx repo scope`, code that runs inside a scoped call (`docs/sensitivity.md`)
 - Lineage (background only): Collective Knowledge → Collective Mind → CMX → cMeta.
