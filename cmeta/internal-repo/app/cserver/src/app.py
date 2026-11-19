@@ -22,7 +22,7 @@ import time
 import urllib.parse
 
 from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -1187,7 +1187,8 @@ async def _serve_page(
     cmeta_params['misc'] = {'client_local': ((_is_local(_peer_ip(request)) or _own_connection(request))
                                              and not _via_proxy(request) and _host_local(request)),
                             'same_origin': _same_origin(request),
-                            'password_gate': _gate_on()}
+                            'password_gate': _gate_on(),
+                            'cserver_proxy': True}
 
     r = await cm.access(cmeta_params)
     if r['return']>0:
@@ -1217,7 +1218,108 @@ async def _serve_page(
     return templates.TemplateResponse(request, 'task.html', html_meta, status_code = 200)
 
 ##################################################################################################
-@app.get("/{task}/{file_path:path}")
+# A page that passes a web server of this machine through: its category's _desc.yaml says `cserver_proxy: {sub: ui}`,
+# and the sub-paths of the page under "ui" go to the address its api answers to the command "upstream" (cached for a
+# few seconds) - every method, behind this server's password gate. E.g. cserver.grafana: /grafana/ui/... -> Grafana
+# served under /grafana/ui on 127.0.0.1. Read once per change of the _desc.yaml file.
+
+_PROXY_DECLARATIONS = {}
+_PROXY_UPSTREAMS = {}
+PROXY_HOP_HEADERS = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers',
+                     'transfer-encoding', 'upgrade', 'host', 'content-length'}
+
+
+def _proxy_declaration(category_path):
+    """{'sub': <word>} when the page category declares cserver_proxy in its _desc.yaml, else None."""
+    fp = os.path.join(category_path, '_desc.yaml')
+    try:
+        mtime = os.path.getmtime(fp)
+    except OSError:
+        return None
+    hit = _PROXY_DECLARATIONS.get(fp)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    decl = None
+    try:
+        import yaml
+        with open(fp, encoding='utf-8') as f:
+            p = (yaml.safe_load(f) or {}).get('cserver_proxy')
+        if isinstance(p, dict) and str(p.get('sub') or '').strip('/'):
+            decl = {'sub': str(p['sub']).strip('/')}
+    except Exception:
+        decl = None
+    _PROXY_DECLARATIONS[fp] = (mtime, decl)
+    return decl
+
+
+async def _proxy(request, task_name, decl, file_path):
+    """The request passed on to the page's upstream server, its answer passed back."""
+    import http.client
+    hit = _PROXY_UPSTREAMS.get(task_name)
+    if hit and time.monotonic() - hit[0] < 5:
+        base = hit[1]
+    else:
+        r = await cm.access({'category': task_name, 'command': 'upstream', 'con': False})
+        base = str(r.get('url') or '') if r.get('return', 1) == 0 else ''
+        _PROXY_UPSTREAMS[task_name] = (time.monotonic(), base)
+    page = '/' + task_name.split('.', 1)[-1]
+    if not base:
+        return HTMLResponse(content='<p>The server this page passes through is not running. <a href="%s">%s</a> says '
+                                    'more and starts it.</p>' % (page, page), status_code=502)
+    u = urllib.parse.urlsplit(base)
+    rest = file_path[len(decl['sub']):]
+    path = u.path.rstrip('/') + (rest or '/')
+    if request.url.query:
+        path += '?' + request.url.query
+    body = await request.body()
+    headers = []
+    for k, v in request.headers.items():
+        lk = k.lower()
+        if lk in PROXY_HOP_HEADERS:
+            continue
+        if lk == 'cookie':
+            # this server's own session stays here
+            v = '; '.join(c for c in v.split(';') if c.strip() and not c.strip().startswith('cserver_session='))
+            if not v:
+                continue
+        headers.append((k, v))
+
+    def fetch():
+        cls = http.client.HTTPSConnection if u.scheme == 'https' else http.client.HTTPConnection
+        conn = cls(u.hostname, u.port, timeout=120)
+        try:
+            conn.putrequest(request.method, path, skip_host=True, skip_accept_encoding=True)
+            conn.putheader('Host', u.netloc)
+            for k, v in headers:
+                conn.putheader(k, v)
+            if body or request.method in ('POST', 'PUT', 'PATCH'):
+                conn.putheader('Content-Length', str(len(body)))
+            conn.endheaders(body or None)
+            resp = conn.getresponse()
+            return resp.status, resp.getheaders(), resp.read()
+        finally:
+            conn.close()
+
+    try:
+        code, answer_headers, data = await asyncio.to_thread(fetch)
+    except Exception as e:
+        _PROXY_UPSTREAMS.pop(task_name, None)
+        return HTMLResponse(content='<p>The server this page passes through does not answer (%s). <a href="%s">%s</a> '
+                                    'says more.</p>' % (html_escaper.escape(str(e)), page, page), status_code=502)
+    out = Response(content=data, status_code=code)
+    origin = '%s://%s' % (u.scheme, u.netloc)
+    for k, v in answer_headers:
+        lk = k.lower()
+        if lk in PROXY_HOP_HEADERS:
+            continue
+        if lk == 'location' and v.startswith(origin):
+            v = v[len(origin):] or '/'
+        out.headers.append(k, v)
+    return out
+
+
+##################################################################################################
+@app.api_route("/{task}/{file_path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
 async def task_files(
     request: Request,  # Input dictionary used by this function.
     task: str,  # Value for task.
@@ -1274,6 +1376,13 @@ async def task_files(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Multiple cmeta artifacts found for files")   
 
     artifact = artifacts[0]
+
+    # a page that passes a server of this machine through (cserver_proxy in its _desc.yaml): its sub-paths under "sub"
+    decl = _proxy_declaration(artifact['path'])
+    if decl and (file_path == decl['sub'] or file_path.startswith(decl['sub'] + '/')):
+        return await _proxy(request, task_name, decl, file_path)
+    if request.method not in ('GET', 'HEAD'):
+        raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED, detail="Method Not Allowed")
 
     project_files_path = artifact['path']
     project_files_path = os.path.join(project_files_path, 'files')
