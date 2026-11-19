@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV
+## 0.45.0
 - **One address to change for this machine's cMeta server: `cserver_url`.** `cx <category> find <artifact> --url`
   (`cx . info --url`) printed `url_cserver_info` of the config `default`, else `http://127.0.0.1:8004/far?hcref=`,
   whatever `cserver_url` said - so a server reached by its name (a hub on its Tailscale address) had two keys to
