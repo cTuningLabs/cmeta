@@ -14,6 +14,7 @@ configs:
         example: fgg
       url_cserver_info:
         desc: the address "cx <category> find <artifact> --url" prints and copies, the artifact's cRef appended to
-          it; the environment variable CMETA_SERVER_INFO_URL goes first
+          it; the environment variable CMETA_SERVER_INFO_URL goes first; unset = cserver_url (this machine's cMeta
+          server as a browser reaches it) with /far?hcref=, else the default
         type: url
         default: http://127.0.0.1:8004/far?hcref=

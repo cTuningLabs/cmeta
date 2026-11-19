@@ -20,8 +20,10 @@ configs:
     keys:
       cserver_url:
         desc: the address of this machine's cMeta server as a browser reaches it - cx utils view_cref opens /cref/<cRef>
-          there; unset = http://127.0.0.1:<the port of the cserver config, 8004>; the machine's own name when its pages
-          are read from other machines too (http://my-laptop:8004)
+          there, "cx <category> find <artifact> --url" its /far page (unless url_cserver_info says otherwise), and
+          the pages and tools that have no address of their own (a mail client's add-on) use it; unset =
+          http://127.0.0.1:<the port of the cserver config, 8004>; the machine's own name when its pages are read
+          from other machines too, or a server that listens on its Tailscale address (http://my-laptop:8004)
         type: url
         example: http://my-laptop:8004
       browser:

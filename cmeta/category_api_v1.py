@@ -650,6 +650,14 @@ class Category(InitCategory):
                     cfg = r['config_cmeta']
                     url = cfg.get('url_cserver_info', '')
 
+                    # Unset: the far page of this machine's cMeta server where a browser reaches it - cserver_url of
+                    # the same config, the address cx utils view_cref opens (2026-11-19: one key to change)
+                    base = str(cfg.get('cserver_url') or '').strip().rstrip('/')
+                    if url == '' and base:
+                        if not base.lower().startswith(('http://', 'https://')):
+                            base = 'http://' + base
+                        url = base + '/far?hcref='
+
                 if url == '':
                     url = self.cm.cfg['url_cserver_info']
                 
