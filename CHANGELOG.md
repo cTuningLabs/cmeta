@@ -2,6 +2,24 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.45.0
+- **One address to change for this machine's cMeta server: `cserver_url`.** `cx <category> find <artifact> --url`
+  (`cx . info --url`) printed `url_cserver_info` of the config `default`, else `http://127.0.0.1:8004/far?hcref=`,
+  whatever `cserver_url` said - so a server reached by its name (a hub on its Tailscale address) had two keys to
+  set. Unset, `url_cserver_info` now follows `cserver_url` (its `/far?hcref=` page), the address `cx utils view_cref`
+  already used; an explicit `url_cserver_info` and `CMETA_SERVER_INFO_URL` still go first. Both keys are described
+  on /settings and /cmeta.configs.
+- **A page may pass a web server of its machine through (`cserver_proxy`).** A page category whose `_desc.yaml`
+  declares `cserver_proxy: {sub: <word>}` has the sub-paths of its page under that word (`/<page>/<word>/...`) passed
+  to the address its api answers to the command `upstream` (`{'url': 'http://127.0.0.1:3000/grafana/ui'}`, asked again
+  every few seconds): every method, the query, the body and the headers - this server's own session cookie stays here
+  - and the answer back as it came (Set-Cookie more than once); a redirect to the upstream is made relative, so the
+  browser stays on this server; 502 when nothing answers. It runs behind this server's password gate and api keys like
+  every page, so a tool of the machine that listens on 127.0.0.1 (Grafana) is reachable through the cserver - from
+  another machine of the tailnet too - without being opened to the network. Pages know it from `misc.cserver_proxy`.
+  Only a category that declares it is concerned: every other page and file is served as before (a request other than
+  GET or HEAD to a page's file: 405 as before). No new dependency (the standard library's http.client).
+
 ## 0.44.1
 - **A repository's registry record is no longer a way around a scope (`cserver.browse`).** The record of a
   repository - an artifact of the category `repo` - has the whole repository as its folder. A request with a scope

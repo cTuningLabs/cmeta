@@ -68,3 +68,31 @@ def test_info_prints_and_copies_the_braces_reference_and_cref_the_old_form(cm, c
     out = info(cm, capsys, clip=False)
     assert len(cm.copied) == n and braces in out.splitlines()
     assert 'artifact_uid: ' + uid in out.splitlines()
+
+
+def test_url_follows_cserver_url_unless_its_own_key_or_the_variable_says_otherwise(cm, capsys, monkeypatch):
+    """--url (2026-11-19): CMETA_SERVER_INFO_URL, else url_cserver_info of the config "default", else cserver_url of
+    that config - this machine's cMeta server as a browser reaches it, the address view_cref opens - with
+    /far?hcref=, else http://127.0.0.1:8004/far?hcref=. One key to change for a server reached by its name."""
+    monkeypatch.delenv('CMETA_SERVER_INFO_URL', raising=False)
+    assert cm.access({'category': 'config', 'command': 'add', 'arg1': 'local:my-notes', 'con': False})['return'] == 0
+    capsys.readouterr()
+
+    def url():
+        out = info(cm, capsys, url=True)
+        printed = next(line for line in out.splitlines() if line.startswith('cRef URL: '))[len('cRef URL: '):]
+        assert cm.copied[-1] == printed
+        return printed
+
+    def config(**keys):
+        assert cm.access({'category': 'config', 'command': 'set', 'arg1': 'default', 'meta': keys, 'con': False})['return'] == 0
+
+    assert url().startswith('http://127.0.0.1:8004/far?hcref=config%2C')
+    config(cserver_url='brain.example:8004/')                      # a bare name:port, a trailing / taken off
+    assert url().startswith('http://brain.example:8004/far?hcref=config%2C')
+    config(cserver_url='https://hub.example')
+    assert url().startswith('https://hub.example/far?hcref=config%2C')
+    config(url_cserver_info='http://own.example:1/far?hcref=')    # its own key goes first
+    assert url().startswith('http://own.example:1/far?hcref=config%2C')
+    monkeypatch.setenv('CMETA_SERVER_INFO_URL', 'http://env.example:2/far?hcref=')
+    assert url().startswith('http://env.example:2/far?hcref=config%2C')
