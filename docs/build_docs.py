@@ -35,6 +35,7 @@ GUIDE_FILES = [
     "common-commands.md",
     "using-cmeta.md",
     "error-handling.md",
+    "design-concepts.md",
     "async-and-concurrency.md",
     "configuration.md",
     "sensitivity.md",

@@ -19,6 +19,7 @@ Welcome to cMeta v0.45.0 documentation!
    guides/common-commands
    guides/using-cmeta
    guides/error-handling
+   guides/design-concepts
    guides/async-and-concurrency
    guides/configuration
    guides/sensitivity

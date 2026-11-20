@@ -14,6 +14,7 @@ Start here. These guides are the full documentation for the framework; the
 | [common-commands.md](common-commands.md) | **Cheatsheet** — the commands you use daily: discovery, the `cx .` current-directory shortcut, `cx . info`, artifacts, UIDs, repos, configs, index/cache, scripting and debugging flags. |
 | [using-cmeta.md](using-cmeta.md) | **The getting-started and reference guide.** Mental model, first checks, CLI flags and syntax, built-in categories, working with artifacts from the CLI and Python, `ctx`, alias/UID resolution, content repositories, `config`-driven configuration, adding your own category, the artifact metadata reference, and indexing / caching. |
 | [error-handling.md](error-handling.md) | The return-dict contract, checking results, soft errors (code 16), raising errors, and debugging with `fail_on_error` in VS Code / Visual Studio / PyCharm. |
+| [design-concepts.md](design-concepts.md) | **What every change keeps**: cMeta as a connector and adaptor, backwards compatible by extension, adaptors that follow the version of what they wrap, working on old and unseen systems (reduced functionality rather than a failure), and never guessing - with how things are found (`alias,UID`, the repository's record, `.`). Read it before extending cMeta. |
 | [async-and-concurrency.md](async-and-concurrency.md) | Serial vs async (`CMeta` vs `CMetaAsync`), running calls in parallel, FastAPI usage, and the locking / atomic-write guards that make a shared `<CMETA_HOME>` safe. |
 | [configuration.md](configuration.md) | The `config` category in depth — how categories and apps read their settings. |
 | [sensitivity.md](sensitivity.md) | **cMeta for organisations**: sensitivity labels on repositories, a record per person, the scope a server passes with every request (`clearance`, `allow_repos`, `write_repos`), `cx repo scope`, the rules of writes and of organising repositories. |
@@ -35,7 +36,8 @@ Start here. These guides are the full documentation for the framework; the
 
 ### For AI agents extending cMeta
 
-- [`AGENTS.md`](../AGENTS.md) — the canonical agent brief for the engine.
+- [`AGENTS.md`](../AGENTS.md) — the canonical agent brief for the engine; its §5.3 holds the concepts every
+  change keeps ([design-concepts.md](design-concepts.md)).
 - [`CLAUDE.md`](../CLAUDE.md) — Claude Code specific notes.
 - [`.claude/skills/`](../.claude/skills/) — portable, reusable skills:
   `use-cmeta-python`, `use-cmeta-cli`, `add-plugin`, `add-repo`,

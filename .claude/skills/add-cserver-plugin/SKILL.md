@@ -348,6 +348,24 @@ cPlatform needs a **userspace pointer** at
 
 ---
 
+## Before you finish: the concepts every change keeps
+
+A plugin is part of cMeta, so it keeps cMeta's five concepts (`AGENTS.md` §5.3 of the engine, and
+`docs/design-concepts.md` there):
+
+- **Add, do not replace.** A new key, command, flag or `api/v2.py` goes beside what exists; an existing key,
+  command, flag, default or returned value keeps its meaning. Older artifacts and older callers keep working as
+  they are.
+- **Follow the version of what you wrap.** Code that depends on another program asks cMeta which version is there
+  and takes the mechanism for it. A new version gets a mechanism added; the older mechanisms stay.
+- **Work everywhere.** A missing or older system gets reduced functionality and a plain message, not a failure
+  (a real bug, a security issue and a forced configuration that is not available are the cases to fail).
+- **Never guess.** Find things by `alias,UID`, the repository's record and the artifact's own path - never by the
+  names of folders, a first or last match, or the order of a listing. When the defined way does not hold, stop
+  with an error.
+
+A change that cannot keep one of them is raised with the maintainer before it is written.
+
 ## 6. Run and verify — both hosts, every time
 
 ```bash

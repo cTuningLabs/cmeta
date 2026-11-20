@@ -233,6 +233,12 @@ Notable shipped artifacts:
 
 ## 5. Conventions
 
+- **Read §5.3 first — the concepts every change keeps:** cMeta is a connector
+  and an adaptor (never a replacement), backwards compatible by extension,
+  following the version of what it wraps, working everywhere (older systems with
+  reduced functionality rather than a failure), and never guessing. A change
+  that cannot keep one of them is raised with the maintainer before it is
+  written.
 - Keep runtime deps minimal — prefer stdlib; justify any new runtime dep.
 - **Preserve module docstring / copyright headers — never strip or rewrite
   them.** See §5.1 below for the full attribution rule.
@@ -362,6 +368,58 @@ the maintainer:
 - the PyPI upload;
 - deciding when users are told: the cTuning platform's `cmeta_last_version`, which `cx --version` reads
   through the cTuning.ai API.
+
+### 5.3 The concepts every change keeps
+
+The author's design concepts for cMeta (stated 2026-11-19/20). They decide how a
+change is made. A change that cannot keep one of them is **raised with the
+maintainer before it is written** — it is never settled silently in code. The
+same text for people: [`docs/design-concepts.md`](docs/design-concepts.md).
+
+1. **A layer over everything: a connector and an adaptor, never a replacement.**
+   cMeta gives one interface (`access()`, `cx`) to what already exists — tools,
+   AI harnesses, operating systems, hardware, repositories, and the artifacts of
+   the past (older metas, older layouts, legacy content). It adapts to them. It
+   does not ask them to change, and it does not drop the older ones when newer
+   ones arrive.
+2. **Backwards compatible, by extension.** New functionality is ADDED beside
+   what exists: a new key in a meta or in a returned dict, a new command or
+   flag, a new API version (`api/v1.py` stays when `api/v2.py` comes), a new
+   dated record, folder or file. An existing key, command, flag, default, layout
+   or returned value keeps its meaning. Older artifacts and older callers keep
+   working as they are: a conversion may be offered (`cx <category> migrate`
+   leaves a stub under the old alias), it is never required.
+3. **An adaptor follows the version of what it wraps.** Code that depends on
+   another program — a tool, a harness, an OS command, a driver — asks cMeta
+   which version is there and takes the mechanism for that version. When the
+   program changes, a mechanism is added for its newer versions; those for the
+   older versions stay, and stay tested. Never "the newest only".
+4. **Works everywhere: old, current and not yet seen.** Every OS, Python
+   3.9–3.15, hardware and version of a dependency, including ones nobody has
+   tried. Where something is missing or too old, do what still works and say
+   plainly what does not (reduced functionality) rather than fail. Failing is
+   right for a real bug, a security issue, or what the user explicitly forced: a
+   forced version or configuration that is not there is an error, never quietly
+   replaced by another.
+5. **Never guess: everything is deterministic.** Find a repository, a category,
+   an artifact, a folder or a file the way cMeta itself defines it — `alias,UID`
+   with the UID deciding, a repository by its record (`cx repo find`, its
+   `full_path`), an artifact's folder as `create` builds it
+   (`<repository full_path>/<category alias>/<shard folders>/<artifact>`) —
+   never from the names of the folders on a path, a "first" or "last" match, the
+   order of a listing, or a second heuristic when the first fails. When the
+   defined way does not hold, stop with an error that says what was expected;
+   two candidates are an error that lists them, not a choice. The one lookup
+   that starts from a path is `.` on the command line (the artifact of the
+   current directory): it matches that path against the records of the plugged
+   repositories (the deepest one that holds it), the category folder right under
+   it and the index's artifacts of that category — a match, not a guess.
+   (Learnt 2026-11-19: a rename took the first folder of its path named like
+   the category and moved artifacts out of their repository.)
+
+Before proposing a change, check it against the five: does it replace something
+instead of adding beside it? does it stop an older artifact, caller, OS, Python
+or tool version from working? does any step guess? If yes, say so and ask.
 
 ---
 
