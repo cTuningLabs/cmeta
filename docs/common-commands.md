@@ -103,7 +103,7 @@ cx <category> add <alias> -dt             # today's date in front: 20261105.<ali
 cx <category> get <alias> -dt             # read 20261105.<alias>, or make it: one name whether it exists or not
 cx <category> update <alias> --meta.description="..."
 cx <category> tags <alias> --add=t1,t2 --remove=t3
-cx <category> mv <alias> <new-alias>
+cx <category> mv <alias> <new-alias>        # refused while a program uses its folder (a panel, a terminal, an AI session)
 cx <category> migrate <alias> <new-alias>   # the same, plus a stub: the old alias keeps working
 cx <category> reindex <alias>          # refresh its index record from its folder (nothing is written)
 cx <category> rm <alias>
