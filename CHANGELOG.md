@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV
+## 0.45.1
 - **An artifact in use is never moved, renamed or migrated.** When a program uses an artifact's folder - its
   working directory is in it (a Far or mc panel, a terminal, an AI session) or it has a file of it open - `mv` and
   `migrate` stop before anything changes and say so: on Linux and macOS with the programs named (from /proc, or
