@@ -17,6 +17,20 @@ from cmeta import CMeta
 
 URLS = {'url': 'http://127.0.0.1:8004/browse?', 'url_files': 'http://127.0.0.1:8004/browse/',
         'url_server': 'http://127.0.0.1:8004/'}
+def _stand_in(folder):
+    """A program whose working directory is the folder (a terminal, a file manager's panel), running until killed."""
+    import subprocess
+    import time
+    ready = os.path.join(os.path.dirname(folder), '.ready-%s' % os.path.basename(folder))
+    p = subprocess.Popen([sys.executable, '-c', 'import sys, time; open(sys.argv[1], "w").close(); time.sleep(120)', ready],
+                         cwd=folder, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    t0 = time.monotonic()
+    while not os.path.exists(ready) and time.monotonic() - t0 < 30 and p.poll() is None:
+        time.sleep(0.05)
+    os.remove(ready)
+    return p
+
+
 LOCAL = {'client_local': True}       # what the engine cserver passes for a browser on its own machine
 BOTH = {'client_local': True, 'same_origin': True}      # ... and for a request a page of this server sent
 
@@ -1248,6 +1262,17 @@ def test_moving_an_artifact_to_another_repository(cm):
         assert 'in use' in out['error'] and 'nothing was moved' in out['error'], out
         assert os.path.isdir(path) and not os.path.exists(moved)
         assert web(cm, BOTH, native_action='artifact', uid=uid)['json']['row']['repo'] == 'local'
+    else:
+        # Linux and macOS (2026-11-20): a program standing in the folder is named, and nothing is moved
+        p = _stand_in(path)
+        try:
+            out = move(BOTH, repo='other')
+        finally:
+            p.kill()
+            p.wait(timeout=30)
+        assert 'in use' in out['error'] and ('pid %d' % p.pid) in out['error'] and 'nothing was moved' in out['error'], out
+        assert os.path.isdir(path) and not os.path.exists(moved)
+        assert web(cm, BOTH, native_action='artifact', uid=uid)['json']['row']['repo'] == 'local'
 
 
 def test_renaming_and_deleting_an_artifact(cm):
@@ -1332,6 +1357,18 @@ def test_renaming_and_deleting_an_artifact(cm):
             r1 = act(BOTH, 'rename', uid=uid, alias='busy-name')
             r2 = act(BOTH, 'delete_artifact', uid=uid)
         assert 'in use' in r1['error'] and 'nothing was renamed' in r1['error'], r1
+        assert 'in use' in r2['error'] and 'nothing was deleted' in r2['error'], r2
+        assert os.path.isdir(path) and alias_of(uid) == 'to-rename'
+    else:
+        # Linux and macOS (2026-11-20): a program standing in the folder is named, and nothing changes
+        p = _stand_in(path)
+        try:
+            r1 = act(BOTH, 'rename', uid=uid, alias='busy-name')
+            r2 = act(BOTH, 'delete_artifact', uid=uid)
+        finally:
+            p.kill()
+            p.wait(timeout=30)
+        assert 'in use' in r1['error'] and ('pid %d' % p.pid) in r1['error'] and 'nothing was renamed' in r1['error'], r1
         assert 'in use' in r2['error'] and 'nothing was deleted' in r2['error'], r2
         assert os.path.isdir(path) and alias_of(uid) == 'to-rename'
 

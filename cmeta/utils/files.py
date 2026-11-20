@@ -2957,6 +2957,276 @@ def safe_delete_directory_if_empty_with_sharding(
     return {'return': 0}
 
 ##########################################################################################
+def processes_in_folders(
+    folders: list,  # The folders to look at (each with everything inside it).
+    skip_pids: list = None,  # Processes to leave out (this process is always left out).
+):
+    """
+        The processes of this system that use one of the folders: their working directory, or a file they hold
+        open, is the folder or lies inside it - a terminal, a file manager's panel (Far, mc), an AI session
+        standing in it, an editor with a file of it open.
+
+        Such a folder must not be moved or renamed. On Windows the system refuses the rename itself (a program's
+        working directory is held open there), so nothing is listed. On Linux and macOS the rename would succeed
+        and leave the program in a folder that went elsewhere, so they are listed: Linux from /proc (the
+        processes this user may read), macOS and the other POSIX systems through lsof, when it is there.
+
+        Args:
+            folders (list): The folders to look at.
+            skip_pids (list | None): Processes to leave out.
+
+        Returns:
+            dict: A cMeta dictionary with the following keys
+                - **return** (int): 0 (a check that cannot be made is said in `checked`, not an error).
+                - **checked** (bool): False when this system gives no way to tell (Windows, no /proc and no lsof).
+                - **how** (str): '/proc', 'lsof' or ''.
+                - **processes** (list): {'pid', 'name', 'what' ('working directory' | 'open file'), 'path',
+                  'folder' (the folder of `folders` it lies in)}, one per process and folder.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+
+    targets = []
+    for folder in folders:
+        if os.path.isdir(folder):
+            targets.append((os.path.realpath(folder), folder))
+
+    def inside(path):
+        for real, folder in targets:
+            if path == real or path.startswith(real.rstrip(os.sep) + os.sep):
+                return folder
+        return None
+
+    skip = set(int(p) for p in (skip_pids or [])) | {os.getpid()}
+    found = {}
+
+    def note(pid, name, what, path, folder):
+        key = (pid, folder)
+        if key not in found or (what == 'working directory' and found[key]['what'] != what):
+            found[key] = {'pid': pid, 'name': name, 'what': what, 'path': path, 'folder': folder}
+
+    if os.name == 'nt' or not targets:
+        return {'return': 0, 'checked': os.name != 'nt', 'how': '', 'processes': []}
+
+    if sys.platform.startswith('linux') and os.path.isdir('/proc/self/fd'):
+        for entry in os.listdir('/proc'):
+            if not entry.isdigit() or int(entry) in skip:
+                continue
+
+            base = '/proc/' + entry
+            hits = []
+
+            try:
+                cwd = os.readlink(base + '/cwd')
+                folder = inside(cwd)
+                if folder:
+                    hits.append(('working directory', cwd, folder))
+            except OSError:
+                pass
+
+            try:
+                fds = os.listdir(base + '/fd')
+            except OSError:
+                fds = []
+
+            for fd in fds:
+                try:
+                    link = os.readlink(base + '/fd/' + fd)
+                except OSError:
+                    continue
+                if link.startswith('/'):
+                    link = link[:-len(' (deleted)')] if link.endswith(' (deleted)') else link
+                    folder = inside(link)
+                    if folder:
+                        hits.append(('open file', link, folder))
+
+            if hits:
+                try:
+                    with open(base + '/comm', encoding='utf-8', errors='replace') as f:
+                        name = f.read().strip()
+                except OSError:
+                    name = '?'
+                for what, path, folder in hits:
+                    note(int(entry), name, what, path, folder)
+
+        return {'return': 0, 'checked': True, 'how': '/proc',
+                'processes': sorted(found.values(), key=lambda p: (p['folder'], p['pid']))}
+
+    lsof = shutil.which('lsof') or next((p for p in ('/usr/sbin/lsof', '/usr/bin/lsof', '/sbin/lsof') if os.path.isfile(p)), None)
+    if not lsof:
+        return {'return': 0, 'checked': False, 'how': '', 'processes': []}
+
+    import subprocess
+
+    try:
+        out = subprocess.run([lsof, '-nP', '-w', '-F', 'pcfn'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, timeout=60).stdout.decode('utf-8', 'replace')
+    except (OSError, subprocess.SubprocessError):
+        return {'return': 0, 'checked': False, 'how': '', 'processes': []}
+
+    # lsof's fields: p<pid>, c<command>, then per file f<descriptor> (cwd for the working directory) and n<name>
+    pid, name, fd = None, '?', ''
+    for line in out.splitlines():
+        if not line:
+            continue
+        kind, value = line[0], line[1:]
+        if kind == 'p':
+            pid = int(value) if value.isdigit() else None
+            name, fd = '?', ''
+        elif kind == 'c':
+            name = value
+        elif kind == 'f':
+            fd = value
+        elif kind == 'n' and pid is not None and pid not in skip and value.startswith('/'):
+            folder = inside(value) or inside(os.path.realpath(value))
+            if folder:
+                note(pid, name, 'working directory' if fd == 'cwd' else 'open file', value, folder)
+
+    return {'return': 0, 'checked': True, 'how': 'lsof',
+            'processes': sorted(found.values(), key=lambda p: (p['folder'], p['pid']))}
+
+##########################################################################################
+def same_file_system(
+    path1: str,  # An existing file or folder.
+    path2: str,  # Another existing file or folder.
+):
+    """
+        Whether two existing paths are on one file system (a rename between them is possible).
+
+        Args:
+            path1 (str): An existing file or folder.
+            path2 (str): Another existing file or folder.
+
+        Returns:
+            bool: True when both are on the same device.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+
+    return os.stat(path1).st_dev == os.stat(path2).st_dev
+
+##########################################################################################
+def move_folder(
+    src: str,  # The folder to move.
+    dst: str,  # Its new path (it must not exist; its parent must).
+):
+    """
+        Move a folder, never half: renamed on its own file system, copied to another one, and in both cases either
+        done or not done at all.
+
+        - On the same file system the folder is renamed. A rename the system refuses - on Windows a folder in use:
+          a program's working directory or a file open inside it (a Far panel, a terminal, an AI session) - moves
+          nothing and says so (`in_use`).
+        - To another file system the folder is copied, the copy checked (every file there, of the same size), then
+          the source is first renamed aside - the same in-use test - and only then removed. When any step fails,
+          the copy is removed and the source is left as it was.
+
+        Args:
+            src (str): The folder to move.
+            dst (str): Its new path (it must not exist; its parent must).
+
+        Returns:
+            dict: A cMeta dictionary with the following keys
+                - **return** (int): 0 if success, >0 if error (nothing moved).
+                - **error** (str): Error message if `return > 0`.
+                - **in_use** (bool): True when the system refused because the folder is in use.
+                - **how** (str): 'rename' or 'copy'.
+                - **warning** (str): Set when the folder was moved but the emptied source could not be removed.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+
+    def refused(e):
+        in_use = os.name == 'nt' and (isinstance(e, PermissionError) or getattr(e, 'winerror', None) in (5, 32, 33))
+        if in_use:
+            text = (f'"{src}" is in use (a program has its working directory or a file open inside it: a Far or mc '
+                    f'panel, a terminal, an AI session) - nothing was moved ({e})')
+        else:
+            text = f'"{src}" could not be moved to "{dst}" - nothing was moved ({e})'
+        return {'return': 1, 'error': text, 'in_use': in_use}
+
+    if os.path.lexists(dst):
+        return {'return': 1, 'error': f'"{dst}" exists already - nothing was moved', 'in_use': False}
+
+    if same_file_system(src, os.path.dirname(dst)):
+        try:
+            os.rename(src, dst)
+            return {'return': 0, 'how': 'rename', 'in_use': False}
+        except OSError as e:
+            if e.errno != errno.EXDEV:
+                return refused(e)
+            # the same device but no rename between them (a bind mount, an overlay): copied below
+
+    # Another file system: copy, check, take the source aside (the in-use test), remove it
+    aside = os.path.join(os.path.dirname(src), '.' + os.path.basename(src) + '.cmeta-moving-' + str(os.getpid()))
+
+    def files_of(top):
+        out = {}
+        for root, dirs, files in os.walk(top):
+            for name in files:
+                full = os.path.join(root, name)
+                out[os.path.relpath(full, top)] = os.lstat(full).st_size
+        return out
+
+    try:
+        shutil.copytree(src, dst, symlinks=True, copy_function=shutil.copy2)
+        if files_of(src) != files_of(dst):
+            raise OSError('the copy differs from the source')
+    except Exception as e:
+        shutil.rmtree(dst, ignore_errors=True)
+        return {'return': 1, 'error': f'"{src}" could not be copied to "{dst}" - nothing was moved ({e})', 'in_use': False}
+
+    try:
+        os.rename(src, aside)
+    except OSError as e:
+        shutil.rmtree(dst, ignore_errors=True)
+        return refused(e)
+
+    try:
+        shutil.rmtree(aside)
+    except OSError as e:
+        return {'return': 0, 'how': 'copy', 'in_use': False,
+                'warning': f'moved to "{dst}"; the old copy could not be removed completely: "{aside}" ({e})'}
+
+    return {'return': 0, 'how': 'copy', 'in_use': False}
+
+##########################################################################################
+def rename_refused(
+    folder: str,  # The folder to test.
+):
+    """
+        Whether the system refuses to rename a folder - on Windows, a folder in use: a program's working directory
+        or a file open inside it. The folder is renamed beside itself and back at once (the test the system gives;
+        nothing else is changed), so that several folders can be tested before any of them is moved.
+
+        Args:
+            folder (str): The folder to test.
+
+        Returns:
+            str | None: None when the rename is possible, else the system's reason.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+
+    probe = os.path.join(os.path.dirname(folder), '.' + os.path.basename(folder) + '.cmeta-in-use-probe-' + str(os.getpid()))
+
+    try:
+        os.rename(folder, probe)
+    except OSError as e:
+        return str(e)
+
+    try:
+        os.rename(probe, folder)
+    except OSError as e:
+        raise OSError(f'"{folder}" was renamed to "{probe}" to test it and could not be renamed back ({e}) - rename it back by hand') from e
+
+    return None
+
+##########################################################################################
 def get_latest_tree_modification_time(
     path,  # Filesystem path.
 ):

@@ -218,6 +218,16 @@ EDIT_NEW = ('_desc.yaml', 'README.md')               # the files the editor may 
 INTERNAL_ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..'))
 
 
+def _programs_in(folder):
+    """The programs that use an artifact's folder as the engine's move names them (2026-11-20): '' when none, else
+    'in use: bash (pid 4321) has its working directory in it; ...'. Linux and macOS list them; on Windows the rename
+    below is refused by the system itself (its message says so), so nothing is listed here."""
+    from cmeta.utils.files import processes_in_folders
+    used = processes_in_folders([folder])['processes']
+    return ('in use: ' + '; '.join('%s (pid %s) has %s' % (p['name'], p['pid'], 'its working directory in it'
+                                   if p['what'] == 'working directory' else 'a file open in it') for p in used)) if used else ''
+
+
 def _in_engine(path):
     """Whether a folder is the engine's own repository or inside it."""
     p = os.path.normcase(os.path.realpath(path or ''))
@@ -2942,6 +2952,10 @@ class Category(InitCategory):
             return {'error': '%s: %s is on another disk - the move would be a copy and a deletion: use cx %s move %s %s:' %
                              (name, to_alias, cat, it['alias'], to_alias)}
 
+        busy = _programs_in(src)
+        if busy:
+            return {'error': '%s: %s - nothing was moved' % (name, busy)}
+
         made_dir = not os.path.isdir(dst_dir)
         try:
             os.makedirs(dst_dir, exist_ok=True)
@@ -3027,6 +3041,10 @@ class Category(InitCategory):
         if os.path.exists(dst) and not same:
             return {'error': '%s: there is a folder %s beside it already' % (name, new)}
 
+        busy = _programs_in(src)
+        if busy:
+            return {'error': '%s: %s - nothing was renamed' % (name, busy)}
+
         try:
             os.rename(src, dst)
         except OSError as e:
@@ -3100,6 +3118,9 @@ class Category(InitCategory):
         if os.path.exists(slot):
             return {'error': '%s: deleted a moment ago already' % name}
         held = os.path.join(slot, os.path.basename(src))
+        busy = _programs_in(src)
+        if busy:
+            return {'error': '%s: %s - nothing was deleted' % (name, busy)}
         try:
             os.makedirs(slot)
             os.rename(src, held)

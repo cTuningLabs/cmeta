@@ -401,6 +401,22 @@ cx task migrate local:my-task shared:my-task-v2  # to another repository, under 
 A category alias is not migrated: the `category` category refuses to rename one,
 so `migrate` stops before it leaves a stub.
 
+**An artifact in use is not moved.** `mv` and `migrate` stop before anything changes
+when a program uses the artifact's folder: its working directory is in it (a Far or
+mc panel, a terminal, an AI session standing there) or it has a file of it open. On
+Linux and macOS the programs are named (from `/proc`, or `lsof`); on Windows the
+system refuses the rename, and every folder of a wildcard is tested before any is
+moved. Leave the folder and run the command again. A folder is renamed on its own file
+system and copied to another one, either completely or not at all. `--ignore_in_use`
+moves it anyway on Linux and macOS (the program is then left in a folder that went
+elsewhere); `cp` (a copy only reads the folder) is not stopped.
+
+```bash
+cx work mv my-work archive:                     # refused while a terminal stands in work/my-work:
+# in use - nothing was moved:
+#   my-work: bash (pid 4321) has its working directory in it
+```
+
 ### 5.3 From Python
 
 Anything you can do on the CLI you can do via `cm.access(...)`:

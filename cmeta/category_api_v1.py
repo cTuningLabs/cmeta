@@ -2445,6 +2445,55 @@ class Category(InitCategory):
                 pass
 
     ############################################################
+    def _category_folder_of(
+        self,
+        artifact: dict,  # The artifact as find returns it (its path and cmeta_ref_parts: the repository).
+        category_alias: str,  # The alias of its category: the name of its category folder.
+        repos_seen: dict,  # A cache of the repositories' full paths for one call: (repo UID, repo alias) -> path.
+    ):
+        """
+            The category folder an artifact lives in, found as create_ makes it: the full path of its
+            repository (its subdir included) joined with the category alias, its shard folders (if any)
+            between that folder and the artifact's own. Never guessed from the names of the folders of the
+            path (a repository may sit inside another one's folder of the same name, a shard folder may carry
+            the category's name) and no second way of finding it: the artifact must lie in that folder -
+            compared as written, else as the system resolves both (a link, a junction) - or it is an error.
+
+            Returns:
+                dict: {'return': 0, 'path': the category folder} or {'return': 1, 'error': ...}.
+        """
+        path = os.path.normpath(artifact['path'])
+        parts = artifact.get('cmeta_ref_parts') or {}
+
+        key = (parts.get('repo_uid'), parts.get('repo_alias'))
+        if key not in repos_seen:
+            if key == (None, None):
+                return {'return':1, 'error':f'the artifact in "{path}" names no repository - its category folder is unknown'}
+
+            ref = {'category_alias': 'repo', 'category_uid': self.cm.cfg['category_repo_uid']}
+            if key[0] is not None: ref['artifact_uid'] = key[0]
+            if key[1] is not None: ref['artifact_alias'] = key[1]
+
+            r = self.cm.repos.find(ref)
+            if r['return']>0: return r
+
+            if len(r['artifacts']) != 1 or not r['artifacts'][0].get('full_path'):
+                paths = ', '.join(a.get('full_path') or '?' for a in r['artifacts'])
+                return {'return':1, 'error':f'the repository of the artifact in "{path}" is not one plugged repository ({paths or "none"})'}
+
+            repos_seen[key] = r['artifacts'][0]['full_path']
+
+        folder = os.path.normpath(os.path.join(repos_seen[key], category_alias))
+
+        def inside(child, parent):
+            return os.path.normcase(child).startswith(os.path.normcase(parent) + os.sep)
+
+        if inside(path, folder) or inside(os.path.realpath(path), os.path.realpath(folder)):
+            return {'return':0, 'path':folder}
+
+        return {'return':1, 'error':f'the artifact in "{path}" is not in the folder of its category "{folder}" - not moved'}
+
+    ############################################################
     def move_(
         self,
         ctx: dict,  # cMeta context.
@@ -2455,9 +2504,15 @@ class Category(InitCategory):
         skip_uids: bool = False,  # Skip UIDs when using wildcards.
         ignore_errors: bool = False,  # Ignore errors when updating multiple artifacts.
         copy: bool = False,  # If True, copy artifact instead of moving.
+        ignore_in_use: bool = False,  # On Linux and macOS, move a folder even while a program uses it.
     ):
         """
             Rename and/or move artifact(s).
+
+            An artifact in use is never moved or renamed: when a program has its working directory or a file open
+            in its folder (a Far or mc panel, a terminal, an AI session), the command stops before anything changes
+            and names the programs (Linux, macOS) or says that the system refused (Windows). A folder is renamed on
+            its file system and copied to another one, either completely or not at all.
 
             Args:
                 ctx (dict): cMeta context.
@@ -2468,6 +2523,8 @@ class Category(InitCategory):
                 skip_uids (bool): Skip UIDs when using wildcards.
                 ignore_errors (bool): Ignore errors when updating multiple artifacts.
                 copy (bool): If True, copy artifact instead of moving.
+                ignore_in_use (bool): On Linux and macOS, move a folder even while a program uses it (the program
+                    is then left in a folder that went elsewhere). Windows refuses such a rename itself.
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -2582,8 +2639,34 @@ class Category(InitCategory):
                                                     f'it would lower its sensitivity label from {sensitivity_label(before)} to {sensitivity_label(after)} '
                                                     f'(done from a shell, or by a call without a clearance)'}
 
+        # An artifact in use is not moved (2026-11-20, the user: a Far or mc panel, a terminal or an AI session in
+        # it, and the artifact moved to an archive by accident was broken). Linux and macOS: the programs listed here
+        # before anything changes; Windows refuses the rename itself (move_folder below)
+        if not copy and not ignore_in_use:
+            paths = [a['path'] for a in artifacts if os.path.isdir(a['path'])]
+            r = utils.files.processes_in_folders(paths)
+            lines = []
+            for p in r['processes']:
+                name = os.path.basename(p['folder'])
+                lines.append(f'  {name}: {p["name"]} (pid {p["pid"]}) has ' +
+                             ('its working directory in it' if p['what'] == 'working directory' else f'a file open in it ({p["path"]})'))
+            if os.name == 'nt':
+                # Windows names no program; it refuses the rename - tested for every folder before any is moved
+                for path in paths:
+                    refused = utils.files.rename_refused(path)
+                    if refused:
+                        lines.append(f'  {os.path.basename(path)}: Windows refuses to rename it - a program has its working '
+                                     f'directory or a file open in it ({refused})')
+            if lines:
+                return {'return':1, 'in_use': r['processes'] or True,
+                        'error':'in use - nothing was moved:\n' + '\n'.join(lines) +
+                                '\nLeave the folder (a Far or mc panel, a terminal, an AI session) and try again.'}
+
         # Iterate over artifacts
         tmp_target_uid = None
+
+        # The full paths of the source artifacts' repositories, looked up once per repository (_category_folder_of)
+        source_repos = {}
 
         category_cmeta = ctx['category_artifact']['cmeta']
         sharding_slices = category_cmeta.get('sharding_slices')
@@ -2645,19 +2728,17 @@ class Category(InitCategory):
                     if not update_uid:
                         return {'return':1, 'error':f"can't {command} artifact {artifact_alias} to itself"}
 
-            # Find path to a category of the original artifact
-            normal_path = os.path.normpath(path)
+            # Prepare target path: into another repository, its category folder; within the same repository (a
+            # rename), the artifact's own category folder, found as create_ makes it (_category_folder_of). It was
+            # the first folder of the path named like the category: for a repository inside another one's folder of
+            # that name, the outer folder - and the renamed artifact left its repository (2026-11-19)
+            if target_repo_path is not None:
+                path_to_target_category = os.path.join(target_repo_path, category_alias)
+            else:
+                r = self._category_folder_of(artifact, category_alias, source_repos)
+                if r['return']>0: return r
 
-            path_parts = normal_path.split(os.sep)
-
-            if category_alias not in path_parts:
-                return {'return':1, 'error':f'category_alias "{category_alias}" not found in path "{path}"'}
-
-            idx = path_parts.index(category_alias)
-            path_to_category = os.sep.join(path_parts[:idx+1])
-
-            # Prepare target path
-            path_to_target_category = path_to_category if target_repo_path is None else os.path.join(target_repo_path, category_alias)
+                path_to_target_category = r['path']
 
             if target_alias is not None:
                 target_artifact_dir = target_alias
@@ -2704,18 +2785,34 @@ class Category(InitCategory):
                 print (command2.capitalize() + f" {path} -> {path_to_target_artifact} ...")
 
             if not os.path.isdir(path_to_target_artifact):
-                if target_sharding_slices is not None:
-                    # Check if target sub-directories exists:
-                    sub_path_to_target_artifact = os.path.dirname(path_to_target_artifact)
-                    os.makedirs(sub_path_to_target_artifact, exist_ok=True)
+                # The folders above the target that are made here, removed again when nothing is moved
+                made = []
+                parent = os.path.dirname(path_to_target_artifact)
+                while parent and not os.path.isdir(parent) and os.path.dirname(parent) != parent:
+                    made.append(parent)
+                    parent = os.path.dirname(parent)
+                if made:
+                    os.makedirs(made[0], exist_ok=True)
 
-                try:
-                    if copy:
+                if copy:
+                    try:
                         shutil.copytree(path, path_to_target_artifact, copy_function=shutil.copy2, ignore_dangling_symlinks=False)
-                    else:
-                        shutil.move(path, path_to_target_artifact)
-                except Exception as e:
-                    return {'return':1, 'error': f'error {command2} artifact {path} to {path_to_target_artifact} - {e}'}
+                        r = {'return':0}
+                    except Exception as e:
+                        r = {'return':1, 'error': f'error {command2} artifact {path} to {path_to_target_artifact} - {e}'}
+                else:
+                    # Renamed or copied whole, never half; a folder in use is refused on Windows by the system
+                    r = utils.files.move_folder(path, path_to_target_artifact)
+                    if r['return'] == 0 and r.get('warning') and con:
+                        print('cMeta warning: ' + r['warning'])
+
+                if r['return']>0:
+                    for folder in made:
+                        try:
+                            os.rmdir(folder)
+                        except OSError:
+                            break
+                    return {'return':1, 'error': r['error'], 'in_use': bool(r.get('in_use'))}
 
             # Update meta if update_uid
             if update_uid:
@@ -2807,10 +2904,12 @@ class Category(InitCategory):
         arg1: str,  # The artifact to migrate: alias, UID or alias,UID (one artifact, no wildcards).
         arg2: str,  # Its new alias, optionally in another repository: [repo:]alias.
         tags: str = None,  # Prune the source artifact by tags.
+        ignore_in_use: bool = False,  # On Linux and macOS, migrate it even while a program uses its folder.
     ):
         """
             Rename an artifact (or move it to another repository under a new alias) and leave a
-            stub under its old alias that points to it.
+            stub under its old alias that points to it. An artifact in use is not migrated (see move):
+            nothing changes and no stub is made.
 
             The artifact keeps its UID, as with `move`, so `alias,UID` and UID references to it keep
             working. The stub gets the old alias, a new UID and two keys: `migrated_to`, the new
@@ -2825,6 +2924,7 @@ class Category(InitCategory):
                 arg1 (str): The artifact to migrate: alias, UID or alias,UID (one artifact, no wildcards).
                 arg2 (str): Its new alias, optionally in another repository: [repo:]alias.
                 tags (str | list | None): Prune the source artifact by tags.
+                ignore_in_use (bool): On Linux and macOS, migrate it even while a program uses its folder.
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -2898,6 +2998,7 @@ class Category(InitCategory):
                             'command': 'move',
                             'arg1': f'{old_alias},{artifact_uid}',
                             'arg2': arg2,
+                            'ignore_in_use': ignore_in_use,
                             'con': False})
         if r['return']>0: return r
 

@@ -2,6 +2,41 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.45.1
+- **An artifact in use is never moved, renamed or migrated.** When a program uses an artifact's folder - its
+  working directory is in it (a Far or mc panel, a terminal, an AI session) or it has a file of it open - `mv` and
+  `migrate` stop before anything changes and say so: on Linux and macOS with the programs named (from /proc, or
+  lsof); on Windows the system refuses the rename, and every folder of a wildcard is tested before any is moved.
+  Before, on Windows such a move reported an error yet left a full copy under the new name and an emptied
+  original that the index still named, and on Linux and macOS the program was left in a folder that went
+  elsewhere. A folder is now renamed on its own file system and copied to another one either completely (the copy
+  checked, then the source removed) or not at all; a folder made for the target is removed again when nothing is
+  moved. `--ignore_in_use` moves it anyway on Linux and macOS. A copy (`cp`) is not stopped. The pages' Move,
+  Rename and Delete (/browse, /cref), which Windows already refused for a folder in use, now name the programs
+  and refuse on Linux and macOS too. New in
+  `cmeta.utils.files`: `processes_in_folders`, `move_folder`, `rename_refused`, `same_file_system`. Tests with a
+  real program holding the folder (its working directory, an open file), a wildcard, another file system.
+- **A rename stays in its repository, whatever the folders of its path are called.** `cx <category> move <artifact>
+  <new alias>`, `cx <category> migrate` and `copy` within one repository found the artifact's category folder as
+  the FIRST folder of its path named like the category: for a repository inside another one's folder of that name
+  (a test home inside a `log::` artifact, a nested repository) or a repository folder named like the category, the
+  wrong folder - and the renamed artifact left its repository. The category folder is now found as `create` makes
+  it: the full path of the artifact's repository (its `subdir` included) joined with the category alias, the shard
+  folders below it (so a shard folder named like the category is never taken for it) - no folder is guessed from
+  names, and there is no second way: an artifact that does not lie in that folder is an error that moves nothing.
+  A move into another repository is unchanged. Tests: a home nested under a `log` folder, a sharded category whose
+  repository, category and shard folders share one name (move, migrate, copy), a repository with a `subdir`, a
+  move to another repository and back, a rename into a name that exists, an artifact outside its category folder,
+  a category without an index, a repository with its own sharding of a category, a migration and a copy into
+  another repository, several artifacts moved at once, and `.` (the artifact of the current directory) in those
+  layouts.
+- **The concepts every change keeps, written down.** `docs/design-concepts.md` (in the published guides) and
+  `AGENTS.md` §5.3: cMeta is a connector and an adaptor (never a replacement), backwards compatible by extension
+  (a new key, command, flag or API version beside what exists), following the version of what it wraps, working
+  on old and unseen systems (reduced functionality rather than a failure), and never guessing - with how things
+  are found (`alias,UID`, the repository's record, an artifact's folder as `create` builds it, `.` matched
+  against the records). The skills `add-plugin` and `add-cserver-plugin` end with the same check.
+
 ## 0.45.0
 - **One address to change for this machine's cMeta server: `cserver_url`.** `cx <category> find <artifact> --url`
   (`cx . info --url`) printed `url_cserver_info` of the config `default`, else `http://127.0.0.1:8004/far?hcref=`,

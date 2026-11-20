@@ -10,6 +10,7 @@ See the cMeta COPYRIGHT and LICENSE files in the project root for details.
 """
 
 import datetime
+import os
 
 import pytest
 
@@ -213,3 +214,32 @@ def test_a_category_alias_is_not_migrated(cm):
     r = find(cm, 'mycat', category='category', follow_migrated=False)
     assert r['return'] == 0 and len(r['artifacts']) == 1
     assert 'migrated_to' not in r['artifacts'][0]['cmeta']
+
+
+@pytest.mark.parametrize('command', ['move', 'migrate'])
+def test_a_rename_stays_in_a_home_nested_under_a_folder_named_like_its_category(tmp_path, monkeypatch, command):
+    # The home sits inside a folder named like the category (as a test home inside a log:: artifact does): the
+    # category folder of the artifact is the LAST one of that name above it, never the outer one (2026-11-19: the
+    # first one was taken and the renamed artifact left the inner repository for the outer folder)
+    outer = tmp_path / 'outer' / 'log'
+    home = outer / 'session' / 'home'
+    home.mkdir(parents=True)
+    for var in ('CMETA_HOME', 'CMETA_HOME2', 'VIRTUAL_ENV', 'CONDA_PREFIX', 'CMETA_DEBUG', 'CMETA_VERBOSE'):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv('CMETA_HOME', str(home))
+    monkeypatch.setattr(cmeta_repos, '_migrated_notices', set())
+    nested = CMeta(home=str(home))
+
+    uid = make(nested, 'old-name')
+    if command == 'move':
+        r = access(nested, category='log', command='move', arg1='old-name', arg2='new-name')
+    else:
+        r = migrate(nested, 'old-name', 'new-name')
+    assert r['return'] == 0, r.get('error')
+
+    inner = home / 'repos' / 'local' / 'log'
+    assert (inner / 'new-name').is_dir()
+    assert not (outer / 'new-name').exists()
+    assert sorted(p.name for p in outer.iterdir()) == ['session']
+    assert uids(find(nested, 'new-name')) == [uid]
+    assert os.path.normpath(find(nested, 'new-name')['artifacts'][0]['path']) == os.path.normpath(str(inner / 'new-name'))
