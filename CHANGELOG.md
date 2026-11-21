@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.45.1.1)
+## 0.45.2
 - **The cserver finds its templates and static files from its own folder.** It looked for them by the relative
   name `src`, so only while its current folder was its own: a server started from another folder, or one left in
   the folder that an upgrade in place had deleted under it, answered every page with a template (`/`, `/projects`,
