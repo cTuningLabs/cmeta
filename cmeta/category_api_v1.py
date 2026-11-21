@@ -1363,6 +1363,7 @@ class Category(InitCategory):
         match: dict = None,  # Value for match.
         match_empty_version: bool = False,  # Value for match empty version.
         all_tags: str = None,  # Value for all tags.
+        ignore_in_use: bool = False,  # On Windows, delete what can be deleted even while a program uses the folder.
     ):
         """
             Delete and unindex artifact(s).
@@ -1380,6 +1381,8 @@ class Category(InitCategory):
                 match (dict | None): Match artifact metadata before deleting.
                 match_empty_version (bool): Match artifacts with an empty version value.
                 all_tags (str | None): Require all supplied tags when selecting artifacts.
+                ignore_in_use (bool): On Windows, delete even while a program has its working directory or a file open in
+                    the folder: its files go, the folder stays (the behaviour before 2026-11-21).
 
             Returns:
                 dict: A cMeta dictionary with the following keys:
@@ -1425,6 +1428,30 @@ class Category(InitCategory):
         for artifact in artifacts:
             r = self._write_refused(artifact.get('cmeta_ref_parts'), 'deleting an artifact')
             if r: return r
+
+        # A folder in use is not deleted on Windows (2026-11-21): a program with its working directory or a file open in
+        # it kept the folder - its files went, the folder and its index record stayed ("artifact already exists" at the
+        # next add). Windows names no program; it refuses the rename - tested for every folder before any is deleted.
+        # Linux and macOS delete such a folder whole, as before.
+        if os.name == 'nt' and not ignore_in_use:
+            lines = []
+            for artifact in artifacts:
+                path = artifact['path']
+                if artifact['cmeta'].get('permanent', False) or not os.path.isdir(path):
+                    continue
+                # a folder under cMeta's own lock (a cache entry being built) is left to that lock: the deletion waits
+                # for it and fails as a whole with "locked by another process", as it always did
+                if os.path.exists(utils.files._get_lockfile_path(path)):
+                    continue
+                refused = utils.files.rename_refused(path)
+                if refused:
+                    lines.append(f'  {os.path.basename(path)}: Windows refuses to rename it - a program has its working '
+                                 f'directory or a file open in it ({refused})')
+            if lines:
+                return {'return':1, 'in_use': True,
+                        'error':'in use - nothing was deleted:\n' + '\n'.join(lines) +
+                                '\nLeave the folder (a Far or mc panel, a terminal, an AI session, a server started there) and '
+                                'try again; --ignore_in_use deletes what can be deleted.'}
 
         for artifact in artifacts:
             artifact_path = artifact['path']
