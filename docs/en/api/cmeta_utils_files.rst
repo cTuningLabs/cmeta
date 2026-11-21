@@ -56,9 +56,13 @@ Functions
 
 .. autofunction:: cmeta.utils.files.md5sum
 
+.. autofunction:: cmeta.utils.files.move_folder
+
 .. autofunction:: cmeta.utils.files.order_meta_keys
 
 .. autofunction:: cmeta.utils.files.parse_env_dump
+
+.. autofunction:: cmeta.utils.files.processes_in_folders
 
 .. autofunction:: cmeta.utils.files.quote_path
 
@@ -69,6 +73,8 @@ Functions
 .. autofunction:: cmeta.utils.files.remove_dirs_from_path
 
 .. autofunction:: cmeta.utils.files.remove_files_and_dirs_in_path
+
+.. autofunction:: cmeta.utils.files.rename_refused
 
 .. autofunction:: cmeta.utils.files.safe_delete_directory
 
@@ -85,6 +91,8 @@ Functions
 .. autofunction:: cmeta.utils.files.safe_read_yaml_or_json
 
 .. autofunction:: cmeta.utils.files.safe_write_file
+
+.. autofunction:: cmeta.utils.files.same_file_system
 
 .. autofunction:: cmeta.utils.files.shard_name
 

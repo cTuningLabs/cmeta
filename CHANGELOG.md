@@ -2,6 +2,21 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.45.2
+- **The cserver finds its templates and static files from its own folder.** It looked for them by the relative
+  name `src`, so only while its current folder was its own: a server started from another folder, or one left in
+  the folder that an upgrade in place had deleted under it, answered every page with a template (`/`, `/projects`,
+  every page of a category) with 500 - `TemplateNotFound`, `favicon.ico` missing - after the sign-in too. Restart a
+  server after an upgrade all the same: what it starts begins in that folder.
+- **Deleting an artifact whose folder is in use is refused whole on Windows.** A program with its working directory
+  or a file open in the folder (a server started there, a terminal, a Far panel) made `delete` take the files and
+  leave the folder and its index record ("artifact already exists" at the next `add`). Every folder is tested
+  before any is deleted, as `move` does since 0.45.1, and nothing changes: "in use - nothing was deleted".
+  `--ignore_in_use` deletes what can be deleted, as before. A folder under cMeta's own lock (a cache entry being
+  built) is left to that lock and its "locked by another process". Linux and macOS delete such a folder whole, as
+  they always did.
+- **0.45.1 among the release tests' starting versions.**
+
 ## 0.45.1
 - **An artifact in use is never moved, renamed or migrated.** When a program uses an artifact's folder - its
   working directory is in it (a Far or mc panel, a terminal, an AI session) or it has a file of it open - `mv` and

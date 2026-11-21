@@ -43,7 +43,10 @@ except ValueError:
 # recently added middleware first, and the gate reads request.session, so the session must wrap it.
 
 script_path = os.path.abspath(__file__)
-home_dir = os.path.basename(os.path.dirname(script_path))
+# the folder of this file, absolute (2026-11-21): templates and static files were found by the relative name "src",
+# so only while the server's current folder was the app's - an upgrade in place deletes that folder under a running
+# server (its pages then answered 500: TemplateNotFound), and a start from elsewhere never found them
+home_dir = os.path.dirname(script_path)
 
 home_dir_templates = os.path.join(home_dir, 'templates')
 templates = Jinja2Templates(directory = home_dir_templates)
