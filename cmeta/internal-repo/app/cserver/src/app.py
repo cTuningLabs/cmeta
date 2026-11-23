@@ -1122,6 +1122,9 @@ async def _serve_page(
         Response, or None when `quiet` and the page cannot be shown.
     """
     force_json = query.get('force_json', False)
+    # a page's own request for its data (?native_action=..., an Accept of JSON) is answered with JSON when the call
+    # fails too - an HTML error page there reached the page as "Unexpected token '<'" (2026-11-23)
+    wants_json = force_json or _wants_json(request)
 
     # Check if API KEYS (very basic, native and insecure implementation just for testing)
     api_keys = cfg.get('api_keys', [])
@@ -1146,7 +1149,7 @@ async def _serve_page(
 
             r = {'return':1, 'error': err}
 
-            if force_json:
+            if wants_json:
                return JSONResponse(content = r)
 
             html_meta = {"message": r['error'], 'request': request}
@@ -1198,8 +1201,8 @@ async def _serve_page(
         if quiet:
             return None
 
-        if force_json:
-            return JSONResponse(content = r)
+        if wants_json:
+            return JSONResponse(content = {'return': r['return'], 'error': str(r.get('error') or 'the call failed')})
 
         # the bar above an error page too: a way back home and to the other pages
         html_meta = {"message": r['error'], 'request': request, 'cmeta_header': _page_header(request, task, 'error')}

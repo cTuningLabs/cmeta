@@ -783,8 +783,12 @@
       if (typeof accessCT === 'function') {
         p = accessCT(url, {});
       } else {
-        p = fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-          .then(function (r) { return r.json(); });
+        p = fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: '{}' })
+          .then(function (r) {
+            return r.text().then(function (text) {
+              try { return JSON.parse(text); } catch (e) { return { error: noJson(r.status, text) }; }
+            });
+          });
       }
       return p.then(function (out) {
         if (!out || out.error) { fail((out && out.error) || 'empty answer'); return; }
@@ -799,6 +803,14 @@
         $('cpj-error').hidden = true;
         show();
       }).catch(function (e) { fail(e.message || String(e)); });
+    }
+    /* what a server said that is no JSON (an older cserver answers a failed call with its error page): its words */
+    function noJson(status, text) {
+      var words = String(text || '').replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]*>/g, ' ')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+      var said = /cMeta error:\s*([^!]{1,300})/.exec(words);
+      return 'the server answered HTTP ' + status + ' with a page, not the list' +
+        (said ? ': ' + said[1].trim() : (words ? ': ' + words.slice(0, 200) : '')) + ' - reload the page, or look at the server';
     }
     function fail(msg) {
       var box = $('cpj-error');
