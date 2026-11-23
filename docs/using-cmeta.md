@@ -151,6 +151,27 @@ Parsed by `cmeta/utils/cli.py::parse_cmd`. Full rules:
 - Repeated `--key=v1 --key=v2` → **last value wins**. For real lists, use:
 - `--key,=v1,v2,v3` → list `[v1, v2, v3]`. Trailing comma on the *key*
   signals CSV split. `--key,=` alone → `[]`.
+- `--key+=value` → appends one whole item to a list: `--key+="a, b; c"
+  --key+=d` → `['a, b; c', 'd']`. Nothing in a value is split, so an item may
+  hold commas, `;` and spaces (aliases and paths do). A value the key got
+  before without `+` becomes the first item: `--key=a --key+=b` → `['a', 'b']`;
+  `--key=value` alone stays a value, as always (cMeta 0.45.3). Quote each value
+  for the shell: double quotes work the same in bash, zsh, cmd and PowerShell.
+- A parameter that a category (`cli_params` of a command in its `_cmeta`) or a
+  task (`cli_params` in its `_desc`) describes with `type: list` gets a list
+  from one plain value too: `--key=value` → `['value']`, never split.
+- A `+` at the END of a key builds a list; a `+` in FRONT of the name of an
+  environment variable adds to that variable. `--env.+PATH=<dir>` puts `<dir>`
+  in front of the system's `PATH` for the commands a task, a tool or a program
+  runs (any variable: `+LD_LIBRARY_PATH`, `+DYLD_LIBRARY_PATH`, ...), and
+  `--env.+PATH+=<dir1> --env.+PATH+=<dir2>` adds several, each whole.
+  `--env.PATH+=<dir>` does not add: it is the list `['<dir>']`, so `PATH`
+  becomes `<dir>` alone for that run.
+- Shells: `+` and `=` need no quotes in cmd, PowerShell, bash, zsh, sh or fish;
+  `;` does in PowerShell and in the Unix shells (it ends a command there), not
+  in cmd. Windows PowerShell splits a word that starts with ONE dash and holds a
+  dot when it passes it to a program (`-env.PATH=x` arrives as `-env` and
+  `.PATH=x`): write nested keys with two dashes (`--env.PATH=x`).
 
 **Nested keys** (dot notation)
 - `--parent.child=value` → `{'parent': {'child': 'value'}}`.
@@ -783,6 +804,19 @@ Additional forms:
 - Cross-repo reference: `<repo>:<name>`, e.g. `cmeta-aops:my-script`.
 - Full cMeta ref (`cRef`): `<category>::<artifact>`, e.g.
   `category,dd9ea50e7f76467f::repo,f4f792ab40c7498f`.
+
+An alias may hold commas and spaces (`Kim Doe, joined Example Co, 20260922`).
+A name is read by its **last** comma: the part after it is the UID only when it
+is a valid UID, otherwise the whole name is the alias - so
+`demo.person::Kim Doe, joined Example Co, 20260922` names the alias, and
+`...20260922,5ca1ab1e5ca1ab1e` the same artifact by its UID. One alias is refused
+for that reason: one whose last comma is followed by a UID (`notes,0123456789abcdef`
+would always read as the alias `notes` and that UID). Code reads a name with
+`cmeta.utils.names.split_cmeta_name` (or `parse_cmeta_name` / `parse_cmeta_ref`),
+never by splitting it at a comma of its own. A list of plain names is separated by
+commas and a list that holds cRefs by `;` (`--connect`, `ai_uses`), so an alias
+with commas goes into such a list as a cRef, which keeps its commas:
+`--connect="demo.person::Kim Doe, joined Example Co, 20260922"`.
 
 Because `alias,UID` resolution only looks at the UID, references written in
 that form remain valid even if the alias is later renamed (a bare old alias

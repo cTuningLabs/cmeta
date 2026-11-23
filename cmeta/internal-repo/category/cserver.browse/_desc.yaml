@@ -19,6 +19,7 @@ configs:
           generator.by); unset = the authorship every artifact carries, so that a name finds the artifacts about it,
           not all of them; none = every value searched; the key qualifiers (authors:x, has:x) read every key
         type: list
+        secret: false                 # names of keys, not keys: only its own name looks like a secret's
         default: copyright,control,authors,contributors,generator,last_generator,artifact_defaults
         example: copyright,control,authors,contributors,generator,last_generator,artifact_defaults,owner
       browse_files:
@@ -55,6 +56,7 @@ configs:
           names only, never their contents - for a personal machine of one user who wants to find them; no or unset =
           never (a shared site keeps it so). The categories /browse hides (browse_hide_categories) are not read either way
         type: yes/no
+        secret: false                 # a switch about secrets, not one
         default: 'no'
       browse_file_search_skip_categories:
         desc: the categories the file index leaves out (aliases, comma-separated; none = no category) - machine output

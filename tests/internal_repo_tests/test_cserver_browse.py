@@ -507,7 +507,8 @@ def test_creating_from_the_page(cm):
 
     assert 'error' in create(None, cat='log', repo='local', alias='made-here')             # a browser elsewhere
     assert 'page of this server' in create(LOCAL, cat='log', repo='local', alias='made-here')['error']
-    for bad in ('', 'a/b', 'a:b', '.hidden', 'x,y'):
+    # a comma is fine (2026-11-23: test_cserver_comma_aliases.py), but not a UID after the last one
+    for bad in ('', 'a/b', 'a:b', '.hidden', 'x,0123456789abcdef'):
         assert 'error' in create(BOTH, cat='log', repo='local', alias=bad), bad
     assert 'no category' in create(BOTH, cat='no-such-category', repo='local', alias='x')['error']
     assert 'error' in create(BOTH, cat='log', repo='no-such-repo', alias='x')
@@ -1296,7 +1297,8 @@ def test_renaming_and_deleting_an_artifact(cm):
     assert 'error' in act({'same_origin': True}, 'rename', uid=uid, alias='renamed')        # a browser elsewhere, no grant
     assert 'page of this server' in act(LOCAL, 'delete_artifact', uid=uid)['error']
     assert 'error' in act({'same_origin': True}, 'delete_artifact', uid=uid)
-    for bad in ('a,b', 'a/b', 'x: y', '.hidden', 'end.', ' space', '0123456789abcdef', ''):
+    # a comma is fine (2026-11-23: test_cserver_comma_aliases.py), but not a UID after the last one
+    for bad in ('a,0123456789abcdef', 'a/b', 'x: y', '.hidden', 'end.', ' space', '0123456789abcdef', ''):
         assert 'error' in act(BOTH, 'rename', uid=uid, alias=bad), bad
     assert 'already' in act(BOTH, 'rename', uid=uid, alias='taken')['error']
     assert 'already' in act(BOTH, 'rename', uid=uid, alias='TAKEN')['error']               # a case apart: one folder on Windows

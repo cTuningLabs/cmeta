@@ -152,8 +152,18 @@ configs:
       token:
         desc: the API token of the service
         secret: true                         # its value is never shown
+      max_tokens:
+        desc: the most tokens of an answer
+        type: number
+        secret: false                        # a number: only its name looks like a secret's
       retries: how many times a download is tried     # a text alone is the description
 ```
+
+A value is never shown when its key is declared `secret: true`, or when its name looks like a secret's (`*token*`,
+`*secret*`, `*_key`, `*_keys`, `password` ...: `secret_keys` of the configs page). A key that only looks like one - a
+count of tokens, a list of key names - says `secret: false` where it is declared: the word of the artifact that reads
+a key comes before its name. `secret: true` from any artifact wins; a key that no artifact declares is judged by its
+name alone.
 
 Name a config of your own distinctly (`task-<task alias>`, `<tool>-<purpose>`):
 config artifacts are shared by every artifact of a machine.

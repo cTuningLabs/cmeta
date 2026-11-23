@@ -54,6 +54,7 @@ import re
 import yaml
 
 from cmeta.category import InitCategory
+from cmeta.utils.names import split_cmeta_name
 
 TEXT_DEFAULT = ['README.md', 'readme.md', '_info.md', 'note.md', 'index.md']
 TEXT_EXT = ('.md', '.markdown', '.txt', '.rst', '.yaml', '.yml', '.json', '.py', '.js', '.css', '.html', '.sh', '.bat',
@@ -241,7 +242,10 @@ def _item_cat(c):
     if c.get('cat'):
         return c['cat']
     left = str(c.get('cref') or '').partition('::')
-    return left[0].split(',')[0].strip() if left[1] else ''
+    if not left[1]:
+        return ''
+    alias, uid = split_cmeta_name(left[0])          # a category alias may hold commas: a UID only after the last
+    return alias or uid
 
 
 class Category(InitCategory):

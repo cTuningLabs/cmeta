@@ -277,7 +277,12 @@ not a failure. Details and shell examples in
   positional.
 - `--` passes everything after it to the command untouched (`unparsed`), for
   the commands that read it.
-- Lists: `--key,=v1,v2,v3` (note the comma on the *key*).
+- Lists: `--key,=v1,v2,v3` (note the comma on the *key*), or one whole item per
+  flag with `--key+="a, b; c" --key+=d` (nothing in a value is split; a value
+  given before without `+` becomes the first item).
+- Environment of a run: `--env.+PATH=<dir>` (a `+` in front of the variable)
+  adds `<dir>` to `PATH`; `--env.+PATH+=<d1> --env.+PATH+=<d2>` adds several.
+  `--env.PATH+=<dir>` is a list, not an addition: `PATH` becomes `<dir>` alone.
 - Nested: `--parent.child=value` → `{'parent': {'child': value}}`.
 - Param files: `@input.yaml` / `@input.json` deep-merge into the params
   (`@@input.yaml` also deletes the file after reading).

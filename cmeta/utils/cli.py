@@ -37,7 +37,9 @@ def parse_cmd(
         - Flags: --key=value, -key=value, key=value (a bare key=value only when the part before "=" looks like a
           key - KEY_LIKE: free text with "=", such as "echo a=b" or a URL with a query, stays positional)
         - Boolean flags: --key (True), --key- (False), --no-key (False)
-        - List flags: --key, (creates list)
+        - List flags: --key,=a,b (a list split at commas); --key+=value appends one whole item to a list (its
+          commas, ";" and spaces stay in it), and a value the key got before without "+" becomes the first item:
+          --key=a --key+=b -> ['a', 'b']; --key=value alone stays a value, as always (cMeta 0.45.3)
         - Nested keys: --parent.child=value
         - File inclusion: @filename (loads JSON/YAML)
           Note: On Windows, wrap file paths in double quotes if they contain backslashes
@@ -185,6 +187,7 @@ def _split_flag(
         - key: Sets key to True
         - key-: Sets key to False (trailing dash)
         - key,: Creates a list value (trailing comma)
+        - key+: Appends the value to a list (a value set before becomes its first item)
         - nested.key: Creates nested dictionary structure
 
         Args:
@@ -217,8 +220,15 @@ def _split_flag(
         else:
             parsed_value = value
 
+    # An item appended to a list: --key+=value, each value whole (its commas, ";" and spaces stay in it); a value
+    # the key got before without "+" becomes the first item (cMeta 0.45.3)
+    append = key.endswith('+')
+    if append:
+        key = key[:-1]
+
     # Handle list creation (trailing comma)
-    if key.endswith(','):
+    comma_list = key.endswith(',')
+    if comma_list:
         key = key[:-1]  # Remove trailing comma
         if parsed_value in [True, False]:
             parsed_value = [parsed_value]
@@ -226,6 +236,14 @@ def _split_flag(
             parsed_value = parsed_value.split(',')
         else:
             parsed_value = []
+
+    def put(target, name):
+        if not append:
+            target[name] = parsed_value
+            return
+        current = target.get(name)
+        items = [] if current is None else (list(current) if isinstance(current, list) else [current])
+        target[name] = items + (parsed_value if comma_list else [parsed_value])
 
     # Handle nested dictionary keys (dot notation)
     if '.' in key:
@@ -246,12 +264,12 @@ def _split_flag(
         if not isinstance(current_dict, dict):
             raise TypeError(f"{current_dict} must be a dict, not {type(current_dict).__name__}")
 
-        current_dict[key_parts[-1]] = parsed_value
+        put(current_dict, key_parts[-1])
     else:
         # Simple key-value assignment
         if fix_keys:
             key = key.replace('-', '_')
-        array[key] = parsed_value
+        put(array, key)
 
     return key, parsed_value, array
 
@@ -390,7 +408,7 @@ CLI_PARAMS_META_KEY = 'cli_params'         # the described parameters: per comma
 
 BOOL_WORDS = {'1': True, 'on': True, 'true': True, 'yes': True, '0': False, 'off': False, 'false': False, 'no': False}
 
-CLI_TYPES = {'bool': bool, 'int': int, 'float': float, 'str': str}
+CLI_TYPES = {'bool': bool, 'int': int, 'float': float, 'str': str, 'list': list}
 
 # Python 3.14 evaluates annotations lazily: ask for the forward-reference form, which never raises
 try:
@@ -504,10 +522,17 @@ def typed_params_from_cli(
 
             params[name] = converted[name] = value
 
+        # A list: one value of the command line is one item, never split (its commas and ";" stay in it); more come
+        # with --key+=<value> (cMeta 0.45.3)
+        if kind is list and not isinstance(value, list):
+            value = [value]
+            params[name] = converted[name] = value
+
         values = desc.get('values')
 
-        if values is not None and value not in values:
-            return error(f"Invalid value '{value}'", name, f": must be one of {', '.join(map(str, values))}")
+        for item in (value if kind is list else [value]):
+            if values is not None and item not in values:
+                return error(f"Invalid value '{item}'", name, f": must be one of {', '.join(map(str, values))}")
 
         try:
             if desc.get('min') is not None and value < desc['min']:

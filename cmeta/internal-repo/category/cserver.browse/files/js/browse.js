@@ -332,7 +332,11 @@
   function nameIs(name, want) {
     // an alias, alias,UID, the part after "@", or a pattern - as the server matches them
     var n = String(name || '').toLowerCase(), w = String(want || '').toLowerCase();
-    if (w.indexOf(',') >= 0) w = w.split(',').pop().trim();
+    // alias,UID: the UID - an alias may hold commas, so only a UID after the last one is taken
+    if (w.indexOf(',') >= 0) {
+      var u = w.slice(w.lastIndexOf(',') + 1).trim();
+      w = /^[0-9a-f]{16}$/.test(u) ? u : w.trim();
+    }
     if (/[*?[]/.test(w)) return new RegExp('^' + escRe(w).replace(/\\\*/g, '.*').replace(/\\\?/g, '.') + '$').test(n);
     return n === w || (n.indexOf('@') >= 0 && n.split('@')[1] === w);
   }

@@ -63,7 +63,8 @@ routes:
 max_file_bytes: 1000000
 
 # The keys whose values are never shown, to anyone (fnmatch patterns, on the whole dotted key and on its last part);
-# a declared key may say secret: true as well
+# a declared key may say secret: true as well - and secret: false when it only looks like one (a count of tokens, a
+# list of key names): the word of the artifact that reads it comes before its name; true from any artifact wins
 secret_keys:
   - password
   - '*_password'

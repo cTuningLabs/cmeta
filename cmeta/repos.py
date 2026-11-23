@@ -2818,6 +2818,13 @@ class Repos:
 
                         cmeta_category_name_parts = r['name']
 
+                        # The category's UID decides; a category named without its UID is not read as this one
+                        if cmeta_category_name_parts.get('uid') is None:
+                            print ('', flush=True)
+                            print (f"           Warning: {artifact} has no category UID in its 'category' key in {path_to_artifact}")
+                            self.logger.error (f"           Warning: {artifact} has no category UID in its 'category' key in {path_to_artifact}")
+                            continue
+
                         if cmeta_category_name_parts['uid'] != category_uid:
                             continue
 

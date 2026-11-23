@@ -376,8 +376,8 @@ class CMeta:
         if not isinstance(category, str):
             return False
 
-        alias, _, uid = category.partition(',')
-        alias, uid = alias.strip().lower(), uid.strip().lower()
+        alias, uid = utils.names.split_cmeta_name(category)
+        alias = alias.lower()
         config_uid = self.cfg['category_config_uid']
 
         return uid == config_uid if uid else alias in ('config', config_uid)

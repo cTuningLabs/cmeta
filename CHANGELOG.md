@@ -2,6 +2,68 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.45.3
+- **Lists of whole items on the command line: `--key+=value`.** An alias may hold commas and `;`, and a path may hold
+  both, so a list written in one value (`--connect="a;b"`, `--key,=a,b`) cannot always say where an item ends.
+  `--key+=value` appends one whole item to a list - nothing in it is split - for any key of any command, category,
+  task or tool, nested keys too (`--meta.tags+=x`): `--connect+="demo.person::Kim Doe, joined Example Co; 2026"
+  --connect+="demo.organization::Megacorp,<UID>"`. A value the key got before without `+` becomes the first item
+  (`--key=a --key+=b` -> `['a', 'b']`), and `--key=value` alone stays a value, exactly as before (a plain value given
+  twice: the last one, as before). A parameter that a category (`cli_params` of a command in its `_cmeta`) or a task
+  (`cli_params` in its `_desc`) describes with `type: list` gets a list from one plain value too - `['value']`, never
+  split - and its allowed values are checked item by item; nothing in the engine is declared so, so every command
+  reads its words as before. An environment variable keeps its own `+`, in FRONT of its name: `--env.+PATH=<dir>`
+  adds `<dir>` to `PATH` as before, and `--env.+PATH+=<d1> --env.+PATH+=<d2>` adds several, each whole;
+  `--env.PATH+=<dir>` is a list, so `PATH` becomes `<dir>` alone (documented in docs/using-cmeta.md, with the shells:
+  `+` needs no quotes in cmd, PowerShell, bash or sh - measured - and Windows PowerShell splits a one-dash word with a
+  dot, `-env.PATH=x`, so nested keys take two dashes there). Tests: `test_cli_append_lists.py` (the parser, a
+  described list end to end, `--connect+=` with aliases that hold commas and `;`).
+- **A config key that only looks like a secret.** /settings and /cmeta.configs never show the value of a key whose
+  name looks like a secret's (`*token*`, `*_keys`, `*secret*` ...), so `max_context_tokens` (a number),
+  `browse_search_skip_keys` (a list of key names) and `browse_file_search_secrets` (yes/no) showed "(hidden)". The
+  artifact that reads such a key now says `secret: false` in its configs block, and the value is shown on
+  /cmeta.configs and /settings; `secret: true` from any artifact wins; a key no artifact declares, a key under
+  another key and a key set here that nothing reads are judged by their names as before. The engine's
+  `browse_search_skip_keys` and `browse_file_search_secrets` say so. Tests in `test_cserver_configs.py` and
+  `test_cserver_settings.py`.
+- **cserver: a page's request for JSON gets the error as JSON when the engine's call fails.** The home page showed
+  "Could not load the page list: SyntaxError: Unexpected token '<'": the cserver answered a failed call of a page's
+  own request (`?native_action=...`) with its HTML error page, and with JSON only when the query said `force_json`.
+  It now answers JSON whenever the gate's own rule says a machine asks (`native_action`, `force_json`, `out=json`, an
+  Accept of JSON) - for a refused api_key too - holding `return` and `error`; a page asked for in a browser still
+  gets the error page (status 200, as before). /projects says what an answer that is no JSON said (an older server)
+  instead of a parser's error. Tests: `test_cserver_native_action_json.py` (2 of its 3 fail without the change).
+- **An alias may hold commas, everywhere.** The engine always read a name by its LAST comma - the part after it is
+  the UID only when it is a valid one, otherwise the whole name is the alias (`Kim Doe, joined Example Co,
+  20260922,<UID>`) - but its pages cut such an alias at a comma of their own: /browse searched for
+  `demo.person::Kim Doe, joined Example Co, 20260922` as "kim doe", left a connection by such an alias
+  unresolved (and its graph edge out), refused to save a `_cmeta` whose `artifact` is such an `alias,UID`, and its
+  pickers (browse.js) matched the last part of a name; /cref listed an entry under the first part of its category,
+  /cmeta.configs named a config, /projects found a button named by a title with a comma, and the engine's
+  `_config_call` read the config category - each by the first or the last comma. All of them now read a name by
+  the engine's rule, in one place: `cmeta.utils.names.split_cmeta_name` (new), which `parse_cmeta_name` now reads
+  through - its answers unchanged, compared with the old code for thousands of names. The search of /browse also
+  takes a pasted `{{{cRef}}}` with spaces in it as one cRef, a quoted alias after `::` (`cat::"a, b"`), and a UID
+  alone after `::`.
+- **The pages take a comma in a new name.** /browse's create and rename and /projects' names refused one ("a cRef
+  cannot hold it"); they take it now, as `cx add` and `cx move` always did. /projects still makes a button's name
+  from its title without commas, as before.
+- **An alias with a UID after its last comma is refused.** By itself such a name reads as `alias,UID`, so an alias
+  like `notes,0123456789abcdef` (made by writing its own UID after it) could never be named by its alias: `create`,
+  `move` and `copy` refuse it (`migrate` takes no UID in the new name at all), and so do the pages. A folder made by
+  hand with such a name is still indexed and found by its UID. New: `cmeta.utils.names.alias_ends_with_uid`;
+  `is_valid_cmeta_alias` (a category's alias) refuses it too.
+- **A meta whose category has no UID no longer stops a reindex.** A `_cmeta` with `category: <alias>` alone (a hand
+  edit, or a save from /browse, which allowed it) made the reindex of its category fail with `KeyError: 'uid'`; the
+  artifact is skipped with a warning, as one without a category always was. /browse refuses to save such a category,
+  or its UID beside another alias - the index would drop the artifact.
+- **`index` of a folder made by hand takes the UID of its meta in lower case**, as every other way does.
+- Tests: `test_utils_names_comma_aliases.py` (the rule, the old answers of `parse_cmeta_name` for every combination),
+  `test_integration_comma_aliases.py` (create, find by every form, update, connect both ways, `{{{cRef}}}/path`,
+  move, copy, migrate, delete, `index`, reindex, the command line), `test_cserver_comma_aliases.py` (/browse search,
+  connections, graph, the `_cmeta` check, create and rename, /cref, /cmeta.configs, /projects, browse.js under node);
+  23 of them fail on the code of 0.45.2. 0.45.2 among the starting versions of the release tests.
+
 ## 0.45.2
 - **The cserver finds its templates and static files from its own folder.** It looked for them by the relative
   name `src`, so only while its current folder was its own: a server started from another folder, or one left in
