@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.45.2.1)
+## 0.45.3
 - **Lists of whole items on the command line: `--key+=value`.** An alias may hold commas and `;`, and a path may hold
   both, so a list written in one value (`--connect="a;b"`, `--key,=a,b`) cannot always say where an item ends.
   `--key+=value` appends one whole item to a list - nothing in it is split - for any key of any command, category,
