@@ -83,6 +83,7 @@ import yaml
 
 from cmeta.category import InitCategory
 from cmeta.utils import files
+from cmeta.utils.names import alias_ends_with_uid, split_cmeta_name
 
 PREFIX = 'cserver.'
 
@@ -113,7 +114,7 @@ SCHEME_RE = re.compile(r'^(?:[a-z][\w+.\-]*:|//)', re.I)               # an addr
 PAGE_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.\-]*(?:[/?#].*)?$')     # a page's name, then a path or a query
 UID_RE = re.compile(r'^[0-9a-fA-F]{16}$')
 NAME_DROP_RE = re.compile(r' ?[?*"<>|\x00-\x1f]+ ?')
-BAD_NAME_RE = re.compile(r'[\\/:*?"<>|,\x00-\x1f]')
+BAD_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')       # commas are fine, but not a UID after the last one
 
 _DESC = {}      # what a button's _desc.yaml held while it is unchanged: path -> ((mtime, size), dict)
 
@@ -242,7 +243,8 @@ def _title_of(url):
 
 def _name_part(title):
     """A title as an artifact's name: kept as typed but what a folder (Windows, Linux, macOS) or a cRef cannot hold -
-    ":" becomes " - ", "/" and "\\" "-", a comma a space, ? * " < > | and control characters one space; nothing in
+    ":" becomes " - ", "/" and "\\" "-", a comma a space (a name may hold commas, but one made from a title keeps clear
+    of a UID after a comma), ? * " < > | and control characters one space; nothing in
     front that hides a folder or reads as a flag, no space or dot at the end; at most NAME_MAX characters."""
     t = re.sub(r'[\t\r\n\v\f]', ' ', str(title or ''))
     t = re.sub(r'^[ :]+|[ :]+$', '', t)
@@ -255,7 +257,7 @@ def _name_part(title):
 def _valid_name(name):
     """A whole name as restore gives it back: one a folder can have."""
     return bool(name) and not BAD_NAME_RE.search(name) and name not in ('.', '..') and name == name.strip() and \
-        not name.endswith('.') and len(name) <= 255 and not UID_RE.match(name)
+        not name.endswith('.') and len(name) <= 255 and not UID_RE.match(name) and not alias_ends_with_uid(name)
 
 
 def _read_desc(path):
@@ -583,7 +585,8 @@ class Category(InitCategory):
         r = self.cm.access({'category': self._uses('config', 'config,cc6bfe174be847ed'), 'command': 'read',
                             'arg1': name, 'con': False})
         repo = str(((r.get('config_cmeta') or {}) if r.get('return', 1) == 0 else {}).get(CREATE_REPO_KEY) or '').strip()
-        return repo.split(',')[0].strip() or 'local'
+        alias, uid = split_cmeta_name(repo)          # alias,UID: an alias may hold commas, a UID only after the last
+        return alias or uid or 'local'
 
     @staticmethod
     def _home(buttons):
@@ -656,8 +659,8 @@ class Category(InitCategory):
             name = m.group(1)
         if '::' in name:
             name = name.split('::', 1)[1]
-        if ',' in name:
-            name = name.split(',')[-1].strip()
+        if ',' in name:                              # alias,UID: the UID - a name or a title may hold commas too
+            name = split_cmeta_name(name)[1] or name
         if not name:
             return None, 'a button is expected: its UID, its name or a word of its title'
         low = name.lower()

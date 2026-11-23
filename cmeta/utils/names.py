@@ -81,6 +81,54 @@ def is_valid_cmeta_uid(
     """
     return len(text)==16 and all(c in set("0123456789abcdefABCDEF") for c in text)
 
+def split_cmeta_name(
+    name: Optional[str],  # alias | UID | alias,UID.
+) -> tuple:
+    """
+        Split a cMeta name into its alias and its UID: the part after the LAST comma is the UID only when it is a
+        valid UID, otherwise the whole name is the alias - an alias may hold commas
+        ("Kim Doe, joined Example Co, 20260922,5ca1ab1e5ca1ab1e" -> the alias before the last comma and the UID).
+
+        Args:
+            name (str | None): alias | UID | alias,UID.
+
+        Returns:
+            tuple: (alias, uid) - '' for what the name does not hold, the UID lower-cased.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    name = str(name or '').strip()
+
+    if is_valid_cmeta_uid(name):
+        return '', name.lower()
+
+    left, sep, right = name.rpartition(',')
+    if sep and is_valid_cmeta_uid(right.strip()):
+        return left.strip(), right.strip().lower()
+
+    return name, ''
+
+def alias_ends_with_uid(
+    alias: Optional[str],  # The alias to check.
+) -> bool:
+    """
+        Whether the part after the last comma of an alias is a valid UID: such an alias reads as alias,UID, so it
+        could never be named by itself - a new alias is refused for it (an existing one still resolves by its UID).
+
+        Args:
+            alias (str | None): The alias to check.
+
+        Returns:
+            bool: True when the alias ends with "," and a valid UID.
+
+        Raises:
+            Exception: Propagated runtime errors, if any.
+    """
+    _, sep, right = str(alias or '').rpartition(',')
+
+    return bool(sep) and is_valid_cmeta_uid(right.strip())
+
 def is_valid_category_alias(
     alias: str,  # The string to validate as category alias.
 ):
@@ -150,6 +198,10 @@ def is_valid_cmeta_alias(
     if alias != alias.strip():
         return {'return': 1, 'error': f'Invalid alias "{alias}". Cannot have leading/trailing spaces'}
 
+    # Commas are fine, but not a UID after the last one: the alias would read as alias,UID
+    if alias_ends_with_uid(alias):
+        return {'return': 1, 'error': f'Invalid alias "{alias}". The part after its last comma is a UID, so it would read as alias,UID'}
+
     return {'return':0}
 
 def parse_cmeta_name(
@@ -177,22 +229,10 @@ def parse_cmeta_name(
     if name is None:
         alias, uid = None, None
     else:
+        # One rule for every name: the part after the last comma is the UID only when it is one (split_cmeta_name)
         name = name.strip()
-        if not name:
-            alias, uid = None, None
-        elif is_valid_cmeta_uid(name):
-            alias, uid = None, name.lower()
-        else:
-            i = name.rfind(",")
-            if i != -1:
-                left = name[:i].strip()
-                right = name[i + 1 :].strip()
-                if is_valid_cmeta_uid(right):
-                    alias, uid = left or None, right.lower()
-                else:
-                    alias, uid = name or None, None
-            else:
-                alias, uid = name or None, None
+        alias, uid = split_cmeta_name(name)
+        alias, uid = alias or None, uid or None
 
     result = {}
     

@@ -140,7 +140,12 @@ provenance stamped on new artifacts: `CMETA_AUTHORS`, `CMETA_COPYRIGHT`,
   `repos.py::find_in_index` and `utils/names.py::parse_cmeta_name`). This makes
   `alias,UID` refs rename-safe — safe for automations, cross-repo links and
   long-lived recipes. Cross-repo: `<repo>:<name>`. Full cRef:
-  `<category>::<artifact>`.
+  `<category>::<artifact>`. **An alias may hold commas** (and spaces): a name is
+  read by its LAST comma, the part after it is the UID only when it is a valid
+  UID, else the whole name is the alias (`utils/names.py::split_cmeta_name`);
+  never split a name at a comma of your own (`split(',')[0]`, `partition(',')`),
+  in Python or JavaScript. A new alias with a UID after its last comma is refused
+  (`alias_ends_with_uid`): it would read as `alias,UID`.
 - **Fast index + `--reindex`.** Per-category pickles at
   `<CMETA_HOME>/index/<category>.pkl` back `find`/`list`/`load`. The framework
   refreshes automatically on `create`/`update`/`delete` and on `cx repo`

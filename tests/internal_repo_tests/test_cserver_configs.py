@@ -220,6 +220,73 @@ def test_the_values_here_secrets_never(cm):
     assert j['stats']['unread'] == 1
 
 
+LOOKS = '''configs:
+  mycfg:
+    keys:
+      max_context_tokens:
+        desc: the most tokens of a context
+        type: number
+        secret: false
+      skip_keys:
+        desc: the keys left out
+        type: list
+        secret: no
+      api_token:
+        desc: the token of the service
+        secret: true
+'''
+
+
+def test_a_key_that_only_looks_like_a_secret(cm):
+    r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'mycfg', 'con': False,
+                   'meta': {'max_context_tokens': 45000, 'skip_keys': ['a', 'b'], 'refresh_token': 'r3fr3sh-value-of-the-test',
+                            'sub': {'token_count': 7}}})
+    assert r['return'] == 0, r
+
+    def set_here(j):
+        # the keys set here that are no key of their own: those nothing reads, and those under another key
+        c = _config(j, 'mycfg')
+        rows = {u['key']: u for u in c['unread']}
+        for kk in c['keys']:
+            rows.update({ch['key']: ch for ch in kk.get('children') or []})
+        return rows
+
+    # no artifact declares it: its name decides, as it always did
+    first = set_here(_configs(cm))
+    assert first['max_context_tokens']['secret'] is True and first['max_context_tokens']['value'] is None
+
+    # the artifact that reads it says it is none: shown
+    with open(os.path.join(cm.folder, '_desc.yaml'), 'w', encoding='utf-8') as f:
+        f.write(LOOKS)
+    j = _configs(cm)
+    k = _keys(_config(j, 'mycfg'))
+    assert k['max_context_tokens']['secret'] is False and k['max_context_tokens']['value'] == '45000'
+    assert k['skip_keys']['secret'] is False and k['skip_keys']['value'] == 'a,b'
+
+    # what is said to be a secret stays one; a key no artifact declares, and a key under another, by their names
+    assert k['api_token']['secret'] is True and k['api_token']['value'] is None
+    rows = set_here(j)
+    assert rows['refresh_token']['secret'] is True and rows['refresh_token']['value'] is None
+    assert rows['sub.token_count']['secret'] is True and rows['sub.token_count']['value'] is None
+    text = json.dumps(j)
+    assert 's3cr3t-value-of-the-test' not in text and 'r3fr3sh-value-of-the-test' not in text
+
+    # another artifact that reads the same key calls it a secret: one such word is enough
+    r = cm.access({'category': 'category', 'command': 'add', 'arg1': 'local:mycat2', 'con': False})
+    assert r['return'] == 0, r
+    with open(os.path.join(r['path'], '_desc.yaml'), 'w', encoding='utf-8') as f:
+        f.write('configs:\n  mycfg:\n    keys:\n      max_context_tokens:\n        desc: kept to itself here\n        secret: true\n')
+    k = _keys(_config(_configs(cm), 'mycfg'))
+    assert k['max_context_tokens']['secret'] is True and k['max_context_tokens']['value'] is None
+    assert k['skip_keys']['secret'] is False                    # the other key is not theirs to hide
+
+
+def test_the_engines_own_keys_that_only_look_like_secrets(cm):
+    cs = _keys(_config(_configs(cm), 'cserver'))
+    assert cs['browse_search_skip_keys']['secret'] is False and cs['browse_file_search_secrets']['secret'] is False
+    assert cs['password']['secret'] is True and cs['api_keys']['secret'] is True and cs['param.session_secret']['secret'] is True
+
+
 def test_values_only_for_this_machine_unless_the_config_says_so(cm):
     r = cm.access({'category': 'config', 'command': 'set', 'arg1': 'lonely', 'meta': {'x': '1'}, 'con': False})
     assert r['return'] == 0

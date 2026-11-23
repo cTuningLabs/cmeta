@@ -41,7 +41,9 @@ A "configs" block in a _desc.yaml (the artifact that reads the keys declares the
             type: yes/no                        # text, number, yes/no, list, dict, path, url ... (optional)
             default: a browser on the server's own machine only
             example: 'yes'
-            secret: false                       # true: its value is never shown
+            secret: false                       # true: its value is never shown. false, said here: it is no
+                                                # secret though its name looks like one (a count of tokens, a
+                                                # list of key names) - without the word, its name decides
           hide_repos: repositories left out     # a text alone is what it does
 
 What the code, the docs and the _desc of each file say is kept by file (its time and size) in the cache artifact
@@ -75,6 +77,7 @@ import warnings
 import yaml
 
 from cmeta.category import InitCategory
+from cmeta.utils.names import split_cmeta_name
 
 CATEGORY_UID = 'dd9ea50e7f76467f'
 CONFIG_UID = 'cc6bfe174be847ed'
@@ -159,6 +162,13 @@ def _yes(value):
     return value in (True, 1) or str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
 
+def _no(value):
+    """An explicit no (false, no, off, 0) - not the absence of a word."""
+    if value is None or value is True:
+        return False
+    return value is False or str(value).strip().lower() in ('0', 'false', 'no', 'off')
+
+
 def _list(value):
     """A list from a list, or a comma-separated text ('' -> [])."""
     if value is None or value == '':
@@ -195,8 +205,8 @@ def _config_alias(text):
     t = str(text or '').strip()
     if ':' in t and '::' not in t:
         t = t.split(':', 1)[1]
-    alias, _, uid = t.partition(',')
-    return alias.strip() or uid.strip()
+    alias, uid = split_cmeta_name(t)                # an alias may hold commas: a UID only after the last one
+    return alias or uid
 
 
 def _plain_name(name):
@@ -724,8 +734,8 @@ class _Code:
         it, self.cmeta['uses_categories']['config'], self._uses('config', ...))."""
         s = self._ev(node, env)
         if s and s[0] == 'str':
-            alias, _, uid = s[1].partition(',')
-            return alias.strip().lower() in ('config', CONFIG_UID) or uid.strip().lower() == CONFIG_UID
+            alias, uid = split_cmeta_name(s[1])
+            return alias.lower() in ('config', CONFIG_UID) or uid == CONFIG_UID
         t = _short(node, 200)
         return "['config']" in t or "_uses('config'" in t or '_uses("config"' in t or CONFIG_UID in t
 
@@ -1093,6 +1103,8 @@ def _declared(data, text):
                     f[dst] = _txt(ks[src])
             if _yes(ks.get('secret')):
                 f['s'] = 1
+            elif _no(ks.get('secret')):
+                f['ns'] = 1                 # the artifact that reads the key says: no secret, whatever its name
             out.append(f)
     return out
 
@@ -1233,6 +1245,7 @@ def _merge_key(dst, src):
         dst[what] += src[what]
     dst['defaults'] += [d for d in src['defaults'] if d not in dst['defaults']]
     dst['secret'] = dst['secret'] or src['secret']
+    dst['not_secret'] = bool(dst.get('not_secret') or src.get('not_secret'))
     dst['list'] = dst['list'] or src['list']
 
 
@@ -1704,7 +1717,7 @@ class Category(InitCategory):
 
         def key_of(c, key):
             return c['keys'].setdefault(key, {'key': key, 'descs': [], 'types': [], 'defaults': [], 'examples': [],
-                                              'secret': False, 'list': False, 'readers': {}, 'docs': {},
+                                              'secret': False, 'not_secret': False, 'list': False, 'readers': {}, 'docs': {},
                                               'declared': {}, 'sources': set()})
 
         for art, rel, path, res in results:
@@ -1750,6 +1763,8 @@ class Category(InitCategory):
                     k['examples'].append([f['x']] + where)
                 if f.get('s'):
                     k['secret'] = True
+                if f.get('ns'):
+                    k['not_secret'] = True
                 if f.get('list'):
                     k['list'] = True
 
@@ -1931,7 +1946,10 @@ class Category(InitCategory):
                     sub = x[4] if len(x) > 4 else ''           # an entry under the key (local_ai_uses.<x>=<cRef>)
                     if x[1] in visible and (sub, x[0]) not in [(e['sub'], e['value']) for e in examples]:
                         examples.append({'value': x[0], 'sub': sub, 'aid': x[1], 'file': x[2], 'line': x[3]})
-                sec = k['secret'] or is_secret(key)
+                # a secret: an artifact that reads it says so (the word of one of them is enough) - else its name
+                # looks like one, unless an artifact that reads it says it is none (secret: false: a count of tokens,
+                # a list of key names). A key no artifact declares is judged by its name alone
+                sec = k['secret'] or (is_secret(key) and not k.get('not_secret'))
                 keys.append({'key': key, 'desc': uniq[0]['text'] if uniq else '',
                              'desc_from': uniq[0]['from'] if uniq else '',
                              'descs': uniq[:6], 'type': types[0] if types else '',
@@ -1971,7 +1989,10 @@ class Category(InitCategory):
                         if k is None:
                             k = next((kk for kk, rx in sorted(patterns, key=lambda x: -len(x[0]['key']))
                                       if rx.match(skey)), None)
-                        sec = is_secret(skey) or (k is not None and k['secret'])
+                        # the key itself: as decided above (its artifact's word comes before its name); a key
+                        # under it, and one no artifact reads: by its name, or as the key it belongs to
+                        sec = k['secret'] if (k is not None and k['key'] == skey) else \
+                            (is_secret(skey) or (k is not None and k['secret']))
                         shown = None if sec else _value_text(val)
                         if k is None:
                             entry['unread'].append({'key': skey, 'value': shown, 'secret': sec, 'every': every})

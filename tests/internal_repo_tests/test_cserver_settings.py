@@ -159,6 +159,20 @@ def test_a_secret_is_set_but_never_shown(cm):
     assert r['changed'] is True and r['old'] is None and 'api_token' not in stored(cm)
 
 
+def test_a_key_that_only_looks_like_a_secret_is_shown_and_set_like_any_other(cm):
+    r = cm.access({'category': 'category', 'command': 'find', 'arg1': 'local:mycat', 'con': False})
+    assert r['return'] == 0 and len(r['artifacts']) == 1, r
+    with open(os.path.join(r['artifacts'][0]['path'], '_desc.yaml'), 'w', encoding='utf-8') as f:
+        f.write(DESC + '      max_context_tokens:\n        desc: the most tokens of a context\n        type: number\n        secret: false\n')
+    r = act(cm, 'set', config='mycfg', key='max_context_tokens', value='45000')
+    assert r['changed'] is True and r['value'] == 45000 and stored(cm)['max_context_tokens'] == 45000, r
+    g, _ = group(cm)
+    k = key(g, 'max_context_tokens')
+    assert k['secret'] is False and k['set'] is True and k['value'] == 45000
+    # the secret beside it stays one
+    assert key(g, 'api_token')['secret'] is True and key(g, 'api_token')['value'] is None
+
+
 def test_refusals(cm):
     # a key nothing reads, a config nothing knows, a bad key
     assert 'no plugged artifact reads' in act(cm, 'set', config='mycfg', key='nosuch', value='1')['error']

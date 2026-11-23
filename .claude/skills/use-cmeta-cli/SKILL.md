@@ -94,13 +94,21 @@ Parsed by `cmeta/utils/cli.py::parse_cmd`. Rules:
 | `--key=value` | string / int (repeats overwrite — last wins); `--key value` is the flag `--key` (True) + a positional `value` |
 | `--key,=v1,v2,v3` | list `[v1, v2, v3]` (trailing comma on the key requests split) |
 | `--key,=` | empty list `[]` |
+| `--key+="a, b; c" --key+=d` | list `['a, b; c', 'd']`: one whole item per flag, nothing split (aliases and paths may hold `,` and `;`); `--key=a --key+=b` → `['a', 'b']`; since 0.45.3 |
+| `--key=v` for a parameter described `type: list` (`cli_params`) | list `['v']`, never split; since 0.45.3 |
 | `--parent.child=v` | nested dict `{'parent': {'child': v}}` |
+| `--env.+PATH=<dir>` | a `+` in FRONT of an environment variable adds to it: `<dir>` goes in front of `PATH` for the commands a task, tool or program runs (any variable: `+LD_LIBRARY_PATH` ...); several, each whole: `--env.+PATH+=<d1> --env.+PATH+=<d2>`. NOT `--env.PATH+=<dir>`: a `+` at the END builds a list, and `PATH` becomes `<dir>` alone |
 | `key=value` (no dashes) | same as `--key=value` when the part before `=` looks like a key (a letter or `_`, then letters, digits, `_ . , -`); other text with `=` (`"echo a=b"`, a URL with a query) is positional |
 | `-5`, `-1.5` | positional (a negative number is not a flag) |
 | `@somefile.yaml` | inline the YAML/JSON file as flags (deep-merged) |
 | `@@somefile.yaml` | same, then delete the file |
 | `--` | everything after → `unparsed` list, for the commands that read it (others say "takes no arguments after --") |
 | bare token | positional → `arg1`, `arg2`, ... |
+
+**Shells.** `+` and `=` need no quotes in cmd, PowerShell, bash, zsh, sh or fish; quote `;` in PowerShell and the
+Unix shells (it ends a command there; cmd passes it). Windows PowerShell splits a word that starts with ONE dash and
+holds a dot when it passes it to a program (`-env.PATH=x` arrives as `-env` and `.PATH=x`): write nested keys with
+two dashes (`--env.PATH=x`).
 
 Examples:
 

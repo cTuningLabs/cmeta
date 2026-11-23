@@ -1751,6 +1751,11 @@ class Category(InitCategory):
             if artifact_alias is not None and ('*' in artifact_alias or '?' in artifact_alias):
                 return {'return':1, 'error':f"artifact can't have wildcards during creation ({arg1})"}
 
+            # An alias may hold commas, but not a UID after the last one: it would read as alias,UID
+            # (a folder that exists is still indexed under its own name)
+            if artifact_alias is not None and not index and utils.names.alias_ends_with_uid(artifact_alias):
+                return {'return':1, 'error':f'the alias "{artifact_alias}" ends with a UID after its last comma, so it would read as alias,UID - choose another name'}
+
             # Check if artifact already exists (relatively fast - should be in index)
             r = self.find_(ctx, arg1, tags, follow_migrated = False)
             if r['return'] == 0:
@@ -1911,7 +1916,7 @@ class Category(InitCategory):
                             # not a new one, or alias,UID references to it would not resolve
                             meta_uid = str(meta.get('artifact') or '').split(',')[-1].strip()
                             if meta_uid and utils.names.is_valid_cmeta_uid(meta_uid):
-                                artifact_uid = meta_uid
+                                artifact_uid = meta_uid.lower()
 
                         else:
                             return {'return':8, 'error':f'artifact already exists in "{artifact_path}"'}
@@ -2593,6 +2598,10 @@ class Category(InitCategory):
 
         if target_alias is not None and ('*' in target_alias or '?' in target_alias):
             return {'return':1, 'error':'new artifact alias should not have wildcards'}
+
+        # A new alias may hold commas, but not a UID after the last one: it would read as alias,UID
+        if target_alias is not None and utils.names.alias_ends_with_uid(target_alias):
+            return {'return':1, 'error':f'the new alias "{target_alias}" ends with a UID after its last comma, so it would read as alias,UID - choose another name'}
 
         if num_found_artifacts > 1 and (target_alias is not None or target_uid is not None):
             return {'return':1, 'error':'only new repository can be specified for multiple source artifacts'}

@@ -439,7 +439,10 @@ command):
   true/false, on/off, 1/0) when the command annotates the parameter `bool` - any other word is an error.
 - Strings: `--key=value` (repeats overwrite — last wins); `--key value` is the
   flag `--key` and a positional `value`.
-- Lists: `--key,=v1,v2,v3` (trailing comma on the key).
+- Lists: `--key,=v1,v2,v3` (trailing comma on the key), or one whole item per
+  flag: `--key+="a, b; c" --key+=d` (nothing in a value is split).
+- Environment of a run: `--env.+PATH=<dir>` adds `<dir>` to `PATH` (the `+` in
+  front of the variable); `--env.PATH+=<dir>` would be a list and replace it.
 - Nested dicts: `--parent.child=value` merges into `{'parent': {'child': ...}}`.
 - Reusable param files: `@input.yaml` / `@input.json` deep-merges into the
   parsed params (`@@input.yaml` also deletes the file after reading).
@@ -552,6 +555,8 @@ is expected:
 For cross-repo references, prefix with a repo name: `<repo>:<alias-or-uid>`.
 For linking one artifact from another, use the full **cRef** form
 `<category>::<artifact>`, e.g. `category,dd9ea50e7f76467f::repo,f4f792ab40c7498f`.
+An alias may hold commas (`Kim Doe, joined Example Co, 20260922`): a name is read
+by its last comma, and the part after it is the UID only when it is a valid UID.
 
 Because the `alias,UID` form ignores the alias during lookup, category and
 artifact aliases can be renamed later without breaking anything that referenced

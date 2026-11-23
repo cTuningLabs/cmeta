@@ -343,6 +343,7 @@ re-implementations** whenever they exist. Every category shipped in
 | `d.get(a, {}).get(b, default)` | `self.cm.utils.common.smart_get(d, 'a.b', default)`. |
 | `d.setdefault(a, {}).setdefault(b, {})['c'] = v` | `self.cm.utils.common.smart_set(d, 'a.b.c', v)`. |
 | Ad-hoc `s.split(',')` for tags | `self.cm.utils.common.normalize_tags(s)` (returns `{'return', 'tags'}`). |
+| `name.split(',')[0]` for an alias, `split(',')[-1]` for a UID | `self.cm.utils.names.parse_cmeta_name(name)` / `parse_cmeta_ref(cref)` (`split_cmeta_name` since 0.45.3): an alias may hold commas, and the part after the LAST comma is the UID only when it is one. |
 | `str(uuid.uuid4())[:16]` | `self.cm.utils.names.generate_cmeta_uid()` (16-hex, project convention). |
 | Manual `packaging` version compare | `self.cm.utils.common.compare_versions(v1, v2)` (returns `{'comparison': '<'\|'='\|'>'}`) or `sort_versions([...])`. |
 | Hand-rolled arg parse in a hook | `self.cm.utils.cli.parse_cmd(argv)` — same rules as the top-level `cx` CLI (nested keys, `@file`, `--no-key`, `--k,=csv`, ...). |

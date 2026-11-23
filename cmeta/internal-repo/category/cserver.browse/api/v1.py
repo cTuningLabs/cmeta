@@ -181,6 +181,7 @@ import yaml
 
 from cmeta.category import InitCategory
 from cmeta.utils import names
+from cmeta.utils.names import alias_ends_with_uid, split_cmeta_name
 
 # the file search (2026-11-12): the index of the files' names and texts, the module beside this file
 try:
@@ -209,7 +210,7 @@ FILES_RESULT_CATEGORY = 'result,6567e4df4d04488a'
 
 UID_RE = re.compile(r'^[0-9a-fA-F]{16}$')
 KEY_RE = re.compile(r'^[A-Za-z_][\w.\-]*$')
-TOKEN_RE = re.compile(r'-?[^\s"]*"[^"]*"|\S+')
+TOKEN_RE = re.compile(r'-?\{\{\{[^{}]*\}\}\}\S*|-?[^\s"]*"[^"]*"|\S+')   # a {{{cRef}}} is one token, spaces in it too
 USES_RE = re.compile(r'^(.+),([0-9a-fA-F]{16})$')      # a `uses:` value: <alias>,<UID>
 BRACES_RE = re.compile(r'^\{\{\{(.+?)\}\}\}(?:/.*)?$')   # {{{<cRef>}}} as written in a text, a path after it or not
 EDIT_NEW = ('_desc.yaml', 'README.md')               # the files the editor may create at the top of an artifact without one
@@ -284,7 +285,7 @@ TMP_CATEGORY = 'tmp,a2551f6124a34cf3'
 TRASH_ALIAS = 'cserver-browse-trash'
 TRASH_NAME = 'cserver.browse: the artifacts deleted on the pages of this server (the artifact page, /browse), one folder per deletion'
 TRASH_SLOT_RE = re.compile(r'^\d{8}-\d{6}-[0-9a-f]{16}$')
-RENAME_BAD_RE = re.compile(r'[\\/:*?"<>|,\x00-\x1f]')
+RENAME_BAD_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')      # commas are fine, but not a UID after the last one
 
 # Open an artifact's folder on the server's own machine
 OPEN_WHAT = ('folder', 'shell', 'far')
@@ -556,8 +557,9 @@ def _name_matches(alias, uid, want):
     want = want.lower()
     if want == '(registry)':                       # the repo artifacts themselves belong to no repository
         return not alias
-    if ',' in want:
-        want = want.split(',')[-1].strip()
+    if ',' in want:                                # alias,UID: the UID; an alias may hold commas (no UID after them)
+        a, u = split_cmeta_name(want)
+        want = u or a
     alias = (alias or '').lower()
     uid = (uid or '').lower()
     if _wild(want):
@@ -679,12 +681,17 @@ def parse_query(q):
             cat, art = t.split('::', 1)
             if cat:
                 out['cats'].append(cat)
+            # the artifact: its UID when the part after the last comma is one, else the whole alias (an alias may
+            # hold commas, and spaces when quoted: cat::"a, b")
+            art = art.strip()
+            if len(art) >= 2 and art[0] == '"' and art[-1] == '"':
+                art = art[1:-1].strip()
             if art:
-                art = art.split(',')
-                if len(art) > 1 and UID_RE.match(art[-1].strip()):
-                    out['uids'].append(art[-1].strip().lower())
+                alias, uid = split_cmeta_name(art)
+                if uid:
+                    out['uids'].append(uid)
                 else:
-                    out['aliases'].append(art[0].strip().lower())
+                    out['aliases'].append(alias.lower())
             continue
 
         m = USES_RE.match(t)                               # a cName: <alias>,<UID> - both must hold
@@ -1061,11 +1068,11 @@ def _parse_cref(cref):
     left, sep, right = s.partition('::')
     if not sep:
         left, right = '', s
-    cat, _, cat_uid = left.partition(',')
-    parts = [p.strip() for p in right.split(',') if p.strip()]
-    uid = next((p.lower() for p in reversed(parts) if UID_RE.match(p)), '')
-    alias = next((p for p in parts if not UID_RE.match(p)), '')
-    return cat.strip(), cat_uid.strip().lower(), alias, uid
+
+    # each side: the part after its last comma is the UID only when it is one - an alias may hold commas
+    cat, cat_uid = split_cmeta_name(left)
+    alias, uid = split_cmeta_name(right)
+    return cat, cat_uid, alias, uid
 
 
 def _connections(desc, meta):
@@ -1483,14 +1490,16 @@ def _check_edit(name, text, it):
     if low in META_FILES and not (data is None and low.startswith('_desc.')) and not isinstance(data, dict):
         return '%s must be a mapping (key: value lines)' % name, None
     if low.startswith('_cmeta.'):
-        a = str(data.get('artifact') or '')
-        if a.split(',')[-1].strip().lower() != it['uid']:
+        # UID or alias,UID - an alias may hold commas, so the UID is the part after the last comma
+        a_alias, a_uid = split_cmeta_name(data.get('artifact'))
+        if a_uid != it['uid']:
             return 'artifact must keep the UID %s: it is the identity of the artifact' % it['uid'], None
-        if ',' in a and a.split(',', 1)[0].strip() != it['alias']:
+        if a_alias and a_alias != it['alias']:
             return 'the alias must stay %s: a rename is a move (cx %s move)' % (it['alias'], it['cat']), None
-        c = str(data.get('category') or '')
-        c = c.split(',')[-1].strip().lower() if ',' in c else c.strip().lower()
-        if c not in (it['cat_uid'].lower(), it['cat'].lower()):
+
+        # the category as the index reads it: its UID, and its alias when one is given (else the artifact drops out)
+        c_alias, c_uid = split_cmeta_name(data.get('category'))
+        if c_uid != it['cat_uid'].lower() or (c_alias and c_alias != it['cat']):
             return 'category must stay %s,%s' % (it['cat'], it['cat_uid']), None
         tags = data.get('tags')
         if tags is not None and not (isinstance(tags, list) and all(isinstance(t, str) for t in tags)):
@@ -1831,8 +1840,9 @@ class Category(InitCategory):
                 metas[it['alias_l']] = metas[it['uid'].lower()] = it['meta']
         found = set()
         for name in names:
-            key = name.split(',')[0].strip().lower() if ',' in name else name.lower()
-            meta = metas.get(key) or metas.get(name.split(',')[-1].strip().lower()) or {}
+            alias, uid = split_cmeta_name(name)
+            key = (alias or uid).lower()
+            meta = metas.get(key) or metas.get(uid) or {}
             keys = conf.get(key) or _sort_keys(meta.get('browse_sort'))
             found.add(','.join(keys))
         return found.pop() if len(found) == 1 else ''
@@ -2190,7 +2200,7 @@ class Category(InitCategory):
             ref, rel = (s[:j], s[j:]) if j >= 0 else (s, '')
         rel = rel.strip().strip('/')
         cat_part, art_part = ref.split('::', 1) if '::' in ref else ('', ref)
-        cat_alias, _, cat_uid = cat_part.partition(',')
+        cat_alias, cat_uid = split_cmeta_name(cat_part)
         alias, uid = art_part.strip(), ''
         if ',' in art_part:
             a, u = art_part.rsplit(',', 1)
@@ -2804,8 +2814,10 @@ class Category(InitCategory):
         if on is False:
             return {'error': 'creating artifacts is off here (browse_edit in the cserver config, or the host\'s grant)'}
         alias = str(alias or '').strip()
-        if not alias or alias.startswith('.') or any(c in alias for c in '/\\:*?"<>|,'):
-            return {'error': 'a name is needed, without / \\ : * ? " < > | or a comma, and not starting with a dot'}
+        if not alias or alias.startswith('.') or any(c in alias for c in '/\\:*?"<>|'):
+            return {'error': 'a name is needed, without / \\ : * ? " < > |, and not starting with a dot'}
+        if alias_ends_with_uid(alias):
+            return {'error': '%s: the part after its last comma is a UID, so the name would read as alias,UID' % alias}
         repo = str(repo or '').strip()
         if not repo or repo == '(registry)':
             return {'error': 'name the repository the artifact goes to'}
@@ -3009,10 +3021,12 @@ class Category(InitCategory):
         name = '%s::%s' % (cat, old)
         new = str(alias or '').strip()
         if not new or new != str(alias) or new.startswith('.') or new.endswith('.') or RENAME_BAD_RE.search(new):
-            return {'error': 'a name is needed that a folder and a cRef can hold: no / \\ : * ? " < > | or comma, no '
-                             'space at either end, no dot in front or at the end'}
+            return {'error': 'a name is needed that a folder and a cRef can hold: no / \\ : * ? " < > |, no space at '
+                             'either end, no dot in front or at the end'}
         if UID_RE.match(new):
             return {'error': '%s: a name of 16 hexadecimal digits reads as a UID' % new}
+        if alias_ends_with_uid(new):
+            return {'error': '%s: the part after its last comma is a UID, so the name would read as alias,UID' % new}
         out = {'renamed': new, 'from': old, 'to': new, 'uid': it['uid'], 'cat': cat, 'repo': it['repo'],
                'cref': '%s,%s::%s,%s' % (cat, it['cat_uid'], new, it['uid']), 'changed': new != old}
         if new == old:

@@ -374,7 +374,10 @@ A plugin is part of cMeta, so it keeps cMeta's five concepts (`AGENTS.md` §5.3 
   (a real bug, a security issue and a forced configuration that is not available are the cases to fail).
 - **Never guess.** Find things by `alias,UID`, the repository's record and the artifact's own path - never by the
   names of folders, a first or last match, or the order of a listing. When the defined way does not hold, stop
-  with an error.
+  with an error. An alias may hold commas: read a name or a cRef with `utils.names.parse_cmeta_name` /
+  `parse_cmeta_ref` (every engine; `split_cmeta_name` since 0.45.3) - the part after the LAST comma is the UID only
+  when it is one - never by a comma of your own (`split(',')[0]`, `partition(',')`); in JavaScript, the last comma
+  and a UID check.
 
 A change that cannot keep one of them is raised with the maintainer before it is written.
 
