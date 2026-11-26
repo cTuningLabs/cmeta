@@ -2,6 +2,12 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.45.5
+- **`cache clean` refuses a word it does not take.** It removes, and a word it did not know was ignored: `cx cache
+  clean --unfinished --dry_run` removed the unfinished entries (clean has no dry run). Any word other than its own
+  (`--crashed`, `--failed`, `--broken`, `--unfinished`, `--all`, `--duplicates`, `--force`, `--tags`, `--match`, the
+  name) now stops it before anything is removed, and the error names its words and `cx cache list` to look first.
+
 ## 0.45.4
 - **Cleaning a folder goes past an entry it cannot remove.** `utils.files.remove_files_and_dirs_in_path` - what cleans
   a build folder, a download folder, a test's sandbox - stopped with the exception of the first entry it could not

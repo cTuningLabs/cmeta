@@ -26,6 +26,11 @@ RUNNING_FILE = 'cmeta-task-running.json'            # who runs the current attem
 
 STATES = ('ok', 'running', 'crashed', 'failed', 'broken')
 
+# The words "cache clean" takes (it removes: any other word is refused, see clean), and the engine's own words in the
+# parameters of every command
+CLEAN_WORDS = {'arg1', 'tags', 'match', 'crashed', 'failed', 'broken', 'unfinished', 'all', 'duplicates', 'force', 'f'}
+ENGINE_WORDS = {'ctx', 'category', 'command', 'con', 'verbose', 'quiet', 'base'}
+
 
 def entry_state(
     path: str,  # The folder of the entry.
@@ -615,6 +620,14 @@ class Category(InitCategory):
 
         ctx = params['ctx']
         con = ctx['control'].get('con', False)
+
+        # Only the words clean takes: it removes, and a word it does not know was ignored before (2026-11-26:
+        # "cx cache clean --unfinished --dry_run" removed entries - clean has no dry run). Refused before anything goes
+        unknown = sorted(k for k in p if k not in CLEAN_WORDS and k not in ENGINE_WORDS and not k.startswith('_'))
+        if unknown:
+            return {'return':1, 'error': 'cache clean does not take ' + ', '.join('--' + k for k in unknown) +
+                    ' and removed nothing (its words: ' + ', '.join('--' + k for k in sorted(CLEAN_WORDS - {'arg1'})) +
+                    '; "cx cache list" shows the entries first)'}
 
         duplicates = p.pop('duplicates', False)
 

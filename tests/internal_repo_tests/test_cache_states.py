@@ -156,6 +156,21 @@ def test_the_states_of_cache_entries(cm, tmp_path):
     assert aliases_in_index(tmp_path) == set()
 
 
+def test_clean_refuses_a_word_it_does_not_take(cm, tmp_path):
+    # 2026-11-26: "cx cache clean --unfinished --dry_run" removed entries - clean has no dry run, and the word was ignored
+    crashed, crashed_uid = make_entry(cm, 'task--x--crashed', tags=['tmp'], running={'pid': 1, 'host': 'h', 'started': 't'})
+    failed, failed_uid = make_entry(cm, 'task--x--failed', tags=['failed'], result={'return': 1, 'error': 'boom'})
+
+    r = cm.access({'category': CATEGORY, 'command': 'clean', 'unfinished': True, 'dry_run': True, 'con': False})
+    assert r['return'] > 0 and '--dry_run' in r['error'] and 'removed nothing' in r['error'], r
+    assert os.path.isdir(crashed) and os.path.isdir(failed)
+    assert aliases_in_index(tmp_path) == {'task--x--crashed', 'task--x--failed'}
+
+    # its own words still work
+    r = cm.access({'category': CATEGORY, 'command': 'clean', 'unfinished': True, 'con': False})
+    assert r['return'] == 0 and set(r['removed']) == {crashed_uid, failed_uid}, r
+
+
 def test_a_locked_entry_is_running_and_is_neither_cleaned_nor_deleted(cm, tmp_path):
     folder, uid = make_entry(cm, 'task--y--building', tags=['tmp'], running={'pid': 4242, 'host': 'h', 'started': 't'})
     holder = hold(files._get_lockfile_path(os.path.normpath(folder)), 'task run y by pid 4242 on h since t')
