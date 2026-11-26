@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.45.4.1)
+## 0.45.5
 - **`cache clean` refuses a word it does not take.** It removes, and a word it did not know was ignored: `cx cache
   clean --unfinished --dry_run` removed the unfinished entries (clean has no dry run). Any word other than its own
   (`--crashed`, `--failed`, `--broken`, `--unfinished`, `--all`, `--duplicates`, `--force`, `--tags`, `--match`, the
