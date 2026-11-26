@@ -2311,10 +2311,11 @@ def safe_delete_directory(
             if logger is not None:
                 logger.debug(f"utils.files.self_delete_directory - handling read-only file: {path}")
             
-            # Clear the readonly bit and retry
+            # What refuses the removal is lifted and the entry removed again (once: the loop
+            # below tries the whole folder again) - the read-only attribute on Windows; elsewhere
+            # the rights of its folder, or of a folder that cannot be listed (_retry_removal)
             try:
-                os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
-                func(path)
+                _retry_removal(path, attempts = 1)
             except Exception as e:
                 if logger is not None:
                     logger.debug(f"utils.files.self_delete_directory - failed to remove {path}: {str(e)}")
@@ -3485,48 +3486,155 @@ def _to_extended_path(
     return '\\\\?\\' + p
 
 ##########################################################################################
+def _from_extended_path(
+    path,  # Filesystem path.
+):
+    """
+        A Windows extended-length path (\\\\?\\...) as it is written without the prefix, for messages.
+        Any other path as it is.
+
+        Args:
+            path: Filesystem path.
+        Returns:
+            str: The path without the prefix.
+    """
+    p = os.fspath(path)
+
+    if p.startswith('\\\\?\\UNC\\'):
+        return '\\\\' + p[8:]
+
+    if p.startswith('\\\\?\\'):
+        return p[4:]
+
+    return p
+
+##########################################################################################
 def _force_remove(
     path,  # Filesystem path.
+    attempts = 5,  # How many times the removal is tried.
 ):
     """
         Best-effort removal of a single file or (empty) directory entry.
 
-        Clears the read-only attribute before removing, uses extended-length
-        paths on Windows to cope with deep/long build paths, and retries a
-        few times with short delays to ride out transient locks held by
-        antivirus, search indexing or cloud-sync agents.
+        What refuses a removal is lifted for the try, and put back when the entry stays:
+        on Windows the read-only attribute of the entry; elsewhere the rights of the
+        folder that holds it, when its owner may not write to it (a tree made read-only:
+        a module cache, a build system's outputs) - there the rights of the entry itself
+        do not decide whether it can be removed, and they are never changed. Uses
+        extended-length paths on Windows to cope with deep/long build paths, and retries
+        a few times with short delays to ride out transient locks held by antivirus,
+        search indexing or cloud-sync agents.
 
         Args:
             path: Filesystem path.
+            attempts: How many times the removal is tried (5: about a second for an entry that stays).
         Returns:
             None
         Raises:
             Exception: Propagated if the entry could not be removed after retries.
     """
     p = _to_extended_path(path)
+    windows = os.name == 'nt'
 
     last_exc = None
 
-    for attempt in range(5):
+    for attempt in range(max(1, attempts)):
+        changed = []  # (path, the rights it had) of what was given more rights for this try
+
         try:
             try:
-                os.chmod(p, stat.S_IWRITE)
+                if windows:
+                    mode = stat.S_IMODE(os.lstat(p).st_mode)
+
+                    if not mode & stat.S_IWRITE:
+                        os.chmod(p, mode | stat.S_IWRITE)
+                        changed.append((p, mode))
+                else:
+                    parent = os.path.dirname(os.path.abspath(p))
+                    parent_stat = os.stat(parent)
+                    mode = stat.S_IMODE(parent_stat.st_mode)
+                    needed = stat.S_IWUSR | stat.S_IXUSR
+
+                    if mode & needed != needed and parent_stat.st_uid == os.geteuid():
+                        os.chmod(parent, mode | needed)
+                        changed.append((parent, mode))
             except OSError:
                 pass
 
-            if os.path.isdir(p) and not os.path.islink(p):
-                os.rmdir(p)
-            else:
-                os.unlink(p)
+            try:
+                if os.path.isdir(p) and not os.path.islink(p):
+                    os.rmdir(p)
+                else:
+                    os.unlink(p)
+            finally:
+                # The folder gets its rights back whether the entry went or not; the entry
+                # itself only when it stays (FileNotFoundError: it is gone)
+                for changed_path, mode in changed:
+                    if changed_path != p or os.path.lexists(p):
+                        try:
+                            os.chmod(changed_path, mode)
+                        except OSError:
+                            pass
 
             return
         except FileNotFoundError:
             return
         except (PermissionError, OSError) as e:
             last_exc = e
-            time.sleep(0.1 * (attempt + 1))
+
+            # a pause before the next try, none after the last one
+            if attempt + 1 < max(1, attempts):
+                time.sleep(0.1 * (attempt + 1))
 
     raise last_exc
+
+##########################################################################################
+def _retry_removal(
+    path,  # Filesystem path.
+    attempts = 5,  # How many times the removal of an entry is tried.
+):
+    """
+        What shutil.rmtree could not do with an entry, done again (its error handler).
+
+        Elsewhere than on Windows a folder that its owner may not read or enter cannot be
+        listed, so nothing in it can be removed: it is given those rights and removed with
+        what it holds. Any other entry goes through `_force_remove`. An entry that stays
+        keeps the rights it had.
+
+        Args:
+            path: Filesystem path.
+            attempts: How many times the removal of an entry is tried.
+        Returns:
+            None
+        Raises:
+            OSError: The entry could not be removed.
+    """
+    mode = None
+
+    if os.name != 'nt':
+        try:
+            st = os.lstat(path)
+            listable = stat.S_IRUSR | stat.S_IXUSR
+
+            if stat.S_ISDIR(st.st_mode) and st.st_mode & listable != listable and st.st_uid == os.geteuid():
+                mode = stat.S_IMODE(st.st_mode)
+                os.chmod(path, mode | stat.S_IRWXU)
+        except OSError:
+            mode = None
+
+    if mode is None:
+        _force_remove(path, attempts)
+        return
+
+    try:
+        shutil.rmtree(path, onerror = lambda func, p, exc_info: _retry_removal(p, attempts))
+    except OSError:
+        if os.path.lexists(path):
+            try:
+                os.chmod(path, mode)
+            except OSError:
+                pass
+        raise
 
 ##########################################################################################
 def _handle_remove_readonly(
@@ -3547,7 +3655,7 @@ def _handle_remove_readonly(
         Raises:
             Exception: Propagated runtime errors, if any.
     """
-    _force_remove(path)
+    _retry_removal(path)
 
 ##########################################################################################
 def remove_files_and_dirs_in_path(
@@ -3582,12 +3690,66 @@ def remove_files_and_dirs_in_path(
             pattern: Value for pattern.
             ignore: Value for ignore.
         Returns:
-            dict: Operation result.
+            dict: Operation result. An entry that could not be removed (a file in use, a file of
+            another account) does not stop the removal: every other entry is removed, and the
+            result is an error that says how many stayed and names the first, with their paths
+            in 'left'.
         Raises:
             Exception: Propagated runtime errors, if any.
     """
-    root = Path(path)
+    # On Windows the walk goes through the extended-length prefix: a machine without long-path
+    # support lists no entry beyond 260 characters otherwise, and such entries stayed
+    root = Path(_to_extended_path(path))
     ignore = ignore or []
+
+    # The entries that could not be removed: each is tried once (a folder that holds one meets
+    # it again), and only the first few with the retries meant for a short lock - a tree of
+    # files nobody here may delete must not take a second and a half for each
+    failed = {}
+    with_retries = 3
+
+    def remove_once(
+        p,  # Filesystem path.
+    ):
+        """
+            _force_remove, once per entry: one that could not be removed is not tried again.
+
+            Args:
+                p: Filesystem path.
+            Returns:
+                None
+            Raises:
+                OSError: The entry could not be removed (now, or when it was tried before).
+        """
+        key = os.path.normcase(os.fspath(p))
+
+        if key in failed:
+            raise failed[key][1]
+
+        try:
+            _retry_removal(p, attempts = 5 if len(failed) < with_retries else 1)
+        except OSError as e:
+            failed[key] = (os.fspath(p), e)
+            raise
+
+    def remove_again(
+        func,  # Value for func.
+        p,  # Filesystem path.
+        exc_info,  # Value for exc info.
+    ):
+        """
+            Error handler for shutil.rmtree (see `remove_once`).
+
+            Args:
+                func: Value for func.
+                p: Filesystem path.
+                exc_info: Value for exc info.
+            Returns:
+                None
+            Raises:
+                OSError: The entry could not be removed.
+        """
+        remove_once(p)
 
     def is_ignored(
         p: Path,  # Value for p.
@@ -3613,12 +3775,27 @@ def remove_files_and_dirs_in_path(
                 if item.is_dir():
                     shutil.rmtree(
                         item,
-                        onerror=_handle_remove_readonly,
+                        onerror=remove_again,
                     )
                 else:
-                    _force_remove(item)
+                    remove_once(item)
             except FileNotFoundError:
                 pass
+            except OSError as e:
+                # This entry stays and the others are still removed: the removal used to stop
+                # here with the exception, and left everything it had not reached
+                failed.setdefault(os.path.normcase(os.fspath(item)), (os.fspath(item), e))
+
+    # What stayed - without the folders that stayed only because they hold such an entry
+    left = sorted(k for k in failed if not any(o != k and o.startswith(k + os.sep) for o in failed))
+
+    if left:
+        first_path, first_exc = failed[left[0]]
+        return {'return':1,
+                'error': '{} of "{}" could not be removed - the first: "{}" ({}: {})'.format(
+                    '1 entry' if len(left) == 1 else f'{len(left)} entries', path, _from_extended_path(first_path),
+                    type(first_exc).__name__, first_exc.strerror or first_exc),
+                'left': [_from_extended_path(failed[k][0]) for k in left]}
 
     return {'return':0}
 

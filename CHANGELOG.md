@@ -2,6 +2,27 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## 0.45.4
+- **Cleaning a folder goes past an entry it cannot remove.** `utils.files.remove_files_and_dirs_in_path` - what cleans
+  a build folder, a download folder, a test's sandbox - stopped with the exception of the first entry it could not
+  remove (a file in use on Windows, a file of another account) and left everything it had not reached yet: a sandbox
+  kept more than twenty thousand files beside a few of an installer that had run as an administrator. It now removes
+  every other entry and returns an error that says how many entries stayed and names the first one, with their paths
+  in `left` (as they were given: no extended-length prefix, and no folder that stayed only because it holds such an
+  entry). A caller that checks the result stops with that message, where it stopped with a traceback before. An entry
+  that stays is tried once: the tries with pauses, meant for a short lock of an antivirus or an indexer, go to the
+  first three such entries only, so a tree of files nobody here may delete takes no second for each; there is no pause
+  after the last try any more. On Windows the walk goes through the extended-length prefix, so entries beyond 260
+  characters are listed on a machine without long-path support too. Tests: `test_utils_files_remove_in_path.py`.
+- **A removal changes no rights of what stays, and removes a tree made read-only (Linux, macOS).** Before a removal
+  the engine cleared the read-only attribute by setting an entry's rights to "owner may write" - right on Windows,
+  where that attribute refuses a delete; elsewhere it took every other right away, so a folder that could not be
+  removed was left unreadable to its owner. There the rights of an entry do not decide whether it can be removed (its
+  folder's do), and they are no longer touched: a folder its owner may not write to (a module cache, a build system's
+  outputs - every folder read-only) is given that right for the removal of each entry and gets its rights back, so
+  such a tree is removed where the removal stopped at its first file. On Windows a read-only file that stays (in
+  use) is read-only again afterwards.
+
 ## 0.45.3
 - **Lists of whole items on the command line: `--key+=value`.** An alias may hold commas and `;`, and a path may hold
   both, so a list written in one value (`--connect="a;b"`, `--key,=a,b`) cannot always say where an item ends.
