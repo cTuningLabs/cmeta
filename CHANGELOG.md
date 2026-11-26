@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.45.3.1)
+## 0.45.4
 - **Cleaning a folder goes past an entry it cannot remove.** `utils.files.remove_files_and_dirs_in_path` - what cleans
   a build folder, a download folder, a test's sandbox - stopped with the exception of the first entry it could not
   remove (a file in use on Windows, a file of another account) and left everything it had not reached yet: a sandbox
