@@ -568,15 +568,19 @@ class Category(InitCategory):
         url: bool = False,  # If True, copy URL with detected cRef to the clipboard.
         name: bool = False,  # If True, copy artifact name to the clipboard
         cref: bool = False,  # If True, the old form cRef=<category>,<UID>::<alias>,<UID> instead of {{{<category>::<alias>,<UID>}}}.
-        plain: bool = False,  # If True, the reference without the braces: <category>::<alias>,<UID> (what a field of a page takes).
-        qplain: bool = False,  # If True, the plain reference in double quotes: "<category>::<alias>,<UID>" (pasted into a command line as one word).
+        plain: bool = False,  # If True, the full reference without the braces: <category>,<UID>::<alias>,<UID> (what a field of a page takes).
+        qplain: bool = False,  # If True, the plain reference in double quotes: "<category>,<UID>::<alias>,<UID>" (pasted into a command line as one word).
+        braces: bool = False,  # If True, the full reference in braces: {{{<category>,<UID>::<alias>,<UID>}}} (alone, or with --plain / --qplain).
+        b: bool = False,  # Short for braces (-b).
     ):
         """
             Get artifact info. The reference printed and copied is {{{<category>::<alias>,<UID>}}} - how memories,
             records and docs name an artifact (the browse and cref pages make it a link, smart_find_by_cid reads it);
-            --plain gives it without the braces (<category>::<alias>,<UID>: what the search of /browse, a picker of a
-            page or cx <category> find takes), --qplain the same in double quotes (one word of a command line, a name
-            with spaces too), --cref the full cRef=... that info printed up to cMeta 0.38.9.
+            --plain gives the full reference without the braces (<category>,<UID>::<alias>,<UID>, the category with
+            its UID: what the search of /browse, a picker of a page or cx utils find_by_cid takes), --qplain the same
+            in double quotes (one word of a command line, a name with spaces too), -b (--braces) the full reference
+            in braces ({{{<category>,<UID>::<alias>,<UID>}}}; with --plain or --qplain too), --cref the full cRef=...
+            that info printed up to cMeta 0.38.9.
 
             Args:
                 ctx (dict): cMeta context.
@@ -585,8 +589,10 @@ class Category(InitCategory):
                 url (bool): If True, copy URL with detected cRef to the clipboard.
                 name (bool): If True, copy artifact name to the clipboard
                 cref (bool): If True, print and copy cRef=<full cRef> (the form up to 0.38.9).
-                plain (bool): If True, print and copy <category>::<alias>,<UID> - the reference without the braces.
+                plain (bool): If True, print and copy <category>,<UID>::<alias>,<UID> - the full reference without the braces.
                 qplain (bool): If True, the plain reference in double quotes - one word of a command line, whatever the name holds.
+                braces (bool): If True, the full reference in braces - {{{<category>,<UID>::<alias>,<UID>}}}.
+                b (bool): Short for braces (-b).
             Returns:
                 dict: A cMeta dictionary with the following keys:
                     - **return** (int): 0 if success, >0 if error.
@@ -621,16 +627,21 @@ class Category(InitCategory):
 
             ref = r['ref']
 
-            # The reference printed and copied: {{{<category>::<alias>,<UID>}}}, with --plain the same without the
-            # braces (2026-11-10, the user: "copy/paste only cRef without {{{}}}"), or with --cref the full cRef=...
+            # The reference printed and copied: {{{<category>::<alias>,<UID>}}}; with --plain the full reference
+            # without the braces (2026-11-10, the user: "copy/paste only cRef without {{{}}}"; with the category's
+            # UID since 2026-11-27: "it disappeared"), with -b that one in braces, or with --cref the full cRef=...
             if cref:
                 cref_text = f'cRef={ref}'
+            elif plain or qplain or braces or b:
+                cref_text = '{{{' + ref + '}}}' if braces or b else ref
+                if qplain:
+                    cref_text = f'"{cref_text}"'
             else:
                 r = utils.names.restore_cmeta_name(cmeta_ref_parts, key='artifact', fail_on_error = self.fail_on_error)
                 if r['return']>0: return r
 
                 category = cmeta_ref_parts.get('category_alias') or cmeta_ref_parts.get('category_uid', '')
-                cref_text = f"{category}::{r['name']}" if plain else f'"{category}::{r["name"]}"' if qplain else '{{{' + f"{category}::{r['name']}" + '}}}'
+                cref_text = '{{{' + f"{category}::{r['name']}" + '}}}'
 
             if con:
                 print ('')
@@ -696,7 +707,7 @@ class Category(InitCategory):
         match_empty_version: bool = False,  # Value for match empty version.
         match_empty_values: bool = False,  # Match when queried values or keys are empty.
         all_tags: str = None,  # Value for all tags.
-        load_files = [],  # Load files (omit extension to load either yaml or json)
+        load_files = [],  # Load files (omit extension to load either yaml or json); on a command line --load_files=<file>, several one by one: --load_files+=<file>
         follow_migrated: bool = True,  # Follow an old alias left by "migrate" to its artifact.
     ):
         """

@@ -95,7 +95,7 @@ cx <category> ls                       # list all artifacts
 cx <category> ls --tags=demo,gpu       # tag filter (AND-match)
 cx <category> find <alias-or-uid>      # resolve from the index
 cx <category> read <alias>             # print the artifact's meta
-cx <category> info <alias>             # path + {{{cRef}}} (+ clipboard; --plain: category::alias,UID without the braces, --qplain: the same in quotes; --cref: cRef=...)
+cx <category> info <alias>             # path + {{{cRef}}} (+ clipboard; --plain: category,UID::alias,UID without the braces, --qplain: the same in quotes; -b: that full reference in braces; --cref: cRef=...)
 
 cx <category> add <alias> --tags=t1,t2 --yaml
 cx <category> add <repo>:<alias> --meta.owner="me"

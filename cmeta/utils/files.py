@@ -3898,6 +3898,12 @@ def load_files(
 
     loaded_files = {}
 
+    # A command line gives a word as text: --load_files=_desc was read letter by letter ('_', 'd', 'e', ...) and loaded
+    # nothing (2026-11-26). Text is ONE file name, whole - a name may hold a comma or a ";", so nothing is split here;
+    # several files are a list: --load_files+=_desc --load_files+=README on a command line (each value whole)
+    if isinstance(load_files, str):
+        load_files = [load_files] if load_files else []
+
     for filename in load_files:
 
         file_path = os.path.join(path, filename)
