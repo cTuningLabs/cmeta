@@ -2,7 +2,7 @@
 
 All notable changes to cMeta are documented here, newest first.
 
-## DEV VERSION (0.45.5.1)
+## 0.45.6
 - **`--load_files` on a command line.** `cx <category> find <name> --load_files=_desc` (and `read`) loaded nothing: a
   word of a command line is text, and `utils.files.load_files` walked it letter by letter (`_`, `d`, `e`, `s`, `c`).
   Text is now one file name, whole - nothing is split at a comma or a `;`, which a file name may hold. Several files
