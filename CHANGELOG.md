@@ -2,6 +2,19 @@
 
 All notable changes to cMeta are documented here, newest first.
 
+## DEV VERSION (0.45.5.1)
+- **`--load_files` on a command line.** `cx <category> find <name> --load_files=_desc` (and `read`) loaded nothing: a
+  word of a command line is text, and `utils.files.load_files` walked it letter by letter (`_`, `d`, `e`, `s`, `c`).
+  Text is now one file name, whole - nothing is split at a comma or a `;`, which a file name may hold. Several files
+  are a list, as everywhere on the command line since 0.45.3: `--load_files+=_desc --load_files+=README` (each value
+  whole). A list from the Python API is unchanged. A test in tests/test_utils_files_load_files_text.py.
+- **`cx <category> info <alias> --plain` names the category with its UID, and `-b` puts the reference in braces.**
+  `--plain` (and `--qplain`, in double quotes) printed and copied `<category>::<alias>,<UID>`; they now give the full
+  reference `<category>,<UID>::<alias>,<UID>`, which stays valid when a category is renamed or another repository
+  has one of the same name. `-b` (`--braces`) gives that full reference in braces,
+  `{{{<category>,<UID>::<alias>,<UID>}}}` - alone, with `--plain`, or inside the quotes of `--qplain`. Without these
+  words `info` prints `{{{<category>::<alias>,<UID>}}}` as before, and `--cref` the `cRef=...` form.
+
 ## 0.45.5
 - **`cache clean` refuses a word it does not take.** It removes, and a word it did not know was ignored: `cx cache
   clean --unfinished --dry_run` removed the unfinished entries (clean has no dry run). Any word other than its own

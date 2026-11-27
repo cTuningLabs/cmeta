@@ -3,8 +3,8 @@ Licensed under the Apache License, Version 2.0.
 See the COPYRIGHT and LICENSE files in the project root for details.
 
 What `info` prints and copies (2026-11-05): the reference {{{<category>::<alias>,<UID>}}} - how notes, memories and
-docs name an artifact - and with --cref the full cRef=<category>,<UID>::<alias>,<UID> it printed up to 0.38.9;
---name and --url as before. Each test runs in a fresh CMETA_HOME; the clipboard is replaced by a list.
+docs name an artifact - and with --cref the full cRef=<category>,<UID>::<alias>,<UID> it printed up to 0.38.9; --plain
+and --qplain the full reference without the braces, -b the full one in braces (2026-11-27); --name and --url as before. Each test runs in a fresh CMETA_HOME; the clipboard is replaced by a list.
 """
 
 import pytest
@@ -52,14 +52,29 @@ def test_info_prints_and_copies_the_braces_reference_and_cref_the_old_form(cm, c
     assert old in out.splitlines() and '{{{' not in out, out
     assert cm.copied[-1] == old
 
-    # --plain (2026-11-10): the reference without the braces, printed and copied
+    # --plain (2026-11-10): the reference without the braces, printed and copied - the full one, the category with
+    # its UID (2026-11-27)
     out = info(cm, capsys, plain=True)
-    plain = 'config::my-notes,' + uid
+    plain = 'config,' + cat_uid + '::my-notes,' + uid
     assert plain in out.splitlines() and '{{{' not in out and 'cRef=' not in out, out
     assert cm.copied[-1] == plain
     # --qplain: the same in double quotes - one word of a command line
     out = info(cm, capsys, qplain=True)
     assert '"' + plain + '"' in out.splitlines() and cm.copied[-1] == '"' + plain + '"', out
+
+    # -b / --braces (2026-11-27): the full reference in braces - alone, with --plain, and inside the quotes of --qplain
+    full = '{{{' + plain + '}}}'
+    for words in ({'b': True}, {'braces': True}, {'plain': True, 'b': True}):
+        out = info(cm, capsys, **words)
+        assert full in out.splitlines() and 'cRef=' not in out, (words, out)
+        assert cm.copied[-1] == full
+    out = info(cm, capsys, qplain=True, b=True)
+    assert '"' + full + '"' in out.splitlines() and cm.copied[-1] == '"' + full + '"', out
+
+    # what --plain and -b give is found again: the name of the artifact for find_by_cid, in braces too
+    for text in (plain, full):
+        r = cm.access({'category': 'utils', 'command': 'find_by_cid', 'arg1': text, 'con': False})
+        assert r['return'] == 0 and [a['cmeta']['artifact'] for a in r['artifacts']] == [uid], r
 
     # --name copies the name, --clip- copies nothing; the parts are printed as before
     info(cm, capsys, name=True)
